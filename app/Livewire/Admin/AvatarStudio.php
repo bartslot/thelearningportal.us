@@ -359,6 +359,9 @@ class AvatarStudio extends Component
 
     public function render()
     {
+        // Always re-fetch from DB so sprite_status reflects background job updates
+        $this->avatar = $this->avatar->fresh();
+
         return view('livewire.admin.avatar-studio')
             ->layout('components.layouts.app', ['title' => 'Avatar Studio — ' . $this->avatar->name]);
     }

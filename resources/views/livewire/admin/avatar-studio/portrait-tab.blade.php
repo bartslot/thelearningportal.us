@@ -1,4 +1,8 @@
-<div class="space-y-6">
+<div class="space-y-6"
+    @if(in_array($avatar->sprite_status?->value, ['pending', 'processing']))
+        wire:poll.3s
+    @endif
+>
 
     {{-- Current portrait --}}
     <div class="flex items-start gap-6">
