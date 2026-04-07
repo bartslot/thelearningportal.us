@@ -5,7 +5,7 @@
   "dependencies": {
     "@vladmandic/face-api": "^1.7.13",
     "audio-decode": "^3.8.0",
-    "canvas": "^2.11.2",
+    "@napi-rs/canvas": "^0.1.65",
     "node-fetch": "^3.3.2"
   },
   "engines": {

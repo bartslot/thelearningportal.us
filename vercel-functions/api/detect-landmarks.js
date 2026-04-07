@@ -2,7 +2,7 @@
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
 import * as faceapi from '@vladmandic/face-api';
-import { createCanvas, loadImage, Image, ImageData } from 'canvas';
+import { createCanvas, loadImage, Image, ImageData } from '@napi-rs/canvas';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
