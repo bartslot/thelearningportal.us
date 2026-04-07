@@ -222,12 +222,24 @@ export default async function handler(req, res) {
         const jimg = await Jimp.fromBuffer(buffer);
         const { width, height } = jimg.bitmap;
 
-        // Build a FakeCanvas for face-api detection
-        const canvas = jimpToFakeCanvas(jimg);
+        // Build a tf.tensor3d from raw RGBA pixels (bypasses canvas entirely)
+        // face-api accepts Tensor3D [h, w, 3] in RGB format
+        const tf = await import('@tensorflow/tfjs');
+        const rgbaData = new Uint8Array(jimg.bitmap.data.buffer);
+        // Convert RGBA → RGB (drop alpha channel)
+        const rgbData = new Uint8Array(width * height * 3);
+        for (let i = 0, j = 0; i < rgbaData.length; i += 4, j += 3) {
+            rgbData[j]     = rgbaData[i];
+            rgbData[j + 1] = rgbaData[i + 1];
+            rgbData[j + 2] = rgbaData[i + 2];
+        }
+        const inputTensor = tf.tensor3d(rgbData, [height, width, 3]);
 
         const detection = await faceapi
-            .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 416 }))
+            .detectSingleFace(inputTensor, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 416 }))
             .withFaceLandmarks();
+
+        inputTensor.dispose();
 
         if (!detection) {
             return res.status(422).json({ error: 'No face detected in portrait' });
