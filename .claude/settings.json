@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php /Users/bartslot/Projects/thelearningportal.us/artisan make:migration add_details_and_update_tone_title_in_lessons_table)",
+      "Read(//Users/bartslot/SadTalker/**)",
+      "Bash(brew install:*)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(ffmpeg -y -i storage/app/public/lessons/19/audio.mp3 -ar 16000 -ac 1 /tmp/test_lesson19.wav)",
+      "Bash(rhubarb --recognizer phonetic --exportFormat json --output /tmp/test_visemes.json /tmp/test_lesson19.wav)",
+      "Bash(mkdir -p ~/bin)",
+      "Bash(cp \"/tmp/rhubarb/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb\" ~/bin/rhubarb)",
+      "Bash(cp -r \"/tmp/rhubarb/Rhubarb-Lip-Sync-1.14.0-macOS/res\" ~/bin/)",
+      "Bash(chmod +x ~/bin/rhubarb)",
+      "Bash(~/bin/rhubarb --recognizer phonetic --exportFormat json --output /tmp/test_visemes.json /tmp/test_lesson19.wav)",
+      "Read(//private/tmp/**)",
+      "Bash(gh api:*)",
+      "Read(//Users/bartslot/.claude/skills/brainstorming/**)",
+      "Read(//Users/bartslot/.claude/skills/writing-plans/**)",
+      "Read(//Users/bartslot/.claude/skills/subagent-driven-development/**)"
+    ]
+  }
+}
