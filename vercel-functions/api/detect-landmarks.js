@@ -1,7 +1,6 @@
 // api/detect-landmarks.js
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
-import { Jimp } from 'jimp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -108,6 +107,7 @@ class FakeImageData {
 
 let modelsLoaded = false;
 let faceapi = null;
+let Jimp = null;
 
 async function ensureModels() {
     if (modelsLoaded) return;
@@ -119,6 +119,9 @@ async function ensureModels() {
 
     const fa = await import('@vladmandic/face-api/dist/face-api.node-wasm.js');
     faceapi = fa.default ?? fa;
+
+    const jimpMod = await import('jimp');
+    Jimp = jimpMod.Jimp ?? jimpMod.default;
 
     faceapi.env.monkeyPatch({
         Canvas:    FakeCanvas,
