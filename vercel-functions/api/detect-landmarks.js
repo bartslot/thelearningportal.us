@@ -1,7 +1,7 @@
 // api/detect-landmarks.js
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
-import * as faceapi from '@vladmandic/face-api';
+import faceapi from '@vladmandic/face-api/dist/face-api.node-wasm.js';
 import Jimp from 'jimp';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -111,6 +111,8 @@ let modelsLoaded = false;
 
 async function ensureModels() {
     if (modelsLoaded) return;
+    // Wait for WASM backend to initialise before loading model weights
+    await faceapi.tf?.ready?.();
     faceapi.env.monkeyPatch({
         Canvas:    FakeCanvas,
         Image:     FakeImage,
