@@ -13,9 +13,12 @@ use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class AvatarStudio extends Component
 {
+    use WithFileUploads;
+
     public Avatar $avatar;
 
     // ── Editable settings ─────────────────────────────────────────────────────
@@ -53,6 +56,12 @@ class AvatarStudio extends Component
     public string $generatingVoice  = '';
     public ?string $flashMessage  = null;
     public bool $flashError       = false;
+
+    // ── Portrait upload ───────────────────────────────────────────────────────
+    #[Validate('nullable|image|max:4096')]
+    public $portraitUpload = null;
+
+    public bool $uploadingPortrait = false;
 
     // Custom sample controls
     #[Validate('nullable|string|max:300')]
@@ -302,6 +311,42 @@ class AvatarStudio extends Component
 
         $sample->delete();
         unset($this->voiceSamples);
+    }
+
+    public function uploadPortrait(): void
+    {
+        $this->validateOnly('portraitUpload', ['portraitUpload' => 'required|image|max:4096']);
+
+        $this->uploadingPortrait = true;
+
+        try {
+            $originalPath = $this->portraitUpload->storePubliclyAs(
+                "avatars/{$this->avatar->id}",
+                'portrait_original.' . $this->portraitUpload->getClientOriginalExtension(),
+                'public'
+            );
+
+            $imageBytes   = Storage::disk('public')->get($originalPath);
+            $resized      = app(\App\Services\AvatarService::class)->resizePortraitPublic($imageBytes);
+            $portraitPath = "avatars/{$this->avatar->id}/portrait.jpg";
+            Storage::disk('public')->put($portraitPath, $resized);
+
+            $this->avatar->update([
+                'portrait_path'          => $portraitPath,
+                'portrait_original_path' => $originalPath,
+                'sprite_status'          => \App\Enums\SpriteStatus::Pending,
+            ]);
+
+            \App\Jobs\ProcessAvatarPortrait::dispatch($this->avatar->id);
+
+            $this->portraitUpload = null;
+            $this->flash('Portrait uploaded! Processing sprites in background...', false);
+        } catch (\Throwable $e) {
+            Log::error('AvatarStudio: portrait upload failed', ['error' => $e->getMessage()]);
+            $this->flash('Upload failed: ' . $e->getMessage(), true);
+        } finally {
+            $this->uploadingPortrait = false;
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
