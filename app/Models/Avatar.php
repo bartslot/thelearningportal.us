@@ -28,6 +28,9 @@ class Avatar extends Model
         'voice_settings',
         'is_active',
         'sort_order',
+        'portrait_original_path',
+        'landmarks_json',
+        'sprite_status',
     ];
 
     protected function casts(): array
@@ -38,7 +41,14 @@ class Avatar extends Model
             'voice_pitch'    => 'float',
             'is_active'      => 'boolean',
             'sort_order'     => 'integer',
+            'landmarks_json' => 'array',
+            'sprite_status'  => \App\Enums\SpriteStatus::class,
         ];
+    }
+
+    public function spritesReady(): bool
+    {
+        return $this->sprite_status === \App\Enums\SpriteStatus::Ready;
     }
 
     // ── Relationships ─────────────────────────────────────────────────────────
