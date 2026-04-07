@@ -1,0 +1,14 @@
+{
+  "name": "thelearningportal-vercel-functions",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@vladmandic/face-api": "^1.7.13",
+    "audio-decode": "^3.8.0",
+    "canvas": "^2.11.2",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
