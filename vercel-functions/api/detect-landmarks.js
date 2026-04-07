@@ -2,21 +2,140 @@
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
 import * as faceapi from '@vladmandic/face-api';
-import { createCanvas, loadImage, Image, ImageData } from '@napi-rs/canvas';
+import Jimp from 'jimp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODELS_PATH = path.join(__dirname, '..', 'models');
 
+// ── Minimal Canvas / Image polyfill for face-api (pure-JS, no native deps) ──
+
+class FakeCanvas {
+    constructor(width, height) {
+        this.width  = width;
+        this.height = height;
+        this._data  = new Uint8ClampedArray(width * height * 4);
+    }
+    getContext() { return new FakeCtx(this); }
+    toDataURL(mime = 'image/png') {
+        // We never call this on the detection canvas — only on crop canvases
+        return '';
+    }
+}
+
+class FakeCtx {
+    constructor(canvas) { this.canvas = canvas; }
+    drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh) {
+        if (src instanceof FakeCanvas) {
+            // Simple pixel copy (same-size assumed for main canvas)
+            if (arguments.length === 3) {
+                this.canvas._data.set(src._data);
+            } else {
+                // Crop copy: sx,sy,sw,sh → dx,dy,dw,dh
+                for (let y = 0; y < dh; y++) {
+                    for (let x = 0; x < dw; x++) {
+                        const srcX = Math.round(sx + (x / dw) * sw);
+                        const srcY = Math.round(sy + (y / dh) * sh);
+                        const si   = (srcY * src.width + srcX) * 4;
+                        const di   = ((dy + y) * this.canvas.width + (dx + x)) * 4;
+                        this.canvas._data[di]     = src._data[si];
+                        this.canvas._data[di + 1] = src._data[si + 1];
+                        this.canvas._data[di + 2] = src._data[si + 2];
+                        this.canvas._data[di + 3] = src._data[si + 3];
+                    }
+                }
+            }
+        }
+    }
+    getImageData(x, y, w, h) {
+        const out = new Uint8ClampedArray(w * h * 4);
+        for (let row = 0; row < h; row++) {
+            for (let col = 0; col < w; col++) {
+                const si = ((y + row) * this.canvas.width + (x + col)) * 4;
+                const di = (row * w + col) * 4;
+                out[di]     = this.canvas._data[si];
+                out[di + 1] = this.canvas._data[si + 1];
+                out[di + 2] = this.canvas._data[si + 2];
+                out[di + 3] = this.canvas._data[si + 3];
+            }
+        }
+        return { data: out, width: w, height: h };
+    }
+    putImageData(imgData, x, y) {
+        for (let row = 0; row < imgData.height; row++) {
+            for (let col = 0; col < imgData.width; col++) {
+                const si = (row * imgData.width + col) * 4;
+                const di = ((y + row) * this.canvas.width + (x + col)) * 4;
+                this.canvas._data[di]     = imgData.data[si];
+                this.canvas._data[di + 1] = imgData.data[si + 1];
+                this.canvas._data[di + 2] = imgData.data[si + 2];
+                this.canvas._data[di + 3] = imgData.data[si + 3];
+            }
+        }
+    }
+    fillRect(x, y, w, h) {
+        const [r, g, b, a] = this._fillRgba;
+        for (let row = y; row < y + h; row++) {
+            for (let col = x; col < x + w; col++) {
+                const i = (row * this.canvas.width + col) * 4;
+                this.canvas._data[i]     = Math.round(r * a + this.canvas._data[i]     * (1 - a));
+                this.canvas._data[i + 1] = Math.round(g * a + this.canvas._data[i + 1] * (1 - a));
+                this.canvas._data[i + 2] = Math.round(b * a + this.canvas._data[i + 2] * (1 - a));
+                this.canvas._data[i + 3] = 255;
+            }
+        }
+    }
+    set fillStyle(val) {
+        // parse "rgba(r,g,b,a)" or "#rrggbb"
+        const m = String(val).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+        this._fillRgba = m ? [+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 1] : [0, 0, 0, 1];
+    }
+}
+
+class FakeImage {
+    constructor() { this.src = ''; this.width = 0; this.height = 0; }
+}
+
+class FakeImageData {
+    constructor(data, width, height) {
+        this.data   = data instanceof Uint8ClampedArray ? data : new Uint8ClampedArray(data);
+        this.width  = width;
+        this.height = height;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 let modelsLoaded = false;
 
 async function ensureModels() {
     if (modelsLoaded) return;
-    faceapi.env.monkeyPatch({ Canvas: createCanvas, Image, ImageData });
+    faceapi.env.monkeyPatch({
+        Canvas:    FakeCanvas,
+        Image:     FakeImage,
+        ImageData: FakeImageData,
+        createCanvasElement: () => new FakeCanvas(1, 1),
+        createImageElement:  () => new FakeImage(),
+    });
     await faceapi.nets.tinyFaceDetector.loadFromDisk(MODELS_PATH);
     await faceapi.nets.faceLandmark68Net.loadFromDisk(MODELS_PATH);
     modelsLoaded = true;
+}
+
+function jimpToFakeCanvas(jimg) {
+    const canvas = new FakeCanvas(jimg.bitmap.width, jimg.bitmap.height);
+    // Jimp stores pixels as RGBA in bitmap.data
+    canvas._data.set(jimg.bitmap.data);
+    return canvas;
+}
+
+async function fakeCanvasToBase64(canvas, bounds) {
+    // Crop via Jimp from the canvas pixel data
+    const jimg = new Jimp({ width: canvas.width, height: canvas.height, color: 0 });
+    jimg.bitmap.data.set(canvas._data);
+    const cropped = jimg.clone().crop({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h });
+    return await cropped.getBase64('image/png');
 }
 
 function boundsFromPoints(points, padX = 10, padY = 10) {
@@ -30,43 +149,43 @@ function boundsFromPoints(points, padX = 10, padY = 10) {
     };
 }
 
-function cropRegion(srcCanvas, bounds) {
-    const dst = createCanvas(bounds.w, bounds.h);
-    const ctx = dst.getContext('2d');
-    ctx.drawImage(srcCanvas, bounds.x, bounds.y, bounds.w, bounds.h, 0, 0, bounds.w, bounds.h);
-    return dst;
+async function cropToBase64(jimg, bounds) {
+    return await jimg.clone()
+        .crop({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h })
+        .getBase64('image/png');
 }
 
-function generateMouthFrames(mouthCanvas) {
+async function generateMouthFrames(jimg, bounds) {
     const frames = [];
     const adjustments = [-0.4, -0.2, 0, 0.1];
     for (const adj of adjustments) {
-        const dst = createCanvas(mouthCanvas.width, mouthCanvas.height);
-        const ctx = dst.getContext('2d');
-        ctx.drawImage(mouthCanvas, 0, 0);
+        let crop = jimg.clone().crop({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h });
         if (adj !== 0) {
-            const imageData = ctx.getImageData(0, 0, dst.width, dst.height);
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                imageData.data[i]     = Math.min(255, Math.max(0, imageData.data[i]     + adj * 255));
-                imageData.data[i + 1] = Math.min(255, Math.max(0, imageData.data[i + 1] + adj * 255));
-                imageData.data[i + 2] = Math.min(255, Math.max(0, imageData.data[i + 2] + adj * 255));
-            }
-            ctx.putImageData(imageData, 0, 0);
+            crop.scan((x, y, idx) => {
+                crop.bitmap.data[idx]     = Math.min(255, Math.max(0, crop.bitmap.data[idx]     + adj * 255));
+                crop.bitmap.data[idx + 1] = Math.min(255, Math.max(0, crop.bitmap.data[idx + 1] + adj * 255));
+                crop.bitmap.data[idx + 2] = Math.min(255, Math.max(0, crop.bitmap.data[idx + 2] + adj * 255));
+            });
         }
-        frames.push(dst.toDataURL('image/png'));
+        frames.push(await crop.getBase64('image/png'));
     }
     return frames;
 }
 
-function generateEyeClosedFrame(eyeCanvas) {
-    const dst = createCanvas(eyeCanvas.width, eyeCanvas.height);
-    const ctx = dst.getContext('2d');
-    ctx.drawImage(eyeCanvas, 0, 0);
-    ctx.fillStyle = 'rgba(210, 170, 130, 0.85)';
-    const barH = Math.max(4, Math.round(eyeCanvas.height * 0.45));
-    const barY = Math.round((eyeCanvas.height - barH) / 2);
-    ctx.fillRect(0, barY, eyeCanvas.width, barH);
-    return dst.toDataURL('image/png');
+async function generateEyeClosedFrame(jimg, bounds) {
+    const crop = jimg.clone().crop({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h });
+    const barH = Math.max(4, Math.round(bounds.h * 0.45));
+    const barY = Math.round((bounds.h - barH) / 2);
+    // Draw skin-tone bar over the eye to simulate closed lid
+    const skinR = 210, skinG = 170, skinB = 130, alpha = 0.85;
+    crop.scan((x, y, idx) => {
+        if (y >= barY && y < barY + barH) {
+            crop.bitmap.data[idx]     = Math.round(skinR * alpha + crop.bitmap.data[idx]     * (1 - alpha));
+            crop.bitmap.data[idx + 1] = Math.round(skinG * alpha + crop.bitmap.data[idx + 1] * (1 - alpha));
+            crop.bitmap.data[idx + 2] = Math.round(skinB * alpha + crop.bitmap.data[idx + 2] * (1 - alpha));
+        }
+    });
+    return await crop.getBase64('image/png');
 }
 
 export default async function handler(req, res) {
@@ -82,13 +201,16 @@ export default async function handler(req, res) {
     try {
         await ensureModels();
 
-        const img = await loadImage(portrait_base64.startsWith('data:')
-            ? portrait_base64
-            : `data:image/jpeg;base64,${portrait_base64}`);
+        // Strip data URI prefix if present
+        const base64Data = portrait_base64.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
 
-        const canvas = createCanvas(img.width, img.height);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        // Load with Jimp
+        const jimg = await Jimp.fromBuffer(buffer);
+        const { width, height } = jimg.bitmap;
+
+        // Build a FakeCanvas for face-api detection
+        const canvas = jimpToFakeCanvas(jimg);
 
         const detection = await faceapi
             .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
@@ -112,15 +234,19 @@ export default async function handler(req, res) {
             w: Math.round(faceBox.width), h: Math.round(faceBox.height),
         };
 
-        const mouthCrop    = cropRegion(canvas, mouthBounds);
-        const leftEyeCrop  = cropRegion(canvas, leftEyeBounds);
-        const rightEyeCrop = cropRegion(canvas, rightEyeBounds);
+        // Clamp bounds to image dimensions
+        for (const b of [mouthBounds, leftEyeBounds, rightEyeBounds]) {
+            b.x = Math.max(0, Math.min(b.x, width - 1));
+            b.y = Math.max(0, Math.min(b.y, height - 1));
+            b.w = Math.min(b.w, width - b.x);
+            b.h = Math.min(b.h, height - b.y);
+        }
 
-        const mouthFrames    = generateMouthFrames(mouthCrop);
-        const leftEyeOpen    = leftEyeCrop.toDataURL('image/png');
-        const leftEyeClosed  = generateEyeClosedFrame(leftEyeCrop);
-        const rightEyeOpen   = rightEyeCrop.toDataURL('image/png');
-        const rightEyeClosed = generateEyeClosedFrame(rightEyeCrop);
+        const mouthFrames    = await generateMouthFrames(jimg, mouthBounds);
+        const leftEyeOpen    = await cropToBase64(jimg, leftEyeBounds);
+        const leftEyeClosed  = await generateEyeClosedFrame(jimg, leftEyeBounds);
+        const rightEyeOpen   = await cropToBase64(jimg, rightEyeBounds);
+        const rightEyeClosed = await generateEyeClosedFrame(jimg, rightEyeBounds);
 
         return res.status(200).json({
             landmarks: {
