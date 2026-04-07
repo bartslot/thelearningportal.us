@@ -1,13 +1,7 @@
 // api/detect-landmarks.js
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
-// Set up pure-JS CPU backend BEFORE importing face-api
-import * as tf from '@tensorflow/tfjs';
-await tf.setBackend('cpu');
-await tf.ready();
-
-import faceapi from '@vladmandic/face-api/dist/face-api.node-wasm.js';
-import Jimp from 'jimp';
+import { Jimp } from 'jimp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -113,9 +107,19 @@ class FakeImageData {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let modelsLoaded = false;
+let faceapi = null;
 
 async function ensureModels() {
     if (modelsLoaded) return;
+
+    // Dynamic imports so we can set CPU backend before face-api loads TF
+    const tf = await import('@tensorflow/tfjs');
+    await tf.setBackend('cpu');
+    await tf.ready();
+
+    const fa = await import('@vladmandic/face-api/dist/face-api.node-wasm.js');
+    faceapi = fa.default ?? fa;
+
     faceapi.env.monkeyPatch({
         Canvas:    FakeCanvas,
         Image:     FakeImage,
