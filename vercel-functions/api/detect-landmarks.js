@@ -4,7 +4,9 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Resolve models path: works both locally (relative to this file) and on Vercel (/var/task/vercel-functions/models)
+const __filename = new URL(import.meta.url).pathname;
+const __dirname = path.dirname(__filename);
 const MODELS_PATH = path.join(__dirname, '..', 'models');
 
 // ── Minimal Canvas / Image polyfill for face-api (pure-JS, no native deps) ──
