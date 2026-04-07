@@ -2,12 +2,11 @@
 // POST { portrait_base64: string } → { landmarks, mouth_frames: [base64 x4], eye_frames: { left_open, left_closed, right_open, right_closed } }
 
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-// Resolve models path: works both locally (relative to this file) and on Vercel (/var/task/vercel-functions/models)
-const __filename = new URL(import.meta.url).pathname;
-const __dirname = path.dirname(__filename);
-const MODELS_PATH = path.join(__dirname, '..', 'models');
+// Vercel deploys to /var/task/vercel-functions/; locally models/ is relative to this file's parent
+const MODELS_PATH = process.env.VERCEL
+    ? '/var/task/vercel-functions/models'
+    : path.resolve(process.cwd(), 'models');
 
 // ── Minimal Canvas / Image polyfill for face-api (pure-JS, no native deps) ──
 
