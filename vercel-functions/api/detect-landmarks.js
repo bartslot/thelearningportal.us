@@ -226,7 +226,7 @@ export default async function handler(req, res) {
         const canvas = jimpToFakeCanvas(jimg);
 
         const detection = await faceapi
-            .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+            .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3, inputSize: 416 }))
             .withFaceLandmarks();
 
         if (!detection) {
