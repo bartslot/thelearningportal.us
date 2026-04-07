@@ -6,7 +6,7 @@
     "vercel-functions/api/*.js": {
       "memory": 1024,
       "maxDuration": 30,
-      "includeFiles": "vercel-functions/models/**"
+      "includeFiles": "models/**"
     }
   },
   "rewrites": [
