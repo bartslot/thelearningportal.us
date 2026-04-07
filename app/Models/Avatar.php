@@ -143,23 +143,97 @@ class Avatar extends Model
     public static function edgeTtsVoices(): array
     {
         return [
-            // ★ Spanish-accented English — perfect for The Professor
-            'es-ES-AlvaroNeural'   => '★ Spanish Male — Alvaro (Spanish accent, speaks English)',
-            'es-MX-JorgeNeural'    => 'Mexican Spanish Male — Jorge',
+            // ── British Male ──────────────────────────────────────────────────
+            'en-GB-RyanNeural'          => '🇬🇧 British Male — Ryan (professional)',
+            'en-GB-ThomasNeural'        => '🇬🇧 British Male — Thomas (calm)',
+            'en-GB-AlfieNeural'         => '🇬🇧 British Male — Alfie (friendly)',
+            'en-GB-ElliotNeural'        => '🇬🇧 British Male — Elliot (natural)',
+            'en-GB-EthanNeural'         => '🇬🇧 British Male — Ethan (clear)',
+            'en-GB-NoahNeural'          => '🇬🇧 British Male — Noah (warm)',
+            'en-GB-OliverNeural'        => '🇬🇧 British Male — Oliver (articulate)',
 
-            // Distinguished British male
-            'en-GB-RyanNeural'     => 'British Male — Ryan (professional)',
-            'en-GB-ThomasNeural'   => 'British Male — Thomas (calm)',
+            // ── British Female ────────────────────────────────────────────────
+            'en-GB-SoniaNeural'         => '🇬🇧 British Female — Sonia (clear)',
+            'en-GB-MaisieNeural'        => '🇬🇧 British Female — Maisie (warm)',
+            'en-GB-AbbiNeural'          => '🇬🇧 British Female — Abbi (confident)',
+            'en-GB-BellaNeural'         => '🇬🇧 British Female — Bella (expressive)',
+            'en-GB-HollieNeural'        => '🇬🇧 British Female — Hollie (bright)',
+            'en-GB-LibbyNeural'         => '🇬🇧 British Female — Libby (polished)',
+            'en-GB-OliviaNeural'        => '🇬🇧 British Female — Olivia (authoritative)',
 
-            // American male
-            'en-US-GuyNeural'      => 'American Male — Guy (neutral)',
-            'en-US-DavisNeural'    => 'American Male — Davis (deep)',
-            'en-US-TonyNeural'     => 'American Male — Tony (natural)',
+            // ── American Male ─────────────────────────────────────────────────
+            'en-US-GuyNeural'           => '🇺🇸 American Male — Guy (neutral)',
+            'en-US-DavisNeural'         => '🇺🇸 American Male — Davis (deep)',
+            'en-US-TonyNeural'          => '🇺🇸 American Male — Tony (natural)',
+            'en-US-JasonNeural'         => '🇺🇸 American Male — Jason (serious)',
+            'en-US-AndrewNeural'        => '🇺🇸 American Male — Andrew (warm)',
+            'en-US-BrianNeural'         => '🇺🇸 American Male — Brian (casual)',
+            'en-US-ChristopherNeural'   => '🇺🇸 American Male — Christopher (authoritative)',
+            'en-US-EricNeural'          => '🇺🇸 American Male — Eric (rational)',
+            'en-US-RogerNeural'         => '🇺🇸 American Male — Roger (confident)',
+            'en-US-SteffanNeural'       => '🇺🇸 American Male — Steffan (clear)',
 
-            // Female options
-            'en-GB-SoniaNeural'    => 'British Female — Sonia (clear)',
-            'en-US-JennyNeural'    => 'American Female — Jenny (friendly)',
-            'en-US-AriaNeural'     => 'American Female — Aria (expressive)',
+            // ── American Female ───────────────────────────────────────────────
+            'en-US-JennyNeural'         => '🇺🇸 American Female — Jenny (friendly)',
+            'en-US-AriaNeural'          => '🇺🇸 American Female — Aria (expressive)',
+            'en-US-AnaNeural'           => '🇺🇸 American Female — Ana (cheerful)',
+            'en-US-EmmaNeural'          => '🇺🇸 American Female — Emma (bright)',
+            'en-US-MichelleNeural'      => '🇺🇸 American Female — Michelle (warm)',
+            'en-US-MonicaNeural'        => '🇺🇸 American Female — Monica (calm)',
+            'en-US-NancyNeural'         => '🇺🇸 American Female — Nancy (natural)',
+            'en-US-SaraNeural'          => '🇺🇸 American Female — Sara (gentle)',
+
+            // ── Irish ─────────────────────────────────────────────────────────
+            'en-IE-ConnorNeural'        => '🇮🇪 Irish Male — Connor (storyteller)',
+            'en-IE-EmilyNeural'         => '🇮🇪 Irish Female — Emily (warm)',
+
+            // ── Australian ───────────────────────────────────────────────────
+            'en-AU-WilliamNeural'       => '🇦🇺 Australian Male — William (authoritative)',
+            'en-AU-DarrenNeural'        => '🇦🇺 Australian Male — Darren (casual)',
+            'en-AU-DuncanNeural'        => '🇦🇺 Australian Male — Duncan (relaxed)',
+            'en-AU-KenNeural'           => '🇦🇺 Australian Male — Ken (deep)',
+            'en-AU-NeilNeural'          => '🇦🇺 Australian Male — Neil (calm)',
+            'en-AU-TimNeural'           => '🇦🇺 Australian Male — Tim (natural)',
+            'en-AU-NatashaNeural'       => '🇦🇺 Australian Female — Natasha (clear)',
+            'en-AU-AnnetteNeural'       => '🇦🇺 Australian Female — Annette (warm)',
+            'en-AU-CarlyNeural'         => '🇦🇺 Australian Female — Carly (bright)',
+            'en-AU-ElsieNeural'         => '🇦🇺 Australian Female — Elsie (gentle)',
+            'en-AU-FreyaNeural'         => '🇦🇺 Australian Female — Freya (expressive)',
+            'en-AU-JoanneNeural'        => '🇦🇺 Australian Female — Joanne (professional)',
+
+            // ── Canadian ─────────────────────────────────────────────────────
+            'en-CA-LiamNeural'          => '🇨🇦 Canadian Male — Liam (natural)',
+            'en-CA-ClaraNeural'         => '🇨🇦 Canadian Female — Clara (clear)',
+
+            // ── Indian English ────────────────────────────────────────────────
+            'en-IN-PrabhatNeural'       => '🇮🇳 Indian Male — Prabhat (authoritative)',
+            'en-IN-AaravNeural'         => '🇮🇳 Indian Male — Aarav (warm)',
+            'en-IN-AnanyaNeural'        => '🇮🇳 Indian Female — Ananya (bright)',
+            'en-IN-NeerjaNeural'        => '🇮🇳 Indian Female — Neerja (professional)',
+
+            // ── South African ────────────────────────────────────────────────
+            'en-ZA-LukeNeural'          => '🇿🇦 South African Male — Luke (deep)',
+            'en-ZA-LeahNeural'          => '🇿🇦 South African Female — Leah (clear)',
+
+            // ── Nigerian ─────────────────────────────────────────────────────
+            'en-NG-AbeoNeural'          => '🇳🇬 Nigerian Male — Abeo (warm)',
+            'en-NG-EzinneNeural'        => '🇳🇬 Nigerian Female — Ezinne (expressive)',
+
+            // ── Spanish-accented English (great for historical figures) ───────
+            'es-ES-AlvaroNeural'        => '🇪🇸 Spanish Male — Alvaro (accent)',
+            'es-MX-JorgeNeural'         => '🇲🇽 Mexican Male — Jorge (warm)',
+
+            // ── French-accented English ───────────────────────────────────────
+            'fr-FR-HenriNeural'         => '🇫🇷 French Male — Henri (sophisticated)',
+            'fr-FR-DeniseNeural'        => '🇫🇷 French Female — Denise (elegant)',
+
+            // ── Italian-accented English ──────────────────────────────────────
+            'it-IT-DiegoNeural'         => '🇮🇹 Italian Male — Diego (expressive)',
+            'it-IT-ElsaNeural'          => '🇮🇹 Italian Female — Elsa (warm)',
+
+            // ── German-accented English ───────────────────────────────────────
+            'de-DE-ConradNeural'        => '🇩🇪 German Male — Conrad (serious)',
+            'de-DE-KatjaNeural'         => '🇩🇪 German Female — Katja (clear)',
         ];
     }
 
