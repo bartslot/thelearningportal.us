@@ -71,12 +71,10 @@ class AvatarStudio extends Component
     public float  $previewVoiceSpeed = 0.92;
     public string $previewProvider   = 'edge_tts';
 
-    // ── Greeting preview ──────────────────────────────────────────────────────
+    // ── Greeting script ───────────────────────────────────────────────────────
 
-    public string $greetingTeacherName = 'Sarah';
-    public ?string $greetingAudioUrl   = null;
-    public array $greetingWordTimings  = [];
-    public bool $generatingGreeting    = false;
+    #[Validate('nullable|string|max:500')]
+    public string $greetingScript = '';
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -97,6 +95,8 @@ class AvatarStudio extends Component
         $this->previewVoiceId    = $avatar->voice_id;
         $this->previewVoiceSpeed = $avatar->voice_speed;
         $this->previewProvider   = $avatar->voice_provider;
+
+        $this->greetingScript = $avatar->greeting_text ?? '';
     }
 
     // ── Computed ──────────────────────────────────────────────────────────────
@@ -108,16 +108,6 @@ class AvatarStudio extends Component
             'edge_tts' => Avatar::edgeTtsVoices(),
             default    => Avatar::kokoroVoices(),
         };
-    }
-
-    #[Computed]
-    public function greetingText(): string
-    {
-        $name  = trim($this->short_name)   ?: $this->name;
-        $title = trim($this->avatar_title) ?: 'Professor';
-        $teacher = trim($this->greetingTeacherName) ?: 'there';
-
-        return "Hi there {$teacher}. I am {$name}, a {$title} here at The History Portal. Do you like my voice?";
     }
 
     #[Computed]
@@ -160,50 +150,6 @@ class AvatarStudio extends Component
         ]);
 
         $this->flash('Settings saved.', false);
-    }
-
-    /**
-     * Generate a greeting audio clip for the admin to preview.
-     */
-    public function generateGreeting(): void
-    {
-        $this->generatingGreeting = true;
-        $this->greetingAudioUrl   = null;
-        $this->greetingWordTimings = [];
-
-        try {
-            /** @var TtsService $tts */
-            $tts  = app(TtsService::class);
-            $text = $this->greetingText;
-            $wordTimings = null;
-
-            $audio = $tts->generateAudioRaw(
-                $text,
-                $this->previewVoiceId,
-                $this->previewVoiceSpeed,
-                $this->previewProvider,
-                $wordTimings,
-            );
-
-            if ($audio === null) {
-                $this->flash('Could not generate greeting — check that Kokoro or edge-tts is running.', true);
-                return;
-            }
-
-            $ext = $tts->lastExtension();
-            $path = 'avatar-samples/' . $this->avatar->id . '/greeting-preview-' . Str::uuid() . '.' . $ext;
-            Storage::disk('public')->put($path, $audio);
-
-            $this->greetingAudioUrl = '/storage/' . ltrim($path, '/');
-            $this->greetingWordTimings = is_array($wordTimings) ? $wordTimings : [];
-            $this->flash('Greeting generated!', false);
-
-        } catch (\Throwable $e) {
-            Log::error('AvatarStudio: greeting generation failed', ['error' => $e->getMessage()]);
-            $this->flash('Error: ' . $e->getMessage(), true);
-        } finally {
-            $this->generatingGreeting = false;
-        }
     }
 
     // ── Generate a single voice sample ────────────────────────────────────────
