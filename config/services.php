@@ -88,4 +88,11 @@ return [
         'url' => env('VERCEL_FUNCTIONS_URL', 'http://localhost:3000'),
     ],
 
+    // ── Azure Speech Service (3D avatar lip sync) ─────────────────────────────
+
+    'azure_speech' => [
+        'key'    => env('AZURE_SPEECH_KEY'),
+        'region' => env('AZURE_SPEECH_REGION', 'eastus'),
+    ],
+
 ];
