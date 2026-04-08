@@ -31,6 +31,13 @@ class Avatar extends Model
         'portrait_original_path',
         'landmarks_json',
         'sprite_status',
+        'presentation_mode',
+        'age',
+        'gender',
+        'emotion_style',
+        'expressiveness',
+        'speaking_speed',
+        'frame_background',
     ];
 
     protected function casts(): array
@@ -43,6 +50,9 @@ class Avatar extends Model
             'sort_order'     => 'integer',
             'landmarks_json' => 'array',
             'sprite_status'  => \App\Enums\SpriteStatus::class,
+            'age'            => 'integer',
+            'expressiveness' => 'float',
+            'speaking_speed' => 'float',
         ];
     }
 
