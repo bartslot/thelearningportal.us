@@ -26,6 +26,11 @@
                             <a href="{{ route('admin.dashboard') }}" class="text-sm text-rose-400 transition-colors hover:text-rose-300">
                                 Admin
                             </a>
+                            <a href="{{ route('admin.avatar-lab') }}"
+                               class="text-sm {{ request()->routeIs('admin.avatar-lab') ? 'text-indigo-400' : 'text-slate-400 transition-colors hover:text-white' }} flex items-center gap-1.5">
+                                🧪 <span>3D Lab</span>
+                                <span class="text-[0.55rem] bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded font-semibold">BETA</span>
+                            </a>
                         @endif
 
                         @if(auth()->user()->isTeacher() || auth()->user()->role === 'admin')

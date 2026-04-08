@@ -2,6 +2,7 @@
 
 use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
+use App\Livewire\Admin\AvatarLab;
 use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\CreateLesson;
 use App\Livewire\LessonShow;
@@ -92,6 +93,9 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Avatar Studio (Livewire component)
     Route::get('/avatars/{avatar}', AvatarStudio::class)->name('avatars.studio');
+
+    // 3D Avatar Lab
+    Route::get('/avatar-lab', AvatarLab::class)->name('avatar-lab');
 
     // Toggle active status
     Route::patch('/avatars/{avatar}/toggle', function (Avatar $avatar) {
