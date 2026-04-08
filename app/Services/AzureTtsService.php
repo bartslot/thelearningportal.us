@@ -42,9 +42,11 @@ class AzureTtsService
             escapeshellarg($shapesOut),
         );
 
-        [$output, $exitCode] = $this->runPython($cmd);
-
-        @unlink($ssmlFile);
+        try {
+            [$output, $exitCode] = $this->runPython($cmd);
+        } finally {
+            @unlink($ssmlFile);
+        }
 
         if ($exitCode !== 0) {
             throw new AzureTtsException(implode("\n", $output));
