@@ -100,10 +100,10 @@ class AvatarLab extends Component
             $this->previewAudioUrl       = $cached['audio_url'];
             $this->previewBlendShapesUrl = $cached['blendshapes_url'];
             $this->polling               = false;
-            $this->dispatch('avatar3d:previewReady', [
-                'audioUrl'       => $this->previewAudioUrl,
-                'blendShapesUrl' => $this->previewBlendShapesUrl,
-            ]);
+            $this->dispatch('avatar3d:previewReady',
+                audioUrl: $this->previewAudioUrl,
+                blendShapesUrl: $this->previewBlendShapesUrl,
+            );
         }
 
         if ($cached['status'] === 'failed') {
@@ -115,7 +115,16 @@ class AvatarLab extends Component
 
     public function saveSettings(): void
     {
-        $this->validate(['avatarId' => 'required|integer|exists:avatars,id']);
+        $this->validate([
+            'avatarId'         => 'required|integer|exists:avatars,id',
+            'age'              => 'required|integer|min:8|max:80',
+            'expressiveness'   => 'required|numeric|min:0.1|max:2.0',
+            'speakingSpeed'    => 'required|numeric|min:0.5|max:2.0',
+            'frameBackground'  => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'presentationMode' => 'required|in:fullscreen,framed,hidden',
+            'gender'           => 'required|in:male,female',
+            'emotionStyle'     => 'required|in:auto,narrative,cheerful,serious,excited,empathetic,whispering',
+        ]);
 
         Avatar::where('id', $this->avatarId)->update([
             'presentation_mode' => $this->presentationMode,

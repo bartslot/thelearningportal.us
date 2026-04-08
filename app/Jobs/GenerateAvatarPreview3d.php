@@ -22,7 +22,7 @@ class GenerateAvatarPreview3d implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $retryAfter = 60; // seconds — handles Azure 429 rate-limit
+    public int $backoff = 60; // seconds — handles Azure 429 rate-limit
 
     public function __construct(
         public readonly int $avatarId,
