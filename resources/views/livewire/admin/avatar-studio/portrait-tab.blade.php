@@ -72,7 +72,7 @@
                     'right_eye_closed' => Storage::disk('public')->url("avatars/{$avatar->id}/sprites/eye_right_closed.png"),
                 ]) }}"
             >
-                <canvas id="avatar-canvas" width="256" height="256" class="rounded-2xl border border-slate-700"></canvas>
+                <canvas id="avatar-canvas" width="512" height="512" class="w-full max-w-sm rounded-2xl border border-slate-700"></canvas>
             </div>
             <p class="text-xs text-slate-500">Preview uses demo amplitude. Connect audio at playback.</p>
         </div>

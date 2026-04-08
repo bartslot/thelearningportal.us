@@ -1,11 +1,13 @@
 // resources/js/avatar-animator.js
-// Animates a portrait canvas using an amplitude manifest.
-// Layers: mouth sprites, eye blink, head Perlin drift, breathing CSS.
+// Animates a portrait canvas: mouth sprites, eye blink, subtle head drift.
 
-// Minimal Perlin-like noise (1D)
-function perlin(t) {
-    const n = Math.sin(t * 12.9898 + t * 78.233) * 43758.5453;
-    return (n - Math.floor(n)) * 2 - 1; // -1 to 1
+// Smooth 1D value-noise interpolated with cosine easing
+const _noiseTable = Array.from({ length: 256 }, () => Math.random() * 2 - 1);
+function smoothNoise(t) {
+    const i  = Math.floor(t) & 255;
+    const f  = t - Math.floor(t);
+    const u  = f * f * (3 - 2 * f); // smoothstep
+    return _noiseTable[i] * (1 - u) + _noiseTable[(i + 1) & 255] * u;
 }
 
 export function initAvatarAnimator(canvasId, previewElId) {
@@ -13,19 +15,21 @@ export function initAvatarAnimator(canvasId, previewElId) {
     const canvas    = document.getElementById(canvasId);
     if (!canvas || !previewEl) return;
 
-    const ctx       = canvas.getContext('2d');
-    const portrait  = new Image();
-    const landmarks = JSON.parse(previewEl.dataset.landmarks || '{}');
-    const spriteDefs = JSON.parse(previewEl.dataset.sprites  || '{}');
+    const ctx        = canvas.getContext('2d');
+    const portrait   = new Image();
+    portrait.crossOrigin = 'anonymous';
+    const landmarks  = JSON.parse(previewEl.dataset.landmarks  || '{}');
+    const spriteDefs = JSON.parse(previewEl.dataset.sprites    || '{}');
 
     function loadImg(src) {
         if (!src) return null;
         const i = new Image();
+        i.crossOrigin = 'anonymous';
         i.src = src;
         return i;
     }
 
-    const mouthImgs = (spriteDefs.mouth || []).map(src => loadImg(src));
+    const mouthImgs = (spriteDefs.mouth || []).map(loadImg);
     const eyeImgs   = {
         leftOpen:    loadImg(spriteDefs.left_eye_open),
         leftClosed:  loadImg(spriteDefs.left_eye_closed),
@@ -35,27 +39,33 @@ export function initAvatarAnimator(canvasId, previewElId) {
 
     portrait.src = previewEl.dataset.portrait;
 
-    // Animation state
+    // ── Animation state ──────────────────────────────────────────────────────
     let samples        = [];
     let audioStartTime = null;
     let demoMode       = true;
-    let eyeOpen        = true;
-    let nextBlinkAt    = Date.now() + randomBlinkInterval();
 
-    function randomBlinkInterval() {
-        return 2000 + Math.random() * 3000;
-    }
+    // Eye blink state machine
+    const BLINK_OPEN_MIN  = 2500;
+    const BLINK_OPEN_MAX  = 5000;
+    const BLINK_CLOSE_MS  = 130;
+    let   eyeOpen         = true;
+    let   nextBlinkAt     = Date.now() + randBetween(BLINK_OPEN_MIN, BLINK_OPEN_MAX);
+    let   blinkCloseUntil = 0;
 
-    // Public: load manifest and start synced animation
+    function randBetween(a, b) { return a + Math.random() * (b - a); }
+
+    // Public API: load manifest and start synced playback
     window.avatarLoadManifest = function (manifestJson, audioStartedAt) {
         samples        = manifestJson.samples;
         audioStartTime = audioStartedAt;
         demoMode       = false;
     };
 
+    // ── Amplitude ────────────────────────────────────────────────────────────
     function currentAmp() {
         if (demoMode) {
-            return (Math.sin(Date.now() / 200) + 1) / 2 * 0.6;
+            // Gentle sine wave so mouth cycles slowly for demo
+            return (Math.sin(Date.now() / 600) + 1) / 2 * 0.5;
         }
         if (!audioStartTime || samples.length === 0) return 0;
         const elapsed = (performance.now() - audioStartTime) / 1000;
@@ -68,69 +78,88 @@ export function initAvatarAnimator(canvasId, previewElId) {
     }
 
     function ampToMouthFrame(amp) {
-        if (amp < 0.1) return 0;
-        if (amp < 0.3) return 1;
-        if (amp < 0.6) return 2;
+        if (amp < 0.15) return 0;
+        if (amp < 0.35) return 1;
+        if (amp < 0.60) return 2;
         return 3;
     }
 
+    // ── Draw loop ─────────────────────────────────────────────────────────────
     function draw(ts) {
+        requestAnimationFrame(draw);
+
+        if (!portrait.complete || !portrait.naturalWidth) return;
+
         const t   = ts / 1000;
         const amp = currentAmp();
 
-        // Head micro-movement via Perlin noise
-        const dx  = perlin(t * 0.3) * 2;
-        const dy  = perlin(t * 0.4 + 10) * 2;
-        const rot = perlin(t * 0.2 + 5) * 0.008;
+        const cw = canvas.width;
+        const ch = canvas.height;
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Scale factors: portrait coords → canvas coords
+        const scaleX = cw / portrait.naturalWidth;
+        const scaleY = ch / portrait.naturalHeight;
+
+        // Subtle head drift — slow smooth noise, very small amplitude
+        const dx  = smoothNoise(t * 0.4)       * 1.5;   // ±1.5 px
+        const dy  = smoothNoise(t * 0.35 + 10) * 1.5;
+        const rot = smoothNoise(t * 0.25 + 5)  * 0.004; // ±0.004 rad
+
+        ctx.clearRect(0, 0, cw, ch);
         ctx.save();
-        ctx.translate(canvas.width / 2 + dx, canvas.height / 2 + dy);
+
+        // Rotate around canvas centre
+        ctx.translate(cw / 2 + dx, ch / 2 + dy);
         ctx.rotate(rot);
-        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        ctx.translate(-cw / 2, -ch / 2);
 
-        if (portrait.complete && portrait.naturalWidth) {
-            ctx.drawImage(portrait, 0, 0, canvas.width, canvas.height);
-        }
+        // Portrait
+        ctx.drawImage(portrait, 0, 0, cw, ch);
 
-        const scaleX = canvas.width  / (portrait.naturalWidth  || canvas.width);
-        const scaleY = canvas.height / (portrait.naturalHeight || canvas.height);
-
-        // Mouth sprite
-        const mouthImg = mouthImgs[ampToMouthFrame(amp)];
-        if (mouthImg?.complete && landmarks.mouth) {
+        // ── Mouth sprite ───────────────────────────────────────────────────
+        const mouthFrame = ampToMouthFrame(amp);
+        const mouthImg   = mouthImgs[mouthFrame];
+        if (mouthImg?.complete && mouthImg.naturalWidth && landmarks.mouth) {
             const m = landmarks.mouth;
-            ctx.drawImage(mouthImg, m.x * scaleX, m.y * scaleY, m.w * scaleX, m.h * scaleY);
+            ctx.drawImage(
+                mouthImg,
+                Math.round(m.x * scaleX),
+                Math.round(m.y * scaleY),
+                Math.round(m.w * scaleX),
+                Math.round(m.h * scaleY),
+            );
         }
 
-        // Eye blink logic
+        // ── Eye blink ──────────────────────────────────────────────────────
         const now = Date.now();
-        if (now >= nextBlinkAt) {
-            eyeOpen    = !eyeOpen;
-            nextBlinkAt = now + (eyeOpen ? randomBlinkInterval() : 120);
+        if (eyeOpen && now >= nextBlinkAt) {
+            eyeOpen       = false;
+            blinkCloseUntil = now + BLINK_CLOSE_MS;
+        }
+        if (!eyeOpen && now >= blinkCloseUntil) {
+            eyeOpen    = true;
+            nextBlinkAt = now + randBetween(BLINK_OPEN_MIN, BLINK_OPEN_MAX);
         }
 
         if (!eyeOpen) {
-            const pairs = [
-                ['leftClosed',  'left_eye'],
-                ['rightClosed', 'right_eye'],
-            ];
-            for (const [imgKey, lmKey] of pairs) {
+            for (const [imgKey, lmKey] of [['leftClosed', 'left_eye'], ['rightClosed', 'right_eye']]) {
                 const img = eyeImgs[imgKey];
                 const lm  = landmarks[lmKey];
-                if (img?.complete && lm) {
-                    ctx.drawImage(img, lm.x * scaleX, lm.y * scaleY, lm.w * scaleX, lm.h * scaleY);
+                if (img?.complete && img.naturalWidth && lm) {
+                    ctx.drawImage(
+                        img,
+                        Math.round(lm.x * scaleX),
+                        Math.round(lm.y * scaleY),
+                        Math.round(lm.w * scaleX),
+                        Math.round(lm.h * scaleY),
+                    );
                 }
             }
         }
 
         ctx.restore();
-        requestAnimationFrame(draw);
     }
 
-    if (portrait.complete && portrait.naturalWidth) {
-        requestAnimationFrame(draw);
-    } else {
-        portrait.onload = () => requestAnimationFrame(draw);
-    }
+    portrait.onload = () => requestAnimationFrame(draw);
+    if (portrait.complete && portrait.naturalWidth) requestAnimationFrame(draw);
 }
