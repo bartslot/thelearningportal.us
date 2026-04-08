@@ -42,6 +42,13 @@ RULES — follow exactly, in order of priority:
 7. {$detailsInstruction}
 8. Clarity over creativity. Only add depth where it helps the student understand — never to fill space.
 
+Where it genuinely improves the story, wrap sentences in emotion tags to guide
+voice delivery. Available tags: [serious], [cheerful], [excited], [empathetic],
+[whispering], [narrative]. Close each tag with [/tag]. Example:
+[serious]The army faced devastating losses.[/serious]
+Use these sparingly — untagged text is delivered in a natural narrative tone.
+Never invent tags not in the list above.
+
 After the narration, write 4 multiple-choice quiz questions. Each question must:
 - Be answerable from the narration only
 - Test a specific fact or idea, not vague comprehension
