@@ -10,6 +10,7 @@
     <link href="https://fonts.bunny.net/css?family=cinzel:700|inter:400,500,600&display=swap" rel="stylesheet">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @stack('head-scripts')
     @livewireStyles
 </head>
 <body class="h-full bg-slate-950 text-slate-100 antialiased">

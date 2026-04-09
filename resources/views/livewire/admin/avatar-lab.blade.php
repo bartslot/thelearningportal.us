@@ -1,3 +1,7 @@
+@push('head-scripts')
+    @vite('resources/js/avatar-3d.js')
+@endpush
+
 <div
     x-data="{
         mode: '3d',
@@ -6,15 +10,13 @@
             if (this.mode !== '3d') return
             const canvas = this.$refs.canvas3d
             if (!canvas || !canvas.dataset.characterUrl) return
-            import('/build/assets/avatar-3d.js').then(({ Avatar3DPlayer }) => {
-                if (this.player) this.player.destroy()
-                this.player = new Avatar3DPlayer(canvas, {
-                    characterUrl:    canvas.dataset.characterUrl,
-                    frameBackground: canvas.dataset.bg,
-                })
-                window._avatar3d = this.player
-                this.player.init()
+            if (this.player) this.player.destroy()
+            this.player = new window.Avatar3DPlayer(canvas, {
+                characterUrl:    canvas.dataset.characterUrl,
+                frameBackground: canvas.dataset.bg,
             })
+            window._avatar3d = this.player
+            this.player.init()
         }
     }"
     x-init="initPlayer()"

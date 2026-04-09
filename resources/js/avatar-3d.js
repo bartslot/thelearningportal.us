@@ -250,8 +250,10 @@ export class Avatar3DPlayer {
   }
 }
 
-// ── Livewire / Alpine event glue ────────────────────────────────────────────
+// ── Global exposure (used by Alpine on avatar-lab page) ─────────────────────
+window.Avatar3DPlayer = Avatar3DPlayer
 
+// ── Livewire / Alpine event glue ────────────────────────────────────────────
 window.addEventListener('avatar3d:previewReady', (ev) => {
   const { audioUrl, blendShapesUrl } = ev.detail
   window._avatar3d?.loadPreview(audioUrl, blendShapesUrl)
