@@ -47,8 +47,9 @@ class AvatarLab extends Component
         }
     }
 
-    public function selectAvatar(int $id): void
+    public function selectAvatar(int|string $id): void
     {
+        $id     = (int) $id;
         $avatar = Avatar::findOrFail($id);
 
         $this->avatarId         = $id;
