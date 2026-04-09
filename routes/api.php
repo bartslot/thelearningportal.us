@@ -21,6 +21,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/audio-manifest', \App\Http\Controllers\Api\AudioManifestController::class)->name('audio-manifest');
 
+        Route::get('/avatars/{avatar}/controller', \App\Http\Controllers\Api\AnimationControllerApi::class)
+            ->name('avatars.controller');
+
         // ── Student endpoints (Flutter app) ───────────────────────────────
         Route::middleware('role:student')->prefix('student')->name('student.')->group(function () {
             Route::get('/lessons',                    [StudentLessonController::class, 'index'])->name('lessons.index');
