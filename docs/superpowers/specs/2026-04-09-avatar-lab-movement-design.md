@@ -11,6 +11,11 @@ Add a **Movement** tab to the existing Avatar Lab page (`admin.avatar-lab`). The
 
 The animation controller uses **clip pools** per slot (not single clips) to avoid repetition — each time a state is entered, a different clip from the pool is picked.
 
+**Role model for this feature:**
+- **Students** — end users; watch lessons and complete quizzes; never see any animation management UI or alerts
+- **Teachers** — create and publish lessons; see a passive alert if animations are missing, but cannot fix it themselves
+- **Admins** — tech-savvy; manage the Avatar Lab; assign animation clips; the only role that can resolve missing-slot issues
+
 **What stays untouched:** The existing 2D sprite pipeline, the Avatar Studio component, and the existing 3D Preview tab in Avatar Lab.
 
 ---
@@ -375,7 +380,7 @@ The lesson player listens for `animation:missingSlot` events and accumulates the
 **Alert design:**
 - Position: top-right corner of the lesson player, below any existing controls
 - Style: amber/yellow — informational, not an error; dismissible
-- Shown to: **admins and teachers only** — never to students
+- Shown to: **admins and teachers** — never to students. Admins are the ones who can act on it; teachers are informed so they know to contact an admin.
 - Does not pause playback, does not require acknowledgement
 - Auto-dismisses after 10 seconds if not manually dismissed
 
