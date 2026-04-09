@@ -98,3 +98,83 @@
         </div>
     @endif
 </div>
+
+{{-- ── Animation Controller Assignment ───────────────────────────────── --}}
+<div class="border-t border-slate-700/50 pt-4">
+    <h4 class="font-semibold text-slate-200 text-sm mb-3">🎮 Assign to Controller</h4>
+
+    @php
+        $slots = [
+            'idle'            => ['label' => '🧍 Idle',       'color' => 'indigo'],
+            'walk'            => ['label' => '🚶 Walk',        'color' => 'emerald'],
+            'gesture'         => ['label' => '👉 Gesture',     'color' => 'amber'],
+            'emotion_excited' => ['label' => '😄 [excited]',   'color' => 'orange'],
+            'emotion_serious' => ['label' => '😐 [serious]',   'color' => 'slate'],
+            'emotion_whisper' => ['label' => '🤫 [whisper]',   'color' => 'purple'],
+        ];
+
+        $controllerData = $controller?->controller ?? \App\Models\AvatarAnimationController::defaultControllerData();
+    @endphp
+
+    <div class="flex flex-col gap-3">
+        @foreach($slots as $slotKey => $slotMeta)
+            @php
+                $slotData   = $controllerData['slots'][$slotKey] ?? ['mode' => 'random', 'clips' => []];
+                $slotClips  = $slotData['clips'] ?? [];
+                $slotMode   = $slotData['mode']  ?? 'random';
+                $inThisSlot = in_array($selectedClip->clip_id, $slotClips, true);
+            @endphp
+
+            <div class="bg-slate-800/60 rounded-xl p-3 border border-slate-700/40">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300">{{ $slotMeta['label'] }}</span>
+
+                    {{-- Mode toggle --}}
+                    <div class="flex bg-slate-900/60 rounded-full p-0.5 gap-0.5 text-[10px]">
+                        <button
+                            wire:click="setSlotMode('{{ $slotKey }}', 'random')"
+                            class="{{ $slotMode === 'random' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200' }} rounded-full px-2.5 py-0.5 transition-colors"
+                        >random</button>
+                        <button
+                            wire:click="setSlotMode('{{ $slotKey }}', 'sequential')"
+                            class="{{ $slotMode === 'sequential' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200' }} rounded-full px-2.5 py-0.5 transition-colors"
+                        >sequential</button>
+                    </div>
+                </div>
+
+                {{-- Current pool --}}
+                @if(count($slotClips) > 0)
+                    <div class="flex flex-wrap gap-1.5 mb-2">
+                        @foreach($slotClips as $poolClipId)
+                            @php $poolClip = $clips->firstWhere('clip_id', $poolClipId); @endphp
+                            @if($poolClip)
+                                <span class="flex items-center gap-1 bg-slate-700/60 border border-slate-600/50 rounded-full pl-2 pr-1 py-0.5 text-[10px] text-slate-300">
+                                    <span class="font-mono">{{ $poolClipId }}</span>
+                                    <button
+                                        wire:click="removeClipFromSlot({{ $poolClip->id }}, '{{ $slotKey }}')"
+                                        class="text-slate-500 hover:text-red-400 transition-colors leading-none"
+                                        title="Remove from pool"
+                                    >×</button>
+                                </span>
+                            @endif
+                        @endforeach
+                    </div>
+                @else
+                    <p class="text-[10px] text-slate-600 mb-2 italic">No clips assigned</p>
+                @endif
+
+                {{-- Add / Already in pool --}}
+                @if($inThisSlot)
+                    <span class="text-[10px] text-emerald-400">✓ {{ $selectedClip->clip_id }} is in this pool</span>
+                @else
+                    <button
+                        wire:click="assignClipToSlot({{ $selectedClip->id }}, '{{ $slotKey }}')"
+                        class="text-[10px] text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-400/50 rounded-full px-3 py-0.5 transition-colors"
+                    >
+                        + Add {{ $selectedClip->clip_id }} to pool
+                    </button>
+                @endif
+            </div>
+        @endforeach
+    </div>
+</div>
