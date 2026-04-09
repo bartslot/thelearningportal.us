@@ -40,6 +40,8 @@ class Lesson extends Model
         'slideshow_images',
         'duration_seconds',
         'visemes_path',
+        'audio_3d_path',
+        'blendshapes_path',
     ];
 
     protected static function booted(): void

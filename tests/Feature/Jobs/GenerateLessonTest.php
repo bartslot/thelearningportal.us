@@ -8,6 +8,8 @@ use App\Enums\LessonStatus;
 use App\Jobs\GenerateLesson;
 use App\Models\Lesson;
 use App\Models\User;
+use App\Services\AvatarService;
+use App\Services\ImageSearchService;
 use App\Services\LlmService;
 use App\Services\TtsService;
 use App\Services\WikipediaService;
@@ -63,6 +65,16 @@ class GenerateLessonTest extends TestCase
         $tts = Mockery::mock(TtsService::class);
         $tts->shouldReceive('generateAudio')->andReturn($audioPath);
         $this->app->instance(TtsService::class, $tts);
+
+        $avatar = Mockery::mock(AvatarService::class);
+        $avatar->shouldReceive('generateVideo')->andReturn(null);
+        $avatar->shouldReceive('downloadPortrait')->andReturn(null);
+        $avatar->shouldReceive('useDefaultPortrait')->andReturn(null);
+        $this->app->instance(AvatarService::class, $avatar);
+
+        $imageSearch = Mockery::mock(ImageSearchService::class);
+        $imageSearch->shouldReceive('fetchImages')->andReturn([]);
+        $this->app->instance(ImageSearchService::class, $imageSearch);
     }
 
     private function runJob(Lesson $lesson): void
@@ -71,6 +83,8 @@ class GenerateLessonTest extends TestCase
             app(WikipediaService::class),
             app(LlmService::class),
             app(TtsService::class),
+            app(AvatarService::class),
+            app(ImageSearchService::class),
         );
     }
 
@@ -151,6 +165,16 @@ class GenerateLessonTest extends TestCase
         $tts->shouldReceive('generateAudio')->andReturn('lessons/1/audio.mp3');
         $this->app->instance(TtsService::class, $tts);
 
+        $avatar = Mockery::mock(AvatarService::class);
+        $avatar->shouldReceive('generateVideo')->andReturn(null);
+        $avatar->shouldReceive('downloadPortrait')->andReturn(null);
+        $avatar->shouldReceive('useDefaultPortrait')->andReturn(null);
+        $this->app->instance(AvatarService::class, $avatar);
+
+        $imageSearch = Mockery::mock(ImageSearchService::class);
+        $imageSearch->shouldReceive('fetchImages')->andReturn([]);
+        $this->app->instance(ImageSearchService::class, $imageSearch);
+
         $this->runJob($lesson);
 
         $lesson->refresh();
@@ -213,6 +237,16 @@ class GenerateLessonTest extends TestCase
         $this->app->instance(LlmService::class, $llm);
 
         $this->app->instance(TtsService::class, Mockery::mock(TtsService::class));
+
+        $avatar = Mockery::mock(AvatarService::class);
+        $avatar->shouldReceive('generateVideo')->andReturn(null);
+        $avatar->shouldReceive('downloadPortrait')->andReturn(null);
+        $avatar->shouldReceive('useDefaultPortrait')->andReturn(null);
+        $this->app->instance(AvatarService::class, $avatar);
+
+        $imageSearch = Mockery::mock(ImageSearchService::class);
+        $imageSearch->shouldReceive('fetchImages')->andReturn([]);
+        $this->app->instance(ImageSearchService::class, $imageSearch);
 
         $this->runJob($lesson);
 

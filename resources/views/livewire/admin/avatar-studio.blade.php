@@ -35,7 +35,7 @@
 
         {{-- ── Tab bar ─────────────────────────────────────────────────────────── --}}
         <div class="flex gap-1 border-b border-slate-800">
-            @foreach([['portrait', '🖼️ Portrait'], ['greeting', '👋 Greeting'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
+            @foreach([['portrait', '🖼️ Portrait'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
                 <button
                     @click="activeTab = '{{ $tab }}'"
                     :class="activeTab === '{{ $tab }}'
@@ -54,93 +54,6 @@
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div x-show="activeTab === 'portrait'" x-cloak>
             @include('livewire.admin.avatar-studio.portrait-tab')
-        </div>
-
-        {{-- ══════════════════════════════════════════════════════════════════════ --}}
-        {{-- TAB: Greeting                                                          --}}
-        {{-- ══════════════════════════════════════════════════════════════════════ --}}
-        <div x-show="activeTab === 'greeting'" x-cloak class="space-y-6 max-w-2xl">
-
-            <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-                <h2 class="text-sm font-semibold text-slate-200">Teacher greeting</h2>
-                <p class="text-xs text-slate-500">
-                    When a teacher logs in for the first time, they hear the avatar introduce itself personally.
-                    Preview and generate that greeting here.
-                </p>
-
-                {{-- Preview text (live) --}}
-                <div class="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-                    <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Greeting text (live preview)</p>
-                    <p class="text-sm text-slate-200 italic leading-6">"{{ $this->greetingText }}"</p>
-                </div>
-
-                {{-- Teacher name input --}}
-                <div>
-                    <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400">
-                        Teacher's first name (for preview)
-                    </label>
-                    <input
-                        wire:model.live="greetingTeacherName"
-                        type="text"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100
-                            placeholder-slate-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                        placeholder="Sarah"
-                    >
-                    <p class="mt-1.5 text-xs text-slate-600">This is just for your preview — each teacher gets their own real name.</p>
-                </div>
-
-                {{-- Generate greeting --}}
-                <div class="flex items-center gap-3">
-                    <button
-                        wire:click="generateGreeting"
-                        wire:loading.attr="disabled"
-                        wire:target="generateGreeting"
-                        class="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950
-                            hover:bg-amber-400 transition-colors disabled:opacity-50"
-                    >
-                        <span wire:loading.remove wire:target="generateGreeting">▶ Generate greeting audio</span>
-                        <span wire:loading wire:target="generateGreeting" class="flex items-center gap-2">
-                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                            </svg>
-                            Generating…
-                        </span>
-                    </button>
-                    <p class="text-xs text-slate-600">Uses the active voice settings.</p>
-                </div>
-
-                {{-- Audio result --}}
-                @if($greetingAudioUrl)
-                    <div
-                        wire:key="greeting-player-{{ md5((string) $greetingAudioUrl) }}"
-                        class="rounded-xl border border-emerald-800 bg-emerald-950/30 p-4 space-y-3"
-                    >
-                        <p class="text-xs text-emerald-400 font-medium">Greeting generated — listen below:</p>
-                    <div wire:ignore>
-                        <x-audio-player
-                            :src="$greetingAudioUrl"
-                            label="Greeting preview"
-                            :transcript="$this->greetingText"
-                            :word-timings="$greetingWordTimings"
-                        />
-                    </div>
-                        <p class="text-xs text-slate-600">
-                            Happy with this voice?
-                            Go to <button @click="activeTab = 'settings'" class="text-amber-400 underline">Settings</button>
-                            and confirm the voice provider and ID are saved.
-                        </p>
-                    </div>
-                @endif
-            </div>
-
-            {{-- Tip about the avatar title and short name --}}
-            <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-xs text-slate-500 space-y-1.5">
-                <p class="text-slate-400 font-medium">Greeting uses:</p>
-                <p>· <span class="text-slate-300">Short name</span> → "I am <em>{{ $avatar->short_name ?: $avatar->name }}</em>"</p>
-                <p>· <span class="text-slate-300">Avatar title</span> → "a <em>{{ $avatar->avatar_title ?: 'Professor' }}</em> here at The History Portal"</p>
-                <p class="pt-1">Edit both in the <button @click="activeTab = 'settings'" class="text-amber-400 underline">Settings tab</button>.</p>
-            </div>
         </div>
 
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
@@ -327,6 +240,30 @@
         {{-- TAB: Settings                                                          --}}
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div x-show="activeTab === 'settings'" x-cloak>
+            {{-- Greeting (moved from Greeting tab) --}}
+            <div class="mb-6 pb-6 border-b border-white/5">
+                <h3 class="text-sm font-semibold text-slate-300 mb-3">Greeting</h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400 mb-1 block">Greeting script</label>
+                        <textarea wire:model="greetingScript" rows="3"
+                                  class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:border-indigo-500 focus:outline-none"
+                                  placeholder="Hello, I am {{ $avatar->short_name ?? 'your guide' }}…"></textarea>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="flex-1">
+                            <label class="text-xs text-slate-400 mb-1 block">Voice provider</label>
+                            <select wire:model="voice_provider"
+                                    class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200">
+                                <option value="edge_tts">edge-tts</option>
+                                <option value="kokoro">Kokoro</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 space-y-6 max-w-2xl">
                 <h2 class="text-sm font-semibold text-slate-200">Avatar settings</h2>
 

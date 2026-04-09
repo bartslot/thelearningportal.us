@@ -94,4 +94,11 @@ return [
         'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
     ],
 
+    // ── Azure Speech Service (3D avatar lip sync) ─────────────────────────────
+
+    'azure_speech' => [
+        'key'    => env('AZURE_SPEECH_KEY'),
+        'region' => env('AZURE_SPEECH_REGION', 'eastus'),
+    ],
+
 ];

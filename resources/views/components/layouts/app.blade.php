@@ -10,6 +10,7 @@
     <link href="https://fonts.bunny.net/css?family=cinzel:700|inter:400,500,600&display=swap" rel="stylesheet">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @stack('head-scripts')
     @livewireStyles
 </head>
 <body class="h-full bg-slate-950 text-slate-100 antialiased">
@@ -25,6 +26,15 @@
                         @if(auth()->user()->role === 'admin')
                             <a href="{{ route('admin.dashboard') }}" class="text-sm text-rose-400 transition-colors hover:text-rose-300">
                                 Admin
+                            </a>
+                            <a href="{{ route('admin.avatars.index') }}"
+                               class="text-sm {{ request()->routeIs('admin.avatars.*') ? 'text-amber-400' : 'text-slate-400 transition-colors hover:text-white' }}">
+                                Avatar Studio
+                            </a>
+                            <a href="{{ route('admin.avatar-lab') }}"
+                               class="text-sm {{ request()->routeIs('admin.avatar-lab') ? 'text-indigo-400' : 'text-slate-400 transition-colors hover:text-white' }} flex items-center gap-1.5">
+                                🧪 <span>3D Lab</span>
+                                <span class="text-[0.55rem] bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded font-semibold">BETA</span>
                             </a>
                         @endif
 
