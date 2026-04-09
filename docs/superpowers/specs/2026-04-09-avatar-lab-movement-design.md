@@ -12,7 +12,7 @@ Add a **Movement** tab to the existing Avatar Lab page (`admin.avatar-lab`). The
 The animation controller uses **clip pools** per slot (not single clips) to avoid repetition — each time a state is entered, a different clip from the pool is picked.
 
 **Role model for this feature:**
-- **Students** — end users; watch lessons and complete quizzes; never see any animation management UI or alerts
+- **Students** — end users; watch lessons, answer quiz questions, and (in future) complete story-telling games, real-life games, and assignments; never see any animation management UI or alerts
 - **Teachers** — create and publish lessons; see a passive alert if animations are missing, but cannot fix it themselves
 - **Admins** — tech-savvy; manage the Avatar Lab; assign animation clips; the only role that can resolve missing-slot issues
 
