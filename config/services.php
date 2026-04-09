@@ -88,4 +88,10 @@ return [
         'url' => env('VERCEL_FUNCTIONS_URL', 'http://localhost:3000'),
     ],
 
+    // ── Animation tooling ─────────────────────────────────────────────────────
+
+    'fbx2gltf' => [
+        'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
+    ],
+
 ];
