@@ -122,7 +122,7 @@ class AvatarLab extends Component
             'expressiveness'   => 'required|numeric|min:0.1|max:2.0',
             'speakingSpeed'    => 'required|numeric|min:0.5|max:2.0',
             'frameBackground'  => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'presentationMode' => 'required|in:fullscreen,framed,hidden',
+            'presentationMode' => 'required|in:fullscreen,framed',
             'gender'           => 'required|in:male,female',
             'emotionStyle'     => 'required|in:auto,narrative,cheerful,serious,excited,empathetic,whispering',
         ]);
