@@ -129,6 +129,10 @@ Written once by the developer. Not editable via UI in this spec — added to Ava
     "emotion_serious": {
       "mode": "random",
       "clips": []
+    },
+    "emotion_whisper": {
+      "mode": "random",
+      "clips": []
     }
   },
   "transitions": {
@@ -144,7 +148,7 @@ Written once by the developer. Not editable via UI in this spec — added to Ava
 - `idle` — loops; plays continuously when no other state is active
 - `walk` — loops; triggered by `[walk]` script tag; stops on `[/walk]` or segment end
 - `gesture` — plays once; triggered by `[point]`, `[nod]`, `[gesture]` tags; crossfades back to idle/walk
-- `emotion_excited` / `emotion_serious` — plays once; triggered by matching script tags; crossfades back
+- `emotion_excited` / `emotion_serious` / `emotion_whisper` — plays once; triggered by matching script tags; crossfades back
 
 **Pool selection:**
 - `random` — selects uniformly at random, avoids repeating the previous clip
@@ -261,6 +265,7 @@ The lesson script parser (in `avatar-3d.js`) maps script tags to `AnimationContr
 | `[point]`, `[nod]`, `[gesture]` | `gesture` |
 | `[excited]` | `emotion_excited` |
 | `[serious]` | `emotion_serious` |
+| `[whisper]` | `emotion_whisper` |
 
 ---
 
@@ -330,6 +335,203 @@ Add to `config/services.php`:
     'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
 ],
 ```
+
+---
+
+## LLM Prompt Instructions — Animation Tags
+
+Add the following to the system prompt in `LlmService::generateScript()`, after the existing emotion tag instructions from the 3D Lab spec.
+
+---
+
+### Prompt addition (append to system prompt)
+
+```
+ANIMATION TAGS — MOVEMENT AND EMOTION
+======================================
+
+You can wrap parts of your narration in animation tags to control how the avatar
+moves and behaves while speaking. These tags are powerful storytelling tools —
+use them to make the lesson feel alive, not like a static lecture.
+
+Below are all available tags, when to use each one, and examples. Follow the
+rules exactly: tags must open and close, must not overlap, and must only appear
+where they genuinely improve the story.
+
+
+[walk] ... [/walk]
+------------------
+Use when: The avatar should pace or move while narrating. Best for transitions
+between topics, scene-setting passages, or when the story is moving forward in
+time or space. The avatar walks left and right in front of the lesson backdrop
+while speaking.
+
+Good fits:
+- Introducing a new scene or location ("As Caesar approached the Senate...")
+- Moving through a sequence of events ("First, the armies gathered. Then...")
+- Bridging two ideas where a pause would feel awkward
+- Opening or closing a lesson segment
+
+Rules:
+- Wrap at least 1–3 full sentences. Do not use for a single word or phrase.
+- Do not use [walk] during [excited], [serious], or [whisper] — close those first.
+- Use 2–4 times per lesson. More than that feels restless.
+
+Example:
+[walk] For centuries, the Roman Republic had been the envy of the ancient world.
+Senators debated, laws were passed, and power was — at least in theory — shared.
+But by 44 BC, one man had changed all of that. [/walk]
+
+
+[excited] ... [/excited]
+------------------------
+Use when: Something genuinely surprising, triumphant, fascinating, or hard to
+believe just happened in the story. The avatar's body language shifts to express
+high energy — arms out, forward lean, physical enthusiasm.
+
+Good fits:
+- A battle victory or unexpected military tactic
+- A scientific discovery or invention that changed history
+- A remarkable statistic or fact that will genuinely surprise students
+- A plot twist in the historical narrative ("And that's when everything changed!")
+- The climax of the story
+
+Rules:
+- Use sparingly — maximum 2 times per lesson. Overuse kills the effect.
+- Wrap 1–2 sentences only. This is a burst of energy, not a monologue.
+- Do not use for moderately interesting content — save it for genuinely
+  jaw-dropping moments.
+- Must follow or precede a calmer passage so the contrast lands.
+
+Example:
+[excited] Against all odds, a force of just 300 Spartans held back an army of
+over 100,000 for three full days. Three hundred. Against one hundred thousand! [/excited]
+
+
+[serious] ... [/serious]
+------------------------
+Use when: The content is grave, sobering, morally weighty, or requires the
+student to reflect. The avatar's posture becomes still and deliberate — a
+physical signal that what follows matters deeply.
+
+Good fits:
+- Deaths, suffering, or the consequences of war
+- Moral dilemmas faced by historical figures
+- Injustice, slavery, oppression, or persecution
+- The human cost behind a famous event
+- A moment of failure, tragedy, or loss
+- When asking students to consider an ethical question
+
+Rules:
+- Use 1–2 times per lesson.
+- Wrap 1–3 sentences. Let the weight of the words do the work.
+- Do not immediately follow [excited] — always place a neutral sentence in
+  between to reset the tone.
+- Do not use for merely factual content that happens to involve death — only
+  when the emotional weight is the point.
+
+Example:
+[serious] But not everyone celebrated the Roman Empire's rise. Thousands of
+people were enslaved to build its monuments. Their names were never recorded.
+Their stories were never told. [/serious]
+
+
+[whisper] ... [/whisper]
+------------------------
+Use when: You are letting the student in on something — a secret, a rumour, a
+piece of insider knowledge, a conspiracy, or something that "history books don't
+always tell you." This is the avatar leaning in and lowering their voice, as if
+sharing something just between themselves and the student.
+
+Good fits:
+- Historical gossip or rumour ("Some historians believe he was actually
+  poisoned...")
+- A conspiracy, plot, or betrayal being planned
+- A behind-the-scenes fact that most people don't know
+- Contradicting the "official" version of events
+- Spies, secret messages, hidden motives
+- Moments where the avatar breaks the fourth wall slightly to confide in
+  the student
+
+Rules:
+- Use once per lesson — maximum twice. It loses its magic if overused.
+- Wrap 1–2 sentences only. A whisper is brief and conspiratorial.
+- Always transition back to normal narration immediately after — do not
+  continue whispering.
+- Works especially well after [walk] or a neutral passage, before returning
+  to the main story.
+- Perfect for K-12: kids love being "let in" on a secret.
+
+Example:
+[whisper] Now, between you and me — most historians think Brutus never actually
+wanted Caesar dead. He was talked into it. And he regretted it for the rest of
+his life. [/whisper]
+
+
+[point] / [nod] / [gesture]
+----------------------------
+These are single-sentence gesture triggers — the avatar makes a pointing,
+nodding, or general hand gesture that emphasises the line.
+
+Use [point] when: Drawing attention to something specific — a place on a map,
+an object, a person being described ("Look at this region here", "Notice how...").
+
+Use [nod] when: Affirming something the student should agree with, reinforcing
+a key fact, or responding to a rhetorical question ("Yes, exactly — and that
+is why...").
+
+Use [gesture] when: A general expressive hand movement fits — explaining,
+enumerating, or describing with emphasis ("There were three key reasons...",
+"Imagine standing here...").
+
+Rules:
+- Apply as inline tags to a single sentence only. Do not wrap paragraphs.
+- Use 2–4 times per lesson total across all three gesture tags.
+- Do not stack gesture tags on consecutive sentences.
+
+Examples:
+[point] This is the exact location where Caesar crossed the Rubicon River.
+[nod] And that, students, is why we still study this moment two thousand years later.
+[gesture] The army was divided into three groups, each with a different mission.
+
+
+GENERAL RULES FOR ALL TAGS
+===========================
+
+1. Never invent tags not listed above.
+2. Tags must always be closed: [walk]...[/walk], [excited]...[/excited],
+   [serious]...[/serious], [whisper]...[/whisper].
+   Gesture tags ([point], [nod], [gesture]) have no closing tag.
+3. Tags must not overlap or nest inside each other.
+   Wrong: [walk] text [excited] more text [/walk] [/excited]
+   Right: [walk] text [/walk] [excited] more text [/excited]
+4. Do not open a tag in the middle of a sentence. Tags wrap whole sentences only.
+5. Untagged text is delivered in a natural narrative tone with the avatar in
+   idle stance. Most of the lesson should be untagged — tags are accents,
+   not wallpaper.
+6. Think of the lesson as a performance: rising action, a climax, a whispered
+   aside, a serious moment, a triumphant beat. Tags shape that arc.
+7. Grade-level awareness:
+   - Grades 3–5: favour [excited] and [whisper] — high energy and secrets
+     delight younger students. Keep [serious] very brief.
+   - Grades 6–8: balance all four emotion tags. Students can handle nuance.
+   - Grades 9–12: [serious] and [whisper] carry more weight. [excited] should
+     feel earned, not forced.
+```
+
+---
+
+### Summary table (for quick reference in code comments)
+
+| Tag | Closes? | Max per lesson | Duration | Best for |
+|---|---|---|---|---|
+| `[walk]...[/walk]` | yes | 4 | 1–3 sentences | Scene transitions, narrative flow |
+| `[excited]...[/excited]` | yes | 2 | 1–2 sentences | Surprising facts, climax moments |
+| `[serious]...[/serious]` | yes | 2 | 1–3 sentences | Human cost, tragedy, moral weight |
+| `[whisper]...[/whisper]` | yes | 2 | 1–2 sentences | Secrets, conspiracies, insider knowledge |
+| `[point]` | no | 4 total gestures | 1 sentence | Pointing at something specific |
+| `[nod]` | no | 4 total gestures | 1 sentence | Affirming, reinforcing |
+| `[gesture]` | no | 4 total gestures | 1 sentence | General expressive emphasis |
 
 ---
 
