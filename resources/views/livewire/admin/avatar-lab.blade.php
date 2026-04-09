@@ -10,7 +10,6 @@
                 if (this.player) this.player.destroy()
                 this.player = new Avatar3DPlayer(canvas, {
                     characterUrl:    canvas.dataset.characterUrl,
-                    morphMapUrl:     canvas.dataset.morphMapUrl,
                     frameBackground: canvas.dataset.bg,
                 })
                 window._avatar3d = this.player
@@ -205,7 +204,6 @@
                         x-ref="canvas3d"
                         wire:ignore
                         data-character-url="{{ asset('avatars/' . $avatarId . '/character.glb') }}"
-                        data-morph-map-url="{{ asset('avatars/' . $avatarId . '/morph-map.json') }}"
                         data-bg="{{ $frameBackground }}"
                         class="rounded-xl shadow-2xl"
                         style="width:300px;height:400px;"

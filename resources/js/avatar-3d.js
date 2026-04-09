@@ -1,8 +1,11 @@
 /**
- * avatar-3d.js — Three.js 3D avatar player driven by Azure blend shapes
+ * avatar-3d.js — Three.js 3D avatar player driven by Azure 3D blend shapes
+ *
+ * Compatible with Ready Player Me / MPFB GLBs that include ARKit morph targets.
+ * No morph-map.json required — shape names are matched directly from the GLB.
  *
  * Usage:
- *   const player = new Avatar3DPlayer(canvasEl, { characterUrl, morphMapUrl, frameBackground })
+ *   const player = new Avatar3DPlayer(canvasEl, { characterUrl, frameBackground })
  *   await player.init()
  *   await player.loadPreview(audioUrl, blendShapesUrl)
  *   player.play()
@@ -10,13 +13,39 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
+/**
+ * Azure 3D blend shape names in their official index order (indices 0–54).
+ * https://learn.microsoft.com/azure/ai-services/speech-service/how-to-speech-synthesis-viseme?tabs=3dblendshapes
+ * The last three (headRoll, leftEyeRoll, rightEyeRoll) may not exist in all GLBs and are skipped gracefully.
+ */
+const AZURE_BLEND_SHAPES = [
+  'eyeBlinkLeft',    'eyeLookDownLeft',  'eyeLookInLeft',    'eyeLookOutLeft',   // 0–3
+  'eyeLookUpLeft',   'eyeSquintLeft',    'eyeWideLeft',                          // 4–6
+  'eyeBlinkRight',   'eyeLookDownRight', 'eyeLookInRight',   'eyeLookOutRight',  // 7–10
+  'eyeLookUpRight',  'eyeSquintRight',   'eyeWideRight',                         // 11–13
+  'jawForward',      'jawLeft',          'jawOpen',          'jawRight',         // 14–17
+  'mouthClose',      'mouthDimpleLeft',  'mouthDimpleRight',                     // 18–20
+  'mouthFrownLeft',  'mouthFrownRight',  'mouthFunnel',                          // 21–23
+  'mouthLeft',       'mouthLowerDownLeft', 'mouthLowerDownRight',                // 24–26
+  'mouthPressLeft',  'mouthPressRight',  'mouthPucker',      'mouthRight',       // 27–30
+  'mouthRollLower',  'mouthRollUpper',   'mouthShrugLower',  'mouthShrugUpper',  // 31–34
+  'mouthSmileLeft',  'mouthSmileRight',  'mouthStretchLeft', 'mouthStretchRight',// 35–38
+  'mouthUpperUpLeft','mouthUpperUpRight',                                        // 39–40
+  'browDownLeft',    'browDownRight',    'browInnerUp',                          // 41–43
+  'browOuterUpLeft', 'browOuterUpRight',                                         // 44–45
+  'cheekPuff',       'cheekSquintLeft',  'cheekSquintRight',                     // 46–48
+  'noseSneerLeft',   'noseSneerRight',                                           // 49–50
+  'tongueOut',                                                                   // 51
+  'headRoll',        'leftEyeRoll',      'rightEyeRoll',                         // 52–54 (optional)
+]
+
 export class Avatar3DPlayer {
   #scene
   #camera
   #renderer
-  #mesh          // SkinnedMesh with morph targets
-  #morphMap = {} // azureName → morphTargetIndex
-  #frames   = [] // [{ t: float, w: Float32Array(55) }]
+  #meshes   = [] // all SkinnedMeshes with morph targets (head, teeth, eyes…)
+  #morphMap = {} // azureIndex → morphTargetIndex (same dict for all meshes)
+  #frames   = [] // [{ t: float, w: number[] }]
   #audio    = null
   #playing  = false
   #rafId    = null
@@ -25,13 +54,11 @@ export class Avatar3DPlayer {
   #clock    = new THREE.Clock()
 
   constructor (canvasEl, {
-    characterUrl  = null,
-    morphMapUrl   = null,
+    characterUrl    = null,
     frameBackground = '#0f172a',
   } = {}) {
-    this.canvasEl       = canvasEl
-    this.characterUrl   = characterUrl
-    this.morphMapUrl    = morphMapUrl
+    this.canvasEl        = canvasEl
+    this.characterUrl    = characterUrl
     this.frameBackground = frameBackground
   }
 
@@ -44,68 +71,66 @@ export class Avatar3DPlayer {
     this.#renderer.setSize(w, h)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.#renderer.setClearColor(new THREE.Color(this.frameBackground), 1)
+    this.#renderer.outputColorSpace = THREE.SRGBColorSpace
 
     // Scene
     this.#scene = new THREE.Scene()
 
-    // Camera — bust shot
-    this.#camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100)
-    this.#camera.position.set(0, 1.6, 2.2)
-    this.#camera.lookAt(0, 1.6, 0)
+    // Camera — bust shot framing for a ~1.7 m character
+    this.#camera = new THREE.PerspectiveCamera(38, w / h, 0.01, 100)
+    this.#camera.position.set(0, 1.55, 0.75)
+    this.#camera.lookAt(0, 1.58, 0)
 
     // Lights
-    this.#scene.add(new THREE.AmbientLight(0xffffff, 0.6))
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    dirLight.position.set(1, 2, 2)
-    this.#scene.add(dirLight)
+    this.#scene.add(new THREE.AmbientLight(0xffffff, 1.2))
+    const key = new THREE.DirectionalLight(0xffeedd, 1.6)
+    key.position.set(1.5, 2.5, 2)
+    this.#scene.add(key)
+    const fill = new THREE.DirectionalLight(0xddeeff, 0.6)
+    fill.position.set(-2, 1, 1)
+    this.#scene.add(fill)
 
-    // Load character if URL provided
     if (this.characterUrl) {
-      await this.#loadCharacter(this.characterUrl, this.morphMapUrl)
+      await this.#loadCharacter(this.characterUrl)
     }
 
-    // Start loop
     this.#loop()
   }
 
-  async #loadCharacter (gltfUrl, morphMapUrl) {
+  async #loadCharacter (gltfUrl) {
     const loader = new GLTFLoader()
     const gltf   = await loader.loadAsync(gltfUrl)
     this.#scene.add(gltf.scene)
 
-    // Find the mesh with morph targets
+    // Collect every mesh that has morph targets
+    this.#meshes = []
     gltf.scene.traverse((node) => {
-      if (node.isMesh && node.morphTargetDictionary && !this.#mesh) {
-        this.#mesh = node
+      if (node.isMesh && node.morphTargetDictionary) {
+        this.#meshes.push(node)
       }
     })
 
-    if (!this.#mesh) {
-      console.warn('[Avatar3D] No mesh with morph targets found in GLB')
+    if (this.#meshes.length === 0) {
+      console.warn('[Avatar3D] No meshes with morph targets found in GLB')
       return
     }
 
-    // Load morph map
-    if (morphMapUrl) {
-      try {
-        const resp = await fetch(morphMapUrl)
-        const map  = await resp.json()
-        // map: { "jawOpen": 17, "eyeBlinkLeft": 0, ... }
-        // We need to invert: azurePosition → morphTargetIndex
-        const dict = this.#mesh.morphTargetDictionary
-        for (const [azureName, azureIdx] of Object.entries(map)) {
-          if (azureName in dict) {
-            this.#morphMap[azureIdx] = dict[azureName]
-          }
-        }
-      } catch (e) {
-        console.warn('[Avatar3D] Could not load morph-map.json:', e)
+    // Build azureIndex → morphTargetIndex using the first mesh's dictionary.
+    // All meshes share the same morph target names, so one lookup table covers all.
+    const dict = this.#meshes[0].morphTargetDictionary
+    this.#morphMap = {}
+    AZURE_BLEND_SHAPES.forEach((name, azureIdx) => {
+      if (name in dict) {
+        this.#morphMap[azureIdx] = dict[name]
       }
-    }
+    })
+
+    const mapped = Object.keys(this.#morphMap).length
+    console.log(`[Avatar3D] Loaded ${this.#meshes.length} mesh(es), auto-mapped ${mapped}/55 Azure blend shapes`)
   }
 
   async loadPreview (audioUrl, blendShapesUrl) {
-    // Load blend shapes
+    // Fetch blend shapes
     try {
       const resp = await fetch(blendShapesUrl)
       const data = await resp.json()
@@ -137,10 +162,10 @@ export class Avatar3DPlayer {
   }
 
   #loop () {
-    this.#rafId = requestAnimationFrame((ts) => this.#loop(ts))
+    this.#rafId = requestAnimationFrame(() => this.#loop())
     const delta = this.#clock.getDelta() * 1000 // ms
 
-    if (this.#playing && this.#mesh && this.#frames.length > 0) {
+    if (this.#playing && this.#meshes.length > 0 && this.#frames.length > 0) {
       this.#applyBlendShapes(this.#audio.currentTime)
     }
 
@@ -150,7 +175,8 @@ export class Avatar3DPlayer {
 
   #applyBlendShapes (t) {
     const frames = this.#frames
-    // Binary search for current frame
+
+    // Binary search — find the last frame with f.t <= t
     let lo = 0, hi = frames.length - 1, idx = 0
     while (lo <= hi) {
       const mid = (lo + hi) >> 1
@@ -158,45 +184,56 @@ export class Avatar3DPlayer {
       else hi = mid - 1
     }
 
-    const f0 = frames[idx]
-    const f1 = frames[Math.min(idx + 1, frames.length - 1)]
-    const alpha = f1.t > f0.t ? (t - f0.t) / (f1.t - f0.t) : 0
+    const f0    = frames[idx]
+    const f1    = frames[Math.min(idx + 1, frames.length - 1)]
+    const alpha = f1.t > f0.t ? Math.min(1, (t - f0.t) / (f1.t - f0.t)) : 0
 
-    const influences = this.#mesh.morphTargetInfluences
-    for (const [azureIdx, morphIdx] of Object.entries(this.#morphMap)) {
-      const w0 = f0.w[azureIdx] ?? 0
-      const w1 = f1.w[azureIdx] ?? 0
-      influences[morphIdx] = w0 + (w1 - w0) * alpha
+    // Apply interpolated weights to every mesh
+    for (const [azureIdxStr, morphIdx] of Object.entries(this.#morphMap)) {
+      const ai = Number(azureIdxStr)
+      const w  = (f0.w[ai] ?? 0) + ((f1.w[ai] ?? 0) - (f0.w[ai] ?? 0)) * alpha
+      for (const mesh of this.#meshes) {
+        mesh.morphTargetInfluences[morphIdx] = w
+      }
     }
   }
 
   #idlePass (deltaMs) {
-    if (!this.#mesh) return
+    if (this.#meshes.length === 0) return
     const t = performance.now() / 1000
 
-    // Breathing — gentle Y scale oscillation
-    const breathe = 1 + Math.sin(t * 0.8) * 0.012
-    this.#mesh.scale.y = breathe
+    // Subtle breathing — scale the whole head group very slightly
+    const breathe = 1 + Math.sin(t * 0.8) * 0.008
+    for (const mesh of this.#meshes) {
+      mesh.scale.y = breathe
+    }
 
-    // Eye blink
+    // Random eye blink
     this.#blinkTimer += deltaMs
     if (this.#blinkTimer >= this.#blinkNext) {
       this.#blinkTimer = 0
-      this.#blinkNext  = 2000 + Math.random() * 3000
+      this.#blinkNext  = 2500 + Math.random() * 3000
       this.#triggerBlink()
     }
   }
 
   #triggerBlink () {
-    const dict = this.#mesh?.morphTargetDictionary
-    if (!dict) return
+    if (this.#meshes.length === 0) return
+    const dict = this.#meshes[0].morphTargetDictionary
     const lIdx = dict['eyeBlinkLeft']
     const rIdx = dict['eyeBlinkRight']
     if (lIdx === undefined || rIdx === undefined) return
 
-    const infl = this.#mesh.morphTargetInfluences
-    infl[lIdx] = 1; infl[rIdx] = 1
-    setTimeout(() => { infl[lIdx] = 0; infl[rIdx] = 0 }, 120)
+    for (const mesh of this.#meshes) {
+      mesh.morphTargetInfluences[lIdx] = 1
+      mesh.morphTargetInfluences[rIdx] = 1
+    }
+    setTimeout(() => {
+      for (const mesh of this.#meshes) {
+        mesh.morphTargetInfluences[lIdx] = 0
+        mesh.morphTargetInfluences[rIdx] = 0
+      }
+    }, 120)
   }
 
   destroy () {
@@ -218,5 +255,5 @@ export class Avatar3DPlayer {
 window.addEventListener('avatar3d:previewReady', (ev) => {
   const { audioUrl, blendShapesUrl } = ev.detail
   window._avatar3d?.loadPreview(audioUrl, blendShapesUrl)
-    .then(() => console.log('[Avatar3D] Preview loaded'))
+    .then(() => console.log('[Avatar3D] Preview loaded — ready to play'))
 })
