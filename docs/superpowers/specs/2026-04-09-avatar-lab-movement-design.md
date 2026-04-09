@@ -318,8 +318,100 @@ Also serves the GLB URLs for each clip in the controller:
 | fbx2gltf not installed | Conversion button shows "fbx2gltf not found — see SETUP.md"; no crash |
 | Conversion fails (bad FBX) | Status → `failed`, error message shown in UI with stderr output |
 | GLB missing at playback | `AnimationController` skips that clip silently, logs warning; falls back to next clip in pool |
-| Empty pool at playback | Slot plays nothing; no crash; previous state continues |
+| Empty pool at playback | Slot plays nothing; no crash; previous state continues; missing slot collected for UI alert |
+| Unknown tag in script | Tag ignored silently; avatar stays in current state; missing tag collected for UI alert |
 | Root motion strip script missing | GLB still loads; avatar may drift; warning logged |
+
+---
+
+## Graceful Tag Degradation
+
+The animation system must never error or stall playback because a tag is unrecognised or its pool is empty. All tag failures are silent at runtime — the lesson continues uninterrupted, with the avatar staying in its current state.
+
+### Runtime behaviour in `AnimationController`
+
+```javascript
+trigger(slot, fadeIn) {
+  // 1. Slot not in controller JSON at all (unknown tag)
+  if (!this.#controller.slots[slot]) {
+    this.#collectMissingSlot(slot);
+    return; // no-op, stay in current state
+  }
+
+  // 2. Slot exists but pool is empty (no clips assigned)
+  const pool = this.#controller.slots[slot].clips;
+  if (!pool || pool.length === 0) {
+    this.#collectMissingSlot(slot);
+    return; // no-op, stay in current state
+  }
+
+  // 3. Clip exists in pool but GLB failed to load
+  const clipId = this.#pickClip(slot);
+  if (!this.#clips[clipId]) {
+    this.#collectMissingSlot(slot);
+    return; // no-op, stay in current state
+  }
+
+  // ... normal crossfade logic
+}
+
+#collectMissingSlot(slot) {
+  if (!this.#missingSlots.has(slot)) {
+    this.#missingSlots.add(slot);
+    // Dispatch event so the lesson UI can pick it up
+    window.dispatchEvent(new CustomEvent('animation:missingSlot', {
+      detail: { slot }
+    }));
+  }
+}
+```
+
+`#missingSlots` is a `Set` — each missing slot fires `animation:missingSlot` exactly once per playback session, no matter how many times the tag appears in the script.
+
+### Lesson screen alert UI
+
+The lesson player listens for `animation:missingSlot` events and accumulates them. After a short debounce (500ms after the last event), it shows a single non-blocking toast alert:
+
+**Alert design:**
+- Position: top-right corner of the lesson player, below any existing controls
+- Style: amber/yellow — informational, not an error; dismissible
+- Shown to: **teachers only** (not students) — check user role before rendering
+- Does not pause playback, does not require acknowledgement
+
+**Alert message format:**
+
+```
+⚠️ Some animation tags in this lesson have no clips assigned.
+Missing: [whisper], [excited]
+→ Go to Avatar Lab → Movement to assign clips.   [Dismiss]
+```
+
+**Implementation location:** `resources/js/avatar-3d.js` (or a small inline `<script>` in the lesson blade view).
+
+```javascript
+// In lesson player initialisation
+const missingSlots = new Set();
+let debounceTimer = null;
+const isTeacher = window.lessonMeta?.userRole === 'teacher'; // passed from blade
+
+window.addEventListener('animation:missingSlot', ({ detail }) => {
+  if (!isTeacher) return;
+  missingSlots.add(detail.slot);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    showAnimationAlert([...missingSlots]);
+  }, 500);
+});
+
+function showAnimationAlert(slots) {
+  // Render dismissible amber toast
+  // List missing slot names formatted as [tag]
+  // Link to Avatar Lab Movement tab
+  // Auto-dismiss after 10 seconds if not manually dismissed
+}
+```
+
+**The alert is never shown to students.** Students see only the lesson — the avatar simply stays in its current idle/walk state when a tag has no clips. No visual indication of anything missing.
 
 ---
 
