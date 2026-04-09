@@ -375,27 +375,32 @@ The lesson player listens for `animation:missingSlot` events and accumulates the
 **Alert design:**
 - Position: top-right corner of the lesson player, below any existing controls
 - Style: amber/yellow — informational, not an error; dismissible
-- Shown to: **teachers only** (not students) — check user role before rendering
+- Shown to: **admins and teachers only** — never to students
 - Does not pause playback, does not require acknowledgement
+- Auto-dismisses after 10 seconds if not manually dismissed
 
-**Alert message format:**
+**Alert message varies by role:**
 
-```
-⚠️ Some animation tags in this lesson have no clips assigned.
-Missing: [whisper], [excited]
-→ Go to Avatar Lab → Movement to assign clips.   [Dismiss]
-```
+| Role | Message |
+|---|---|
+| `admin` | ⚠️ Some animation tags have no clips assigned: `[whisper]`, `[excited]` → [Go to Avatar Lab → Movement](#) `[Dismiss]` |
+| `teacher` | ⚠️ Some avatar animations are missing for this lesson. Ask your administrator to assign them in the Avatar Lab. `[Dismiss]` |
+| `student` | *(no alert shown)* |
+
+Teachers are intentionally given a vague message — they don't need to know about slots, tags, or the Avatar Lab. They just need to know something is missing and who to contact. The admin gets the full actionable detail and a direct link.
 
 **Implementation location:** `resources/js/avatar-3d.js` (or a small inline `<script>` in the lesson blade view).
 
 ```javascript
-// In lesson player initialisation
+// lessonMeta passed from blade:
+// { userRole: 'admin'|'teacher'|'student', avatarLabUrl: '/admin/avatar-lab?tab=movement' }
+const { userRole, avatarLabUrl } = window.lessonMeta ?? {};
+
 const missingSlots = new Set();
 let debounceTimer = null;
-const isTeacher = window.lessonMeta?.userRole === 'teacher'; // passed from blade
 
 window.addEventListener('animation:missingSlot', ({ detail }) => {
-  if (!isTeacher) return;
+  if (userRole === 'student' || !userRole) return;
   missingSlots.add(detail.slot);
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -404,10 +409,15 @@ window.addEventListener('animation:missingSlot', ({ detail }) => {
 });
 
 function showAnimationAlert(slots) {
-  // Render dismissible amber toast
-  // List missing slot names formatted as [tag]
-  // Link to Avatar Lab Movement tab
-  // Auto-dismiss after 10 seconds if not manually dismissed
+  // Role-aware message:
+  if (userRole === 'admin') {
+    // "Some animation tags have no clips assigned: [whisper], [excited]"
+    // + direct link to avatarLabUrl
+  } else {
+    // "Some avatar animations are missing. Ask your administrator."
+    // No link, no slot names
+  }
+  // Render amber dismissible toast, auto-dismiss after 10s
 }
 ```
 
