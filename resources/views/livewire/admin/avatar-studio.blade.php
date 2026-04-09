@@ -35,7 +35,7 @@
 
         {{-- ── Tab bar ─────────────────────────────────────────────────────────── --}}
         <div class="flex gap-1 border-b border-slate-800">
-            @foreach([['greeting', '👋 Greeting'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
+            @foreach([['portrait', '🖼️ Portrait'], ['greeting', '👋 Greeting'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
                 <button
                     @click="activeTab = '{{ $tab }}'"
                     :class="activeTab === '{{ $tab }}'
@@ -49,6 +49,13 @@
         {{-- Container y scroll                                                          --}}
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div class="h-[66vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
+        {{-- ══════════════════════════════════════════════════════════════════════ --}}
+        {{-- TAB: Portrait                                                          --}}
+        {{-- ══════════════════════════════════════════════════════════════════════ --}}
+        <div x-show="activeTab === 'portrait'" x-cloak>
+            @include('livewire.admin.avatar-studio.portrait-tab')
+        </div>
+
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         {{-- TAB: Greeting                                                          --}}
         {{-- ══════════════════════════════════════════════════════════════════════ --}}

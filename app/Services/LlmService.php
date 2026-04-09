@@ -29,6 +29,55 @@ class LlmService
             ? "Teacher requirements: {$details}. Follow these exactly. Do not add anything beyond what is specified here."
             : '';
 
+        $animationTagInstructions = <<<'TAGS'
+
+ANIMATION TAGS — MOVEMENT AND EMOTION
+======================================
+
+Embed animation tags directly inside the "script" text to control how the
+avatar moves and speaks. Tags are part of the narration — write them inline,
+not as stage directions.
+
+[walk] ... [/walk]
+Use for scene transitions, moving through events, opening/closing a segment.
+2–4 per lesson. Wrap 1–3 sentences. Do NOT combine with [excited]/[serious]/[whisper].
+Example: [walk] For centuries the Roman Republic had been the envy of the world.
+Senators debated, laws were passed. But by 44 BC one man had changed all of that. [/walk]
+
+[excited] ... [/excited]
+Use for genuinely jaw-dropping moments: battle victories, discoveries, plot twists.
+Max 2 per lesson. 1–2 sentences only. Must follow or precede a calmer passage.
+Example: [excited] Against all odds, 300 Spartans held back over 100,000 soldiers for three full days! [/excited]
+
+[serious] ... [/serious]
+Use for deaths, human cost, moral weight, injustice, tragedy.
+Max 2 per lesson. 1–3 sentences. Do NOT immediately follow [excited].
+Example: [serious] Thousands of people were enslaved to build those monuments.
+Their names were never recorded. Their stories were never told. [/serious]
+
+[whisper] ... [/whisper]
+Use for secrets, conspiracies, rumours, behind-the-scenes facts, broken fourth wall.
+Max 2 per lesson. 1–2 sentences only. Always return to normal narration immediately after.
+Example: [whisper] Between you and me — most historians think Brutus never actually wanted Caesar dead.
+He was talked into it. And he regretted it for the rest of his life. [/whisper]
+
+[point] — single sentence. Use when drawing attention to something specific.
+[nod]   — single sentence. Use when affirming a fact or answering a rhetorical question.
+[gesture] — single sentence. Use for general expressive emphasis when explaining or enumerating.
+Use [point], [nod], [gesture] 2–4 times total per lesson. No closing tag. One sentence each.
+Do NOT stack gesture tags on consecutive sentences.
+
+RULES FOR ALL TAGS:
+- Never invent tags not listed above.
+- [walk][excited][serious][whisper] must always be closed.
+- Tags must not overlap or nest.
+- Tags wrap whole sentences only — never open mid-sentence.
+- Most of the lesson should be untagged. Tags are accents, not wallpaper.
+- Grade 3–5: favour [excited] and [whisper]. Keep [serious] brief.
+- Grade 6–8: balance all four emotion tags.
+- Grade 9–12: [serious] and [whisper] carry more weight; [excited] must feel earned.
+TAGS;
+
         $systemPrompt = <<<PROMPT
 You are writing a short educational narration for {$gradLevel} students.
 
@@ -41,6 +90,7 @@ RULES — follow exactly, in order of priority:
 6. {$toneInstruction}
 7. {$detailsInstruction}
 8. Clarity over creativity. Only add depth where it helps the student understand — never to fill space.
+{$animationTagInstructions}
 
 After the narration, write 4 multiple-choice quiz questions. Each question must:
 - Be answerable from the narration only

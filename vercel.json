@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "cd vercel-functions && npm install --ignore-scripts",
+  "outputDirectory": "vercel-functions",
+  "functions": {
+    "vercel-functions/api/*.js": {
+      "memory": 1024,
+      "maxDuration": 30,
+      "includeFiles": "models/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/vercel-functions/api/$1" }
+  ]
+}

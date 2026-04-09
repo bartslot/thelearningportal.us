@@ -82,4 +82,16 @@ return [
         'key' => env('EUROPEANA_API_KEY'),
     ],
 
+    // ── Vercel serverless functions (avatar studio / audio manifest) ──────────
+
+    'vercel_functions' => [
+        'url' => env('VERCEL_FUNCTIONS_URL', 'http://localhost:3000'),
+    ],
+
+    // ── Animation tooling ─────────────────────────────────────────────────────
+
+    'fbx2gltf' => [
+        'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
+    ],
+
 ];

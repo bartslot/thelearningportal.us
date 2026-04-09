@@ -89,6 +89,14 @@ class AvatarService
     }
 
     /**
+     * Public wrapper around resizePortrait for use outside this class.
+     */
+    public function resizePortraitPublic(string $imageData, int $maxDim = 512): string
+    {
+        return $this->resizePortrait($imageData, $maxDim);
+    }
+
+    /**
      * Resize an image to at most $maxDim × $maxDim using GD, and output as JPEG.
      * Falls back to returning the original bytes if GD is unavailable or parsing fails.
      */

@@ -1,0 +1,31 @@
+{
+  "_comment": "CMU Mocap → Rigify bone name mapping. Source bones from Subject 138 FBX files. Verify against your specific Rigify rig in Blender before animating.",
+  "version": 1,
+  "source_rig": "cmu_mocap",
+  "target_rig": "rigify",
+  "bones": {
+    "root":       "root",
+    "hips":       "spine",
+    "lowerback":  "spine.001",
+    "spine":      "spine.002",
+    "chest":      "spine.003",
+    "neck":       "neck",
+    "head":       "head",
+    "lShldr":     "shoulder.L",
+    "lUpArm":     "upper_arm.L",
+    "lForeArm":   "forearm.L",
+    "lHand":      "hand.L",
+    "rShldr":     "shoulder.R",
+    "rUpArm":     "upper_arm.R",
+    "rForeArm":   "forearm.R",
+    "rHand":      "hand.R",
+    "lThigh":     "thigh.L",
+    "lShin":      "shin.L",
+    "lFoot":      "foot.L",
+    "lToeBase":   "toe.L",
+    "rThigh":     "thigh.R",
+    "rShin":      "shin.R",
+    "rFoot":      "foot.R",
+    "rToeBase":   "toe.R"
+  }
+}

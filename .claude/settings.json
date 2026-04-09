@@ -17,7 +17,27 @@
       "Bash(gh api:*)",
       "Read(//Users/bartslot/.claude/skills/brainstorming/**)",
       "Read(//Users/bartslot/.claude/skills/writing-plans/**)",
-      "Read(//Users/bartslot/.claude/skills/subagent-driven-development/**)"
+      "Read(//Users/bartslot/.claude/skills/subagent-driven-development/**)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(ssh -p 18765 u2628-emomoo15slu6@ssh.thelearningportal.us \"echo connected && pwd && ls\")",
+      "Bash(ssh-keyscan -p 18765 ssh.thelearningportal.us)",
+      "Bash(grep \"^\\\\.env$\" /Users/bartslot/Projects/thelearningportal.us/.gitignore)",
+      "Bash(ssh -i ~/.ssh/siteground_tlp -p 18765 u2628-emomoo15slu6@ssh.thelearningportal.us \"echo connected && pwd\")",
+      "Bash(ssh -i ~/.ssh/siteground_tlp -p 18765 -o IdentitiesOnly=yes u2628-emomoo15slu6@ssh.thelearningportal.us \"echo connected\")",
+      "Bash(ssh-keygen -l -f ~/.ssh/siteground_tlp.pub)",
+      "Bash(ssh -i ~/.ssh/siteground_tlp -p 18765 -v u2628-emomoo15slu6@ssh.thelearningportal.us \"echo connected\")",
+      "Bash(ssh -i ~/.ssh/siteground_tlp -p 18765 u2628-emomoo15slu6@ssh.thelearningportal.us \"echo connected && pwd && ls\")",
+      "Bash(ssh-keygen -t ed25519 -C \"siteground-tlp\" -f ~/.ssh/siteground_tlp2 -N \"\")",
+      "Read(//Users/bartslot/.ssh/**)",
+      "Bash(ssh -i '~/.ssh/siteground_tlp2' -p 18765 u2628-emomoo15slu6@ssh.thelearningportal.us ':*)",
+      "Bash(curl -si https://history.thelearningportal.us/)",
+      "Bash(ssh -i ~/.ssh/siteground_tlp2 -p 18765 ufsiv6awvjybq@history.thelearningportal.us \"cd ~/public_html && git pull origin feature/avatar-studio-talking-head && php84 artisan config:clear && php84 artisan view:clear\")",
+      "Bash(ssh -i ~/.ssh/siteground_tlp2 -p 18765 u2628-emomoo15slu6@ssh.thelearningportal.us \"cd ~/www/history.thelearningportal.us/app && git pull origin feature/avatar-studio-talking-head && php84 artisan config:clear && php84 artisan view:clear\")",
+      "Bash(curl -s -X POST https://thelearningportal-us.vercel.app/api/detect-landmarks -H 'Content-Type: application/json' -d '{\"portrait_base64\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"}')",
+      "Bash(git push:*)",
+      "Bash(curl -s https://thelearningportal-us.vercel.app/api/test6)"
     ]
   }
 }
