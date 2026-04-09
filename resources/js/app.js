@@ -560,6 +560,7 @@ const setupLandingCarousels = () => {
 };
 
 import { initAvatarAnimator } from './avatar-animator.js';
+import './animation-alert.js';
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
