@@ -5,18 +5,23 @@
 <div
     x-data="{
         mode: '3d',
-        player: null,
         initPlayer() {
             if (this.mode !== '3d') return
             const canvas = this.$refs.canvas3d
             if (!canvas || !canvas.dataset.characterUrl) return
-            if (this.player) this.player.destroy()
-            this.player = new window.Avatar3DPlayer(canvas, {
+
+            // Destroy previous instance — always use window._avatar3d, never store
+            // the player in Alpine reactive state (Alpine's deep Proxy breaks Three.js
+            // non-writable WebGL shader properties like modelViewMatrix).
+            window._avatar3d?.destroy()
+            window._avatar3d = null
+
+            const player = new window.Avatar3DPlayer(canvas, {
                 characterUrl:    canvas.dataset.characterUrl,
                 frameBackground: canvas.dataset.bg,
             })
-            window._avatar3d = this.player
-            this.player.init()
+            window._avatar3d = player
+            player.init()
         }
     }"
     x-init="initPlayer()"
