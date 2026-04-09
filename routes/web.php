@@ -93,6 +93,9 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Avatar Studio (Livewire component)
     Route::get('/avatars/{avatar}', AvatarStudio::class)->name('avatars.studio');
 
+    // Avatar Lab (3D animation controller)
+    Route::get('/avatar-lab/{avatar}', \App\Livewire\Admin\AvatarLab::class)->name('avatar-lab');
+
     // Toggle active status
     Route::patch('/avatars/{avatar}/toggle', function (Avatar $avatar) {
         $avatar->update(['is_active' => ! $avatar->is_active]);
