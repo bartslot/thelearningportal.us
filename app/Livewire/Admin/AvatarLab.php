@@ -4,39 +4,38 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
-use App\Jobs\GenerateAvatarPreview3d;
+use App\Models\AnimationClip;
 use App\Models\Avatar;
 use App\Models\AvatarAnimationController;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class AvatarLab extends Component
 {
-    // Avatar selection
-    public ?int $avatarId    = null;
-    public bool $hasCharacter = false;
+    use WithFileUploads;
 
-    // Tab
-    public string $activeTab = 'preview'; // preview | movement
+    // Sidebar state
+    public ?int   $selectedAvatarId = null;
+    public string $activeSection    = 'animation-groups'; // 'animation-groups' | 'controller'
 
-    // Settings (mirrors Avatar 3D fields)
-    public string $presentationMode = 'framed';
-    public int    $age              = 35;
-    public string $gender           = 'male';
-    public string $emotionStyle     = 'auto';
-    public float  $expressiveness   = 1.2;
-    public float  $speakingSpeed    = 1.0;
-    public string $frameBackground  = '#0f172a';
+    // Viewport state
+    public ?int    $previewClipId   = null;
+    public ?string $previewClipName = null;
 
-    // 3D Preview state
-    public string  $testScript            = '';
-    public string  $previewStatus         = 'idle'; // idle | generating | ready | error
-    public ?string $previewAudioUrl       = null;
-    public ?string $previewBlendShapesUrl = null;
-    public ?string $previewError          = null;
-    public bool    $polling               = false;
+    // Settings (under Settings sidebar section)
+    public string $gender = 'male';
+    public int    $age    = 35;
+    public string $name   = '';
+
+    // Audio section
+    public string $testScript = '';
+
+    // Per-category file upload properties
+    public $idleFile;
+    public $presentingFile;
+    public $greetingFile;
 
     public Collection $avatars;
 
@@ -51,104 +50,196 @@ class AvatarLab extends Component
 
     public function selectAvatar(int|string $id): void
     {
-        $id     = (int) $id;
-        $avatar = Avatar::findOrFail($id);
+        $avatar = Avatar::findOrFail((int) $id);
 
-        $this->avatarId         = $id;
-        $this->presentationMode = $avatar->presentation_mode ?? 'framed';
-        $this->age              = $avatar->age              ?? 35;
+        $this->selectedAvatarId = $avatar->id;
         $this->gender           = $avatar->gender           ?? 'male';
-        $this->emotionStyle     = $avatar->emotion_style    ?? 'auto';
-        $this->expressiveness   = $avatar->expressiveness   ?? 1.2;
-        $this->speakingSpeed    = $avatar->speaking_speed   ?? 1.0;
-        $this->frameBackground  = $avatar->frame_background ?? '#0f172a';
-        $this->hasCharacter     = file_exists(public_path("avatars/{$id}/character.glb"));
-
-        $this->previewStatus         = 'idle';
-        $this->previewAudioUrl       = null;
-        $this->previewBlendShapesUrl = null;
-        $this->previewError          = null;
-        $this->polling               = false;
+        $this->age              = $avatar->age              ?? 35;
+        $this->name             = $avatar->name;
+        $this->previewClipId    = null;
+        $this->previewClipName  = null;
     }
 
-    // ── 3D Preview ────────────────────────────────────────────────────────────
+    // ── File upload lifecycle hooks ────────────────────────────────────────
 
-    public function generatePreview(): void
+    public function updatedIdleFile(): void
     {
-        $this->validate([
-            'avatarId'   => 'required|integer|exists:avatars,id',
-            'testScript' => 'required|string|min:5|max:2000',
+        $this->processUpload('idle', $this->idleFile);
+    }
+
+    public function updatedPresentingFile(): void
+    {
+        $this->processUpload('presenting', $this->presentingFile);
+    }
+
+    public function updatedGreetingFile(): void
+    {
+        $this->processUpload('greeting', $this->greetingFile);
+    }
+
+    private function processUpload(string $category, mixed $file): void
+    {
+        if (! $file) {
+            return;
+        }
+
+        if (strtolower($file->getClientOriginalExtension()) !== 'fbx') {
+            session()->flash('error', 'Only .fbx files are allowed.');
+            return;
+        }
+
+        if ($file->getSize() > 20 * 1024 * 1024) {
+            session()->flash('error', 'File size must be under 20 MB.');
+            return;
+        }
+
+        $name = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $clip = AnimationClip::create([
+            'name'       => $name,
+            'category'   => $category,
+            'fbx_path'   => '',
+            'sort_order' => AnimationClip::where('category', $category)->max('sort_order') + 1,
         ]);
 
-        $this->previewStatus = 'generating';
-        $this->polling       = true;
+        $dir = public_path("avatars/animations/{$category}");
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
 
-        Cache::forget("avatar3d_preview_{$this->avatarId}");
-        GenerateAvatarPreview3d::dispatch($this->avatarId, $this->testScript);
+        $file->move($dir, "{$clip->id}.fbx");
+        $clip->update(['fbx_path' => "avatars/animations/{$category}/{$clip->id}.fbx"]);
+
+        $this->dispatch('clip-uploaded', category: $category, clipId: $clip->id);
     }
 
-    public function pollPreviewStatus(): void
+    // ── Clip actions ──────────────────────────────────────────────────────
+
+    public function deleteClip(int $id): void
     {
-        if (! $this->polling || ! $this->avatarId) return;
+        $clip = AnimationClip::findOrFail($id);
 
-        $cached = Cache::get("avatar3d_preview_{$this->avatarId}");
-        if (! $cached) return;
+        // Remove from all controllers
+        AvatarAnimationController::all()->each(function (AvatarAnimationController $ctrl) use ($clip): void {
+            $data = $ctrl->controller;
+            foreach (['idle', 'presenting', 'greeting'] as $cat) {
+                if (isset($data[$cat])) {
+                    $data[$cat] = array_values(
+                        array_filter($data[$cat], fn ($cid) => $cid !== (string) $clip->id)
+                    );
+                }
+            }
+            $ctrl->update(['controller' => $data]);
+        });
 
-        if ($cached['status'] === 'ready') {
-            $this->previewStatus         = 'ready';
-            $this->previewAudioUrl       = $cached['audio_url'];
-            $this->previewBlendShapesUrl = $cached['blendshapes_url'];
-            $this->polling               = false;
-            $this->dispatch('avatar3d:previewReady',
-                audioUrl: $this->previewAudioUrl,
-                blendShapesUrl: $this->previewBlendShapesUrl,
+        $abs = public_path($clip->fbx_path);
+        if (file_exists($abs)) {
+            unlink($abs);
+        }
+
+        if ($this->previewClipId === $id) {
+            $this->previewClipId   = null;
+            $this->previewClipName = null;
+        }
+
+        $clip->delete();
+    }
+
+    public function reorder(string $category, array $orderedIds): void
+    {
+        foreach ($orderedIds as $index => $id) {
+            AnimationClip::where('id', (int) $id)
+                ->where('category', $category)
+                ->update(['sort_order' => $index]);
+        }
+    }
+
+    public function loadPreview(int $clipId): void
+    {
+        $clip = AnimationClip::findOrFail($clipId);
+
+        $this->previewClipId   = $clipId;
+        $this->previewClipName = $clip->name;
+
+        $this->dispatch('preview-clip',
+            clipId:   $clipId,
+            clipName: $clip->name,
+            category: $clip->category,
+            fbxUrl:   $clip->fbxUrl(),
+        );
+    }
+
+    public function assignToController(int $avatarId, string $category, int $clipId): void
+    {
+        $controller = AvatarAnimationController::firstOrCreate(
+            ['avatar_id' => $avatarId],
+            ['controller' => AvatarAnimationController::defaultControllerData()],
+        );
+
+        $data = $controller->controller;
+
+        if (! isset($data[$category])) {
+            $data[$category] = [];
+        }
+
+        if (! in_array((string) $clipId, $data[$category], true)) {
+            $data[$category][] = (string) $clipId;
+        }
+
+        $controller->update(['controller' => $data]);
+        $this->dispatch('clip-assigned', clipId: $clipId, category: $category);
+    }
+
+    public function removeFromController(int $avatarId, string $category, int $clipId): void
+    {
+        $controller = AvatarAnimationController::where('avatar_id', $avatarId)->first();
+        if (! $controller) {
+            return;
+        }
+
+        $data = $controller->controller;
+
+        if (isset($data[$category])) {
+            $data[$category] = array_values(
+                array_filter($data[$category], fn ($id) => $id !== (string) $clipId)
             );
         }
 
-        if ($cached['status'] === 'failed') {
-            $this->previewStatus = 'error';
-            $this->previewError  = $cached['error'];
-            $this->polling       = false;
-        }
+        $controller->update(['controller' => $data]);
+        $this->dispatch('clip-removed', clipId: $clipId, category: $category);
     }
 
-    public function saveSettings(): void
+    public function useClip(): void
     {
-        $this->validate([
-            'avatarId'         => 'required|integer|exists:avatars,id',
-            'age'              => 'required|integer|min:8|max:80',
-            'expressiveness'   => 'required|numeric|min:0.1|max:2.0',
-            'speakingSpeed'    => 'required|numeric|min:0.5|max:2.0',
-            'frameBackground'  => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'presentationMode' => 'required|in:fullscreen,framed',
-            'gender'           => 'required|in:male,female',
-            'emotionStyle'     => 'required|in:auto,narrative,cheerful,serious,excited,empathetic,whispering',
-        ]);
+        if (! $this->previewClipId || ! $this->selectedAvatarId) {
+            return;
+        }
 
-        Avatar::where('id', $this->avatarId)->update([
-            'presentation_mode' => $this->presentationMode,
-            'age'               => $this->age,
-            'gender'            => $this->gender,
-            'emotion_style'     => $this->emotionStyle,
-            'expressiveness'    => $this->expressiveness,
-            'speaking_speed'    => $this->speakingSpeed,
-            'frame_background'  => $this->frameBackground,
-        ]);
-
-        session()->flash('message', 'Settings saved.');
+        $clip = AnimationClip::findOrFail($this->previewClipId);
+        $this->assignToController($this->selectedAvatarId, $clip->category, $this->previewClipId);
     }
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // ── Render ────────────────────────────────────────────────────────────
 
     public function render(): View
     {
-        $controller = $this->avatarId
-            ? AvatarAnimationController::where('avatar_id', $this->avatarId)->first()
+        $clipsByCategory = AnimationClip::orderBy('sort_order')->orderBy('name')
+            ->get()
+            ->groupBy('category');
+
+        $controller = $this->selectedAvatarId
+            ? AvatarAnimationController::where('avatar_id', $this->selectedAvatarId)->first()
             : null;
-        $avatar = $this->avatarId ? Avatar::find($this->avatarId) : null;
+
+        $controllerData = $controller?->controller ?? AvatarAnimationController::defaultControllerData();
+
+        $assignedClipIds = collect($controllerData)
+            ->flatten()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
 
         return view('livewire.admin.avatar-lab', compact(
-            'avatar', 'controller',
-        ))->layout('components.layouts.app', ['title' => '3D Avatar Lab']);
+            'clipsByCategory', 'controllerData', 'assignedClipIds',
+        ))->layout('components.layouts.app', ['title' => 'Avatar Lab']);
     }
 }
