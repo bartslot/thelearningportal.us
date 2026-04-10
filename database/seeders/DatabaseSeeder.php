@@ -52,7 +52,5 @@ class DatabaseSeeder extends Seeder
         // ── Avatars ───────────────────────────────────────────────────────────
         $this->call(AvatarSeeder::class);
 
-        // ── Animation Clips ───────────────────────────────────────────────────
-        $this->call(AnimationClipSeeder::class);
     }
 }

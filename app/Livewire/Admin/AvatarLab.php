@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Jobs\GenerateAvatarPreview3d;
 use App\Models\Avatar;
+use App\Models\AvatarAnimationController;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
@@ -14,8 +15,11 @@ use Livewire\Component;
 class AvatarLab extends Component
 {
     // Avatar selection
-    public ?int $avatarId = null;
+    public ?int $avatarId    = null;
     public bool $hasCharacter = false;
+
+    // Tab
+    public string $activeTab = 'preview'; // preview | movement
 
     // Settings (mirrors Avatar 3D fields)
     public string $presentationMode = 'framed';
@@ -26,7 +30,7 @@ class AvatarLab extends Component
     public float  $speakingSpeed    = 1.0;
     public string $frameBackground  = '#0f172a';
 
-    // Preview state
+    // 3D Preview state
     public string  $testScript            = '';
     public string  $previewStatus         = 'idle'; // idle | generating | ready | error
     public ?string $previewAudioUrl       = null;
@@ -38,9 +42,7 @@ class AvatarLab extends Component
 
     public function mount(): void
     {
-        $this->avatars = Avatar::where('is_active', true)
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $this->avatars = Avatar::where('is_active', true)->orderBy('name')->get(['id', 'name']);
 
         if ($this->avatars->count() === 1) {
             $this->selectAvatar($this->avatars->first()->id);
@@ -69,6 +71,8 @@ class AvatarLab extends Component
         $this->polling               = false;
     }
 
+    // ── 3D Preview ────────────────────────────────────────────────────────────
+
     public function generatePreview(): void
     {
         $this->validate([
@@ -80,21 +84,15 @@ class AvatarLab extends Component
         $this->polling       = true;
 
         Cache::forget("avatar3d_preview_{$this->avatarId}");
-
         GenerateAvatarPreview3d::dispatch($this->avatarId, $this->testScript);
     }
 
     public function pollPreviewStatus(): void
     {
-        if (! $this->polling || ! $this->avatarId) {
-            return;
-        }
+        if (! $this->polling || ! $this->avatarId) return;
 
         $cached = Cache::get("avatar3d_preview_{$this->avatarId}");
-
-        if (! $cached) {
-            return; // still queued
-        }
+        if (! $cached) return;
 
         if ($cached['status'] === 'ready') {
             $this->previewStatus         = 'ready';
@@ -140,9 +138,17 @@ class AvatarLab extends Component
         session()->flash('message', 'Settings saved.');
     }
 
+    // ── Render ────────────────────────────────────────────────────────────────
+
     public function render(): View
     {
-        return view('livewire.admin.avatar-lab')
-            ->layout('components.layouts.app', ['title' => '3D Avatar Lab']);
+        $controller = $this->avatarId
+            ? AvatarAnimationController::where('avatar_id', $this->avatarId)->first()
+            : null;
+        $avatar = $this->avatarId ? Avatar::find($this->avatarId) : null;
+
+        return view('livewire.admin.avatar-lab', compact(
+            'avatar', 'controller',
+        ))->layout('components.layouts.app', ['title' => '3D Avatar Lab']);
     }
 }
