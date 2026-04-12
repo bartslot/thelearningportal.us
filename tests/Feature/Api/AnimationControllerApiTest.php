@@ -36,12 +36,14 @@ class AnimationControllerApiTest extends TestCase
         $response = $this->getJson(route('api.v1.avatars.controller', $this->avatar))
             ->assertOk()
             ->assertJsonStructure([
-                'controller' => ['version', 'slots', 'transitions'],
+                'controller' => ['idle', 'presenting', 'greeting'],
                 'clip_urls',
             ]);
 
-        $this->assertSame(1, $response->json('controller.version'));
-        $this->assertIsArray($response->json('clip_urls'));
+        $this->assertSame([], $response->json('controller.idle'));
+        $this->assertSame([], $response->json('controller.presenting'));
+        $this->assertSame([], $response->json('controller.greeting'));
+        $this->assertSame([], $response->json('clip_urls'));
     }
 
     public function test_returns_saved_controller_with_empty_clip_urls(): void
@@ -49,7 +51,7 @@ class AnimationControllerApiTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'teacher']));
 
         $controllerData = AvatarAnimationController::defaultControllerData();
-        $controllerData['slots']['walk']['clips'] = ['138_11'];
+        $controllerData['idle'] = ['clip_a'];
 
         AvatarAnimationController::create([
             'avatar_id'  => $this->avatar->id,
@@ -59,7 +61,7 @@ class AnimationControllerApiTest extends TestCase
         $response = $this->getJson(route('api.v1.avatars.controller', $this->avatar))
             ->assertOk();
 
-        $this->assertContains('138_11', $response->json('controller.slots.walk.clips'));
-        $this->assertIsArray($response->json('clip_urls'));
+        $this->assertContains('clip_a', $response->json('controller.idle'));
+        $this->assertSame([], $response->json('clip_urls'));
     }
 }
