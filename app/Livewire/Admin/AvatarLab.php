@@ -106,7 +106,14 @@ class AvatarLab extends Component
             mkdir($dir, 0755, true);
         }
 
-        $file->move($dir, "{$clip->id}.fbx");
+        $dest = $dir . DIRECTORY_SEPARATOR . "{$clip->id}.fbx";
+        // Use rename/copy so it works with both real HTTP uploads and Livewire
+        // TemporaryUploadedFile instances (which fail move_uploaded_file in tests).
+        $src = method_exists($file, 'getRealPath') ? $file->getRealPath() : $file->getPathname();
+        if (! @rename($src, $dest)) {
+            copy($src, $dest);
+            @unlink($src);
+        }
         $clip->update(['fbx_path' => "avatars/animations/{$category}/{$clip->id}.fbx"]);
 
         $this->dispatch('clip-uploaded', category: $category, clipId: $clip->id);
