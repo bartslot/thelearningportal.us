@@ -1,39 +1,30 @@
 /**
- * avatar-3d.js — Three.js 3D avatar player driven by Azure 3D blend shapes
+ * avatar-3d.js — Three.js 3D avatar player driven by Azure ARKit blend shapes
  *
  * Compatible with Ready Player Me / MPFB GLBs that include ARKit morph targets.
  * No morph-map.json required — shape names are matched directly from the GLB.
  *
- * Presentation modes:
- *   'fullscreen' — camera pulls back to show waist-up, fills the container
- *   'framed'     — tight bust/portrait crop, rounded CSS mask applied by parent
- *
  * Camera:
- *   Auto-rotates (cinematic orbit) while locked. OrbitControls active while free.
- *   Fullscreen defaults to locked+autoRotate; framed always stays locked (no controls).
- *   toggleLock()   — fullscreen only; returns new boolean; auto-rotate tracks lock state
- *   resetCamera()  — snaps camera back to preset and re-locks
+ *   Always interactive. OrbitControls enabled from the start; user can freely
+ *   orbit, zoom, and inspect the character.
  *
  * Poses (bone-level):
  *   applyPose(name)  — smoothly transitions skeleton to a preset pose
- *   Built-in presets: 'tpose' | 'relaxed' | 'presenting' | 'crossed' | 'leaning' | 'sitting'
- *   Rest quaternions stored at load time; offsets are in each bone's LOCAL space (post-multiply).
+ *   Built-in presets: 'tpose' | 'relaxed' | 'presenting' | 'leaning' | 'sitting'
+ *   Rest quaternions stored at load time; offsets are in each bone's LOCAL space.
  *   Values tuned for the Ready Player Me / MPFB Mixamo rig.
  *
  * Usage:
- *   const player = new Avatar3DPlayer(canvasEl, { characterUrl, frameBackground, presentationMode })
+ *   const player = new Avatar3DPlayer(canvasEl, { characterUrl })
  *   await player.init()                    // loads GLB, applies 'relaxed' pose
- *   player.setMode('fullscreen')
- *   player.resize(w, h)
  *   player.applyPose('sitting')
- *   const isNowLocked = player.toggleLock()
- *   player.resetCamera()
  *   await player.loadPreview(audioUrl, blendShapesUrl)
  *   player.play()
  */
 import * as THREE from 'three'
 import { GLTFLoader }    from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { FBXLoader }     from 'three/examples/jsm/loaders/FBXLoader.js'
 
 const DEG = Math.PI / 180
 
@@ -60,13 +51,10 @@ const AZURE_BLEND_SHAPES = [
 ]
 
 /**
- * Camera presets. Target Y = 1.649 (world-space eye level measured from the
+ * Camera preset. Target Y = 1.649 (world-space eye level measured from the
  * skeleton hierarchy: Hips→Spine→…→LeftEye in the bundled RPM GLB).
  */
-const CAMERA_PRESETS = {
-  fullscreen: { fov: 52, pos: [0, 1.10, 2.4],  target: [0, 1.649, 0] },
-  framed:     { fov: 38, pos: [0, 1.60, 0.78], target: [0, 1.649, 0] },
-}
+const CAMERA_PRESET = { fov: 52, pos: [0, 1.10, 2.4], target: [0, 1.649, 0] }
 
 /**
  * Pose presets — per-bone LOCAL-space Euler offsets [rx, ry, rz] in degrees,
@@ -149,22 +137,17 @@ function easeInOut (t) {
 
 export class Avatar3DPlayer {
   constructor (canvasEl, {
-    characterUrl     = null,
-    frameBackground  = '#0f172a',
-    presentationMode = 'framed',
+    characterUrl = null,
   } = {}) {
-    this.canvasEl         = canvasEl
-    this.characterUrl     = characterUrl
-    this.frameBackground  = frameBackground
-    this.presentationMode = presentationMode
+    this.canvasEl     = canvasEl
+    this.characterUrl = characterUrl
 
-    this._scene      = null
-    this._camera     = null
-    this._renderer   = null
-    this._controls   = null
-    this._locked     = true     // starts locked in all modes
-    this._meshes     = []
-    this._morphMap   = {}
+    this._scene    = null
+    this._camera   = null
+    this._renderer = null
+    this._controls = null
+    this._meshes   = []
+    this._morphMap = {}
 
     // Skeleton
     this._boneMap    = {}       // name → THREE.Bone
@@ -186,6 +169,15 @@ export class Avatar3DPlayer {
     this._playing    = false
     this._rafId      = null
 
+    // Animation clip (applied to the character rig)
+    this._characterRoot = null   // gltf.scene reference stored after character load
+    this._animMixer     = null   // THREE.AnimationMixer
+    this._animAction    = null   // current THREE.AnimationAction
+    this._animDuration  = 0      // clip duration in seconds
+    this._animPlaying   = false  // is animation currently playing
+    this._fbxLoader     = new FBXLoader()
+    this._bodyAction    = null
+
     // Idle
     this._blinkTimer = 0
     this._blinkNext  = 3000
@@ -202,16 +194,36 @@ export class Avatar3DPlayer {
     this._renderer = new THREE.WebGLRenderer({ canvas: this.canvasEl, antialias: true, alpha: false })
     this._renderer.setSize(w, h)
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    this._renderer.setClearColor(new THREE.Color(this.frameBackground), 1)
     this._renderer.outputColorSpace = THREE.SRGBColorSpace
 
     this._scene = new THREE.Scene()
 
-    const preset = CAMERA_PRESETS[this.presentationMode] ?? CAMERA_PRESETS.framed
-    this._camera = new THREE.PerspectiveCamera(preset.fov, w / h, 0.01, 100)
-    this._camera.position.set(...preset.pos)
+    // ── Gradient background ──────────────────────────────────────────────────
+    const bgCanvas  = document.createElement('canvas')
+    bgCanvas.width  = 2
+    bgCanvas.height = 256
+    const bgCtx = bgCanvas.getContext('2d')
+    const grad  = bgCtx.createLinearGradient(0, 0, 0, 256)
+    grad.addColorStop(0,   '#1a1a3a')   // dark indigo at top
+    grad.addColorStop(0.5, '#0f172a')   // slate-900 mid
+    grad.addColorStop(1,   '#060610')   // near-black at bottom
+    bgCtx.fillStyle = grad
+    bgCtx.fillRect(0, 0, 2, 256)
+    this._scene.background = new THREE.CanvasTexture(bgCanvas)
 
-    // Three-point lighting
+    // ── Fog ───────────────────────────────────────────────────────────────────
+    this._scene.fog = new THREE.Fog(0x0f172a, 5, 14)
+
+    // ── Ground grid ───────────────────────────────────────────────────────────
+    const grid = new THREE.GridHelper(14, 28, 0x1e2040, 0x141428)
+    grid.position.y = 0
+    this._scene.add(grid)
+
+    // ── Camera ────────────────────────────────────────────────────────────────
+    this._camera = new THREE.PerspectiveCamera(CAMERA_PRESET.fov, w / h, 0.01, 100)
+    this._camera.position.set(...CAMERA_PRESET.pos)
+
+    // ── Three-point lighting ──────────────────────────────────────────────────
     this._scene.add(new THREE.AmbientLight(0xffffff, 1.2))
     const key = new THREE.DirectionalLight(0xffeedd, 1.6)
     key.position.set(1.5, 2.5, 2)
@@ -220,22 +232,17 @@ export class Avatar3DPlayer {
     fill.position.set(-2, 1, 1)
     this._scene.add(fill)
 
-    // Orbit controls
+    // ── Orbit controls (always interactive) ──────────────────────────────────
     this._controls = new OrbitControls(this._camera, this._renderer.domElement)
-    this._controls.enableDamping   = true
-    this._controls.dampingFactor   = 0.08
-    this._controls.enablePan       = false
-    this._controls.minDistance     = 0.2
-    this._controls.maxDistance     = 6.0
-    this._controls.minPolarAngle   = 0.05
-    this._controls.maxPolarAngle   = Math.PI * 0.80
-    this._controls.autoRotateSpeed = 0.6   // slow cinematic orbit
-    this._controls.target.set(...preset.target)
+    this._controls.enableDamping  = true
+    this._controls.dampingFactor  = 0.08
+    this._controls.enablePan      = false
+    this._controls.minDistance    = 0.5
+    this._controls.maxDistance    = 6.0
+    this._controls.minPolarAngle  = 0.05
+    this._controls.maxPolarAngle  = Math.PI * 0.80
+    this._controls.target.set(...CAMERA_PRESET.target)
     this._controls.update()
-    // Lock + auto-rotate on by default in all modes
-    this._locked              = true
-    this._controls.enabled    = false
-    this._controls.autoRotate = true
 
     if (this.characterUrl) await this._loadCharacter(this.characterUrl)
 
@@ -253,56 +260,17 @@ export class Avatar3DPlayer {
 
   // ── Camera ─────────────────────────────────────────────────────────────────
 
-  setMode (mode) {
-    this.presentationMode = mode
-    const preset = CAMERA_PRESETS[mode] ?? CAMERA_PRESETS.framed
-    if (this._camera) {
-      this._camera.fov = preset.fov
-      this._camera.position.set(...preset.pos)
-      this._camera.updateProjectionMatrix()
-    }
-    if (this._controls) {
-      this._controls.target.set(...preset.target)
-      this._controls.update()
-    }
-    // Re-lock (both modes reset to locked on switch)
-    this._locked              = true
-    this._controls.enabled    = false
-    this._controls.autoRotate = true
-  }
-
-  /**
-   * Fullscreen only: toggle between locked (auto-rotate) and free orbit.
-   * Returns new locked state so Alpine can mirror it.
-   */
-  toggleLock () {
-    if (this.presentationMode === 'framed') return true
-    this._locked = !this._locked
-    if (this._locked) {
-      this._controls.enabled    = false
-      this._controls.autoRotate = true
-    } else {
-      this._controls.enabled    = true
-      this._controls.autoRotate = false
-    }
-    return this._locked
-  }
-
-  /** Snap camera back to preset, re-lock, and resume auto-rotate. */
+  /** Snap camera back to the default position. */
   resetCamera () {
-    const preset = CAMERA_PRESETS[this.presentationMode] ?? CAMERA_PRESETS.framed
     if (this._camera) {
-      this._camera.position.set(...preset.pos)
-      this._camera.fov = preset.fov
+      this._camera.position.set(...CAMERA_PRESET.pos)
+      this._camera.fov = CAMERA_PRESET.fov
       this._camera.updateProjectionMatrix()
     }
     if (this._controls) {
-      this._controls.target.set(...preset.target)
+      this._controls.target.set(...CAMERA_PRESET.target)
       this._controls.update()
     }
-    this._locked              = true
-    this._controls.enabled    = false
-    this._controls.autoRotate = true
   }
 
   resize (w, h) {
@@ -312,11 +280,6 @@ export class Avatar3DPlayer {
       this._camera.aspect = w / h
       this._camera.updateProjectionMatrix()
     }
-  }
-
-  setBackground (hex) {
-    this.frameBackground = hex
-    this._renderer?.setClearColor(new THREE.Color(hex), 1)
   }
 
   // ── Pose system ────────────────────────────────────────────────────────────
@@ -376,6 +339,7 @@ export class Avatar3DPlayer {
     // the camera (which sits at +Z) and auto-rotate opens on the front.
     gltf.scene.rotation.y = Math.PI
 
+    this._characterRoot = gltf.scene
     this._scene.add(gltf.scene)
 
     // Collect morph-target meshes
@@ -458,6 +422,70 @@ export class Avatar3DPlayer {
     this._playing = false
   }
 
+  // ── Animation clip ─────────────────────────────────────────────────────────
+
+  /**
+   * Load a GLB animation file and retarget it onto the loaded character rig.
+   * Loops forever until replaced or destroyed.
+   */
+  async loadAnimation (glbUrl) {
+    if (this._animMixer) { this._animMixer.stopAllAction(); this._animMixer = null }
+    this._animAction   = null
+    this._animDuration = 0
+    this._animPlaying  = false
+
+    if (!this._characterRoot) {
+      console.warn('[Avatar3D] loadAnimation: character not loaded yet')
+      return
+    }
+
+    const gltf = await new GLTFLoader().loadAsync(glbUrl)
+    if (gltf.animations.length === 0) {
+      console.warn('[Avatar3D] loadAnimation: no animations in', glbUrl)
+      return
+    }
+
+    const clip         = gltf.animations[0]
+    this._animMixer    = new THREE.AnimationMixer(this._characterRoot)
+    this._animAction   = this._animMixer.clipAction(clip)
+    this._animDuration = clip.duration
+    this._animAction.setLoop(THREE.LoopRepeat)
+    this._animAction.clampWhenFinished = false
+    this._animAction.play()
+    this._animPlaying  = true
+  }
+
+  /** Toggle animation play / pause. */
+  toggleAnimation () {
+    if (!this._animMixer) return
+    if (this._animPlaying) {
+      this._animMixer.timeScale = 0
+      this._animPlaying = false
+    } else {
+      this._animMixer.timeScale = 1
+      this._animPlaying = true
+    }
+  }
+
+  /** Seek to a normalised position (0–1) in the animation clip. */
+  seekAnimation (progress) {
+    if (!this._animAction || !this._animDuration) return
+    this._animAction.time = Math.max(0, Math.min(this._animDuration, progress * this._animDuration))
+    this._animMixer.update(0) // force a frame update while paused
+  }
+
+  /** Normalised playhead position (0–1). */
+  get animProgress () {
+    if (!this._animAction || !this._animDuration) return 0
+    return this._animAction.time / this._animDuration
+  }
+
+  /** True while the animation is running. */
+  get animIsPlaying () { return this._animPlaying }
+
+  /** Duration of the loaded clip in seconds. */
+  get animDuration () { return this._animDuration }
+
   // ── Render loop ────────────────────────────────────────────────────────────
 
   _loop () {
@@ -468,6 +496,7 @@ export class Avatar3DPlayer {
       this._applyBlendShapes(this._audio.currentTime)
     }
 
+    this._animMixer?.update(delta)
     this._updatePoseLerp(delta)
     this._idlePass(delta * 1000)
     this._controls?.update()
@@ -534,12 +563,31 @@ export class Avatar3DPlayer {
     }, 120)
   }
 
+  // ── Body animation (FBX from Mixamo) ──────────────────────────────────────
+
+  async loadBodyAnimation (fbxUrl) {
+    if (!this._characterRoot || !this._animMixer) return
+
+    const fbx  = await new Promise((res, rej) => this._fbxLoader.load(fbxUrl, res, undefined, rej))
+    const clip = fbx.animations?.[0]
+    if (!clip) { console.warn('[Avatar3D] FBX has no animation clips:', fbxUrl); return }
+
+    if (this._bodyAction) {
+      this._bodyAction.fadeOut(0.3)
+    }
+
+    const action = this._animMixer.clipAction(clip, this._characterRoot)
+    action.reset().fadeIn(0.3).play()
+    this._bodyAction = action
+  }
+
   // ── Cleanup ────────────────────────────────────────────────────────────────
 
   destroy () {
     this._resizeObs?.disconnect()
     if (this._rafId) cancelAnimationFrame(this._rafId)
     this._audio?.pause()
+    if (this._animMixer) { this._animMixer.stopAllAction(); this._animMixer = null }
     this._controls?.dispose()
     this._renderer?.dispose()
     this._scene?.traverse((obj) => {
@@ -560,6 +608,12 @@ window.addEventListener('avatar3d:previewReady', (ev) => {
   const { audioUrl, blendShapesUrl } = ev.detail
   window._avatar3d?.loadPreview(audioUrl, blendShapesUrl)
     .then(() => console.log('[Avatar3D] Preview ready'))
+})
+
+// ── Body animation preview (Avatar Lab) ──────────────────────────────────────
+window.addEventListener('preview-clip', (ev) => {
+  window._avatar3d?.loadBodyAnimation(ev.detail.fbxUrl)
+    .catch(err => console.error('[Avatar3D] Failed to load FBX:', err))
 })
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
