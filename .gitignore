@@ -24,3 +24,12 @@ Homestead.yaml
 Thumbs.db
 
 .superpowers/
+
+# User-uploaded avatar assets (large binaries — not tracked in git)
+/public/avatars/*/character.glb
+/public/avatars/animations/**/*.fbx
+/public/avatars/animations/mixamo/
+/bin/fbx2gltf
+NUL
+/public/NUL
+

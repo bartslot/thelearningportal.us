@@ -175,12 +175,26 @@ class AvatarLab extends Component
         $isAssigned = in_array((string) $clipId, $data[$clip->category] ?? [], true);
 
         $this->dispatch('preview-clip',
-            clipId:     $clipId,
-            clipName:   $clip->name,
-            category:   $clip->category,
-            fbxUrl:     $clip->fbxUrl(),
-            isAssigned: $isAssigned,
+            clipId:          $clipId,
+            clipName:        $clip->name,
+            category:        $clip->category,
+            fbxUrl:          $clip->fbxUrl(),
+            isAssigned:      $isAssigned,
+            speed:           $clip->speed           ?? 1.0,
+            expressiveness:  $clip->expressiveness  ?? 1.0,
         );
+    }
+
+    public function bakeClip(int $clipId, float $speed, float $expressiveness): void
+    {
+        $clip = AnimationClip::findOrFail($clipId);
+
+        $clip->update([
+            'speed'          => round(max(0.25, min(2.0,  $speed)),          2),
+            'expressiveness' => round(max(0.0,  min(1.5,  $expressiveness)), 2),
+        ]);
+
+        $this->dispatch('clip-baked', clipId: $clipId, speed: $clip->speed, expressiveness: $clip->expressiveness);
     }
 
     public function assignToController(int $avatarId, string $category, int $clipId): void

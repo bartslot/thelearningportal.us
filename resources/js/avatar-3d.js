@@ -589,6 +589,13 @@ export class Avatar3DPlayer {
     // Pure rotation tracks are all we need for in-place humanoid animation.
     clip.tracks = clip.tracks.filter(track => !track.name.endsWith('.position'))
 
+    // Drop Hips quaternion track — Mixamo bakes global Y-axis root rotation into it,
+    // which spins the entire skeleton around the hips (visible as feet sweeping in a
+    // circle). For in-place animations the bind-pose hip orientation is correct; the
+    // pose system owns any intentional hip tilt. All other bones' quaternion tracks
+    // (Spine, Chest, arms …) are kept so upper-body motion is preserved.
+    clip.tracks = clip.tracks.filter(track => track.name !== 'Hips.quaternion')
+
     console.log(`[Avatar3D] Loading body animation: ${fbxUrl} (${clip.tracks.length} tracks)`)
 
     if (this._bodyAction) {
@@ -597,7 +604,30 @@ export class Avatar3DPlayer {
 
     const action = this._animMixer.clipAction(clip, this._characterRoot)
     action.reset().fadeIn(0.3).play()
+    action.setEffectiveWeight(this._animExpressiveness)
+    this._animMixer.timeScale = this._animSpeed
     this._bodyAction = action
+  }
+
+  // ── Animation tweaks ──────────────────────────────────────────────────────
+
+  /**
+   * Set animation playback speed.
+   * @param {number} speed — multiplier, e.g. 0.5 = half speed, 2.0 = double speed
+   */
+  setAnimationSpeed (speed) {
+    this._animSpeed = speed
+    if (this._animMixer) this._animMixer.timeScale = speed
+  }
+
+  /**
+   * Set animation expressiveness — scales the influence (weight) of the current action.
+   * 0 = frozen in bind pose, 1 = full animation, values > 1 exaggerate.
+   * @param {number} weight — 0.0 to 1.5
+   */
+  setAnimationExpressiveness (weight) {
+    this._animExpressiveness = weight
+    if (this._bodyAction) this._bodyAction.setEffectiveWeight(weight)
   }
 
   // ── Cleanup ────────────────────────────────────────────────────────────────

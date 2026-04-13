@@ -258,8 +258,36 @@
     {{-- ── RIGHT VIEWPORT ────────────────────────────────────────────────── --}}
     <div
         class="flex-1 relative overflow-hidden bg-slate-950"
-        x-data="{ clipId: null, clipName: '', isAssigned: false, confirmDelete: false }"
-        x-on:preview-clip.window="clipId = $event.detail.clipId; clipName = $event.detail.clipName; isAssigned = $event.detail.isAssigned; confirmDelete = false"
+        x-data="{
+            clipId: null, clipName: '', isAssigned: false, confirmDelete: false,
+            speed: 1.0, expressiveness: 1.0,
+            baked: false,
+            setSpeed(v) {
+                this.speed = parseFloat(v);
+                this.baked = false;
+                window._avatar3d?.setAnimationSpeed(this.speed);
+            },
+            setExpressiveness(v) {
+                this.expressiveness = parseFloat(v);
+                this.baked = false;
+                window._avatar3d?.setAnimationExpressiveness(this.expressiveness);
+            },
+            bake() {
+                $wire.bakeClip(this.clipId, this.speed, this.expressiveness);
+            },
+        }"
+        x-on:preview-clip.window="
+            clipId = $event.detail.clipId;
+            clipName = $event.detail.clipName;
+            isAssigned = $event.detail.isAssigned;
+            confirmDelete = false;
+            baked = false;
+            speed = $event.detail.speed ?? 1.0;
+            expressiveness = $event.detail.expressiveness ?? 1.0;
+            window._avatar3d?.setAnimationSpeed(speed);
+            window._avatar3d?.setAnimationExpressiveness(expressiveness);
+        "
+        x-on:clip-baked.window="if ($event.detail.clipId === clipId) { baked = true; }"
     >
 
         {{-- Top overlay: clip name + Use/Remove toggle --}}
@@ -289,24 +317,105 @@
             </button>
         </div>
 
-        {{-- Bottom overlay: delete clip button --}}
+        {{-- Bottom control bar: sliders + delete --}}
         <div
-            class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10"
+            class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-[440px] max-w-[calc(100%-2rem)]"
             x-show="clipId !== null && !confirmDelete"
             x-cloak
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 translate-y-2"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 translate-y-2"
         >
-            <button
-                @click="confirmDelete = true"
-                class="flex items-center gap-2 px-4 py-2 bg-red-950/80 border border-red-800/60 text-red-400 rounded-xl text-sm hover:bg-red-900/80 hover:border-red-500 hover:text-red-300 transition-colors backdrop-blur-sm"
-            >
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                    <path d="M10 11v6M14 11v6"/>
-                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                </svg>
-                Delete clip
-            </button>
+            <div class="bg-slate-900/90 border border-slate-700/70 rounded-2xl px-5 py-4 backdrop-blur-md shadow-xl shadow-black/40 flex flex-col gap-4">
+
+                {{-- Sliders --}}
+                <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+
+                    {{-- Speed --}}
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                Speed
+                            </label>
+                            <span class="text-[10px] font-mono text-indigo-400" x-text="parseFloat(speed).toFixed(2) + '×'"></span>
+                        </div>
+                        <input
+                            type="range" min="0.25" max="2" step="0.05"
+                            x-model="speed"
+                            @input="setSpeed($event.target.value)"
+                            class="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-indigo-500 bg-slate-700"
+                        />
+                        <div class="flex justify-between text-[9px] text-slate-600">
+                            <span>0.25×</span><span>1×</span><span>2×</span>
+                        </div>
+                    </div>
+
+                    {{-- Expressiveness --}}
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                                Expressiveness
+                            </label>
+                            <span class="text-[10px] font-mono text-indigo-400" x-text="Math.round(expressiveness * 100) + '%'"></span>
+                        </div>
+                        <input
+                            type="range" min="0" max="1.5" step="0.05"
+                            x-model="expressiveness"
+                            @input="setExpressiveness($event.target.value)"
+                            class="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-indigo-500 bg-slate-700"
+                        />
+                        <div class="flex justify-between text-[9px] text-slate-600">
+                            <span>Subtle</span><span>Normal</span><span>Exaggerated</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                {{-- Divider + action row --}}
+                <div class="border-t border-slate-700/50 pt-3 flex items-center justify-between gap-3">
+
+                    {{-- Delete (left, subdued) --}}
+                    <button
+                        @click="confirmDelete = true"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-transparent border border-red-900/50 text-red-500 text-xs hover:bg-red-950/60 hover:border-red-700 hover:text-red-400 transition-colors"
+                    >
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                        Delete clip
+                    </button>
+
+                    {{-- Bake (right, prominent) --}}
+                    <button
+                        @click="bake()"
+                        :disabled="baked"
+                        :class="baked
+                            ? 'bg-teal-900/30 border-teal-700/50 text-teal-400 cursor-default'
+                            : 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300 hover:bg-indigo-600/40 hover:border-indigo-400 cursor-pointer'"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors"
+                    >
+                        {{-- Baked: checkmark --}}
+                        <template x-if="baked">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </template>
+                        {{-- Unbaked: flame / save icon --}}
+                        <template x-if="!baked">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 8v4l3 3"/></svg>
+                        </template>
+                        <span x-text="baked ? 'Baked' : 'Bake settings'"></span>
+                    </button>
+
+                </div>
+
+            </div>
         </div>
 
         {{-- Delete confirmation modal --}}
