@@ -1,29 +1,7 @@
 <div
     class="flex overflow-hidden"
     style="height: calc(100vh - 64px)"
-    x-data="{
-        openSection: 'animation',
-        flickities: {},
-        initFlickity() {
-            ['idle','presenting','greeting'].forEach(cat => {
-                this.flickities[cat]?.destroy();
-                const el = this.$el.querySelector('[data-flickity-cat=' + cat + ']');
-                if (el && el.children.length) {
-                    this.flickities[cat] = new Flickity(el, {
-                        freeScroll: true,
-                        contain: true,
-                        prevNextButtons: false,
-                        pageDots: false,
-                        cellAlign: 'left',
-                    });
-                }
-            });
-        }
-    }"
-    x-init="
-        $nextTick(() => initFlickity());
-        $wire.on('clip-uploaded', () => $nextTick(() => initFlickity()));
-    "
+    x-data="{ openSection: 'animation' }"
 >
 
     {{-- ── LEFT SIDEBAR ──────────────────────────────────────────────────── --}}
@@ -161,7 +139,7 @@
     </aside>
 
     {{-- ── MIDDLE PANEL ──────────────────────────────────────────────────── --}}
-    <div class="w-[420px] shrink-0 border-r border-slate-700/50 overflow-y-auto p-6 bg-slate-900/30">
+    <div class="w-[420px] shrink-0 border-r border-slate-700/50 overflow-y-auto overflow-x-hidden p-6 bg-slate-900/30">
 
         @if($activeSection === 'animation-groups')
 
@@ -186,45 +164,53 @@
                     @php $clips = $clipsByCategory->get($cat, collect()) @endphp
 
                     @if($clips->isEmpty())
-                        <p class="text-slate-600 text-xs py-4 italic">No clips yet — upload a Mixamo FBX with "In Place" checked.</p>
+                        <p class="text-slate-600 text-xs py-3 italic">No clips yet — upload a Mixamo FBX with "In Place" checked.</p>
                     @else
-                        <div data-flickity-cat="{{ $cat }}" class="flex gap-3 overflow-hidden">
-                            @foreach($clips as $clip)
-                                @php
-                                    $icons = [
-                                        'idle'       => 'standing',
-                                        'presenting' => 'walking',
-                                        'greeting'   => 'waving',
-                                    ];
-                                    $icon = $icons[$cat] ?? 'standing';
-                                @endphp
-                                <div class="shrink-0">
+                        @php
+                            $icons   = ['idle' => 'standing', 'presenting' => 'walking', 'greeting' => 'waving'];
+                            $icon    = $icons[$cat] ?? 'standing';
+                            $scroll  = $clips->count() > 4;
+                        @endphp
+                        {{-- Scroll-snap row: activates when > 4 clips, otherwise wraps --}}
+                        <div class="relative">
+                            <div class="flex gap-2 pb-2
+                                {{ $scroll ? 'overflow-x-auto scroll-smooth' : 'flex-wrap' }}"
+                                style="{{ $scroll ? 'scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;' : '' }}"
+                            >
+                                @foreach($clips as $clip)
                                     <button
                                         wire:click="loadPreview({{ $clip->id }})"
-                                        class="w-36 rounded-xl pt-3 px-3 pb-0 flex flex-col items-center transition-all border
+                                        style="{{ $scroll ? 'scroll-snap-align:start;' : '' }}"
+                                        class="shrink-0 w-[72px] rounded-xl p-2 flex flex-col items-center gap-1 transition-all border
                                             {{ $previewClipId === $clip->id
-                                                ? 'border-amber-400 bg-slate-700/80 shadow-lg shadow-amber-500/10'
-                                                : 'border-slate-700 bg-slate-800/80 hover:border-indigo-500/50 hover:bg-slate-800' }}"
+                                                ? 'border-amber-400 bg-slate-700/80 shadow-md shadow-amber-500/10'
+                                                : 'border-slate-700/60 bg-slate-800/60 hover:border-indigo-500/50 hover:bg-slate-800' }}"
                                     >
-                                        <div class="w-full flex justify-end mb-1">
-                                            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                                        {{-- Assigned indicator --}}
+                                        <div class="w-full flex justify-end">
+                                            <div class="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0
                                                 {{ $assignedClipIds->contains($clip->id)
                                                     ? 'bg-indigo-500 border-indigo-400 text-white'
-                                                    : 'border-slate-500 bg-transparent' }}">
+                                                    : 'border-slate-600 bg-transparent' }}">
                                                 @if($assignedClipIds->contains($clip->id))
-                                                    <svg class="w-2.5 h-2.5" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                                    <svg class="w-2 h-2" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                                 @endif
                                             </div>
                                         </div>
 
-                                        <x-animation-icon :type="$icon" class="w-16 h-16 text-indigo-400" />
+                                        <x-animation-icon :type="$icon" class="w-8 h-8 text-indigo-400" />
 
-                                        <span class="text-xs text-slate-300 text-center leading-tight mt-2 pb-3 line-clamp-2">
+                                        <span class="text-[10px] text-slate-400 text-center leading-tight w-full truncate px-0.5">
                                             {{ $clip->name }}
                                         </span>
                                     </button>
-                                </div>
-                            @endforeach
+                                @endforeach
+                            </div>
+
+                            {{-- Fade-out hint when scrollable --}}
+                            @if($scroll)
+                                <div class="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-slate-900/80 to-transparent pointer-events-none rounded-r-xl"></div>
+                            @endif
                         </div>
                     @endif
                 </div>
@@ -270,42 +256,123 @@
     </div>
 
     {{-- ── RIGHT VIEWPORT ────────────────────────────────────────────────── --}}
-    <div class="flex-1 relative overflow-hidden bg-slate-950">
+    <div
+        class="flex-1 relative overflow-hidden bg-slate-950"
+        x-data="{ clipId: null, clipName: '', isAssigned: false, confirmDelete: false }"
+        x-on:preview-clip.window="clipId = $event.detail.clipId; clipName = $event.detail.clipName; isAssigned = $event.detail.isAssigned; confirmDelete = false"
+    >
 
-        {{-- Top overlay: animation name + Use button --}}
-        @if($previewClipId)
-            <div class="absolute top-4 right-4 z-10 flex items-center gap-3">
-                <span class="text-slate-300 text-sm font-medium drop-shadow">{{ $previewClipName }}</span>
-                <button
-                    wire:click="useClip"
-                    class="flex items-center gap-2 px-4 py-2 bg-slate-800/90 border border-slate-600 rounded-xl text-sm text-slate-200 hover:border-indigo-500 transition-colors backdrop-blur-sm"
+        {{-- Top overlay: clip name + Use/Remove toggle --}}
+        <div
+            class="absolute top-4 right-4 z-10 flex items-center gap-3"
+            x-show="clipId !== null"
+            x-cloak
+            id="viewport-overlay"
+        >
+            <span class="text-slate-300 text-sm font-medium drop-shadow" x-text="clipName"></span>
+            <button
+                wire:click="useClip"
+                @click="isAssigned = !isAssigned"
+                :class="isAssigned
+                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300 hover:bg-red-900/30 hover:border-red-500 hover:text-red-300'
+                    : 'bg-slate-800/90 border-slate-600 text-slate-200 hover:border-indigo-500'"
+                class="flex items-center gap-2 px-4 py-2 border rounded-xl text-sm transition-colors backdrop-blur-sm"
+            >
+                <span x-text="isAssigned ? 'Remove' : 'Use'"></span>
+                <span
+                    class="w-5 h-5 rounded-full flex items-center justify-center transition-colors"
+                    :class="isAssigned ? 'bg-indigo-500' : 'bg-slate-600'"
                 >
-                    Use
-                    <span class="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center">
-                        <svg class="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </span>
-                </button>
-            </div>
-        @endif
+                    <svg x-show="isAssigned" class="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <svg x-show="!isAssigned" class="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </span>
+            </button>
+        </div>
 
+        {{-- Bottom overlay: delete clip button --}}
+        <div
+            class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10"
+            x-show="clipId !== null && !confirmDelete"
+            x-cloak
+        >
+            <button
+                @click="confirmDelete = true"
+                class="flex items-center gap-2 px-4 py-2 bg-red-950/80 border border-red-800/60 text-red-400 rounded-xl text-sm hover:bg-red-900/80 hover:border-red-500 hover:text-red-300 transition-colors backdrop-blur-sm"
+            >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6M14 11v6"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+                Delete clip
+            </button>
+        </div>
+
+        {{-- Delete confirmation modal --}}
+        <div
+            class="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            x-show="confirmDelete"
+            x-cloak
+            x-transition:enter="transition ease-out duration-150"
+            x-transition:enter-start="opacity-0 scale-95"
+            x-transition:enter-end="opacity-100 scale-100"
+            x-transition:leave="transition ease-in duration-100"
+            x-transition:leave-start="opacity-100 scale-100"
+            x-transition:leave-end="opacity-0 scale-95"
+        >
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-80 shadow-2xl shadow-black/60 flex flex-col gap-4">
+                {{-- Icon + title --}}
+                <div class="flex flex-col items-center gap-3 text-center">
+                    <div class="w-12 h-12 rounded-full bg-red-950/60 border border-red-800/50 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-slate-100 font-semibold text-base">Are you sure?</p>
+                        <p class="text-slate-400 text-sm mt-1">
+                            Delete animation clip
+                            <span class="text-slate-200 font-medium" x-text="clipName"></span>?
+                        </p>
+                        <p class="text-slate-500 text-xs mt-1">This action cannot be undone.</p>
+                    </div>
+                </div>
+
+                {{-- Actions --}}
+                <div class="flex gap-3">
+                    <button
+                        @click="confirmDelete = false"
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-700 hover:border-slate-600 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        @click="$wire.deleteClip(clipId); clipId = null; confirmDelete = false"
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-red-700 border border-red-600 text-white text-sm font-semibold hover:bg-red-600 transition-colors"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {{-- Canvas — wire:ignore keeps Livewire from ever touching this subtree --}}
         @if(! $selectedAvatarId)
             <div class="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
                 ← Select an avatar to load the 3D viewport
             </div>
         @else
-            <canvas
-                id="avatar-lab-canvas"
-                class="w-full h-full block"
-                x-init="
-                    const canvas = $el;
-                    const characterUrl = '/avatars/{{ $selectedAvatarId }}/character.glb';
-                    if (window.Avatar3DPlayer) {
-                        window._avatar3d?.destroy();
-                        window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl });
-                        window._avatar3d.init().catch(console.error);
-                    }
-                "
-            ></canvas>
+            <div class="w-full h-full" wire:ignore>
+                <canvas
+                    id="avatar-lab-canvas"
+                    data-character-url="/avatars/{{ $selectedAvatarId }}/character.glb"
+                    class="w-full h-full block"
+                ></canvas>
+            </div>
         @endif
 
     </div>
@@ -313,3 +380,5 @@
 </div>
 
 @vite('resources/js/avatar-3d.js')
+
+

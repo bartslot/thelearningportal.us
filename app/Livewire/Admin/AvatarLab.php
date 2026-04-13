@@ -167,11 +167,19 @@ class AvatarLab extends Component
         $this->previewClipId   = $clipId;
         $this->previewClipName = $clip->name;
 
+        // Is this clip already in the controller pool?
+        $controller = $this->selectedAvatarId
+            ? AvatarAnimationController::where('avatar_id', $this->selectedAvatarId)->first()
+            : null;
+        $data       = $controller?->controller ?? AvatarAnimationController::defaultControllerData();
+        $isAssigned = in_array((string) $clipId, $data[$clip->category] ?? [], true);
+
         $this->dispatch('preview-clip',
-            clipId:   $clipId,
-            clipName: $clip->name,
-            category: $clip->category,
-            fbxUrl:   $clip->fbxUrl(),
+            clipId:     $clipId,
+            clipName:   $clip->name,
+            category:   $clip->category,
+            fbxUrl:     $clip->fbxUrl(),
+            isAssigned: $isAssigned,
         );
     }
 
@@ -221,8 +229,17 @@ class AvatarLab extends Component
             return;
         }
 
-        $clip = AnimationClip::findOrFail($this->previewClipId);
-        $this->assignToController($this->selectedAvatarId, $clip->category, $this->previewClipId);
+        $clip       = AnimationClip::findOrFail($this->previewClipId);
+        $controller = AvatarAnimationController::where('avatar_id', $this->selectedAvatarId)->first();
+        $data       = $controller?->controller ?? AvatarAnimationController::defaultControllerData();
+        $pool       = $data[$clip->category] ?? [];
+
+        // Toggle: remove if already assigned, add if not
+        if (in_array((string) $this->previewClipId, $pool, true)) {
+            $this->removeFromController($this->selectedAvatarId, $clip->category, $this->previewClipId);
+        } else {
+            $this->assignToController($this->selectedAvatarId, $clip->category, $this->previewClipId);
+        }
     }
 
     // ── Render ────────────────────────────────────────────────────────────
@@ -247,6 +264,6 @@ class AvatarLab extends Component
 
         return view('livewire.admin.avatar-lab', compact(
             'clipsByCategory', 'controllerData', 'assignedClipIds',
-        ))->layout('components.layouts.app', ['title' => 'Avatar Lab']);
+        ))->layout('components.layouts.studio', ['title' => 'Avatar Lab']);
     }
 }

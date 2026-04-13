@@ -51,10 +51,10 @@ const AZURE_BLEND_SHAPES = [
 ]
 
 /**
- * Camera preset. Target Y = 1.649 (world-space eye level measured from the
- * skeleton hierarchy: Hips→Spine→…→LeftEye in the bundled RPM GLB).
+ * Camera preset. Target Y = 0.9 (mid-body) centres the full character in frame.
+ * Camera sits at Z=2.0 for a tighter full-body shot.
  */
-const CAMERA_PRESET = { fov: 52, pos: [0, 1.10, 2.4], target: [0, 1.649, 0] }
+const CAMERA_PRESET = { fov: 52, pos: [0, 0.9, 2.0], target: [0, 0.9, 0] }
 
 /**
  * Pose presets — per-bone LOCAL-space Euler offsets [rx, ry, rz] in degrees,
@@ -170,13 +170,15 @@ export class Avatar3DPlayer {
     this._rafId      = null
 
     // Animation clip (applied to the character rig)
-    this._characterRoot = null   // gltf.scene reference stored after character load
-    this._animMixer     = null   // THREE.AnimationMixer
-    this._animAction    = null   // current THREE.AnimationAction
-    this._animDuration  = 0      // clip duration in seconds
-    this._animPlaying   = false  // is animation currently playing
-    this._fbxLoader     = new FBXLoader()
-    this._bodyAction    = null
+    this._characterRoot      = null   // gltf.scene reference stored after character load
+    this._animMixer          = null   // THREE.AnimationMixer
+    this._animAction         = null   // current THREE.AnimationAction
+    this._animDuration       = 0      // clip duration in seconds
+    this._animPlaying        = false  // is animation currently playing
+    this._fbxLoader          = new FBXLoader()
+    this._bodyAction         = null
+    this._animSpeed          = 1.0   // playback speed multiplier (0.25 – 2.0)
+    this._animExpressiveness = 1.0   // blend weight (0.0 – 1.0)
 
     // Idle
     this._blinkTimer = 0
@@ -335,9 +337,8 @@ export class Avatar3DPlayer {
     const loader = new GLTFLoader()
     const gltf   = await loader.loadAsync(gltfUrl)
 
-    // RPM / Blender GLBs export facing -Z; rotate 180° so the face looks toward
-    // the camera (which sits at +Z) and auto-rotate opens on the front.
-    gltf.scene.rotation.y = Math.PI
+    // This GLB faces +Z by default (toward the camera); no rotation needed.
+    gltf.scene.rotation.y = 0
 
     this._characterRoot = gltf.scene
     this._scene.add(gltf.scene)
@@ -566,11 +567,29 @@ export class Avatar3DPlayer {
   // ── Body animation (FBX from Mixamo) ──────────────────────────────────────
 
   async loadBodyAnimation (fbxUrl) {
-    if (!this._characterRoot || !this._animMixer) return
+    if (!this._characterRoot) return
+
+    // Create mixer lazily — _loadCharacter() doesn't create one
+    if (!this._animMixer) {
+      this._animMixer = new THREE.AnimationMixer(this._characterRoot)
+    }
 
     const fbx  = await new Promise((res, rej) => this._fbxLoader.load(fbxUrl, res, undefined, rej))
     const clip = fbx.animations?.[0]
     if (!clip) { console.warn('[Avatar3D] FBX has no animation clips:', fbxUrl); return }
+
+    // ── Retarget: strip "mixamorig" + optional digit prefix ──
+    // Mixamo exports as "mixamorig1Hips.quaternion" → RPM needs "Hips.quaternion"
+    clip.tracks.forEach(track => {
+      track.name = track.name.replace(/^mixamorig\d*/g, '')
+    })
+
+    // Drop ALL position tracks — Mixamo bakes foot IK + uses cm scale (100× GLB metres).
+    // Position tracks slide the feet and shoot the character off-screen.
+    // Pure rotation tracks are all we need for in-place humanoid animation.
+    clip.tracks = clip.tracks.filter(track => !track.name.endsWith('.position'))
+
+    console.log(`[Avatar3D] Loading body animation: ${fbxUrl} (${clip.tracks.length} tracks)`)
 
     if (this._bodyAction) {
       this._bodyAction.fadeOut(0.3)
@@ -602,6 +621,20 @@ export class Avatar3DPlayer {
 
 // ── Global exposure ──────────────────────────────────────────────────────────
 window.Avatar3DPlayer = Avatar3DPlayer
+
+// ── Auto-init ─────────────────────────────────────────────────────────────────
+// When this module loads, check for a canvas with data-character-url and spin up
+// the player immediately. This avoids the Alpine x-init timing race condition
+// (Alpine runs before module scripts finish loading).
+;(function autoInit () {
+  const canvas = document.getElementById('avatar-lab-canvas')
+  if (!canvas) return
+  const characterUrl = canvas.dataset.characterUrl
+  if (!characterUrl) return
+  window._avatar3d?.destroy()
+  window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl })
+  window._avatar3d.init().catch(err => console.error('[Avatar3D] init failed:', err))
+})()
 
 // ── Livewire event → load preview ────────────────────────────────────────────
 window.addEventListener('avatar3d:previewReady', (ev) => {
