@@ -891,7 +891,7 @@
             {{-- Footer --}}
             <div class="modal-action mt-6">
                 <button
-                    wire:click="saveNewAvatarMeta"
+                    wire:click="saveAndCloseNewAvatar"
                     class="btn btn-primary btn-sm"
                     @disabled(!$newAvatarName)
                 >Save &amp; Close</button>

@@ -279,6 +279,12 @@ class AvatarLab extends Component
         ]);
     }
 
+    public function saveAndCloseNewAvatar(): void
+    {
+        $this->saveNewAvatarMeta();
+        $this->closeNewAvatarModal();
+    }
+
     public function closeNewAvatarModal(): void
     {
         if ($this->newAvatarId) {
