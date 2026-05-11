@@ -10,7 +10,9 @@ use App\Models\AvatarAnimationController;
 use App\Services\ElevenLabsService;
 use App\Services\TtsService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -22,7 +24,7 @@ class AvatarLab extends Component
 
     // Sidebar state
     public ?int   $selectedAvatarId = null;
-    public string $activeSection    = 'animation-groups'; // 'animation-groups' | 'controller'
+    public string $activeSection    = 'avatar'; // 'avatar' | 'animation-groups' | 'controller' | 'narration' | 'settings'
 
     // Viewport state
     public ?int    $previewClipId   = null;
@@ -38,12 +40,10 @@ class AvatarLab extends Component
     public bool    $narrationBusy         = false;
     public ?string $narrationAudioUrl     = null;
     public string  $narrationCachedScript = '';    // script matching the cached audio
+    public array   $narrationAlignment    = [];    // ElevenLabs character timings for cached audio
     public string  $voiceProvider         = 'elevenlabs';
     public string  $voiceId               = '';
     public float   $voiceSpeed            = 1.0;
-
-    // Voice picker state (narration panel)
-    public string $previewProvider = 'elevenlabs';
 
     // Per-category file upload properties
     public $idleFile;
@@ -52,11 +52,21 @@ class AvatarLab extends Component
 
     public Collection $avatars;
 
+    // ── New avatar upload modal state ─────────────────────────────────────────
+    public ?int    $newAvatarId          = null;
+    public string  $newAvatarName        = '';
+    public string  $newAvatarGender      = 'male';
+    public int     $newAvatarAge         = 30;
+    public string  $newAvatarVoiceId     = '';
+    public string  $newAvatarMorphStatus = 'processing';
+    public string  $newAvatarModalTab    = 'info';
+    public $newAvatarGlbFile;
+
     public function mount(): void
     {
-        $this->avatars = Avatar::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
 
-        if ($this->avatars->count() === 1) {
+        if ($this->avatars->isNotEmpty()) {
             $this->selectAvatar($this->avatars->first()->id);
         }
     }
@@ -69,17 +79,20 @@ class AvatarLab extends Component
         $this->gender                = $avatar->gender         ?? 'male';
         $this->age                   = $avatar->age            ?? 35;
         $this->name                  = $avatar->name;
-        $this->voiceProvider         = $avatar->voice_provider ?? 'elevenlabs';
-        $this->previewProvider       = $avatar->voice_provider ?? 'elevenlabs';
+        $this->voiceProvider         = 'elevenlabs';
         $this->voiceId               = $avatar->voice_id       ?? '';
         $this->voiceSpeed            = $avatar->voice_speed    ?? 1.0;
         $this->narrationAudioUrl     = null;
         $this->narrationCachedScript = '';
+        $this->narrationAlignment    = [];
         $this->previewClipId         = null;
         $this->previewClipName       = null;
 
         $defaultScript = "Hey students! My name is {$avatar->name}. Today we're going on an incredible journey through history together. Are you ready? Let's begin!";
         $this->narrationScript = $defaultScript;
+
+        // Sync Alpine store selectedId to the avatar's saved voice
+        $this->dispatch('voice-selected', voiceId: $this->voiceId);
 
         // Tell the JS player to load this avatar's GLB
         $this->dispatch('avatar3d:load', characterUrl: "/avatars/{$avatar->id}/character.glb");
@@ -106,9 +119,6 @@ class AvatarLab extends Component
         if ($firstIdle) {
             $this->loadPreview($firstIdle->id);
         }
-
-        // Pre-generate audio + timings for instant playback
-        $this->generateNarration($avatar, $defaultScript);
     }
 
     // ── Voice picker ──────────────────────────────────────────────────────
@@ -116,22 +126,30 @@ class AvatarLab extends Component
     #[Computed]
     public function voices(): array
     {
-        return match ($this->previewProvider) {
-            'elevenlabs' => app(ElevenLabsService::class)->getVoices(),
-            'edge_tts'   => Avatar::edgeTtsVoicesForCards(),
-            'pocket_tts' => Avatar::pocketTtsVoices(),
-            default      => app(ElevenLabsService::class)->getVoices(),
-        };
+        $all = app(ElevenLabsService::class)->getVoices();
+
+        // Filter to voices matching the avatar's gender (male/female).
+        // Fall back to all voices if none match (e.g. gender not set or API labels missing).
+        $filtered = array_values(array_filter($all, fn ($v) => $v['gender'] === $this->gender));
+
+        return count($filtered) >= 2 ? $filtered : $all;
+    }
+
+    #[Computed]
+    public function newAvatarVoices(): array
+    {
+        $all      = app(ElevenLabsService::class)->getVoices();
+        $filtered = array_values(array_filter($all, fn ($v) => $v['gender'] === $this->newAvatarGender));
+        return count($filtered) >= 2 ? $filtered : $all;
     }
 
     public function selectVoice(string $voiceId): void
     {
         $this->voiceId       = $voiceId;
-        $this->voiceProvider = $this->previewProvider;
+        $this->voiceProvider = 'elevenlabs';
 
         // Persist immediately
         if ($this->selectedAvatarId) {
-            $label = collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId;
             Avatar::where('id', $this->selectedAvatarId)->update([
                 'voice_provider' => $this->voiceProvider,
                 'voice_id'       => $this->voiceId,
@@ -142,6 +160,10 @@ class AvatarLab extends Component
         // Reset cached audio — voice changed
         $this->narrationAudioUrl     = null;
         $this->narrationCachedScript = '';
+        $this->narrationAlignment    = [];
+
+        // Sync the Alpine store's selectedId without relying on DOM scope
+        $this->dispatch('voice-selected', voiceId: $voiceId);
     }
 
     public function updatedVoiceSpeed(float $value): void
@@ -169,6 +191,120 @@ class AvatarLab extends Component
     public function updatedGreetingFile(): void
     {
         $this->processUpload('greeting', $this->greetingFile);
+    }
+
+    public function updatedNewAvatarGlbFile(): void
+    {
+        if (! $this->newAvatarGlbFile) {
+            return;
+        }
+
+        if (strtolower($this->newAvatarGlbFile->getClientOriginalExtension()) !== 'glb') {
+            session()->flash('error', 'Only .glb files are allowed.');
+            $this->reset('newAvatarGlbFile');
+            return;
+        }
+
+        if ($this->newAvatarGlbFile->getSize() > 50 * 1024 * 1024) {
+            session()->flash('error', 'GLB file must be under 50 MB.');
+            $this->reset('newAvatarGlbFile');
+            return;
+        }
+
+        $avatar = Avatar::create([
+            'name'           => 'New Avatar',
+            'slug'           => 'new-avatar-' . uniqid(),
+            'gender'         => 'male',
+            'age'            => 30,
+            'voice_provider' => 'elevenlabs',
+            'voice_id'       => '',
+            'is_active'      => false,
+            'sort_order'     => Avatar::max('sort_order') + 1,
+            'morph_status'   => 'processing',
+        ]);
+
+        $dir = public_path("avatars/{$avatar->id}");
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        $this->newAvatarGlbFile->move($dir, 'character.glb');
+
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+
+        $this->newAvatarId          = $avatar->id;
+        $this->newAvatarName        = '';
+        $this->newAvatarGender      = 'male';
+        $this->newAvatarAge         = 30;
+        $this->newAvatarVoiceId     = '';
+        $this->newAvatarMorphStatus = 'processing';
+        $this->newAvatarModalTab    = 'info';
+
+        \App\Jobs\TransferAvatarMorphs::dispatch($avatar->id);
+
+        $this->reset('newAvatarGlbFile');
+    }
+
+    public function saveNewAvatarMeta(): void
+    {
+        if (! $this->newAvatarId) {
+            return;
+        }
+
+        $slug = Str::slug($this->newAvatarName ?: 'avatar') . '-' . $this->newAvatarId;
+
+        Avatar::where('id', $this->newAvatarId)->update([
+            'name'      => $this->newAvatarName ?: 'New Avatar',
+            'slug'      => $slug,
+            'gender'    => $this->newAvatarGender,
+            'age'       => $this->newAvatarAge,
+            'is_active' => (bool) $this->newAvatarName,
+        ]);
+
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+    }
+
+    public function saveNewAvatarVoice(string $voiceId): void
+    {
+        if (! $this->newAvatarId) {
+            return;
+        }
+
+        $this->newAvatarVoiceId = $voiceId;
+
+        Avatar::where('id', $this->newAvatarId)->update([
+            'voice_provider' => 'elevenlabs',
+            'voice_id'       => $voiceId,
+        ]);
+    }
+
+    public function closeNewAvatarModal(): void
+    {
+        if ($this->newAvatarId) {
+            $avatar = Avatar::find($this->newAvatarId);
+            if ($avatar && ($avatar->name === 'New Avatar' || ! $avatar->name)) {
+                $dir = public_path("avatars/{$this->newAvatarId}");
+                if (is_dir($dir)) {
+                    File::deleteDirectory($dir);
+                }
+                $avatar->forceDelete();
+            }
+        }
+        $this->reset('newAvatarId', 'newAvatarName', 'newAvatarGender', 'newAvatarAge', 'newAvatarVoiceId', 'newAvatarMorphStatus', 'newAvatarModalTab');
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+    }
+
+    public function refreshAvatarList(): void
+    {
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+
+        if ($this->newAvatarId) {
+            $avatar = Avatar::find($this->newAvatarId);
+            $this->newAvatarMorphStatus = $avatar?->morph_status ?? 'failed';
+        }
     }
 
     private function processUpload(string $category, mixed $file): void
@@ -350,30 +486,66 @@ class AvatarLab extends Component
         }
     }
 
+    // ── Arrow key navigation ─────────────────────────────────────────────
+
+    public function arrowNav(int $dir): void
+    {
+        match ($this->activeSection) {
+            'avatar'            => $this->arrowNavAvatar($dir),
+            'animation-groups'  => $this->arrowNavClip($dir),
+            'narration'         => $this->arrowNavAvatar($dir),
+            default             => null,
+        };
+    }
+
+    private function arrowNavAvatar(int $dir): void
+    {
+        $ids = $this->avatars->pluck('id')->values();
+        if ($ids->isEmpty()) return;
+        $idx = $ids->search($this->selectedAvatarId) ?? 0;
+        $next = ($idx + $dir + $ids->count()) % $ids->count();
+        $this->selectAvatar($ids[$next]);
+    }
+
+    private function arrowNavClip(int $dir): void
+    {
+        if (! $this->previewClipId) return;
+        $clip = AnimationClip::find($this->previewClipId);
+        if (! $clip) return;
+        $clips = AnimationClip::where('category', $clip->category)
+            ->orderBy('sort_order')->orderBy('name')->pluck('id')->values();
+        if ($clips->isEmpty()) return;
+        $idx  = $clips->search($this->previewClipId) ?? 0;
+        $next = ($idx + $dir + $clips->count()) % $clips->count();
+        $this->loadPreview($clips[$next]);
+    }
+
     // ── Narration ─────────────────────────────────────────────────────────
 
     public function speakScript(): void
     {
         if (! $this->selectedAvatarId || $this->narrationBusy) return;
 
-        // Pre-generated audio ready — dispatch text + URL for client-side Azure blend shapes
+        // Pre-generated audio ready — replay with cached alignment
         if ($this->narrationAudioUrl && $this->narrationCachedScript === $this->narrationScript) {
             $this->dispatch('avatar3d:speak',
-                audioUrl: $this->narrationAudioUrl,
-                text:     app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+                audioUrl:  $this->narrationAudioUrl,
+                alignment: $this->narrationAlignment,
+                text:      app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
             );
             return;
         }
 
-        // Script changed — regenerate Pocket TTS audio
+        // Script changed — regenerate audio
         $this->narrationBusy = true;
         try {
             $avatar = Avatar::findOrFail($this->selectedAvatarId);
             $this->generateNarration($avatar, $this->narrationScript);
             if ($this->narrationAudioUrl) {
                 $this->dispatch('avatar3d:speak',
-                    audioUrl: $this->narrationAudioUrl,
-                    text:     app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+                    audioUrl:  $this->narrationAudioUrl,
+                    alignment: $this->narrationAlignment,
+                    text:      app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
                 );
             }
         } finally {
@@ -383,47 +555,21 @@ class AvatarLab extends Component
 
     private function generateNarration(Avatar $avatar, string $script): void
     {
-        $tts  = app(\App\Services\TtsService::class);
-        $text = $tts->prepareSpeechText($script);
+        $tts      = app(\App\Services\TtsService::class);
+        $text     = $tts->prepareSpeechText($script);
+        $voiceId  = $this->voiceId ?: $avatar->voice_id;
+        $provider = $this->voiceProvider ?: $avatar->voice_provider;
 
-        if ($avatar->voice_provider === 'pocket_tts') {
-            $audio = $this->callPocketTts($text, $avatar->voice_id);
-            if (! $audio) return;
-            $path = "avatars/lab-narration/{$avatar->id}-narration.wav";
-            Storage::disk('public')->put($path, $audio);
-            $this->narrationAudioUrl     = '/storage/' . $path;
-            $this->narrationCachedScript = $script;
-            return;
-        }
-
-        $audio = $tts->generateAudioRaw($script, $avatar->voice_id, $avatar->voice_speed, $avatar->voice_provider);
+        $timingData = null;
+        $audio = $tts->generateAudioRaw($text, $voiceId, $avatar->voice_speed ?? 1.0, $provider, $timingData);
         if (! $audio) return;
+
         $ext  = $tts->lastExtension();
         $path = "avatars/lab-narration/{$avatar->id}-narration.{$ext}";
         Storage::disk('public')->put($path, $audio);
         $this->narrationAudioUrl     = '/storage/' . $path;
         $this->narrationCachedScript = $script;
-    }
-
-    private function callPocketTts(string $text, string $wavPath): ?string
-    {
-        $url = rtrim(config('services.pocket_tts.url', 'http://localhost:8001'), '/');
-
-        if (! file_exists($wavPath)) {
-            \Illuminate\Support\Facades\Log::warning("Pocket TTS: voice WAV not found at {$wavPath}");
-            return null;
-        }
-
-        try {
-            $response = \Illuminate\Support\Facades\Http::timeout(90)
-                ->attach('voice_wav', file_get_contents($wavPath), basename($wavPath))
-                ->post("{$url}/tts", ['text' => $text]);
-
-            return $response->successful() ? $response->body() : null;
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::warning('Pocket TTS failed: ' . $e->getMessage());
-            return null;
-        }
+        $this->narrationAlignment    = $timingData['character_timings'] ?? [];
     }
 
     // ── Render ────────────────────────────────────────────────────────────
@@ -445,6 +591,10 @@ class AvatarLab extends Component
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
+
+        if ($this->activeSection === 'narration') {
+            $this->dispatch('avatar3d:zoomtohead');
+        }
 
         return view('livewire.admin.avatar-lab', compact(
             'clipsByCategory', 'controllerData', 'assignedClipIds',
