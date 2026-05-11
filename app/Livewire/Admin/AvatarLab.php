@@ -7,7 +7,9 @@ namespace App\Livewire\Admin;
 use App\Models\AnimationClip;
 use App\Models\Avatar;
 use App\Models\AvatarAnimationController;
+use App\Services\TtsService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -29,8 +31,14 @@ class AvatarLab extends Component
     public int    $age    = 35;
     public string $name   = '';
 
-    // Audio section
-    public string $testScript = '';
+    // Narration & Audio
+    public string  $narrationScript       = '';
+    public bool    $narrationBusy         = false;
+    public ?string $narrationAudioUrl     = null;
+    public string  $narrationCachedScript = '';    // script matching the cached audio
+    public string  $voiceProvider         = 'edge_tts';
+    public string  $voiceId               = '';
+    public float   $voiceSpeed            = 1.0;
 
     // Per-category file upload properties
     public $idleFile;
@@ -52,12 +60,49 @@ class AvatarLab extends Component
     {
         $avatar = Avatar::findOrFail((int) $id);
 
-        $this->selectedAvatarId = $avatar->id;
-        $this->gender           = $avatar->gender           ?? 'male';
-        $this->age              = $avatar->age              ?? 35;
-        $this->name             = $avatar->name;
-        $this->previewClipId    = null;
-        $this->previewClipName  = null;
+        $this->selectedAvatarId      = $avatar->id;
+        $this->gender                = $avatar->gender         ?? 'male';
+        $this->age                   = $avatar->age            ?? 35;
+        $this->name                  = $avatar->name;
+        $this->voiceProvider         = $avatar->voice_provider ?? 'edge_tts';
+        $this->voiceId               = $avatar->voice_id       ?? '';
+        $this->voiceSpeed            = $avatar->voice_speed    ?? 1.0;
+        $this->narrationAudioUrl     = null;
+        $this->narrationCachedScript = '';
+        $this->previewClipId         = null;
+        $this->previewClipName       = null;
+
+        $defaultScript = "Hey students! My name is {$avatar->name}. Today we're going on an incredible journey through history together. Are you ready? Let's begin!";
+        $this->narrationScript = $defaultScript;
+
+        // Tell the JS player to load this avatar's GLB
+        $this->dispatch('avatar3d:load', characterUrl: "/avatars/{$avatar->id}/character.glb");
+
+        // Auto-play first working idle: prefer clips assigned to this avatar's controller,
+        // fall back to any global idle that has an FBX file on disk.
+        $controller     = AvatarAnimationController::where('avatar_id', $avatar->id)->first();
+        $controllerData = $controller?->controller ?? AvatarAnimationController::defaultControllerData();
+        $assignedIds    = $controllerData['idle'] ?? [];
+
+        $firstIdle = ! empty($assignedIds)
+            ? AnimationClip::whereIn('id', $assignedIds)
+                ->where('category', 'idle')
+                ->where('fbx_path', '!=', '')
+                ->orderBy('sort_order')
+                ->first()
+            : null;
+
+        $firstIdle ??= AnimationClip::where('category', 'idle')
+            ->where('fbx_path', '!=', '')
+            ->orderBy('sort_order')
+            ->first();
+
+        if ($firstIdle) {
+            $this->loadPreview($firstIdle->id);
+        }
+
+        // Pre-generate audio + timings for instant playback
+        $this->generateNarration($avatar, $defaultScript);
     }
 
     // ── File upload lifecycle hooks ────────────────────────────────────────
@@ -178,7 +223,7 @@ class AvatarLab extends Component
             clipId:          $clipId,
             clipName:        $clip->name,
             category:        $clip->category,
-            fbxUrl:          $clip->fbxUrl(),
+            fbxUrl:          $clip->fbx_path ? $clip->fbxUrl() : null,
             isAssigned:      $isAssigned,
             speed:           $clip->speed           ?? 1.0,
             expressiveness:  $clip->expressiveness  ?? 1.0,
@@ -253,6 +298,82 @@ class AvatarLab extends Component
             $this->removeFromController($this->selectedAvatarId, $clip->category, $this->previewClipId);
         } else {
             $this->assignToController($this->selectedAvatarId, $clip->category, $this->previewClipId);
+        }
+    }
+
+    // ── Narration ─────────────────────────────────────────────────────────
+
+    public function speakScript(): void
+    {
+        if (! $this->selectedAvatarId || $this->narrationBusy) return;
+
+        // Pre-generated audio ready — dispatch text + URL for client-side Azure blend shapes
+        if ($this->narrationAudioUrl && $this->narrationCachedScript === $this->narrationScript) {
+            $this->dispatch('avatar3d:speak',
+                audioUrl: $this->narrationAudioUrl,
+                text:     app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+            );
+            return;
+        }
+
+        // Script changed — regenerate Pocket TTS audio
+        $this->narrationBusy = true;
+        try {
+            $avatar = Avatar::findOrFail($this->selectedAvatarId);
+            $this->generateNarration($avatar, $this->narrationScript);
+            if ($this->narrationAudioUrl) {
+                $this->dispatch('avatar3d:speak',
+                    audioUrl: $this->narrationAudioUrl,
+                    text:     app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+                );
+            }
+        } finally {
+            $this->narrationBusy = false;
+        }
+    }
+
+    private function generateNarration(Avatar $avatar, string $script): void
+    {
+        $tts  = app(\App\Services\TtsService::class);
+        $text = $tts->prepareSpeechText($script);
+
+        if ($avatar->voice_provider === 'pocket_tts') {
+            $audio = $this->callPocketTts($text, $avatar->voice_id);
+            if (! $audio) return;
+            $path = "avatars/lab-narration/{$avatar->id}-narration.wav";
+            Storage::disk('public')->put($path, $audio);
+            $this->narrationAudioUrl     = '/storage/' . $path;
+            $this->narrationCachedScript = $script;
+            return;
+        }
+
+        $audio = $tts->generateAudioRaw($script, $avatar->voice_id, $avatar->voice_speed, $avatar->voice_provider);
+        if (! $audio) return;
+        $ext  = $tts->lastExtension();
+        $path = "avatars/lab-narration/{$avatar->id}-narration.{$ext}";
+        Storage::disk('public')->put($path, $audio);
+        $this->narrationAudioUrl     = '/storage/' . $path;
+        $this->narrationCachedScript = $script;
+    }
+
+    private function callPocketTts(string $text, string $wavPath): ?string
+    {
+        $url = rtrim(config('services.pocket_tts.url', 'http://localhost:8001'), '/');
+
+        if (! file_exists($wavPath)) {
+            \Illuminate\Support\Facades\Log::warning("Pocket TTS: voice WAV not found at {$wavPath}");
+            return null;
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(90)
+                ->attach('voice_wav', file_get_contents($wavPath), basename($wavPath))
+                ->post("{$url}/tts", ['text' => $text]);
+
+            return $response->successful() ? $response->body() : null;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Pocket TTS failed: ' . $e->getMessage());
+            return null;
         }
     }
 

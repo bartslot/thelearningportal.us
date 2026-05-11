@@ -185,6 +185,24 @@ export class Avatar3DPlayer {
     this._blinkNext  = 3000
     this._clock      = new THREE.Clock()
     this._resizeObs  = null
+
+    // Gaze — character looks at viewer face zones (left eye / right eye / mouth)
+    this._gazeTimer   = 800 + Math.random() * 1200  // ms until first gaze shift
+    this._gazeTarget  = new THREE.Vector3(0, 0.9, 2.0)
+    this._gazeYaw     = 0   // current smoothed yaw   (radians, char-local)
+    this._gazePitch   = 0   // current smoothed pitch (radians, char-local)
+    this._neckBaseQ   = null  // neck quaternion snapshot taken after mixer, before gaze
+
+    // Viseme playback (amplitude-driven via Web Audio)
+    this._visemeTimings  = []
+    this._audioCtx       = null
+    this._analyser       = null
+    this._analyserBuf    = null
+
+    // Camera lerp
+    this._camLerpT  = 1.0
+    this._camFrom   = null
+    this._camTarget = null
   }
 
   // ── Initialisation ─────────────────────────────────────────────────────────
@@ -275,6 +293,126 @@ export class Avatar3DPlayer {
     }
   }
 
+  /** Smooth camera dolly to head close-up. */
+  zoomToHead () {
+    this._camTarget = { pos: new THREE.Vector3(0, 1.62, 0.55), look: new THREE.Vector3(0, 1.62, 0), fov: 28 }
+    this._camLerpT  = 0
+    this._camFrom   = {
+      pos:  this._camera.position.clone(),
+      look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
+      fov:  this._camera.fov,
+    }
+  }
+
+  /** Smooth camera dolly back to full-body. */
+  zoomToBody () {
+    this._camTarget = { pos: new THREE.Vector3(...CAMERA_PRESET.pos), look: new THREE.Vector3(...CAMERA_PRESET.target), fov: CAMERA_PRESET.fov }
+    this._camLerpT  = 0
+    this._camFrom   = {
+      pos:  this._camera.position.clone(),
+      look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
+      fov:  this._camera.fov,
+    }
+  }
+
+  /**
+   * Speak audio with amplitude-driven jaw animation via Web Audio AnalyserNode.
+   * Word timings are ignored — real-time RMS from the audio drives jawOpen.
+   */
+  speakWithVisemes (audioUrl) {
+    // Tear down previous audio
+    if (this._audio) { this._audio.pause(); this._audio = null }
+    if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
+    this._analyser    = null
+    this._analyserBuf = null
+    this._frames      = []
+    this._visemeTimings = []
+
+    const audio = new Audio(audioUrl)
+    this._audio = audio
+
+    audio.addEventListener('ended', () => {
+      this._playing = false
+      this._clearMouthShapes()
+    })
+
+    this._playing = false
+    this.zoomToHead()
+
+    // Slight delay so zoom starts before audio plays
+    setTimeout(() => {
+      // Set up Web Audio analyser for real-time amplitude
+      try {
+        const Ctx      = window.AudioContext || window.webkitAudioContext
+        const ctx      = new Ctx()
+        const source   = ctx.createMediaElementSource(audio)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize              = 256
+        analyser.smoothingTimeConstant = 0.6
+        source.connect(analyser)
+        analyser.connect(ctx.destination)
+        this._audioCtx    = ctx
+        this._analyser    = analyser
+        this._analyserBuf = new Uint8Array(analyser.frequencyBinCount)
+        // Resume context (may be suspended if no prior gesture)
+        ctx.resume().catch(() => {})
+      } catch (e) {
+        console.warn('[Avatar3D] Web Audio setup failed, jaw animation disabled:', e)
+      }
+
+      audio.play().catch(e => console.warn('[Avatar3D] audio.play() failed:', e))
+      this._playing = true
+    }, 600)
+  }
+
+  _clearMouthShapes () {
+    if (!this._meshes.length) return
+    const dict = this._meshes[0].morphTargetDictionary
+    if (!dict) return
+    for (const name of ['jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthSmileLeft', 'mouthSmileRight', 'mouthRollLower']) {
+      const i = dict[name]
+      if (i !== undefined) for (const m of this._meshes) m.morphTargetInfluences[i] = 0
+    }
+  }
+
+  /** Drive jawOpen from real-time audio RMS via Web Audio AnalyserNode. */
+  _applyVisemes () {
+    if (!this._meshes.length || !this._analyser) return
+    const dict = this._meshes[0].morphTargetDictionary
+    if (!dict) return
+
+    const jawIdx    = dict['jawOpen']
+    const funnelIdx = dict['mouthFunnel']
+    if (jawIdx === undefined) return
+
+    // Sample frequency-domain data and compute RMS of speech band (100-3000 Hz)
+    this._analyser.getByteFrequencyData(this._analyserBuf)
+    const buf        = this._analyserBuf
+    const sampleRate = this._audioCtx?.sampleRate ?? 44100
+    const binHz      = sampleRate / (this._analyser.fftSize)
+    const loIdx      = Math.floor(100  / binHz)
+    const hiIdx      = Math.min(buf.length - 1, Math.floor(3000 / binHz))
+    let sum = 0
+    for (let i = loIdx; i <= hiIdx; i++) sum += buf[i] * buf[i]
+    const rms = Math.sqrt(sum / Math.max(1, hiIdx - loIdx + 1))
+
+    // Map RMS (0-255 scale) → jaw target (0-0.7)
+    const targetJaw    = Math.min(0.7,  (rms / 255) * 2.2)
+    const targetFunnel = Math.min(0.35, (rms / 255) * 1.1)
+
+    // Smooth lerp — fast open, slower close
+    const lerpSpeed = targetJaw > (this._meshes[0].morphTargetInfluences[jawIdx] || 0) ? 0.35 : 0.18
+
+    for (const m of this._meshes) {
+      const cur = m.morphTargetInfluences[jawIdx] || 0
+      m.morphTargetInfluences[jawIdx] = cur + (targetJaw - cur) * lerpSpeed
+      if (funnelIdx !== undefined) {
+        const curF = m.morphTargetInfluences[funnelIdx] || 0
+        m.morphTargetInfluences[funnelIdx] = curF + (targetFunnel - curF) * lerpSpeed
+      }
+    }
+  }
+
   resize (w, h) {
     if (!this._renderer || w === 0 || h === 0) return
     this._renderer.setSize(w, h, false)
@@ -337,9 +475,15 @@ export class Avatar3DPlayer {
     const loader = new GLTFLoader()
     const gltf   = await loader.loadAsync(gltfUrl)
 
-    // This GLB faces +Z by default (toward the camera); no rotation needed.
-    gltf.scene.rotation.y = 0
+    // Remove previous character if swapping
+    if (this._characterRoot) {
+      this._scene.remove(this._characterRoot)
+      this._animMixer?.stopAllAction()
+      this._animMixer = null
+      this._bodyAction = null
+    }
 
+    gltf.scene.rotation.y = 0
     this._characterRoot = gltf.scene
     this._scene.add(gltf.scene)
 
@@ -372,9 +516,8 @@ export class Avatar3DPlayer {
 
     console.log(`[Avatar3D] ${Object.keys(this._boneMap).length} bones captured`)
 
-    // Immediately apply default relaxed pose (no transition — character spawns posed)
-    this._applyPoseInstant('relaxed')
-    this._currentPose = 'relaxed'
+    // Use the GLB's baked rest pose (A-pose from Blender export) — no offset applied.
+    this._currentPose = 'tpose'
     this._poseLerpT   = 1.0
   }
 
@@ -421,6 +564,135 @@ export class Avatar3DPlayer {
   pause () {
     this._audio?.pause()
     this._playing = false
+  }
+
+  // ── Azure blend shape speech ───────────────────────────────────────────────
+
+  /**
+   * Synthesise text via Azure Speech SDK (browser-side) to get per-frame blend shapes,
+   * then play the provided audioUrl (e.g. Pocket TTS cloned voice) with those blend
+   * shapes time-scaled to match the actual audio duration.
+   *
+   * Requires window.SpeechSDK (microsoft-cognitiveservices-speech-sdk CDN bundle).
+   */
+  async speakWithAzureBlendShapes (audioUrl, text, azureKey, azureRegion) {
+    if (!window.SpeechSDK) {
+      console.warn('[Avatar3D] Azure Speech SDK not loaded — falling back to amplitude visemes')
+      this.speakWithVisemes(audioUrl)
+      return
+    }
+
+    const sdk = window.SpeechSDK
+
+    // Build SSML with FacialExpression viseme tag
+    const escaped = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-GuyNeural">
+    <mstts:viseme type="FacialExpression"/>
+    ${escaped}
+  </voice>
+</speak>`
+
+    const config = sdk.SpeechConfig.fromSubscription(azureKey, azureRegion)
+    config.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Raw22050Hz16BitMonoPcm
+
+    // Collect blend shape frames from viseme events
+    const framesBuffer = {}
+    const framesOrdered = []
+
+    const synthesizer = new sdk.SpeechSynthesizer(config, null)
+
+    synthesizer.visemeReceived = (s, e) => {
+      try {
+        if (!e.animation) return
+        const anim       = JSON.parse(e.animation)
+        const frameIndex = anim.FrameIndex
+        const shapes     = anim.BlendShapes   // array of arrays (multiple frames per event)
+
+        if (frameIndex === framesOrdered.length) {
+          framesOrdered.push(...shapes)
+          let next = framesOrdered.length
+          while (framesBuffer[next]) {
+            const buffered = framesBuffer[next]
+            framesOrdered.push(...buffered)
+            delete framesBuffer[next]
+            next = framesOrdered.length
+          }
+        } else if (frameIndex > framesOrdered.length) {
+          framesBuffer[frameIndex] = shapes
+        }
+      } catch (err) {
+        console.warn('[Avatar3D] viseme parse error:', err)
+      }
+    }
+
+    // Perform synthesis — audio discarded, we only need the viseme frames
+    const azureDone = new Promise((resolve, reject) => {
+      synthesizer.speakSsmlAsync(ssml,
+        (result) => {
+          synthesizer.close()
+          if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+            resolve()
+          } else {
+            reject(new Error(`Azure TTS failed: ${result.reason}`))
+          }
+        },
+        (err) => { synthesizer.close(); reject(err) }
+      )
+    })
+
+    // Load the Pocket TTS audio element to get its duration in parallel
+    const audioDuration = new Promise((resolve) => {
+      const a = new Audio(audioUrl)
+      a.addEventListener('loadedmetadata', () => resolve(a.duration))
+      a.addEventListener('error', () => resolve(0))
+    })
+
+    try {
+      const [, pocketSecs] = await Promise.all([azureDone, audioDuration])
+
+      if (!framesOrdered.length) {
+        console.warn('[Avatar3D] Azure returned 0 viseme frames — check SSML / API key')
+        this.speakWithVisemes(audioUrl)
+        return
+      }
+
+      const FPS         = 60
+      const azureSecs   = framesOrdered.length / FPS
+      const timeScale   = pocketSecs > 0.1 && azureSecs > 0.1 ? pocketSecs / azureSecs : 1
+
+      // Build _frames in the format expected by _applyBlendShapes: [{t, w:[52 floats]}]
+      this._frames = framesOrdered.map((weights, i) => ({
+        t: (i / FPS) * timeScale,
+        w: weights,
+      }))
+
+      console.log(`[Avatar3D] Azure: ${framesOrdered.length} frames, azure=${azureSecs.toFixed(2)}s, pocket=${pocketSecs.toFixed(2)}s, scale=${timeScale.toFixed(3)}`)
+
+      // Play the Pocket TTS audio with Azure blend shapes driving the face
+      if (this._audio) { this._audio.pause(); this._audio = null }
+      if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
+      this._visemeTimings = []
+
+      const audio = new Audio(audioUrl)
+      this._audio = audio
+      audio.addEventListener('ended', () => {
+        this._playing = false
+        this._clearMouthShapes()
+      })
+
+      this._playing = false
+      this.zoomToHead()
+      setTimeout(() => {
+        audio.play().catch(e => console.warn('[Avatar3D] play() failed:', e))
+        this._playing = true
+      }, 600)
+
+    } catch (err) {
+      console.warn('[Avatar3D] Azure blend shapes failed, falling back:', err)
+      this.speakWithVisemes(audioUrl)
+    }
   }
 
   // ── Animation clip ─────────────────────────────────────────────────────────
@@ -493,12 +765,28 @@ export class Avatar3DPlayer {
     this._rafId = requestAnimationFrame(() => this._loop())
     const delta = this._clock.getDelta()
 
-    if (this._playing && this._meshes.length > 0 && this._frames.length > 0) {
-      this._applyBlendShapes(this._audio.currentTime)
+    if (this._playing && this._meshes.length > 0) {
+      if (this._frames.length > 0) {
+        this._applyBlendShapes(this._audio.currentTime)
+      } else {
+        this._applyVisemes()
+      }
     }
 
     this._animMixer?.update(delta)
+    // Snapshot neck base AFTER mixer runs.
+    // When mixer is active it resets the bone each frame → snapshot its output.
+    // When no mixer is running the bone retains our previous gaze modification →
+    // use the rest quaternion instead, so gaze never compounds onto itself.
+    const _nb = this._boneMap['Neck'] || this._boneMap['Head']
+    if (_nb) {
+      this._neckBaseQ = this._animMixer
+        ? _nb.quaternion.clone()
+        : (this._boneRestQ['Neck'] ?? this._boneRestQ['Head'] ?? new THREE.Quaternion())
+    }
+    this._gazePass(delta * 1000)    // after mixer so it stacks on top of animation
     this._updatePoseLerp(delta)
+    this._updateCameraLerp(delta)
     this._idlePass(delta * 1000)
     this._controls?.update()
     this._renderer?.render(this._scene, this._camera)
@@ -522,6 +810,19 @@ export class Avatar3DPlayer {
     }
   }
 
+  _updateCameraLerp (deltaSec) {
+    if (this._camLerpT >= 1.0 || !this._camFrom || !this._camTarget) return
+    this._camLerpT = Math.min(1.0, this._camLerpT + deltaSec / 0.7)
+    const t = easeInOut(this._camLerpT)
+    this._camera.position.lerpVectors(this._camFrom.pos, this._camTarget.pos, t)
+    this._camera.fov = this._camFrom.fov + (this._camTarget.fov - this._camFrom.fov) * t
+    this._camera.updateProjectionMatrix()
+    if (this._controls) {
+      this._controls.target.lerpVectors(this._camFrom.look, this._camTarget.look, t)
+      this._controls.update()
+    }
+  }
+
   _applyBlendShapes (t) {
     const frames = this._frames
     let lo = 0, hi = frames.length - 1, idx = 0
@@ -537,6 +838,116 @@ export class Avatar3DPlayer {
       const w = (f0.w[si] ?? 0) + ((f1.w[si] ?? 0) - (f0.w[si] ?? 0)) * a
       for (const mesh of this._meshes) mesh.morphTargetInfluences[mi] = w
     }
+  }
+
+  // ── Gaze system ────────────────────────────────────────────────────────────
+
+  /**
+   * Gaze zones relative to camera position (world units).
+   * Simulates natural eye-contact: character glances at viewer's left eye,
+   * right eye, or mouth — mirrored from the viewer's POV.
+   */
+  static get GAZE_ZONES () {
+    return [
+      { x: -0.055, y:  0.04 },   // viewer's left eye
+      { x:  0.055, y:  0.04 },   // viewer's right eye
+      { x:  0.000, y: -0.09 },   // viewer's mouth
+    ]
+  }
+
+  _gazePass (deltaMs) {
+    this._gazeTimer -= deltaMs
+
+    if (this._gazeTimer <= 0) {
+      const camPos = this._camera.position
+      const r = () => (Math.random() - 0.5)
+
+      if (Math.random() < 0.78) {
+        // Look at one of the three face zones
+        const zone = Avatar3DPlayer.GAZE_ZONES[Math.floor(Math.random() * 3)]
+        this._gazeTarget.set(
+          camPos.x + zone.x + r() * 0.02,
+          camPos.y + zone.y + r() * 0.02,
+          camPos.z,
+        )
+        this._gazeTimer = 1200 + Math.random() * 2200
+      } else {
+        // Brief look-away (natural break in eye contact)
+        this._gazeTarget.set(
+          camPos.x + r() * 0.7,
+          camPos.y + r() * 0.25,
+          camPos.z - 0.3,
+        )
+        this._gazeTimer = 400 + Math.random() * 800
+      }
+    }
+
+    // ── Compute desired yaw / pitch toward gaze target ──────────────────────
+    const neckBone = this._boneMap['Neck'] || this._boneMap['Head']
+    if (!neckBone) return
+
+    const neckWorld = new THREE.Vector3()
+    neckBone.getWorldPosition(neckWorld)
+
+    const toTarget = new THREE.Vector3().subVectors(this._gazeTarget, neckWorld)
+    const dist     = toTarget.length()
+    if (dist < 0.01) return
+    toTarget.divideScalar(dist)
+
+    // Character faces +Z; yaw = atan2(x, z) gives 0 when looking straight ahead.
+    const targetYaw   = Math.atan2(toTarget.x, toTarget.z)
+    const targetPitch = Math.asin(Math.max(-1, Math.min(1, toTarget.y)))
+
+    const MAX_YAW   = 28 * DEG
+    const MAX_PITCH = 18 * DEG
+    const clampedYaw   = Math.max(-MAX_YAW,   Math.min(MAX_YAW,   targetYaw))
+    const clampedPitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, targetPitch))
+
+    // Smooth follow — natural head-turn speed
+    const k = Math.min(1, deltaMs * 0.0025)
+    this._gazeYaw   += (clampedYaw   - this._gazeYaw)   * k
+    this._gazePitch += (clampedPitch - this._gazePitch) * k
+
+    // ── Apply to Neck bone relative to the pre-gaze snapshot ───────────────
+    // Using the snapshot (not current bone quaternion) prevents the rotation
+    // from compounding each frame when no AnimationMixer is running.
+    const gazeQ = new THREE.Quaternion()
+    gazeQ.setFromEuler(new THREE.Euler(this._gazePitch, this._gazeYaw, 0, 'YXZ'))
+    const baseQ = this._neckBaseQ || this._boneRestQ['Neck'] || this._boneRestQ['Head'] || new THREE.Quaternion()
+    neckBone.quaternion.copy(baseQ).multiply(gazeQ)
+
+    // ── Drive eye look morph targets with per-eye parallax ──────────────────
+    if (!this._meshes.length) return
+    const dict = this._meshes[0].morphTargetDictionary
+    if (!dict) return
+
+    // Normalise angles (-1 … 1)
+    const hN = this._gazeYaw   / MAX_YAW    // + = char looking right
+    const vN = this._gazePitch / MAX_PITCH  // + = char looking up
+
+    // Left eye aims slightly further left; right eye slightly further right
+    const PARALLAX = 0.08
+    const hL = hN - PARALLAX   // left  eye horizontal
+    const hR = hN + PARALLAX   // right eye horizontal
+
+    const setM = (name, val) => {
+      const i = dict[name]
+      if (i !== undefined)
+        for (const m of this._meshes)
+          m.morphTargetInfluences[i] = Math.max(0, Math.min(1, val * 0.55))
+    }
+
+    // ARKit convention: "In" = toward nose, "Out" = away from nose
+    // char looking right (+hN): left eye goes OUT, right eye goes IN
+    setM('eyeLookOutLeft',   hL > 0 ?  hL : 0)
+    setM('eyeLookInLeft',    hL < 0 ? -hL : 0)
+    setM('eyeLookInRight',   hR > 0 ?  hR : 0)
+    setM('eyeLookOutRight',  hR < 0 ? -hR : 0)
+    // Vertical (same both eyes)
+    setM('eyeLookUpLeft',    vN > 0 ?  vN : 0)
+    setM('eyeLookDownLeft',  vN < 0 ? -vN : 0)
+    setM('eyeLookUpRight',   vN > 0 ?  vN : 0)
+    setM('eyeLookDownRight', vN < 0 ? -vN : 0)
   }
 
   _idlePass (deltaMs) {
@@ -586,15 +997,26 @@ export class Avatar3DPlayer {
 
     // Drop ALL position tracks — Mixamo bakes foot IK + uses cm scale (100× GLB metres).
     // Position tracks slide the feet and shoot the character off-screen.
-    // Pure rotation tracks are all we need for in-place humanoid animation.
     clip.tracks = clip.tracks.filter(track => !track.name.endsWith('.position'))
 
-    // Drop Hips quaternion track — Mixamo bakes global Y-axis root rotation into it,
-    // which spins the entire skeleton around the hips (visible as feet sweeping in a
-    // circle). For in-place animations the bind-pose hip orientation is correct; the
-    // pose system owns any intentional hip tilt. All other bones' quaternion tracks
-    // (Spine, Chest, arms …) are kept so upper-body motion is preserved.
+    // Drop Hips quaternion — bakes global root rotation which spins the skeleton.
     clip.tracks = clip.tracks.filter(track => track.name !== 'Hips.quaternion')
+
+    // Drop lower-body quaternion tracks — Mixamo bakes weight-shifting micro-movement
+    // into UpLeg/Leg/Foot/Toe bones. Without foot IK (Unity/Unreal apply this
+    // automatically) Three.js plays the raw FK chain and feet lift off the floor.
+    // Locking the leg chain in bind pose gives stable planted feet; the upper body
+    // (spine, chest, arms, neck) still animates fully.
+    const LOWER_BODY = new Set([
+      'LeftUpLeg', 'RightUpLeg',
+      'LeftLeg',   'RightLeg',
+      'LeftFoot',  'RightFoot',
+      'LeftToeBase', 'RightToeBase',
+    ])
+    clip.tracks = clip.tracks.filter(track => {
+      const bone = track.name.split('.')[0]
+      return !LOWER_BODY.has(bone)
+    })
 
     console.log(`[Avatar3D] Loading body animation: ${fbxUrl} (${clip.tracks.length} tracks)`)
 
@@ -636,6 +1058,8 @@ export class Avatar3DPlayer {
     this._resizeObs?.disconnect()
     if (this._rafId) cancelAnimationFrame(this._rafId)
     this._audio?.pause()
+    this._audioCtx?.close()
+    this._audioCtx = null
     if (this._animMixer) { this._animMixer.stopAllAction(); this._animMixer = null }
     this._controls?.dispose()
     this._renderer?.dispose()
@@ -653,18 +1077,58 @@ export class Avatar3DPlayer {
 window.Avatar3DPlayer = Avatar3DPlayer
 
 // ── Auto-init ─────────────────────────────────────────────────────────────────
-// When this module loads, check for a canvas with data-character-url and spin up
-// the player immediately. This avoids the Alpine x-init timing race condition
-// (Alpine runs before module scripts finish loading).
-;(function autoInit () {
+// Initialise (or re-initialise) the player whenever the canvas is present.
+// Called on first script load AND after every Livewire DOM morph so that
+// selecting an avatar (which renders the canvas) always spins up the player.
+function autoInit () {
   const canvas = document.getElementById('avatar-lab-canvas')
   if (!canvas) return
   const characterUrl = canvas.dataset.characterUrl
   if (!characterUrl) return
+  // Already running for this same character — nothing to do.
+  if (window._avatar3d && window._avatar3d._characterUrl === characterUrl) return
   window._avatar3d?.destroy()
   window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl })
+  window._avatar3d._characterUrl = characterUrl
   window._avatar3d.init().catch(err => console.error('[Avatar3D] init failed:', err))
-})()
+}
+
+autoInit()
+
+// Wait for canvas to appear in DOM (after Livewire morphs it in), then resolve.
+function waitForCanvas (timeout = 3000) {
+  return new Promise((resolve, reject) => {
+    const el = document.getElementById('avatar-lab-canvas')
+    if (el) { resolve(el); return }
+    const obs = new MutationObserver(() => {
+      const el = document.getElementById('avatar-lab-canvas')
+      if (el) { obs.disconnect(); resolve(el) }
+    })
+    obs.observe(document.body, { childList: true, subtree: true })
+    setTimeout(() => { obs.disconnect(); reject(new Error('canvas timeout')) }, timeout)
+  })
+}
+
+// Fired by selectAvatar() — load (or swap) the character GLB.
+// Canvas may not exist yet if this is the first avatar selection, so wait for it.
+window.addEventListener('avatar3d:load', async (ev) => {
+  const { characterUrl } = ev.detail
+
+  if (window._avatar3d && window._avatar3d._characterUrl === characterUrl) return
+
+  const canvas = await waitForCanvas().catch(() => null)
+  if (!canvas) { console.error('[Avatar3D] canvas never appeared'); return }
+
+  if (!window._avatar3d) {
+    window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl })
+    window._avatar3d._characterUrl = characterUrl
+    await window._avatar3d.init().catch(err => console.error('[Avatar3D] init failed:', err))
+  } else {
+    // Player already running — just swap the character, keep the scene/renderer alive.
+    window._avatar3d._characterUrl = characterUrl
+    await window._avatar3d._loadCharacter(characterUrl).catch(err => console.error('[Avatar3D] character load failed:', err))
+  }
+})
 
 // ── Livewire event → load preview ────────────────────────────────────────────
 window.addEventListener('avatar3d:previewReady', (ev) => {
@@ -675,8 +1139,27 @@ window.addEventListener('avatar3d:previewReady', (ev) => {
 
 // ── Body animation preview (Avatar Lab) ──────────────────────────────────────
 window.addEventListener('preview-clip', (ev) => {
+  if (!ev.detail.fbxUrl) return
   window._avatar3d?.loadBodyAnimation(ev.detail.fbxUrl)
     .catch(err => console.error('[Avatar3D] Failed to load FBX:', err))
+})
+
+// ── Narration speak (Avatar Lab) — Azure blend shapes + Pocket TTS audio ─────
+window.addEventListener('avatar3d:speak', async (ev) => {
+  const { audioUrl, text } = ev.detail
+  const player = window._avatar3d
+  if (!player) return
+
+  const canvas = document.getElementById('avatar-lab-canvas')
+  const azureKey    = canvas?.dataset.azureKey    ?? ''
+  const azureRegion = canvas?.dataset.azureRegion ?? 'eastus'
+
+  if (azureKey && text && window.SpeechSDK) {
+    await player.speakWithAzureBlendShapes(audioUrl, text, azureKey, azureRegion)
+  } else {
+    // Fallback: play audio only (amplitude-driven jaw via analyser)
+    player.speakWithVisemes(audioUrl)
+  }
 })
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
