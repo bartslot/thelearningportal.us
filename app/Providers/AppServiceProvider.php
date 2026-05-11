@@ -11,7 +11,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\ElevenLabsService::class);
     }
 
     /**
@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        if (! app()->runningInConsole() && ! app()->environment('testing')) {
+            if (! \Illuminate\Support\Facades\Cache::has('elevenlabs_voices')) {
+                \App\Jobs\WarmElevenLabsJob::dispatch();
+            }
+        }
     }
 }
