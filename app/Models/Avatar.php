@@ -41,6 +41,7 @@ class Avatar extends Model
         'skin_tone',
         'body_type',
         'source_id',
+        'morph_status',   // 'pending' | 'processing' | 'ready' | 'failed'
     ];
 
     protected function casts(): array
