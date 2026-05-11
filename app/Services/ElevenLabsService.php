@@ -18,28 +18,38 @@ class ElevenLabsService
         $this->baseUrl = config('services.elevenlabs.base_url', 'https://api.elevenlabs.io');
     }
 
-    /** @return array<int, array{id: string, label: string, preview_url: string, gradient_class: string}> */
+    /** @return array<int, array{id: string, label: string, preview_url: string, gradient_class: string, gender: string}> */
     public function getVoices(): array
     {
-        return Cache::remember('elevenlabs_voices', 3600, function () {
-            $response = Http::withHeaders([
-                'xi-api-key' => $this->apiKey,
-            ])->get("{$this->baseUrl}/v1/voices");
+        $cached = Cache::get('elevenlabs_voices');
+        if (is_array($cached) && count($cached) > 0) {
+            return $cached;
+        }
 
-            if (! $response->successful()) {
-                return [];
-            }
+        $response = Http::withHeaders([
+            'xi-api-key' => $this->apiKey,
+        ])->get("{$this->baseUrl}/v1/voices");
 
-            return collect($response->json('voices', []))
-                ->map(fn (array $voice) => [
-                    'id'             => $voice['voice_id'],
-                    'label'          => $this->buildLabel($voice),
-                    'preview_url'    => $voice['preview_url'] ?? '',
-                    'gradient_class' => $this->gradientClass($voice['labels'] ?? []),
-                ])
-                ->values()
-                ->all();
-        });
+        if (! $response->successful()) {
+            return [];
+        }
+
+        $voices = collect($response->json('voices', []))
+            ->map(fn (array $voice) => [
+                'id'             => $voice['voice_id'],
+                'label'          => $this->buildLabel($voice),
+                'preview_url'    => $voice['preview_url'] ?? '',
+                'gradient_class' => $this->gradientClass($voice['labels'] ?? []),
+                'gender'         => strtolower($voice['labels']['gender'] ?? ''),
+            ])
+            ->values()
+            ->all();
+
+        if (count($voices) > 0) {
+            Cache::put('elevenlabs_voices', $voices, 3600);
+        }
+
+        return $voices;
     }
 
     /** @return array{audio: string, alignment: array<mixed>}|null */
@@ -69,12 +79,26 @@ class ElevenLabsService
                 return null;
             }
 
-            $data      = $response->json();
-            $audioB64  = $data['audio_base64'] ?? '';
-            $alignment = $data['alignment'] ?? [];
+            $data     = $response->json();
+            $audioB64 = $data['audio_base64'] ?? '';
 
             if ($audioB64 === '') {
                 return null;
+            }
+
+            // ElevenLabs returns parallel arrays; convert to [{character, start_time, end_time}]
+            // so JS speakWithElevenLabsAlignment can iterate directly.
+            $raw        = $data['alignment'] ?? [];
+            $chars      = $raw['characters']                    ?? [];
+            $starts     = $raw['character_start_times_seconds'] ?? [];
+            $ends       = $raw['character_end_times_seconds']   ?? [];
+            $alignment  = [];
+            foreach ($chars as $i => $char) {
+                $alignment[] = [
+                    'character'  => $char,
+                    'start_time' => $starts[$i] ?? 0.0,
+                    'end_time'   => $ends[$i]   ?? 0.0,
+                ];
             }
 
             return [
