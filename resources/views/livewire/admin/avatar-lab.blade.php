@@ -112,6 +112,11 @@
 
             <h2 class="text-lg font-semibold text-slate-100 mb-4">Avatar</h2>
 
+            {{-- Single poll for processing avatars --}}
+            @if($avatars->contains(fn($a) => ($a->morph_status ?? 'ready') === 'processing'))
+                <div wire:poll.3000ms="refreshAvatarList" class="hidden"></div>
+            @endif
+
             <div class="grid grid-cols-4 gap-2">
                 @foreach($avatars as $avatar)
                     @php
@@ -136,10 +141,7 @@
                         @endif
                         {{-- Processing overlay --}}
                         @if(($avatar->morph_status ?? 'ready') === 'processing')
-                            <div
-                                class="absolute inset-0 bg-slate-900/75 flex flex-col items-center justify-center gap-1"
-                                wire:poll.3000ms="refreshAvatarList"
-                            >
+                            <div class="absolute inset-0 bg-slate-900/75 flex flex-col items-center justify-center gap-1">
                                 <span class="loading loading-spinner loading-xs text-amber-400"></span>
                                 <span class="text-[8px] text-amber-300 font-medium">Processing</span>
                             </div>
@@ -287,7 +289,7 @@
                         class="flex gap-2 pb-2 overflow-x-auto scroll-smooth"
                         style="scroll-snap-type:x mandatory; scrollbar-width:none;"
                     >
-                        @foreach($this->voices() as $voice)
+                        @foreach($this->voices as $voice)
                         <button
                             wire:click="selectVoice('{{ $voice['id'] }}')"
                             :class="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'
@@ -898,9 +900,7 @@
             </div>
 
         </div>
-        <form method="dialog" class="modal-backdrop">
-            <button wire:click="closeNewAvatarModal">close</button>
-        </form>
+        <div class="modal-backdrop" wire:click="closeNewAvatarModal"></div>
     </dialog>
     @endif
 

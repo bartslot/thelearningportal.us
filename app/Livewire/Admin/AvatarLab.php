@@ -213,7 +213,7 @@ class AvatarLab extends Component
 
         $avatar = Avatar::create([
             'name'           => 'New Avatar',
-            'slug'           => 'new-avatar-' . uniqid(),
+            'slug'           => 'new-avatar-' . Str::random(8),
             'gender'         => 'male',
             'age'            => 30,
             'voice_provider' => 'elevenlabs',
