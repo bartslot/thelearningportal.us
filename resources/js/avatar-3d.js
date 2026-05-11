@@ -51,6 +51,62 @@ const AZURE_BLEND_SHAPES = [
 ]
 
 /**
+ * Oculus viseme names (RPM export with morphTargets=Oculus) in order.
+ * Used to drive lip sync from ElevenLabs character-level alignment.
+ * ElevenLabs returns character timings; we map phoneme → viseme weight set.
+ */
+const OCULUS_VISEMES = [
+  'viseme_sil', 'viseme_PP', 'viseme_FF', 'viseme_TH', 'viseme_DD',
+  'viseme_kk',  'viseme_CH', 'viseme_SS', 'viseme_nn', 'viseme_RR',
+  'viseme_aa',  'viseme_E',  'viseme_I',  'viseme_O',  'viseme_U',
+]
+
+/**
+ * English phoneme → Oculus viseme index mapping.
+ * Covers the IPA-ish phonemes ElevenLabs alignment chars approximate.
+ * Multiple visemes can fire at once (blend weights).
+ */
+const PHONEME_TO_VISEME = {
+  // Bilabials → PP
+  'p': 'viseme_PP', 'b': 'viseme_PP', 'm': 'viseme_PP',
+  // Labiodentals → FF
+  'f': 'viseme_FF', 'v': 'viseme_FF',
+  // Dentals → TH
+  'θ': 'viseme_TH', 'ð': 'viseme_TH',
+  // Alveolars → DD
+  't': 'viseme_DD', 'd': 'viseme_DD',
+  // Velars → kk
+  'k': 'viseme_kk', 'g': 'viseme_kk',
+  // Postalveolars → CH
+  'ʃ': 'viseme_CH', 'ʒ': 'viseme_CH', 'tʃ': 'viseme_CH', 'dʒ': 'viseme_CH',
+  'ch': 'viseme_CH', 'sh': 'viseme_CH',
+  // Sibilants → SS
+  's': 'viseme_SS', 'z': 'viseme_SS',
+  // Nasals → nn
+  'n': 'viseme_nn', 'ŋ': 'viseme_nn', 'ng': 'viseme_nn',
+  // Liquids/rhotics → RR
+  'r': 'viseme_RR', 'l': 'viseme_RR',
+  // Vowels — broad mapping from letter to viseme
+  'a': 'viseme_aa', 'ɑ': 'viseme_aa', 'æ': 'viseme_aa',
+  'e': 'viseme_E',  'ɛ': 'viseme_E',  'eɪ': 'viseme_E',
+  'i': 'viseme_I',  'ɪ': 'viseme_I',
+  'o': 'viseme_O',  'ɔ': 'viseme_O',  'oʊ': 'viseme_O',
+  'u': 'viseme_U',  'ʊ': 'viseme_U',
+  // Silence / space
+  ' ': 'viseme_sil', '': 'viseme_sil',
+}
+
+/** Map a single character from ElevenLabs alignment to an Oculus viseme name. */
+function charToViseme (char) {
+  const c = char.toLowerCase()
+  return PHONEME_TO_VISEME[c] ?? (
+    'aeiou'.includes(c) ? 'viseme_aa' :
+    'bcdfghjklmnpqrstvwxyz'.includes(c) ? 'viseme_DD' :
+    'viseme_sil'
+  )
+}
+
+/**
  * Camera preset. Target Y = 0.9 (mid-body) centres the full character in frame.
  * Camera sits at Z=2.0 for a tighter full-body shot.
  */
@@ -146,13 +202,20 @@ export class Avatar3DPlayer {
     this._camera   = null
     this._renderer = null
     this._controls = null
-    this._meshes   = []
-    this._morphMap = {}
+    this._meshes        = []
+    this._morphMap      = {}
+    this._visemeMap     = {}
+    this._elevenTimeline = null
 
     // Skeleton
     this._boneMap    = {}       // name → THREE.Bone
     this._boneRestQ  = {}       // name → Quaternion (bind-pose snapshot)
     this._boneRestY  = 0        // Hips rest position.y
+    this._headZoomY  = 1.62     // updated per-model after bounding box fit
+    this._shadowPlane = null
+
+    // Accessories
+    this._glassesMeshes = []    // Wolf3D_Glasses nodes, toggled via showGlasses()
 
     // Pose interpolation
     this._currentPose  = 'relaxed'
@@ -215,42 +278,67 @@ export class Avatar3DPlayer {
     this._renderer.setSize(w, h)
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this._renderer.outputColorSpace = THREE.SRGBColorSpace
+    this._renderer.shadowMap.enabled = true
+    this._renderer.shadowMap.type    = THREE.PCFSoftShadowMap
 
     this._scene = new THREE.Scene()
 
-    // ── Gradient background ──────────────────────────────────────────────────
+    // ── Light gradient background (model-viewer style) ───────────────────────
     const bgCanvas  = document.createElement('canvas')
     bgCanvas.width  = 2
     bgCanvas.height = 256
     const bgCtx = bgCanvas.getContext('2d')
     const grad  = bgCtx.createLinearGradient(0, 0, 0, 256)
-    grad.addColorStop(0,   '#1a1a3a')   // dark indigo at top
-    grad.addColorStop(0.5, '#0f172a')   // slate-900 mid
-    grad.addColorStop(1,   '#060610')   // near-black at bottom
+    grad.addColorStop(0,   '#f0f0f0')
+    grad.addColorStop(1,   '#d8d8d8')
     bgCtx.fillStyle = grad
     bgCtx.fillRect(0, 0, 2, 256)
     this._scene.background = new THREE.CanvasTexture(bgCanvas)
-
-    // ── Fog ───────────────────────────────────────────────────────────────────
-    this._scene.fog = new THREE.Fog(0x0f172a, 5, 14)
-
-    // ── Ground grid ───────────────────────────────────────────────────────────
-    const grid = new THREE.GridHelper(14, 28, 0x1e2040, 0x141428)
-    grid.position.y = 0
-    this._scene.add(grid)
 
     // ── Camera ────────────────────────────────────────────────────────────────
     this._camera = new THREE.PerspectiveCamera(CAMERA_PRESET.fov, w / h, 0.01, 100)
     this._camera.position.set(...CAMERA_PRESET.pos)
 
-    // ── Three-point lighting ──────────────────────────────────────────────────
-    this._scene.add(new THREE.AmbientLight(0xffffff, 1.2))
-    const key = new THREE.DirectionalLight(0xffeedd, 1.6)
-    key.position.set(1.5, 2.5, 2)
+    // ── model-viewer-style lighting ───────────────────────────────────────────
+    // Bright hemisphere: sky (warm white) / ground (cool grey) — simulates IBL
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xc8c8c8, 1.8)
+    this._scene.add(hemi)
+
+    // Key light: soft warm from upper-front-left (casts shadows)
+    const key = new THREE.DirectionalLight(0xfff5e8, 1.4)
+    key.position.set(-1.5, 3.5, 2.5)
+    key.castShadow                       = true
+    key.shadow.mapSize.width             = 1024
+    key.shadow.mapSize.height            = 1024
+    key.shadow.camera.near               = 0.5
+    key.shadow.camera.far                = 12
+    key.shadow.camera.left               = -2
+    key.shadow.camera.right              = 2
+    key.shadow.camera.top                = 4
+    key.shadow.camera.bottom             = -0.5
+    key.shadow.bias                      = -0.001
+    key.shadow.radius                    = 4      // PCFSoft softness
     this._scene.add(key)
-    const fill = new THREE.DirectionalLight(0xddeeff, 0.6)
-    fill.position.set(-2, 1, 1)
+
+    // Fill light: subtle cool from opposite side, no shadows
+    const fill = new THREE.DirectionalLight(0xe8f0ff, 0.5)
+    fill.position.set(2, 2, -1)
     this._scene.add(fill)
+
+    // Rim light: very soft back-light lifts the silhouette from background
+    const rim = new THREE.DirectionalLight(0xffffff, 0.3)
+    rim.position.set(0, 1.5, -3)
+    this._scene.add(rim)
+
+    // ── Contact shadow plane (receives shadows, invisible otherwise) ──────────
+    const shadowGeo = new THREE.PlaneGeometry(4, 4)
+    const shadowMat = new THREE.ShadowMaterial({ opacity: 0.18, transparent: true })
+    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat)
+    shadowPlane.rotation.x = -Math.PI / 2
+    shadowPlane.position.y = 0
+    shadowPlane.receiveShadow = true
+    this._scene.add(shadowPlane)
+    this._shadowPlane = shadowPlane
 
     // ── Orbit controls (always interactive) ──────────────────────────────────
     this._controls = new OrbitControls(this._camera, this._renderer.domElement)
@@ -293,14 +381,16 @@ export class Avatar3DPlayer {
     }
   }
 
-  /** Smooth camera dolly to head close-up. */
+  /** Smooth camera dolly to head close-up (physical move only, FOV unchanged). */
   zoomToHead () {
-    this._camTarget = { pos: new THREE.Vector3(0, 1.62, 0.55), look: new THREE.Vector3(0, 1.62, 0), fov: 28 }
+    const headY = this._headZoomY ?? 1.62
+    const currentFov = this._camera.fov
+    this._camTarget = { pos: new THREE.Vector3(0, headY, 1.1), look: new THREE.Vector3(0, headY, 0), fov: currentFov }
     this._camLerpT  = 0
     this._camFrom   = {
       pos:  this._camera.position.clone(),
       look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
-      fov:  this._camera.fov,
+      fov:  currentFov,
     }
   }
 
@@ -367,18 +457,113 @@ export class Avatar3DPlayer {
 
   _clearMouthShapes () {
     if (!this._meshes.length) return
-    const dict = this._meshes[0].morphTargetDictionary
+    const dict = (this._richestMesh ?? this._meshes[0]).morphTargetDictionary
     if (!dict) return
-    for (const name of ['jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthSmileLeft', 'mouthSmileRight', 'mouthRollLower']) {
+    const toClear = [
+      'jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthSmileLeft', 'mouthSmileRight',
+      'mouthRollLower', 'mouthSmile', ...OCULUS_VISEMES,
+    ]
+    for (const name of toClear) {
       const i = dict[name]
-      if (i !== undefined) for (const m of this._meshes) m.morphTargetInfluences[i] = 0
+      if (i !== undefined) for (const m of this._meshes) {
+        if (i < m.morphTargetInfluences.length) m.morphTargetInfluences[i] = 0
+      }
+    }
+  }
+
+  /**
+   * Drive Oculus visemes from ElevenLabs character-level alignment data.
+   * alignment: array of {character, start_time, end_time} from /with-timestamps.
+   * audioUrl: pre-generated audio to play simultaneously.
+   */
+  speakWithElevenLabsAlignment (audioUrl, alignment) {
+    if (!this._meshes.length) {
+      this.speakWithVisemes(audioUrl)
+      return
+    }
+
+    const hasVisemes = Object.keys(this._visemeMap).filter(k => k.startsWith('viseme_')).length > 0
+    if (!hasVisemes) {
+      console.warn('[Avatar3D] No Oculus visemes mapped — amplitude fallback')
+      this.speakWithVisemes(audioUrl)
+      return
+    }
+
+    // Build timeline: [{t, viseme, weight}]
+    // Each character gets a ramp-up at start_time and ramp-down before end_time
+    const timeline = []
+    for (const entry of alignment) {
+      const viseme = charToViseme(entry.character)
+      const t0 = entry.start_time
+      const t1 = entry.end_time
+      const dur = t1 - t0
+      // Ramp up at t0, hold, ramp down 30ms before t1
+      timeline.push({ t: t0,              viseme, weight: 0 })
+      timeline.push({ t: t0 + dur * 0.1,  viseme, weight: 1 })
+      timeline.push({ t: t1 - dur * 0.1,  viseme, weight: 1 })
+      timeline.push({ t: t1,              viseme, weight: 0 })
+    }
+    timeline.sort((a, b) => a.t - b.t)
+
+    if (this._audio) { this._audio.pause(); this._audio = null }
+    if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
+    this._visemeTimings = []
+    this._frames = []
+    this._elevenTimeline = timeline
+
+    const audio = new Audio(audioUrl)
+    this._audio = audio
+    audio.addEventListener('ended', () => {
+      this._playing = false
+      this._elevenTimeline = null
+      this._clearMouthShapes()
+    })
+
+    this._playing = false
+    this.zoomToHead()
+    setTimeout(() => {
+      audio.play().catch(e => console.warn('[Avatar3D] play() failed:', e))
+      this._playing = true
+    }, 600)
+
+    console.log(`[Avatar3D] ElevenLabs alignment: ${alignment.length} chars, ${timeline.length} keyframes`)
+  }
+
+  _applyElevenLabsVisemes () {
+    if (!this._elevenTimeline || !this._audio || !this._meshes.length) return
+    const t = this._audio.currentTime
+    const vm = this._visemeMap
+
+    // Find all active entries in timeline window
+    const weights = {}
+    for (const entry of this._elevenTimeline) {
+      if (entry.t > t + 0.1) break
+      if (entry.t < t - 0.3) continue
+      // Linear interpolate weight at current time
+      const w = entry.weight
+      if (!weights[entry.viseme] || weights[entry.viseme] < w) {
+        weights[entry.viseme] = w
+      }
+    }
+
+    // Apply with smooth lerp
+    for (const viseme of OCULUS_VISEMES) {
+      const mi = vm[viseme]
+      if (mi === undefined) continue
+      const target = weights[viseme] ?? 0
+      for (const mesh of this._meshes) {
+        if (mi >= mesh.morphTargetInfluences.length) continue
+        const cur = mesh.morphTargetInfluences[mi] || 0
+        mesh.morphTargetInfluences[mi] = cur + (target - cur) * 0.3
+      }
     }
   }
 
   /** Drive jawOpen from real-time audio RMS via Web Audio AnalyserNode. */
   _applyVisemes () {
     if (!this._meshes.length || !this._analyser) return
-    const dict = this._meshes[0].morphTargetDictionary
+    const refMesh = this._richestMesh ?? this._meshes[0]
+    const dict = refMesh.morphTargetDictionary
     if (!dict) return
 
     const jawIdx    = dict['jawOpen']
@@ -401,12 +586,14 @@ export class Avatar3DPlayer {
     const targetFunnel = Math.min(0.35, (rms / 255) * 1.1)
 
     // Smooth lerp — fast open, slower close
-    const lerpSpeed = targetJaw > (this._meshes[0].morphTargetInfluences[jawIdx] || 0) ? 0.35 : 0.18
+    const lerpSpeed = targetJaw > (refMesh.morphTargetInfluences[jawIdx] || 0) ? 0.35 : 0.18
 
     for (const m of this._meshes) {
-      const cur = m.morphTargetInfluences[jawIdx] || 0
-      m.morphTargetInfluences[jawIdx] = cur + (targetJaw - cur) * lerpSpeed
-      if (funnelIdx !== undefined) {
+      if (jawIdx < m.morphTargetInfluences.length) {
+        const cur = m.morphTargetInfluences[jawIdx] || 0
+        m.morphTargetInfluences[jawIdx] = cur + (targetJaw - cur) * lerpSpeed
+      }
+      if (funnelIdx !== undefined && funnelIdx < m.morphTargetInfluences.length) {
         const curF = m.morphTargetInfluences[funnelIdx] || 0
         m.morphTargetInfluences[funnelIdx] = curF + (targetFunnel - curF) * lerpSpeed
       }
@@ -472,6 +659,12 @@ export class Avatar3DPlayer {
   // ── GLB loading ────────────────────────────────────────────────────────────
 
   async _loadCharacter (gltfUrl) {
+    window.dispatchEvent(new CustomEvent('avatar3d:loadstart'))
+
+    // Prime the browser HTTP cache before GLTFLoader requests the same URL.
+    // If the browser already cached it (preload hint or prior visit), this resolves instantly.
+    try { await fetch(gltfUrl, { method: 'GET', cache: 'force-cache' }) } catch (_) {}
+
     const loader = new GLTFLoader()
     const gltf   = await loader.loadAsync(gltfUrl)
 
@@ -484,22 +677,56 @@ export class Avatar3DPlayer {
     }
 
     gltf.scene.rotation.y = 0
+    gltf.scene.scale.setScalar(1)   // ensure clean scale before bounding-box fit
     this._characterRoot = gltf.scene
     this._scene.add(gltf.scene)
 
-    // Collect morph-target meshes
-    this._meshes = []
+    // Collect morph-target meshes, glasses meshes, and enable shadow casting
+    this._meshes        = []
+    this._glassesMeshes = []
     gltf.scene.traverse((node) => {
-      if (node.isMesh && node.morphTargetDictionary) this._meshes.push(node)
+      if (node.isMesh) {
+        node.castShadow    = true
+        node.receiveShadow = false
+        if (node.morphTargetDictionary) this._meshes.push(node)
+        if (/glasses/i.test(node.name)) this._glassesMeshes.push(node)
+      }
     })
 
     if (this._meshes.length > 0) {
-      const dict = this._meshes[0].morphTargetDictionary
+      // Zero all morph influences immediately to prevent a one-frame flicker
+      // where the animation mixer hasn't yet driven the mesh to its rest state.
+      for (const mesh of this._meshes) {
+        if (mesh.morphTargetInfluences) {
+          mesh.morphTargetInfluences.fill(0)
+        }
+      }
+
+      // Use the mesh with the most morph targets as the source of truth for name→index mapping.
+      // EyeLeft/EyeRight are pushed first but only have 2 targets; Wolf3D_Head has 70+.
+      const richestMesh = this._meshes.reduce((best, m) =>
+        Object.keys(m.morphTargetDictionary ?? {}).length > Object.keys(best.morphTargetDictionary ?? {}).length ? m : best
+      )
+      const dict = richestMesh.morphTargetDictionary ?? {}
+
+      // Azure ARKit map (index → morph index) for speakWithAzureBlendShapes
       this._morphMap = {}
       AZURE_BLEND_SHAPES.forEach((name, i) => {
         if (name in dict) this._morphMap[i] = dict[name]
       })
-      console.log(`[Avatar3D] ${this._meshes.length} mesh(es), ${Object.keys(this._morphMap).length}/55 blend shapes mapped`)
+      // Oculus viseme map (viseme name → morph index) for speakWithElevenLabsAlignment
+      this._visemeMap = {}
+      OCULUS_VISEMES.forEach(name => {
+        if (name in dict) this._visemeMap[name] = dict[name]
+      })
+      // Also map ARKit jaw/mouth names that the amplitude fallback needs
+      for (const name of ['jawOpen', 'mouthFunnel', 'mouthSmile', 'mouthSmileLeft', 'mouthSmileRight']) {
+        if (name in dict) this._visemeMap[name] = dict[name]
+      }
+      // Store reference to the richest mesh for per-frame morph application
+      this._richestMesh = richestMesh
+      const hasOculus = Object.keys(this._visemeMap).filter(k => k.startsWith('viseme_')).length
+      console.log(`[Avatar3D] ${this._meshes.length} mesh(es), ${Object.keys(this._morphMap).length}/55 Azure shapes, ${hasOculus}/15 Oculus visemes mapped (from '${richestMesh.name}')`)
     }
 
     // Collect bones and store rest quaternions
@@ -519,6 +746,59 @@ export class Avatar3DPlayer {
     // Use the GLB's baked rest pose (A-pose from Blender export) — no offset applied.
     this._currentPose = 'tpose'
     this._poseLerpT   = 1.0
+
+    // Auto-fit camera to the actual model bounds so misscaled/miscentred GLBs frame correctly.
+    this._fitCameraToCharacter()
+
+    window.dispatchEvent(new CustomEvent('avatar3d:loadend'))
+  }
+
+  /** Compute model bounding box and reposition camera + controls to frame the full body. */
+  _fitCameraToCharacter () {
+    if (!this._characterRoot) return
+
+    const box    = new THREE.Box3().setFromObject(this._characterRoot)
+    const size   = new THREE.Vector3()
+    const center = new THREE.Vector3()
+    box.getSize(size)
+    box.getCenter(center)
+
+    const height   = size.y
+    const midY     = center.y
+    // Keep the character grounded — if the model root is above the grid, shift scene down.
+    const groundY  = box.min.y
+    if (Math.abs(groundY) > 0.05) {
+      this._characterRoot.position.y -= groundY
+      // Recompute after grounding
+      box.setFromObject(this._characterRoot)
+      box.getCenter(center)
+      box.getSize(size)
+    }
+
+    // Keep shadow plane flush with model feet
+    if (this._shadowPlane) this._shadowPlane.position.y = box.min.y + 0.001
+
+    const targetY  = center.y                           // orbit pivot at model midpoint
+    const camDist  = Math.max(1.4, size.y * 1.15)       // pull back proportionally to height
+    const camY     = center.y                            // camera level with model centre
+
+    // Update CAMERA_PRESET values for resetCamera / zoomToBody to use
+    CAMERA_PRESET.pos    = [0, camY, camDist]
+    CAMERA_PRESET.target = [0, targetY, 0]
+
+    if (this._camera) {
+      this._camera.position.set(0, camY, camDist)
+      this._camera.fov = 52
+      this._camera.updateProjectionMatrix()
+    }
+    if (this._controls) {
+      this._controls.target.set(0, targetY, 0)
+      this._controls.update()
+    }
+
+    // Adjust head zoom to model scale
+    const headY = box.max.y - size.y * 0.08
+    this._headZoomY = headY
   }
 
   /** Apply a pose instantly (no interpolation) — used on first load. */
@@ -698,7 +978,7 @@ export class Avatar3DPlayer {
   // ── Animation clip ─────────────────────────────────────────────────────────
 
   /**
-   * Load a GLB animation file and retarget it onto the loaded character rig.
+   * Load a GLB animation file onto the loaded character rig.
    * Loops forever until replaced or destroyed.
    */
   async loadAnimation (glbUrl) {
@@ -718,7 +998,7 @@ export class Avatar3DPlayer {
       return
     }
 
-    const clip         = gltf.animations[0]
+    const clip = this._prepareClip(gltf.animations[0])
     this._animMixer    = new THREE.AnimationMixer(this._characterRoot)
     this._animAction   = this._animMixer.clipAction(clip)
     this._animDuration = clip.duration
@@ -768,6 +1048,8 @@ export class Avatar3DPlayer {
     if (this._playing && this._meshes.length > 0) {
       if (this._frames.length > 0) {
         this._applyBlendShapes(this._audio.currentTime)
+      } else if (this._elevenTimeline) {
+        this._applyElevenLabsVisemes()
       } else {
         this._applyVisemes()
       }
@@ -836,7 +1118,12 @@ export class Avatar3DPlayer {
     const a  = f1.t > f0.t ? Math.min(1, (t - f0.t) / (f1.t - f0.t)) : 0
     for (const [si, mi] of Object.entries(this._morphMap)) {
       const w = (f0.w[si] ?? 0) + ((f1.w[si] ?? 0) - (f0.w[si] ?? 0)) * a
-      for (const mesh of this._meshes) mesh.morphTargetInfluences[mi] = w
+      for (const mesh of this._meshes) {
+        // Guard: skip meshes whose morph array is shorter than this index
+        if (mi < mesh.morphTargetInfluences.length) {
+          mesh.morphTargetInfluences[mi] = w
+        }
+      }
     }
   }
 
@@ -912,13 +1199,15 @@ export class Avatar3DPlayer {
     // Using the snapshot (not current bone quaternion) prevents the rotation
     // from compounding each frame when no AnimationMixer is running.
     const gazeQ = new THREE.Quaternion()
-    gazeQ.setFromEuler(new THREE.Euler(this._gazePitch, this._gazeYaw, 0, 'YXZ'))
+    // Negate pitch: RPM Neck local +X points down the spine, so positive RX tilts head DOWN.
+    // Camera above head → toTarget.y > 0 → positive pitch → must negate to tilt UP.
+    gazeQ.setFromEuler(new THREE.Euler(-this._gazePitch, this._gazeYaw, 0, 'YXZ'))
     const baseQ = this._neckBaseQ || this._boneRestQ['Neck'] || this._boneRestQ['Head'] || new THREE.Quaternion()
     neckBone.quaternion.copy(baseQ).multiply(gazeQ)
 
     // ── Drive eye look morph targets with per-eye parallax ──────────────────
     if (!this._meshes.length) return
-    const dict = this._meshes[0].morphTargetDictionary
+    const dict = (this._richestMesh ?? this._meshes[0]).morphTargetDictionary
     if (!dict) return
 
     // Normalise angles (-1 … 1)
@@ -943,7 +1232,7 @@ export class Avatar3DPlayer {
     setM('eyeLookInLeft',    hL < 0 ? -hL : 0)
     setM('eyeLookInRight',   hR > 0 ?  hR : 0)
     setM('eyeLookOutRight',  hR < 0 ? -hR : 0)
-    // Vertical (same both eyes)
+    // Vertical: vN > 0 = looking up in world, which after pitch negation means eyes up
     setM('eyeLookUpLeft',    vN > 0 ?  vN : 0)
     setM('eyeLookDownLeft',  vN < 0 ? -vN : 0)
     setM('eyeLookUpRight',   vN > 0 ?  vN : 0)
@@ -952,9 +1241,17 @@ export class Avatar3DPlayer {
 
   _idlePass (deltaMs) {
     if (!this._meshes.length) return
-    const t       = performance.now() / 1000
-    const breathe = 1 + Math.sin(t * 0.8) * 0.008
-    for (const mesh of this._meshes) mesh.scale.y = breathe
+    // Uniform scale breathing on the character root.
+    // Non-uniform scale (Y only) on a SkinnedMesh ancestor breaks Three.js skinning:
+    // bindMatrixInverse is baked at load time assuming uniform scale=1, so a parent
+    // with scale(1, 1.006, 1) introduces shearing in the skinning shader — visible
+    // as a glitch on multi-mesh RPM avatars (Leo, Benjamin, Jack, Henry etc.).
+    // Uniform scale is handled correctly: it reduces to a scalar in the normal matrix.
+    if (this._characterRoot) {
+      const t       = performance.now() / 1000
+      const breathe = 1 + Math.sin(t * 0.8) * 0.004   // subtle — uniform all axes
+      this._characterRoot.scale.setScalar(breathe)
+    }
 
     this._blinkTimer += deltaMs
     if (this._blinkTimer >= this._blinkNext) {
@@ -964,8 +1261,39 @@ export class Avatar3DPlayer {
     }
   }
 
+  /**
+   * Fire a single viseme for debug purposes.
+   * @param {string} visemeName — one of OCULUS_VISEMES or 'jawOpen' etc.
+   * @param {number} weight     — 0.0 to 1.0 (default 0.8)
+   * @param {number} holdMs     — how long to hold before releasing (default 300ms)
+   */
+  debugViseme (visemeName, weight = 0.8, holdMs = 300) {
+    if (!this._meshes.length) return
+    const mi = this._visemeMap[visemeName]
+    if (mi === undefined) {
+      console.warn(`[Avatar3D] debugViseme: '${visemeName}' not in visemeMap`)
+      return
+    }
+    for (const m of this._meshes) {
+      if (mi < m.morphTargetInfluences.length) m.morphTargetInfluences[mi] = weight
+    }
+    setTimeout(() => {
+      for (const m of this._meshes) {
+        if (mi < m.morphTargetInfluences.length) m.morphTargetInfluences[mi] = 0
+      }
+    }, holdMs)
+  }
+
+  /** Show or hide the glasses/sunglasses mesh(es) on this avatar. */
+  showGlasses (visible) {
+    for (const m of this._glassesMeshes) m.visible = visible
+  }
+
+  /** True if this avatar has a glasses mesh. */
+  get hasGlasses () { return this._glassesMeshes.length > 0 }
+
   _triggerBlink () {
-    const dict = this._meshes[0]?.morphTargetDictionary
+    const dict = (this._richestMesh ?? this._meshes[0])?.morphTargetDictionary
     if (!dict) return
     const l = dict['eyeBlinkLeft'], r = dict['eyeBlinkRight']
     if (l === undefined || r === undefined) return
@@ -975,12 +1303,40 @@ export class Avatar3DPlayer {
     }, 120)
   }
 
-  // ── Body animation (FBX from Mixamo) ──────────────────────────────────────
+  // ── Animation clip preparation ────────────────────────────────────────────
+
+  /**
+   * Strip tracks that corrupt RPM rigs when applied as absolute local quaternions.
+   * Both GLB and FBX animation data from the RPM/Mixamo pipeline store identical
+   * absolute quaternion values — no retargeting or bind-pose compensation needed.
+   * We only need to drop tracks that physically cannot work on the RPM character:
+   *   - position  : Mixamo bakes cm-scale root motion + foot IK offsets
+   *   - scale     : all (1,1,1) but Three.js still applies them; safe to drop
+   *   - Hips quat : bakes a large forward tilt (~47°x) that pitches the whole skeleton
+   *   - lower body: without foot IK the leg chain produces floating feet
+   */
+  _prepareClip (clip) {
+    const DROP_QUAT = new Set([
+      'Hips',
+      'LeftUpLeg', 'RightUpLeg',
+      'LeftLeg',   'RightLeg',
+      'LeftFoot',  'RightFoot',
+      'LeftToeBase', 'RightToeBase',
+    ])
+    clip.tracks = clip.tracks.filter(track => {
+      if (track.name.endsWith('.position')) return false
+      if (track.name.endsWith('.scale'))    return false
+      if (track.name.endsWith('.quaternion') && DROP_QUAT.has(track.name.split('.')[0])) return false
+      return true
+    })
+    return clip
+  }
+
+  // ── Body animation (FBX upload) ───────────────────────────────────────────
 
   async loadBodyAnimation (fbxUrl) {
     if (!this._characterRoot) return
 
-    // Create mixer lazily — _loadCharacter() doesn't create one
     if (!this._animMixer) {
       this._animMixer = new THREE.AnimationMixer(this._characterRoot)
     }
@@ -989,40 +1345,16 @@ export class Avatar3DPlayer {
     const clip = fbx.animations?.[0]
     if (!clip) { console.warn('[Avatar3D] FBX has no animation clips:', fbxUrl); return }
 
-    // ── Retarget: strip "mixamorig" + optional digit prefix ──
-    // Mixamo exports as "mixamorig1Hips.quaternion" → RPM needs "Hips.quaternion"
+    // Strip "mixamorig" + optional digit prefix from Mixamo exports
     clip.tracks.forEach(track => {
       track.name = track.name.replace(/^mixamorig\d*/g, '')
     })
 
-    // Drop ALL position tracks — Mixamo bakes foot IK + uses cm scale (100× GLB metres).
-    // Position tracks slide the feet and shoot the character off-screen.
-    clip.tracks = clip.tracks.filter(track => !track.name.endsWith('.position'))
+    this._prepareClip(clip)
 
-    // Drop Hips quaternion — bakes global root rotation which spins the skeleton.
-    clip.tracks = clip.tracks.filter(track => track.name !== 'Hips.quaternion')
+    console.log(`[Avatar3D] FBX body animation loaded: ${fbxUrl} (${clip.tracks.length} tracks)`)
 
-    // Drop lower-body quaternion tracks — Mixamo bakes weight-shifting micro-movement
-    // into UpLeg/Leg/Foot/Toe bones. Without foot IK (Unity/Unreal apply this
-    // automatically) Three.js plays the raw FK chain and feet lift off the floor.
-    // Locking the leg chain in bind pose gives stable planted feet; the upper body
-    // (spine, chest, arms, neck) still animates fully.
-    const LOWER_BODY = new Set([
-      'LeftUpLeg', 'RightUpLeg',
-      'LeftLeg',   'RightLeg',
-      'LeftFoot',  'RightFoot',
-      'LeftToeBase', 'RightToeBase',
-    ])
-    clip.tracks = clip.tracks.filter(track => {
-      const bone = track.name.split('.')[0]
-      return !LOWER_BODY.has(bone)
-    })
-
-    console.log(`[Avatar3D] Loading body animation: ${fbxUrl} (${clip.tracks.length} tracks)`)
-
-    if (this._bodyAction) {
-      this._bodyAction.fadeOut(0.3)
-    }
+    if (this._bodyAction) this._bodyAction.fadeOut(0.3)
 
     const action = this._animMixer.clipAction(clip, this._characterRoot)
     action.reset().fadeIn(0.3).play()
@@ -1084,16 +1416,47 @@ function autoInit () {
   const canvas = document.getElementById('avatar-lab-canvas')
   if (!canvas) return
   const characterUrl = canvas.dataset.characterUrl
-  if (!characterUrl) return
-  // Already running for this same character — nothing to do.
-  if (window._avatar3d && window._avatar3d._characterUrl === characterUrl) return
+  // Always init the player (scene + renderer), even if no character yet.
+  if (window._avatar3d && window._avatar3d._characterUrl === (characterUrl || null)) return
   window._avatar3d?.destroy()
-  window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl })
-  window._avatar3d._characterUrl = characterUrl
+  window._avatar3d = new Avatar3DPlayer(canvas, { characterUrl: characterUrl || null })
+  window._avatar3d._characterUrl = characterUrl || null
   window._avatar3d.init().catch(err => console.error('[Avatar3D] init failed:', err))
 }
 
 autoInit()
+
+// Background-prefetch all other avatar GLBs into the HTTP cache once the page is idle.
+// Uses requestIdleCallback so it never competes with the initial load or render loop.
+function scheduleGlbPrefetch () {
+  const canvas = document.getElementById('avatar-lab-canvas')
+  if (!canvas) return
+  const urls = (canvas.dataset.prefetchUrls || '').split(',').filter(Boolean)
+  if (!urls.length) return
+
+  const currentUrl = canvas.dataset.characterUrl || ''
+  const others     = urls.filter(u => u !== currentUrl)
+  if (!others.length) return
+
+  const prefetch = (list, idx) => {
+    if (idx >= list.length) return
+    const run = () => {
+      fetch(list[idx], { method: 'GET', cache: 'force-cache' })
+        .catch(() => {})
+        .finally(() => {
+          const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 300))
+          idle(() => prefetch(list, idx + 1))
+        })
+    }
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 300))
+    idle(run, { timeout: 5000 })
+  }
+
+  // Start after a short delay so initial avatar load gets full bandwidth first
+  setTimeout(() => prefetch(others, 0), 2000)
+}
+
+scheduleGlbPrefetch()
 
 // Wait for canvas to appear in DOM (after Livewire morphs it in), then resolve.
 function waitForCanvas (timeout = 3000) {
@@ -1130,6 +1493,17 @@ window.addEventListener('avatar3d:load', async (ev) => {
   }
 })
 
+// ── Glasses toggle ────────────────────────────────────────────────────────────
+window.addEventListener('avatar3d:showGlasses', (ev) => {
+  window._avatar3d?.showGlasses(ev.detail.visible)
+})
+
+// After a character loads, broadcast whether it has glasses so the UI can show/hide the toggle.
+window.addEventListener('avatar3d:loadend', () => {
+  const hasGlasses = window._avatar3d?.hasGlasses ?? false
+  window.dispatchEvent(new CustomEvent('avatar3d:glassesAvailable', { detail: { hasGlasses } }))
+})
+
 // ── Livewire event → load preview ────────────────────────────────────────────
 window.addEventListener('avatar3d:previewReady', (ev) => {
   const { audioUrl, blendShapesUrl } = ev.detail
@@ -1144,12 +1518,19 @@ window.addEventListener('preview-clip', (ev) => {
     .catch(err => console.error('[Avatar3D] Failed to load FBX:', err))
 })
 
-// ── Narration speak (Avatar Lab) — Azure blend shapes + Pocket TTS audio ─────
+// ── Narration speak (Avatar Lab) ──────────────────────────────────────────────
 window.addEventListener('avatar3d:speak', async (ev) => {
-  const { audioUrl, text } = ev.detail
+  const { audioUrl, text, alignment } = ev.detail
   const player = window._avatar3d
   if (!player) return
 
+  // Best path: ElevenLabs character alignment → Oculus visemes (no Azure needed)
+  if (alignment && alignment.length > 0) {
+    player.speakWithElevenLabsAlignment(audioUrl, alignment)
+    return
+  }
+
+  // Second: Azure blend shapes (requires key + SDK)
   const canvas = document.getElementById('avatar-lab-canvas')
   const azureKey    = canvas?.dataset.azureKey    ?? ''
   const azureRegion = canvas?.dataset.azureRegion ?? 'eastus'
@@ -1157,7 +1538,7 @@ window.addEventListener('avatar3d:speak', async (ev) => {
   if (azureKey && text && window.SpeechSDK) {
     await player.speakWithAzureBlendShapes(audioUrl, text, azureKey, azureRegion)
   } else {
-    // Fallback: play audio only (amplitude-driven jaw via analyser)
+    // Fallback: amplitude-driven jaw
     player.speakWithVisemes(audioUrl)
   }
 })

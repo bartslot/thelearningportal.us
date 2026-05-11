@@ -756,6 +756,44 @@
                 class="w-full h-full block"
             ></canvas>
 
+            {{-- Viseme debug panel --}}
+            <div
+                x-data="{ open: false }"
+                class="absolute top-2 right-2 z-20 select-none"
+            >
+                <button
+                    x-on:click="open = !open"
+                    class="btn btn-xs bg-slate-800/80 border-slate-600 text-slate-400 hover:text-slate-100 font-mono"
+                    title="Viseme debug panel"
+                >👄 visemes</button>
+                <div
+                    x-show="open"
+                    x-transition
+                    class="mt-1 p-2 bg-slate-900/95 border border-slate-700 rounded-xl shadow-xl w-64"
+                >
+                    <p class="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Oculus visemes</p>
+                    <div class="grid grid-cols-5 gap-1">
+                        @foreach(['viseme_sil','viseme_PP','viseme_FF','viseme_TH','viseme_DD','viseme_kk','viseme_CH','viseme_SS','viseme_nn','viseme_RR','viseme_aa','viseme_E','viseme_I','viseme_O','viseme_U'] as $v)
+                        <button
+                            x-on:click="window._avatar3d?.debugViseme('{{ $v }}')"
+                            class="btn btn-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-indigo-700 hover:text-white font-mono text-[9px] px-0 leading-tight"
+                            title="{{ $v }}"
+                        >{{ str_replace('viseme_', '', $v) }}</button>
+                        @endforeach
+                    </div>
+                    <p class="text-[9px] text-slate-500 uppercase tracking-widest mt-2 mb-1">ARKit jaw/mouth</p>
+                    <div class="grid grid-cols-4 gap-1">
+                        @foreach(['jawOpen','mouthFunnel','mouthPucker','mouthSmileLeft','mouthSmileRight','mouthRollLower','mouthRollUpper','mouthShrugUpper'] as $v)
+                        <button
+                            x-on:click="window._avatar3d?.debugViseme('{{ $v }}')"
+                            class="btn btn-xs bg-slate-800 border-slate-700 text-slate-300 hover:bg-amber-700 hover:text-white font-mono text-[9px] px-0 leading-tight"
+                            title="{{ $v }}"
+                        >{{ Str::after($v, 'mouth') ?: $v }}</button>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
             {{-- Loading spinner overlay --}}
             <div
                 class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80 pointer-events-none transition-opacity duration-300"
