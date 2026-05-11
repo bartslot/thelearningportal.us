@@ -42,10 +42,6 @@ return [
         'model' => env('OLLAMA_MODEL', 'llama3.1:8b'),
     ],
 
-    'kokoro' => [
-        'url' => env('KOKORO_TTS_URL', 'http://localhost:8880'),
-    ],
-
     'sadtalker' => [
         'url'    => env('SADTALKER_URL'),
         'dir'    => env('SADTALKER_DIR'),
@@ -62,6 +58,11 @@ return [
         'api_key'   => env('OPENAI_API_KEY'),
         'tts_model' => env('OPENAI_TTS_MODEL', 'tts-1'),
         'tts_voice' => env('OPENAI_TTS_VOICE', 'alloy'),
+    ],
+
+    'elevenlabs' => [
+        'api_key'  => env('ELEVENLABS_API_KEY'),
+        'base_url' => 'https://api.elevenlabs.io',
     ],
 
     'rhubarb' => [
@@ -99,6 +100,13 @@ return [
     'azure_speech' => [
         'key'    => env('AZURE_SPEECH_KEY'),
         'region' => env('AZURE_SPEECH_REGION', 'eastus'),
+    ],
+
+    // ── Pocket TTS (local voice cloning) ──────────────────────────────────────
+
+    'pocket_tts' => [
+        'url'      => env('POCKET_TTS_URL', 'http://localhost:8001'),
+        'hf_token' => env('HF_TOKEN'),
     ],
 
 ];
