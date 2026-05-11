@@ -38,10 +38,12 @@
                 <div x-show="openSection === 'animation'" class="ml-3 mt-1 flex flex-col gap-0.5">
                     <button
                         wire:click="$set('activeSection', 'animation-groups')"
+                        @click="window._avatar3d?.zoomToBody()"
                         class="text-left px-2 py-1.5 rounded-md text-xs transition-colors {{ $activeSection === 'animation-groups' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
                     >Animation Groups</button>
                     <button
                         wire:click="$set('activeSection', 'controller')"
+                        @click="window._avatar3d?.zoomToBody()"
                         class="text-left px-2 py-1.5 rounded-md text-xs transition-colors {{ $activeSection === 'controller' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
                     >Controller</button>
                 </div>
@@ -50,32 +52,12 @@
             {{-- Narration & Audio --}}
             <div>
                 <button
-                    @click="openSection = openSection === 'narration' ? null : 'narration'"
-                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
+                    wire:click="$set('activeSection', 'narration')"
+                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg transition-colors {{ $activeSection === 'narration' ? 'text-amber-400 bg-amber-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
                 >
                     Narration &amp; Audio
-                    <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openSection === 'narration' ? 'rotate-90' : ''" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
+                    <svg class="w-3 h-3" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
                 </button>
-            </div>
-
-            {{-- Audio --}}
-            <div>
-                <button
-                    @click="openSection = openSection === 'audio' ? null : 'audio'"
-                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
-                >
-                    Audio
-                    <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openSection === 'audio' ? 'rotate-90' : ''" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
-                </button>
-                <div x-show="openSection === 'audio'" class="px-2 pt-2 pb-1">
-                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-1 block">Test Script</label>
-                    <textarea
-                        wire:model="testScript"
-                        rows="4"
-                        placeholder="Friends, Romans..."
-                        class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-indigo-500"
-                    ></textarea>
-                </div>
             </div>
 
             {{-- Settings --}}
@@ -215,6 +197,175 @@
                     @endif
                 </div>
             @endforeach
+
+        @elseif($activeSection === 'narration')
+
+            <h2 class="text-lg font-semibold text-slate-100 mb-1">Narration &amp; Audio</h2>
+            <p class="text-xs text-slate-500 mb-6">Speak a script using the avatar's cloned voice. The 3D avatar will lip-sync and camera zooms to the face.</p>
+
+            @if(! $selectedAvatarId)
+                <p class="text-slate-500 text-sm">Select an avatar first.</p>
+            @else
+
+                {{-- ── Voice picker ───────────────────────────────── --}}
+                <div class="mb-5">
+                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Voice</label>
+
+                    {{-- Provider toggle --}}
+                    <div class="join mb-3">
+                        <button wire:click="$set('previewProvider', 'elevenlabs')"
+                                class="btn btn-xs join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
+                            ★ ElevenLabs
+                        </button>
+                        <button wire:click="$set('previewProvider', 'edge_tts')"
+                                class="btn btn-xs join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                            edge-tts
+                        </button>
+                        <button wire:click="$set('previewProvider', 'pocket_tts')"
+                                class="btn btn-xs join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                            Pocket TTS
+                        </button>
+                    </div>
+
+                    {{-- Hidden SVG grain filter --}}
+                    <svg style="display:none" aria-hidden="true">
+                        <defs>
+                            <filter id="grain-lab" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                                <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="noise"/>
+                                <feColorMatrix type="saturate" values="0" in="noise" result="grey"/>
+                                <feBlend in="SourceGraphic" in2="grey" mode="overlay" result="blended"/>
+                                <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+                            </filter>
+                        </defs>
+                    </svg>
+
+                    {{-- Voice card strip --}}
+                    <div
+                        x-data="{
+                            playingId: null,
+                            audioEl: null,
+                            playPreview(voiceId, previewUrl) {
+                                if (this.audioEl) { this.audioEl.pause(); this.audioEl = null; }
+                                if (this.playingId === voiceId) { this.playingId = null; return; }
+                                if (!previewUrl) return;
+                                this.playingId = voiceId;
+                                this.audioEl = new Audio(previewUrl);
+                                this.audioEl.play();
+                                this.audioEl.onended = () => { this.playingId = null; this.audioEl = null; };
+                            }
+                        }"
+                        class="flex gap-2 pb-2 overflow-x-auto scroll-smooth"
+                        style="scroll-snap-type:x mandatory; scrollbar-width:none;"
+                    >
+                        @foreach($this->voices() as $voice)
+                        <button
+                            wire:click="selectVoice('{{ $voice['id'] }}')"
+                            class="vg-card {{ $voice['gradient_class'] }} shrink-0 w-18 rounded-xl p-2 border relative cursor-pointer transition-all
+                                   {{ $voiceId === $voice['id'] ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
+                            style="scroll-snap-align:start; min-height:80px;"
+                            title="{{ $voice['label'] }}"
+                        >
+                            <div class="absolute top-1 right-1 z-10">
+                                @if($voiceId === $voice['id'])
+                                    <span class="text-amber-400 text-xs">✓</span>
+                                @elseif($voice['preview_url'])
+                                    <button
+                                        x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
+                                        class="text-slate-400 hover:text-white text-xs leading-none"
+                                        :class="{ 'text-indigo-400': playingId === '{{ $voice['id'] }}' }"
+                                    >
+                                        <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
+                                        <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
+                                            <span class="wave-bar h-3"></span>
+                                            <span class="wave-bar h-2"></span>
+                                            <span class="wave-bar h-3"></span>
+                                        </span>
+                                    </button>
+                                @endif
+                            </div>
+                            <div class="flex items-center justify-center h-8 z-10 relative mt-1">
+                                <svg class="w-6 h-6 text-white/50" viewBox="0 0 24 24" fill="currentColor">
+                                    <rect x="2" y="8" width="2" height="8" rx="1"/>
+                                    <rect x="6" y="5" width="2" height="14" rx="1"/>
+                                    <rect x="10" y="3" width="2" height="18" rx="1"/>
+                                    <rect x="14" y="5" width="2" height="14" rx="1"/>
+                                    <rect x="18" y="8" width="2" height="8" rx="1"/>
+                                </svg>
+                            </div>
+                            <p class="text-xs text-white/80 text-center truncate z-10 relative mt-1 leading-tight">
+                                {{ Str::before($voice['label'], ' ·') ?: $voice['label'] }}
+                            </p>
+                        </button>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- ── Speed slider ──────────────────────────────── --}}
+                <div class="mb-5">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-[10px] uppercase tracking-widest text-slate-500">Speed</label>
+                        <span class="text-[10px] font-mono text-indigo-400">{{ number_format($voiceSpeed, 2) }}×</span>
+                    </div>
+                    <input
+                        type="range"
+                        wire:model.live="voiceSpeed"
+                        min="0.5" max="2.0" step="0.05"
+                        class="w-full accent-indigo-500"
+                    />
+                    <div class="flex justify-between text-[9px] text-slate-600 mt-0.5">
+                        <span>0.5×</span><span>1×</span><span>2×</span>
+                    </div>
+                </div>
+
+                {{-- ── Script editor ─────────────────────────────── --}}
+                <div class="mb-4">
+                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Script</label>
+                    <textarea
+                        wire:model="narrationScript"
+                        rows="6"
+                        class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
+                        placeholder="Hey students! My name is..."
+                    ></textarea>
+                </div>
+
+                {{-- Status indicator --}}
+                @if($narrationAudioUrl && $narrationCachedScript === $narrationScript)
+                    <div class="flex items-center gap-1.5 mb-3 text-xs text-emerald-400">
+                        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        Audio ready — plays instantly
+                    </div>
+                @elseif($selectedAvatarId && $voiceId)
+                    <div class="flex items-center gap-1.5 mb-3 text-xs text-slate-500">
+                        <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        Pre-generating audio…
+                    </div>
+                @endif
+
+                {{-- Play button --}}
+                <button
+                    wire:click="speakScript"
+                    wire:loading.attr="disabled"
+                    @disabled($narrationBusy || !$voiceId)
+                    class="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-colors
+                           {{ $narrationBusy || !$voiceId ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' : 'bg-amber-500 text-slate-950 hover:bg-amber-400' }}"
+                >
+                    <span wire:loading wire:target="speakScript,selectAvatar,selectVoice" class="inline-block">
+                        <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    </span>
+                    <span wire:loading.remove wire:target="speakScript,selectAvatar,selectVoice">
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M0 0L8 4.19615L0 8V0Z" fill="currentColor"/></svg>
+                    </span>
+                    <span wire:loading wire:target="speakScript,selectAvatar,selectVoice">Generating…</span>
+                    <span wire:loading.remove wire:target="speakScript,selectAvatar,selectVoice">
+                        {{ $narrationAudioUrl && $narrationCachedScript === $narrationScript ? '▶ Play Narration' : 'Generate &amp; Play' }}
+                    </span>
+                </button>
+
+                @if(! $voiceId)
+                    <p class="text-xs text-slate-500 mt-2 text-center">Pick a voice above to get started.</p>
+                @endif
+
+            @endif
 
         @elseif($activeSection === 'controller')
 
@@ -469,7 +620,9 @@
             </div>
         </div>
 
-        {{-- Canvas — wire:ignore keeps Livewire from ever touching this subtree --}}
+        {{-- Canvas — wire:ignore on the wrapper prevents Livewire from ever
+             touching the WebGL canvas (which would destroy the context).
+             Avatar switches are handled via the avatar3d:load JS event below. --}}
         @if(! $selectedAvatarId)
             <div class="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
                 ← Select an avatar to load the 3D viewport
@@ -479,6 +632,8 @@
                 <canvas
                     id="avatar-lab-canvas"
                     data-character-url="/avatars/{{ $selectedAvatarId }}/character.glb"
+                    data-azure-key="{{ config('services.azure_speech.key') }}"
+                    data-azure-region="{{ config('services.azure_speech.region', 'eastus') }}"
                     class="w-full h-full block"
                 ></canvas>
             </div>
@@ -486,8 +641,9 @@
 
     </div>
 
-</div>
+    <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@latest/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+    @vite('resources/js/avatar-3d.js')
 
-@vite('resources/js/avatar-3d.js')
+</div>
 
 

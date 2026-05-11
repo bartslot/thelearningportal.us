@@ -1,38 +1,3 @@
-<style>
-/* Voice card gradients */
-.vg-card {
-    position: relative;
-    isolation: isolate;
-}
-.vg-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    filter: url(#grain);
-    z-index: 0;
-    pointer-events: none;
-}
-.vg-navy   { background: linear-gradient(135deg, #0f172a, #1e3a5f); }
-.vg-indigo { background: linear-gradient(135deg, #1e1b4b, #312e81); }
-.vg-violet { background: linear-gradient(135deg, #2d1b69, #4c1d95); }
-.vg-amber  { background: linear-gradient(135deg, #1c1917, #78350f); }
-.vg-teal   { background: linear-gradient(135deg, #0f2027, #1a3a4a); }
-.vg-base   { background: linear-gradient(135deg, #0f172a, #1e293b); }
-
-@keyframes wavebar {
-    0%, 100% { transform: scaleY(0.4); }
-    50%       { transform: scaleY(1.0); }
-}
-.wave-bar {
-    width: 3px;
-    border-radius: 2px;
-    animation: wavebar 0.8s ease-in-out infinite;
-    background: currentColor;
-}
-.wave-bar:nth-child(2) { animation-delay: 0.15s; }
-.wave-bar:nth-child(3) { animation-delay: 0.30s; }
-</style>
 
 <div class="space-y-10" x-data="{ activeTab: 'voice' }">
 

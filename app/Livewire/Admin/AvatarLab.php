@@ -7,10 +7,12 @@ namespace App\Livewire\Admin;
 use App\Models\AnimationClip;
 use App\Models\Avatar;
 use App\Models\AvatarAnimationController;
+use App\Services\ElevenLabsService;
 use App\Services\TtsService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -36,9 +38,12 @@ class AvatarLab extends Component
     public bool    $narrationBusy         = false;
     public ?string $narrationAudioUrl     = null;
     public string  $narrationCachedScript = '';    // script matching the cached audio
-    public string  $voiceProvider         = 'edge_tts';
+    public string  $voiceProvider         = 'elevenlabs';
     public string  $voiceId               = '';
     public float   $voiceSpeed            = 1.0;
+
+    // Voice picker state (narration panel)
+    public string $previewProvider = 'elevenlabs';
 
     // Per-category file upload properties
     public $idleFile;
@@ -64,7 +69,8 @@ class AvatarLab extends Component
         $this->gender                = $avatar->gender         ?? 'male';
         $this->age                   = $avatar->age            ?? 35;
         $this->name                  = $avatar->name;
-        $this->voiceProvider         = $avatar->voice_provider ?? 'edge_tts';
+        $this->voiceProvider         = $avatar->voice_provider ?? 'elevenlabs';
+        $this->previewProvider       = $avatar->voice_provider ?? 'elevenlabs';
         $this->voiceId               = $avatar->voice_id       ?? '';
         $this->voiceSpeed            = $avatar->voice_speed    ?? 1.0;
         $this->narrationAudioUrl     = null;
@@ -103,6 +109,49 @@ class AvatarLab extends Component
 
         // Pre-generate audio + timings for instant playback
         $this->generateNarration($avatar, $defaultScript);
+    }
+
+    // ── Voice picker ──────────────────────────────────────────────────────
+
+    #[Computed]
+    public function voices(): array
+    {
+        return match ($this->previewProvider) {
+            'elevenlabs' => app(ElevenLabsService::class)->getVoices(),
+            'edge_tts'   => Avatar::edgeTtsVoicesForCards(),
+            'pocket_tts' => Avatar::pocketTtsVoices(),
+            default      => app(ElevenLabsService::class)->getVoices(),
+        };
+    }
+
+    public function selectVoice(string $voiceId): void
+    {
+        $this->voiceId       = $voiceId;
+        $this->voiceProvider = $this->previewProvider;
+
+        // Persist immediately
+        if ($this->selectedAvatarId) {
+            $label = collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId;
+            Avatar::where('id', $this->selectedAvatarId)->update([
+                'voice_provider' => $this->voiceProvider,
+                'voice_id'       => $this->voiceId,
+                'voice_speed'    => $this->voiceSpeed,
+            ]);
+        }
+
+        // Reset cached audio — voice changed
+        $this->narrationAudioUrl     = null;
+        $this->narrationCachedScript = '';
+    }
+
+    public function updatedVoiceSpeed(float $value): void
+    {
+        if ($this->selectedAvatarId) {
+            Avatar::where('id', $this->selectedAvatarId)->update(['voice_speed' => $value]);
+        }
+        // Reset cached audio — speed changed
+        $this->narrationAudioUrl     = null;
+        $this->narrationCachedScript = '';
     }
 
     // ── File upload lifecycle hooks ────────────────────────────────────────
