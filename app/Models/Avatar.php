@@ -38,6 +38,9 @@ class Avatar extends Model
         'expressiveness',
         'speaking_speed',
         'frame_background',
+        'skin_tone',
+        'body_type',
+        'source_id',
     ];
 
     protected function casts(): array
@@ -103,12 +106,24 @@ class Avatar extends Model
             return null;
         }
 
-        // Public asset (e.g. assets/professor.webp)
-        if (str_starts_with($this->portrait_path, 'assets/')) {
+        // Public asset paths (avatars/* or assets/*) — served directly from public/
+        if (str_starts_with($this->portrait_path, 'avatars/') || str_starts_with($this->portrait_path, 'assets/')) {
             return asset($this->portrait_path);
         }
 
         return \Illuminate\Support\Facades\Storage::disk('public')->url($this->portrait_path);
+    }
+
+    public function thumbnailUrl(): ?string
+    {
+        $path = public_path("avatars/{$this->id}/thumbnail.webp");
+
+        return file_exists($path) ? asset("avatars/{$this->id}/thumbnail.webp") : null;
+    }
+
+    public function glbUrl(): string
+    {
+        return asset("avatars/{$this->id}/character.glb");
     }
 
     // ── Greeting ──────────────────────────────────────────────────────────────
