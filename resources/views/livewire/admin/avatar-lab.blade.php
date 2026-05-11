@@ -1,129 +1,186 @@
+@push('head-scripts')
+@if($selectedAvatarId)
+<link rel="preload" href="/avatars/{{ $selectedAvatarId }}/character.glb" as="fetch" crossorigin="anonymous">
+@endif
+<script>
+    document.addEventListener('alpine:init', () => {
+        if (Alpine.store('voiceStrip')) return;
+        Alpine.store('voiceStrip', {
+            selectedId: '',
+            playingId: null,
+            _el: null,
+            play(voiceId, previewUrl) {
+                if (this._el) { this._el.pause(); this._el = null; }
+                if (this.playingId === voiceId) { this.playingId = null; return; }
+                if (!previewUrl) return;
+                this.playingId = voiceId;
+                this._el = new Audio(previewUrl);
+                this._el.play();
+                this._el.onended = () => { this.playingId = null; this._el = null; };
+            }
+        });
+        window.addEventListener('voice-selected', (e) => {
+            Alpine.store('voiceStrip').selectedId = e.detail.voiceId ?? '';
+        });
+    });
+</script>
+@endpush
+
 <div
     class="flex overflow-hidden"
     style="height: calc(100vh - 64px)"
-    x-data="{ openSection: 'animation' }"
+    x-data
+    x-on:avatar3d:zoomtohead.window="window._avatar3d?.zoomToHead()"
+    x-init="
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                $wire.arrowNav(e.key === 'ArrowRight' ? 1 : -1);
+            }
+        });
+    "
 >
 
     {{-- ── LEFT SIDEBAR ──────────────────────────────────────────────────── --}}
-    <aside class="w-[220px] shrink-0 border-r border-slate-700/50 flex flex-col overflow-y-auto bg-slate-900/50">
+    <aside class="w-50 shrink-0 border-r border-slate-700/50 flex flex-col bg-slate-900/50">
 
-        {{-- Avatar selector --}}
-        <div class="p-4 border-b border-slate-700/50">
-            <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Avatar</p>
-            <select
-                wire:change="selectAvatar($event.target.value)"
-                class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
-            >
-                <option value="">— select —</option>
-                @foreach($avatars as $avatar)
-                    <option value="{{ $avatar->id }}" @selected($selectedAvatarId === $avatar->id)>
-                        {{ $avatar->name }}
-                    </option>
-                @endforeach
-            </select>
-        </div>
+        <nav class="flex-1 overflow-y-auto py-2">
 
-        {{-- Navigation sections --}}
-        <nav class="flex-1 p-3 flex flex-col gap-1 text-sm">
+            {{-- Avatar --}}
+            <button
+                wire:click="$set('activeSection', 'avatar')"
+                @click="window._avatar3d?.zoomToBody()"
+                class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
+                    {{ $activeSection === 'avatar' ? 'text-amber-400 bg-amber-500/10' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
+            >Avatar</button>
+
+            <div class="mx-4 my-1 border-t border-slate-700/50"></div>
 
             {{-- Animation --}}
-            <div>
-                <button
-                    @click="openSection = openSection === 'animation' ? null : 'animation'"
-                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg text-slate-200 font-medium hover:bg-slate-800/50 transition-colors"
-                >
-                    Animation
-                    <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openSection === 'animation' ? 'rotate-90' : ''" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
-                </button>
-                <div x-show="openSection === 'animation'" class="ml-3 mt-1 flex flex-col gap-0.5">
-                    <button
-                        wire:click="$set('activeSection', 'animation-groups')"
-                        @click="window._avatar3d?.zoomToBody()"
-                        class="text-left px-2 py-1.5 rounded-md text-xs transition-colors {{ $activeSection === 'animation-groups' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
-                    >Animation Groups</button>
-                    <button
-                        wire:click="$set('activeSection', 'controller')"
-                        @click="window._avatar3d?.zoomToBody()"
-                        class="text-left px-2 py-1.5 rounded-md text-xs transition-colors {{ $activeSection === 'controller' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
-                    >Controller</button>
-                </div>
-            </div>
+            <button
+                wire:click="$set('activeSection', 'animation-groups')"
+                @click="window._avatar3d?.zoomToBody()"
+                class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
+                    {{ $activeSection === 'animation-groups' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
+            >Animation</button>
+
+            {{-- Animation Controller --}}
+            <button
+                wire:click="$set('activeSection', 'controller')"
+                @click="window._avatar3d?.zoomToBody()"
+                class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
+                    {{ $activeSection === 'controller' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
+            >Animation Controller</button>
+
+            <div class="mx-4 my-1 border-t border-slate-700/50"></div>
 
             {{-- Narration & Audio --}}
-            <div>
-                <button
-                    wire:click="$set('activeSection', 'narration')"
-                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg transition-colors {{ $activeSection === 'narration' ? 'text-amber-400 bg-amber-500/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50' }}"
-                >
-                    Narration &amp; Audio
-                    <svg class="w-3 h-3" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
-                </button>
-            </div>
+            <button
+                wire:click="$set('activeSection', 'narration')"
+                class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
+                    {{ $activeSection === 'narration' ? 'text-amber-400 bg-amber-500/10' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
+            >Narration &amp; Audio</button>
+
+            <div class="mx-4 my-1 border-t border-slate-700/50"></div>
 
             {{-- Settings --}}
-            <div>
-                <button
-                    @click="openSection = openSection === 'settings' ? null : 'settings'"
-                    class="w-full flex items-center justify-between px-2 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
-                >
-                    Settings
-                    <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openSection === 'settings' ? 'rotate-90' : ''" viewBox="0 0 6 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4-4 4"/></svg>
-                </button>
-                <div x-show="openSection === 'settings'" class="px-2 pt-2 pb-1 flex flex-col gap-4">
-
-                    {{-- Name --}}
-                    <div>
-                        <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-1 block">Name</label>
-                        <input
-                            type="text"
-                            wire:model="name"
-                            class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
-                        />
-                    </div>
-
-                    {{-- Gender --}}
-                    <div>
-                        <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Gender</label>
-                        <div class="flex gap-2">
-                            <button
-                                wire:click="$set('gender', 'male')"
-                                class="flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors {{ $gender === 'male' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500' }}"
-                            >♂ Male</button>
-                            <button
-                                wire:click="$set('gender', 'female')"
-                                class="flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors {{ $gender === 'female' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500' }}"
-                            >♀ Female</button>
-                        </div>
-                    </div>
-
-                    {{-- Age --}}
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <label class="text-[10px] uppercase tracking-widest text-slate-500">Age</label>
-                            <span class="text-indigo-400 text-xs font-semibold">{{ $age }}</span>
-                        </div>
-                        <input
-                            type="range"
-                            wire:model.live="age"
-                            min="8"
-                            max="80"
-                            class="w-full accent-indigo-500"
-                        />
-                        <div class="flex justify-between text-[10px] text-slate-600 mt-1">
-                            <span>Child</span><span>Teen</span><span>Adult</span><span>Elder</span>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
+            <button
+                wire:click="$set('activeSection', 'settings')"
+                @click="window._avatar3d?.zoomToBody()"
+                class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
+                    {{ $activeSection === 'settings' ? 'text-slate-100 bg-slate-700/50' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
+            >Settings</button>
 
         </nav>
+
+        {{-- Selected avatar name at bottom --}}
+        @if($selectedAvatarId)
+            <div class="px-4 py-3 border-t border-slate-700/50">
+                <p class="text-[10px] uppercase tracking-widest text-slate-600 mb-0.5">Active avatar</p>
+                <p class="text-xs text-slate-400 truncate">{{ $avatars->firstWhere('id', $selectedAvatarId)?->name ?? '' }}</p>
+            </div>
+        @endif
+
     </aside>
 
     {{-- ── MIDDLE PANEL ──────────────────────────────────────────────────── --}}
-    <div class="w-[420px] shrink-0 border-r border-slate-700/50 overflow-y-auto overflow-x-hidden p-6 bg-slate-900/30">
+    <div class="w-[420px] shrink-0 border-r border-slate-700/50 overflow-y-auto overflow-x-hidden p-6 bg-slate-900/30"
+         @wheel.self.stop>
 
-        @if($activeSection === 'animation-groups')
+        @if($activeSection === 'avatar')
+
+            <h2 class="text-lg font-semibold text-slate-100 mb-4">Avatar</h2>
+
+            <div class="grid grid-cols-4 gap-2">
+                @foreach($avatars as $avatar)
+                    @php
+                        $thumbPath  = public_path("avatars/{$avatar->id}/thumbnail.webp");
+                        $thumbUrl   = file_exists($thumbPath) ? asset("avatars/{$avatar->id}/thumbnail.webp") : null;
+                        $isSelected = $selectedAvatarId === $avatar->id;
+                    @endphp
+                    <button
+                        wire:click="selectAvatar({{ $avatar->id }})"
+                        title="{{ $avatar->name }}"
+                        class="group relative rounded-xl overflow-hidden aspect-square transition-all
+                            {{ $isSelected
+                                ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'
+                                : 'ring-1 ring-slate-700/50 hover:ring-slate-500 opacity-60 hover:opacity-100' }}"
+                    >
+                        @if($thumbUrl)
+                            <img src="{{ $thumbUrl }}" alt="{{ $avatar->name }}" class="w-full h-full object-cover object-top" />
+                        @else
+                            <div class="w-full h-full bg-slate-800 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+                            </div>
+                        @endif
+                        {{-- Processing overlay --}}
+                        @if(($avatar->morph_status ?? 'ready') === 'processing')
+                            <div
+                                class="absolute inset-0 bg-slate-900/75 flex flex-col items-center justify-center gap-1"
+                                wire:poll.3000ms="refreshAvatarList"
+                            >
+                                <span class="loading loading-spinner loading-xs text-amber-400"></span>
+                                <span class="text-[8px] text-amber-300 font-medium">Processing</span>
+                            </div>
+                        @elseif(($avatar->morph_status ?? 'ready') === 'failed')
+                            <div class="absolute inset-0 bg-red-900/60 flex items-center justify-center">
+                                <span class="text-[8px] text-red-300 font-medium">Failed</span>
+                            </div>
+                        @endif
+                        {{-- Name tooltip on hover --}}
+                        <div class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent px-1 py-1
+                            opacity-0 group-hover:opacity-100 {{ $isSelected ? 'opacity-100' : '' }} transition-opacity">
+                            <p class="text-[9px] text-white leading-tight truncate">{{ $avatar->name }}</p>
+                        </div>
+                    </button>
+                @endforeach
+
+                {{-- Upload new avatar card --}}
+                <label
+                    class="group relative rounded-xl overflow-hidden aspect-square cursor-pointer
+                           ring-1 ring-slate-700/50 hover:ring-slate-500 bg-slate-800/60 hover:bg-slate-800
+                           flex items-center justify-center transition-all"
+                    title="Upload new avatar GLB"
+                >
+                    <input
+                        type="file"
+                        accept=".glb"
+                        class="sr-only"
+                        wire:model="newAvatarGlbFile"
+                    >
+                    <svg class="w-8 h-8 text-slate-600 group-hover:text-slate-400 transition-colors"
+                         fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                    </svg>
+                    <div wire:loading wire:target="newAvatarGlbFile"
+                         class="absolute inset-0 bg-slate-900/80 flex items-center justify-center">
+                        <span class="loading loading-spinner loading-sm text-amber-400"></span>
+                    </div>
+                </label>
+            </div>
+
+        @elseif($activeSection === 'animation-groups')
 
             <h2 class="text-lg font-semibold text-slate-100 mb-6">Animation</h2>
 
@@ -158,6 +215,7 @@
                             <div class="flex gap-2 pb-2
                                 {{ $scroll ? 'overflow-x-auto scroll-smooth' : 'flex-wrap' }}"
                                 style="{{ $scroll ? 'scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;' : '' }}"
+                                @wheel.stop
                             >
                                 @foreach($clips as $clip)
                                     <button
@@ -211,22 +269,6 @@
                 <div class="mb-5">
                     <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Voice</label>
 
-                    {{-- Provider toggle --}}
-                    <div class="join mb-3">
-                        <button wire:click="$set('previewProvider', 'elevenlabs')"
-                                class="btn btn-xs join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
-                            ★ ElevenLabs
-                        </button>
-                        <button wire:click="$set('previewProvider', 'edge_tts')"
-                                class="btn btn-xs join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
-                            edge-tts
-                        </button>
-                        <button wire:click="$set('previewProvider', 'pocket_tts')"
-                                class="btn btn-xs join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
-                            Pocket TTS
-                        </button>
-                    </div>
-
                     {{-- Hidden SVG grain filter --}}
                     <svg style="display:none" aria-hidden="true">
                         <defs>
@@ -239,48 +281,43 @@
                         </defs>
                     </svg>
 
-                    {{-- Voice card strip --}}
+                    {{-- Voice card strip — no x-data needed.
+                         All reactive expressions use $store.voiceStrip which Alpine tracks globally. --}}
                     <div
-                        x-data="{
-                            playingId: null,
-                            audioEl: null,
-                            playPreview(voiceId, previewUrl) {
-                                if (this.audioEl) { this.audioEl.pause(); this.audioEl = null; }
-                                if (this.playingId === voiceId) { this.playingId = null; return; }
-                                if (!previewUrl) return;
-                                this.playingId = voiceId;
-                                this.audioEl = new Audio(previewUrl);
-                                this.audioEl.play();
-                                this.audioEl.onended = () => { this.playingId = null; this.audioEl = null; };
-                            }
-                        }"
                         class="flex gap-2 pb-2 overflow-x-auto scroll-smooth"
                         style="scroll-snap-type:x mandatory; scrollbar-width:none;"
                     >
                         @foreach($this->voices() as $voice)
                         <button
                             wire:click="selectVoice('{{ $voice['id'] }}')"
-                            class="vg-card {{ $voice['gradient_class'] }} shrink-0 w-18 rounded-xl p-2 border relative cursor-pointer transition-all
-                                   {{ $voiceId === $voice['id'] ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
+                            :class="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'
+                                ? 'border-amber-400'
+                                : 'border-slate-700/60 hover:border-indigo-500/50'"
+                            class="vg-card {{ $voice['gradient_class'] }} shrink-0 w-18 rounded-xl p-2 border relative cursor-pointer transition-all"
                             style="scroll-snap-align:start; min-height:80px;"
                             title="{{ $voice['label'] }}"
                         >
                             <div class="absolute top-1 right-1 z-10">
-                                @if($voiceId === $voice['id'])
-                                    <span class="text-amber-400 text-xs">✓</span>
-                                @elseif($voice['preview_url'])
-                                    <button
-                                        x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
-                                        class="text-slate-400 hover:text-white text-xs leading-none"
-                                        :class="{ 'text-indigo-400': playingId === '{{ $voice['id'] }}' }"
-                                    >
-                                        <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
-                                        <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
-                                            <span class="wave-bar h-3"></span>
-                                            <span class="wave-bar h-2"></span>
-                                            <span class="wave-bar h-3"></span>
-                                        </span>
-                                    </button>
+                                <span
+                                    x-show="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
+                                    class="text-amber-400 text-xs"
+                                >✓</span>
+                                @if($voice['preview_url'])
+                                <span
+                                    role="button"
+                                    tabindex="0"
+                                    x-show="$store.voiceStrip.selectedId !== '{{ $voice['id'] }}'"
+                                    x-on:click.stop="$store.voiceStrip.play('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
+                                    class="text-slate-400 hover:text-white text-xs leading-none cursor-pointer"
+                                    :class="{ 'text-indigo-400': $store.voiceStrip.playingId === '{{ $voice['id'] }}' }"
+                                >
+                                    <span x-show="$store.voiceStrip.playingId !== '{{ $voice['id'] }}'">▶</span>
+                                    <span x-show="$store.voiceStrip.playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
+                                        <span class="wave-bar h-3"></span>
+                                        <span class="wave-bar h-2"></span>
+                                        <span class="wave-bar h-3"></span>
+                                    </span>
+                                </span>
                                 @endif
                             </div>
                             <div class="flex items-center justify-center h-8 z-10 relative mt-1">
@@ -367,6 +404,57 @@
 
             @endif
 
+        @elseif($activeSection === 'settings')
+
+            <h2 class="text-lg font-semibold text-slate-100 mb-6">Settings</h2>
+
+            <div class="flex flex-col gap-6 max-w-sm">
+
+                {{-- Name --}}
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-1 block">Name</label>
+                    <input
+                        type="text"
+                        wire:model="name"
+                        class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+                    />
+                </div>
+
+                {{-- Gender --}}
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Gender</label>
+                    <div class="flex gap-2">
+                        <button
+                            wire:click="$set('gender', 'male')"
+                            class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors {{ $gender === 'male' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500' }}"
+                        >♂ Male</button>
+                        <button
+                            wire:click="$set('gender', 'female')"
+                            class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors {{ $gender === 'female' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500' }}"
+                        >♀ Female</button>
+                    </div>
+                </div>
+
+                {{-- Age --}}
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-[10px] uppercase tracking-widest text-slate-500">Age</label>
+                        <span class="text-indigo-400 text-sm font-semibold">{{ $age }}</span>
+                    </div>
+                    <input
+                        type="range"
+                        wire:model.live="age"
+                        min="8"
+                        max="80"
+                        class="w-full accent-indigo-500"
+                    />
+                    <div class="flex justify-between text-[10px] text-slate-600 mt-1">
+                        <span>Child</span><span>Teen</span><span>Adult</span><span>Elder</span>
+                    </div>
+                </div>
+
+            </div>
+
         @elseif($activeSection === 'controller')
 
             <h2 class="text-lg font-semibold text-slate-100 mb-6">Controller</h2>
@@ -413,6 +501,7 @@
             clipId: null, clipName: '', isAssigned: false, confirmDelete: false,
             speed: 1.0, expressiveness: 1.0,
             baked: false,
+            glassesVisible: true, hasGlasses: false,
             setSpeed(v) {
                 this.speed = parseFloat(v);
                 this.baked = false;
@@ -425,6 +514,10 @@
             },
             bake() {
                 $wire.bakeClip(this.clipId, this.speed, this.expressiveness);
+            },
+            toggleGlasses() {
+                this.glassesVisible = !this.glassesVisible;
+                window.dispatchEvent(new CustomEvent('avatar3d:showGlasses', { detail: { visible: this.glassesVisible } }));
             },
         }"
         x-on:preview-clip.window="
@@ -439,17 +532,39 @@
             window._avatar3d?.setAnimationExpressiveness(expressiveness);
         "
         x-on:clip-baked.window="if ($event.detail.clipId === clipId) { baked = true; }"
+        x-on:avatar3d:glassesavailable.window="
+            hasGlasses = $event.detail.hasGlasses;
+            glassesVisible = true;
+        "
     >
 
-        {{-- Top overlay: clip name + Use/Remove toggle --}}
+        {{-- Top overlay: clip name + Use/Remove toggle + glasses toggle --}}
         <div
             class="absolute top-4 right-4 z-10 flex items-center gap-3"
-            x-show="clipId !== null"
+            x-show="clipId !== null || hasGlasses"
             x-cloak
             id="viewport-overlay"
         >
-            <span class="text-slate-300 text-sm font-medium drop-shadow" x-text="clipName"></span>
+            {{-- Glasses toggle — only shown when avatar has a glasses mesh --}}
             <button
+                x-show="hasGlasses"
+                @click="toggleGlasses()"
+                :class="glassesVisible
+                    ? 'bg-slate-800/90 border-slate-600 text-slate-200 hover:border-slate-400'
+                    : 'bg-slate-900/90 border-slate-700 text-slate-500 hover:border-slate-500'"
+                class="flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs transition-colors backdrop-blur-sm"
+                title="Toggle glasses"
+            >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span x-text="glassesVisible ? 'Glasses on' : 'Glasses off'"></span>
+            </button>
+
+            <span x-show="clipId !== null" class="text-slate-300 text-sm font-medium drop-shadow" x-text="clipName"></span>
+            <button
+                x-show="clipId !== null"
                 wire:click="useClip"
                 @click="isAssigned = !isAssigned"
                 :class="isAssigned
@@ -468,10 +583,10 @@
             </button>
         </div>
 
-        {{-- Bottom control bar: sliders + delete --}}
+        {{-- Bottom control bar: sliders + delete — only in animation tab --}}
         <div
             class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-[440px] max-w-[calc(100%-2rem)]"
-            x-show="clipId !== null && !confirmDelete"
+            x-show="clipId !== null && !confirmDelete && $wire.activeSection === 'animation-groups'"
             x-cloak
             x-transition:enter="transition ease-out duration-200"
             x-transition:enter-start="opacity-0 translate-y-2"
@@ -620,29 +735,174 @@
             </div>
         </div>
 
-        {{-- Canvas — wire:ignore on the wrapper prevents Livewire from ever
-             touching the WebGL canvas (which would destroy the context).
-             Avatar switches are handled via the avatar3d:load JS event below. --}}
-        @if(! $selectedAvatarId)
-            <div class="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
-                ← Select an avatar to load the 3D viewport
+        {{-- Canvas — wire:ignore prevents Livewire from touching the WebGL context.
+             The canvas is always present so Three.js can init before the GLB arrives.
+             A loading overlay fades out once the character is parsed. --}}
+        <div
+            class="w-full h-full relative"
+            wire:ignore
+            x-data="{ glbLoading: false }"
+            @avatar3d:loadstart.window="glbLoading = true"
+            @avatar3d:loadend.window="glbLoading = false"
+        >
+            <canvas
+                id="avatar-lab-canvas"
+                data-character-url="{{ $selectedAvatarId ? '/avatars/'.$selectedAvatarId.'/character.glb' : '' }}"
+                data-azure-key="{{ config('services.azure_speech.key') }}"
+                data-azure-region="{{ config('services.azure_speech.region', 'eastus') }}"
+                data-prefetch-urls="{{ $avatars->pluck('id')->map(fn($id) => '/avatars/'.$id.'/character.glb')->join(',') }}"
+                class="w-full h-full block"
+            ></canvas>
+
+            {{-- Loading spinner overlay --}}
+            <div
+                class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80 pointer-events-none transition-opacity duration-300"
+                style="display:none"
+                x-show="glbLoading"
+            >
+                <svg class="w-8 h-8 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                <p class="text-xs text-slate-400">Loading avatar…</p>
             </div>
-        @else
-            <div class="w-full h-full" wire:ignore>
-                <canvas
-                    id="avatar-lab-canvas"
-                    data-character-url="/avatars/{{ $selectedAvatarId }}/character.glb"
-                    data-azure-key="{{ config('services.azure_speech.key') }}"
-                    data-azure-region="{{ config('services.azure_speech.region', 'eastus') }}"
-                    class="w-full h-full block"
-                ></canvas>
-            </div>
-        @endif
+        </div>
 
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@latest/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
     @vite('resources/js/avatar-3d.js')
+
+    {{-- ── New Avatar Modal ──────────────────────────────────────────────────── --}}
+    @if($newAvatarId)
+    <dialog class="modal modal-open">
+        <div class="modal-box bg-slate-900 border border-slate-700/60 max-w-md w-full">
+
+            {{-- Header --}}
+            <div class="flex items-start justify-between mb-4">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-100">New Avatar</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        @if($newAvatarMorphStatus === 'processing')
+                            <span class="inline-flex items-center gap-1">
+                                <span class="loading loading-spinner loading-xs text-amber-400"></span>
+                                <span class="text-amber-400">Transferring morph targets…</span>
+                            </span>
+                        @elseif($newAvatarMorphStatus === 'ready')
+                            <span class="text-emerald-400">✓ Morph transfer complete</span>
+                        @else
+                            <span class="text-red-400">⚠ Morph transfer failed — avatar may lack lip sync</span>
+                        @endif
+                    </p>
+                </div>
+                <button wire:click="closeNewAvatarModal" class="btn btn-ghost btn-xs btn-circle text-slate-400">✕</button>
+            </div>
+
+            {{-- Tabs --}}
+            <div role="tablist" class="tabs tabs-border mb-4">
+                <button
+                    role="tab"
+                    wire:click="$set('newAvatarModalTab', 'info')"
+                    class="tab {{ $newAvatarModalTab === 'info' ? 'tab-active text-amber-400' : 'text-slate-400' }}"
+                >Info</button>
+                <button
+                    role="tab"
+                    wire:click="$set('newAvatarModalTab', 'voice')"
+                    class="tab {{ $newAvatarModalTab === 'voice' ? 'tab-active text-amber-400' : 'text-slate-400' }}"
+                >Voice</button>
+            </div>
+
+            {{-- Info tab --}}
+            @if($newAvatarModalTab === 'info')
+            <div class="space-y-4">
+                <label class="form-control">
+                    <span class="label-text text-slate-400 text-xs mb-1 block">Name</span>
+                    <input
+                        type="text"
+                        wire:model.live.debounce.600ms="newAvatarName"
+                        wire:change="saveNewAvatarMeta"
+                        placeholder="e.g. Cleopatra"
+                        class="input input-sm bg-slate-800 border-slate-700 text-slate-100 w-full"
+                        autofocus
+                    >
+                </label>
+
+                <label class="form-control">
+                    <span class="label-text text-slate-400 text-xs mb-1 block">Gender</span>
+                    <select
+                        wire:model.live="newAvatarGender"
+                        wire:change="saveNewAvatarMeta"
+                        class="select select-sm bg-slate-800 border-slate-700 text-slate-100 w-full"
+                    >
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </label>
+
+                <label class="form-control">
+                    <span class="label-text text-slate-400 text-xs mb-1 block">Age</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        wire:model.live="newAvatarAge"
+                        wire:change="saveNewAvatarMeta"
+                        class="input input-sm bg-slate-800 border-slate-700 text-slate-100 w-32"
+                    >
+                </label>
+            </div>
+            @endif
+
+            {{-- Voice tab --}}
+            @if($newAvatarModalTab === 'voice')
+            <div>
+                <p class="text-xs text-slate-500 mb-3">
+                    Showing {{ $newAvatarGender }} voices.
+                </p>
+                <div class="flex gap-2 overflow-x-auto pb-2" style="scroll-snap-type: x mandatory">
+                    @foreach($this->newAvatarVoices as $voice)
+                    @php $isSelected = $newAvatarVoiceId === $voice['id']; @endphp
+                    <button
+                        wire:click="saveNewAvatarVoice('{{ $voice['id'] }}')"
+                        title="{{ $voice['label'] }}"
+                        class="shrink-0 snap-start w-[72px] h-[72px] rounded-xl border transition-all relative overflow-hidden
+                            {{ $isSelected ? 'border-amber-400 ring-2 ring-amber-400/50' : 'border-slate-700/60 hover:border-slate-500' }}
+                            {{ $voice['gradient_class'] ?? 'vg-base' }}"
+                    >
+                        <div class="absolute inset-0 flex flex-col items-center justify-center px-1 text-center">
+                            <span class="text-[9px] font-semibold text-white/90 leading-tight line-clamp-3">
+                                {{ $voice['label'] }}
+                            </span>
+                        </div>
+                        @if(!empty($voice['preview_url']))
+                        <span
+                            role="button"
+                            tabindex="0"
+                            x-on:click.stop="(new Audio('{{ $voice['preview_url'] }}')).play()"
+                            class="absolute top-1 right-1 text-white/60 hover:text-white text-xs cursor-pointer"
+                        >▶</span>
+                        @endif
+                    </button>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
+            {{-- Footer --}}
+            <div class="modal-action mt-6">
+                <button
+                    wire:click="saveNewAvatarMeta"
+                    class="btn btn-primary btn-sm"
+                    @disabled(!$newAvatarName)
+                >Save &amp; Close</button>
+            </div>
+
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button wire:click="closeNewAvatarModal">close</button>
+        </form>
+    </dialog>
+    @endif
 
 </div>
 
