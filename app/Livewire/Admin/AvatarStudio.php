@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Models\Avatar;
 use App\Models\AvatarVoiceSample;
+use App\Services\ElevenLabsService;
 use App\Services\TtsService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -36,7 +37,7 @@ class AvatarStudio extends Component
     public string $description = '';
 
     #[Validate('required|string')]
-    public string $voice_provider = 'edge_tts';
+    public string $voice_provider = 'elevenlabs';
 
     #[Validate('required|string')]
     public string $voice_id = 'es-ES-AlvaroNeural';
@@ -69,7 +70,7 @@ class AvatarStudio extends Component
 
     public string $previewVoiceId    = '';
     public float  $previewVoiceSpeed = 0.92;
-    public string $previewProvider   = 'edge_tts';
+    public string $previewProvider   = 'elevenlabs';
 
     // ── Greeting script ───────────────────────────────────────────────────────
 
@@ -105,9 +106,17 @@ class AvatarStudio extends Component
     public function voices(): array
     {
         return match ($this->previewProvider) {
-            'edge_tts' => Avatar::edgeTtsVoices(),
-            default    => Avatar::kokoroVoices(),
+            'elevenlabs' => app(ElevenLabsService::class)->getVoices(),
+            'edge_tts'   => Avatar::edgeTtsVoicesForCards(),
+            'pocket_tts' => Avatar::pocketTtsVoices(),
+            default      => app(ElevenLabsService::class)->getVoices(),
         };
+    }
+
+    public function selectVoice(string $voiceId): void
+    {
+        $this->voice_id       = $voiceId;
+        $this->voice_provider = $this->previewProvider;
     }
 
     #[Computed]
@@ -163,14 +172,16 @@ class AvatarStudio extends Component
         try {
             /** @var TtsService $tts */
             $tts = app(TtsService::class);
-            $wordTimings = null;
+            $timingData = null;
 
-            $audioContent = $tts->generateAudioRaw($phrase, $voiceId, $speed, $this->previewProvider, $wordTimings);
+            $audioContent = $tts->generateAudioRaw($phrase, $voiceId, $speed, $this->previewProvider, $timingData);
 
             if ($audioContent === null) {
-                $this->flash('Audio generation failed — is Kokoro running?', true);
+                $this->flash('Audio generation failed — check TTS service.', true);
                 return;
             }
+
+            $voiceLabel = collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId;
 
             $ext      = $tts->lastExtension();
             $filename = 'avatar-samples/' . $this->avatar->id . '/' . Str::uuid() . '.' . $ext;
@@ -184,10 +195,11 @@ class AvatarStudio extends Component
                 'audio_path'      => $filename,
                 'audio_extension' => $ext,
                 'settings_snapshot' => [
-                    'provider' => $this->voice_provider,
-                    'voice_id' => $voiceId,
-                    'speed'    => $speed,
-                    'word_timings' => is_array($wordTimings) ? $wordTimings : [],
+                    'provider'    => $this->voice_provider,
+                    'voice_id'    => $voiceId,
+                    'speed'       => $speed,
+                    'voice_label' => $voiceLabel,
+                    'timing_data' => is_array($timingData) ? $timingData : [],
                 ],
             ]);
 
@@ -198,17 +210,6 @@ class AvatarStudio extends Component
             $this->flash('Error: ' . $e->getMessage(), true);
         } finally {
             $this->generating = false;
-        }
-    }
-
-    /**
-     * Generate one sample per Kokoro voice using the first standard phrase.
-     */
-    public function generateAllVoiceSamples(): void
-    {
-        $phrase = Avatar::samplePhrases()[0];
-        foreach (array_keys(Avatar::kokoroVoices()) as $voiceId) {
-            $this->generateSample($phrase, $voiceId, $this->previewVoiceSpeed);
         }
     }
 
