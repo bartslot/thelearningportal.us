@@ -49,31 +49,41 @@ class ElevenLabsService
         float $stability = 0.5,
         float $similarity = 0.75
     ): ?array {
-        $response = Http::withHeaders([
-            'xi-api-key'   => $this->apiKey,
-            'Content-Type' => 'application/json',
-        ])->timeout(45)->connectTimeout(3)->post(
-            "{$this->baseUrl}/v1/text-to-speech/{$voiceId}/with-timestamps",
-            [
-                'text'           => $text,
-                'model_id'       => 'eleven_multilingual_v2',
-                'voice_settings' => [
-                    'stability'        => $stability,
-                    'similarity_boost' => $similarity,
-                ],
-            ]
-        );
+        try {
+            $response = Http::withHeaders([
+                'xi-api-key'   => $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(45)->connectTimeout(3)->post(
+                "{$this->baseUrl}/v1/text-to-speech/{$voiceId}/with-timestamps",
+                [
+                    'text'           => $text,
+                    'model_id'       => 'eleven_multilingual_v2',
+                    'voice_settings' => [
+                        'stability'        => $stability,
+                        'similarity_boost' => $similarity,
+                    ],
+                ]
+            );
 
-        if (! $response->successful()) {
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $data      = $response->json();
+            $audioB64  = $data['audio_base64'] ?? '';
+            $alignment = $data['alignment'] ?? [];
+
+            if ($audioB64 === '') {
+                return null;
+            }
+
+            return [
+                'audio'     => base64_decode($audioB64),
+                'alignment' => $alignment,
+            ];
+        } catch (\Throwable) {
             return null;
         }
-
-        $data = $response->json();
-
-        return [
-            'audio'     => base64_decode($data['audio_base64'] ?? ''),
-            'alignment' => $data['alignment'] ?? [],
-        ];
     }
 
     public function getVoicePreviewUrl(string $voiceId): ?string
@@ -82,7 +92,7 @@ class ElevenLabsService
 
         foreach ($voices as $voice) {
             if ($voice['id'] === $voiceId) {
-                return $voice['preview_url'] ?: null;
+                return $voice['preview_url'] !== '' ? $voice['preview_url'] : null;
             }
         }
 
@@ -110,16 +120,16 @@ class ElevenLabsService
             return 'vg-navy';
         }
 
+        if (str_contains($accent, 'narration') || str_contains($accent, 'calm')) {
+            return 'vg-teal';
+        }
+
         if (str_contains($accent, 'american') || str_contains($accent, 'neutral')) {
             return $gender === 'female' ? 'vg-violet' : 'vg-indigo';
         }
 
         if ($gender === 'female') {
             return 'vg-violet';
-        }
-
-        if (str_contains($accent, 'narration') || str_contains($accent, 'calm')) {
-            return 'vg-teal';
         }
 
         if ($accent !== '' && ! str_contains($accent, 'american') && ! str_contains($accent, 'british')) {
