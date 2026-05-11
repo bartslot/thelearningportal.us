@@ -1,4 +1,56 @@
+<style>
+/* Voice card gradients */
+.vg-card {
+    position: relative;
+    isolation: isolate;
+}
+.vg-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    filter: url(#grain);
+    z-index: 0;
+    pointer-events: none;
+}
+.vg-navy   { background: linear-gradient(135deg, #0f172a, #1e3a5f); }
+.vg-indigo { background: linear-gradient(135deg, #1e1b4b, #312e81); }
+.vg-violet { background: linear-gradient(135deg, #2d1b69, #4c1d95); }
+.vg-amber  { background: linear-gradient(135deg, #1c1917, #78350f); }
+.vg-teal   { background: linear-gradient(135deg, #0f2027, #1a3a4a); }
+.vg-base   { background: linear-gradient(135deg, #0f172a, #1e293b); }
+
+@keyframes wavebar {
+    0%, 100% { transform: scaleY(0.4); }
+    50%       { transform: scaleY(1.0); }
+}
+.wave-bar {
+    width: 3px;
+    border-radius: 2px;
+    animation: wavebar 0.8s ease-in-out infinite;
+    background: currentColor;
+}
+.wave-bar:nth-child(2) { animation-delay: 0.15s; }
+.wave-bar:nth-child(3) { animation-delay: 0.30s; }
+</style>
+
 <div class="space-y-10" x-data="{ activeTab: 'voice' }">
+
+    {{-- Grain filter for voice card backgrounds --}}
+    <svg style="display:none" aria-hidden="true">
+        <defs>
+            <filter id="grain" x="0%" y="0%" width="100%" height="100%"
+                    color-interpolation-filters="sRGB">
+                <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3"
+                              stitchTiles="stitch" result="noise"/>
+                <feColorMatrix type="saturate" values="0" in="noise" result="grey"/>
+                <feBlend in="SourceGraphic" in2="grey" mode="overlay" result="blended"/>
+                <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.18"/>
+                </feComponentTransfer>
+            </filter>
+        </defs>
+    </svg>
 
     {{-- ── Header ──────────────────────────────────────────────────────────── --}}
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -62,16 +114,19 @@
         <div x-show="activeTab === 'voice'" x-cloak class="space-y-8">
 
             {{-- Provider toggle --}}
-            <div class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-1 w-fit">
-                @foreach(['edge_tts' => '★ edge-tts (free)', 'kokoro' => 'Kokoro (local)'] as $prov => $label)
-                    <button
-                        wire:click="$set('previewProvider', '{{ $prov }}')"
-                        class="rounded-lg px-4 py-2 text-xs font-medium transition-colors
-                            {{ $previewProvider === $prov
-                                ? 'bg-amber-500 text-slate-950'
-                                : 'text-slate-400 hover:text-slate-200' }}"
-                    >{{ $label }}</button>
-                @endforeach
+            <div class="join mb-3">
+                <button wire:click="$set('previewProvider', 'elevenlabs')"
+                        class="btn btn-sm join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
+                    ★ ElevenLabs
+                </button>
+                <button wire:click="$set('previewProvider', 'edge_tts')"
+                        class="btn btn-sm join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                    edge-tts (free)
+                </button>
+                <button wire:click="$set('previewProvider', 'pocket_tts')"
+                        class="btn btn-sm join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                    Pocket TTS
+                </button>
             </div>
 
             {{-- Current active voice --}}
@@ -93,20 +148,76 @@
                     Pick a voice and speed, choose a phrase, then listen. Click "Use this voice" to make it active.
                 </p>
 
+                {{-- Voice card strip --}}
+                <div
+                    x-data="{
+                        playingId: null,
+                        audioEl: null,
+                        playPreview(voiceId, previewUrl) {
+                            if (this.audioEl) { this.audioEl.pause(); this.audioEl = null; }
+                            if (this.playingId === voiceId) { this.playingId = null; return; }
+                            if (!previewUrl) return;
+                            this.playingId = voiceId;
+                            this.audioEl = new Audio(previewUrl);
+                            this.audioEl.play();
+                            this.audioEl.onended = () => { this.playingId = null; this.audioEl = null; };
+                        }
+                    }"
+                    class="flex gap-2 pb-2 overflow-x-auto scroll-smooth"
+                    style="scroll-snap-type: x mandatory; scrollbar-width: none;"
+                >
+                    @foreach($this->voices() as $voice)
+                    <button
+                        wire:click="selectVoice('{{ $voice['id'] }}')"
+                        class="vg-card {{ $voice['gradient_class'] }} shrink-0 w-18 rounded-xl p-2 border relative cursor-pointer transition-all
+                               {{ $voice_id === $voice['id'] ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
+                        style="scroll-snap-align: start; min-height: 80px;"
+                        title="{{ $voice['label'] }}"
+                    >
+                        {{-- Play/selected button --}}
+                        <div class="absolute top-1 right-1 z-10">
+                            @if($voice_id === $voice['id'])
+                                {{-- Selected: amber checkmark --}}
+                                <span class="text-amber-400 text-xs">✓</span>
+                            @elseif($voice['preview_url'])
+                                {{-- Preview button --}}
+                                <button
+                                    x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
+                                    class="text-slate-400 hover:text-white text-xs leading-none"
+                                    :class="{ 'text-indigo-400': playingId === '{{ $voice['id'] }}' }"
+                                >
+                                    <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
+                                    {{-- Waveform bars when playing --}}
+                                    <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
+                                        <span class="wave-bar h-3"></span>
+                                        <span class="wave-bar h-2"></span>
+                                        <span class="wave-bar h-3"></span>
+                                    </span>
+                                </button>
+                            @endif
+                        </div>
+
+                        {{-- Waveform icon center --}}
+                        <div class="flex items-center justify-center h-8 z-10 relative mt-1">
+                            <svg class="w-6 h-6 text-white/50" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="2" y="8" width="2" height="8" rx="1"/>
+                                <rect x="6" y="5" width="2" height="14" rx="1"/>
+                                <rect x="10" y="3" width="2" height="18" rx="1"/>
+                                <rect x="14" y="5" width="2" height="14" rx="1"/>
+                                <rect x="18" y="8" width="2" height="8" rx="1"/>
+                            </svg>
+                        </div>
+
+                        {{-- Voice name --}}
+                        <p class="text-xs text-white/80 text-center truncate z-10 relative mt-1 leading-tight">
+                            {{ Str::before($voice['label'], ' ·') ?: $voice['label'] }}
+                        </p>
+                    </button>
+                    @endforeach
+                </div>
+
                 {{-- Voice selector + speed --}}
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <div>
-                        <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400">Voice</label>
-                        <select
-                            wire:model.live="previewVoiceId"
-                            class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
-                                focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                        >
-                            @foreach($this->voices as $id => $label)
-                                <option value="{{ $id }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
                     <div>
                         <label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400">
                             Speed: <span class="text-amber-400">{{ $previewVoiceSpeed }}×</span>
@@ -169,19 +280,6 @@
                     @error('customPhrase') <p class="text-sm text-rose-400">{{ $message }}</p> @enderror
                 </div>
 
-                {{-- Batch: all voices with phrase 1 --}}
-                <div class="border-t border-slate-800 pt-5">
-                    <button
-                        wire:click="generateAllVoiceSamples"
-                        wire:loading.attr="disabled"
-                        wire:confirm="This will generate {{ count($this->voices) }} audio clips (one per voice). Takes a minute. Continue?"
-                        class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-400
-                            hover:border-amber-500 hover:text-amber-400 transition-colors disabled:opacity-40"
-                    >
-                        Generate all {{ count($this->voices) }} voices with sample phrase 1
-                    </button>
-                    <p class="mt-1.5 text-xs text-slate-600">Useful for a side-by-side comparison of every available voice.</p>
-                </div>
             </div>
 
             {{-- Recent samples for this avatar ---------------------------------------------- --}}
@@ -255,8 +353,9 @@
                             <label class="text-xs text-slate-400 mb-1 block">Voice provider</label>
                             <select wire:model="voice_provider"
                                     class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200">
-                                <option value="edge_tts">edge-tts</option>
-                                <option value="kokoro">Kokoro</option>
+                                <option value="elevenlabs">ElevenLabs</option>
+                                <option value="edge_tts">edge-tts (free)</option>
+                                <option value="pocket_tts">Pocket TTS</option>
                                 <option value="openai">OpenAI</option>
                             </select>
                         </div>
@@ -332,34 +431,22 @@
                     <select wire:model.live="voice_provider"
                             class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
                                 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500">
-                        <option value="kokoro">Kokoro TTS (local / free)</option>
-                        <option value="openai">OpenAI TTS</option>
                         <option value="elevenlabs">ElevenLabs</option>
+                        <option value="edge_tts">edge-tts (free)</option>
+                        <option value="pocket_tts">Pocket TTS</option>
+                        <option value="openai">OpenAI TTS</option>
                     </select>
                 </div>
 
-                {{-- Voice ID (Kokoro) --}}
-                @if($voice_provider === 'kokoro')
-                    <div>
-                        <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">Kokoro speaker</label>
-                        <select wire:model="voice_id"
-                                class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
-                                    focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500">
-                            @foreach($this->voices as $id => $label)
-                                <option value="{{ $id }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                        <p class="mt-1.5 text-xs text-slate-600">Use the Voice Studio tab to audition each voice before choosing.</p>
-                    </div>
-                @else
-                    <div>
-                        <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">Voice ID</label>
-                        <input wire:model="voice_id" type="text"
-                            class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
-                                    focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            placeholder="e.g. onyx, echo, or ElevenLabs voice ID">
-                    </div>
-                @endif
+                {{-- Voice ID --}}
+                <div>
+                    <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">Voice ID</label>
+                    <input wire:model="voice_id" type="text"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
+                                focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        placeholder="e.g. ElevenLabs voice ID or edge-tts locale">
+                    <p class="mt-1.5 text-xs text-slate-600">Use the Voice Studio tab to audition and select a voice.</p>
+                </div>
 
                 {{-- Speed --}}
                 <div>
