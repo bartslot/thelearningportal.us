@@ -31,27 +31,25 @@ class TransferAvatarMorphs implements ShouldQueue
             return;
         }
 
-        $avatarDir = public_path("avatars/{$this->avatarId}");
-        $script    = base_path('scripts/transfer_morphs_single.py');
-        $blender   = '/Applications/Blender.app/Contents/MacOS/Blender';
+        $python = base_path('scripts/venv/bin/python3');
+        $script = base_path('scripts/transfer_morphs_arkit.py');
 
-        $cmd = escapeshellcmd($blender)
-            . ' --background --python ' . escapeshellarg($script)
-            . ' -- ' . escapeshellarg((string) $this->avatarId)
-            . ' ' . escapeshellarg($avatarDir)
+        $cmd = escapeshellcmd($python)
+            . ' ' . escapeshellarg($script)
+            . ' --avatar-id ' . escapeshellarg((string) $this->avatarId)
             . ' 2>&1';
 
-        Log::info("TransferAvatarMorphs: starting Blender for avatar {$this->avatarId}");
+        Log::info("TransferAvatarMorphs: starting arkit transfer for avatar {$this->avatarId}");
         exec($cmd, $output, $exitCode);
 
         $logOutput = implode("\n", $output);
-        Log::info("TransferAvatarMorphs: Blender exit={$exitCode}", ['output' => $logOutput]);
+        Log::info("TransferAvatarMorphs: exit={$exitCode}", ['output' => $logOutput]);
 
         if ($exitCode === 0) {
             $avatar->update(['morph_status' => 'ready']);
         } else {
             $avatar->update(['morph_status' => 'failed']);
-            Log::error("TransferAvatarMorphs: Blender failed for avatar {$this->avatarId}", ['output' => $logOutput]);
+            Log::error("TransferAvatarMorphs: transfer failed for avatar {$this->avatarId}", ['output' => $logOutput]);
         }
     }
 }
