@@ -719,8 +719,9 @@ export class Avatar3DPlayer {
       OCULUS_VISEMES.forEach(name => {
         if (name in dict) this._visemeMap[name] = dict[name]
       })
-      // Also map ARKit jaw/mouth names that the amplitude fallback needs
-      for (const name of ['jawOpen', 'mouthFunnel', 'mouthSmile', 'mouthSmileLeft', 'mouthSmileRight']) {
+      // Also map ARKit jaw/mouth names (amplitude fallback + debug panel)
+      for (const name of ['jawOpen', 'mouthFunnel', 'mouthSmile', 'mouthSmileLeft', 'mouthSmileRight',
+        'mouthPucker', 'mouthRollLower', 'mouthRollUpper', 'mouthShrugUpper']) {
         if (name in dict) this._visemeMap[name] = dict[name]
       }
       // Store reference to the richest mesh for per-frame morph application
@@ -1519,10 +1520,16 @@ window.addEventListener('preview-clip', (ev) => {
 })
 
 // ── Narration speak (Avatar Lab) ──────────────────────────────────────────────
-window.addEventListener('avatar3d:speak', async (ev) => {
+async function _handleSpeak (ev) {
   const { audioUrl, text, alignment } = ev.detail
   const player = window._avatar3d
   if (!player) return
+
+  // Defer until character is loaded (meshes available for viseme mapping)
+  if (!player._meshes.length) {
+    window.addEventListener('avatar3d:loadend', () => _handleSpeak(ev), { once: true })
+    return
+  }
 
   // Best path: ElevenLabs character alignment → Oculus visemes (no Azure needed)
   if (alignment && alignment.length > 0) {
@@ -1541,7 +1548,8 @@ window.addEventListener('avatar3d:speak', async (ev) => {
     // Fallback: amplitude-driven jaw
     player.speakWithVisemes(audioUrl)
   }
-})
+}
+window.addEventListener('avatar3d:speak', _handleSpeak)
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
 if (import.meta.hot) {
