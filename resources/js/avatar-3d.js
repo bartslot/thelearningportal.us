@@ -697,11 +697,19 @@ export class Avatar3DPlayer {
         }
       }
 
-      // Use the mesh with the most morph targets as the source of truth for name→index mapping.
-      // EyeLeft/EyeRight are pushed first but only have 2 targets; Wolf3D_Head has 70+.
-      const richestMesh = this._meshes.reduce((best, m) =>
-        Object.keys(m.morphTargetDictionary ?? {}).length > Object.keys(best.morphTargetDictionary ?? {}).length ? m : best
-      )
+      // Prefer face/head meshes over eye/teeth meshes when morph counts are equal.
+      // After arkit transfer all face-related meshes have 72 morphs — tie-break by name priority.
+      const FACE_PRIORITY = ['Wolf3D_Head', 'Wolf3D_Skin', 'Wolf3D_Avatar', 'Head', 'Face']
+      const facePriority = (m) => {
+        const idx = FACE_PRIORITY.findIndex(n => m.name === n)
+        return idx === -1 ? FACE_PRIORITY.length : idx
+      }
+      const richestMesh = this._meshes.reduce((best, m) => {
+        const mc = Object.keys(m.morphTargetDictionary ?? {}).length
+        const bc = Object.keys(best.morphTargetDictionary ?? {}).length
+        if (mc !== bc) return mc > bc ? m : best
+        return facePriority(m) < facePriority(best) ? m : best
+      })
       const dict = richestMesh.morphTargetDictionary ?? {}
 
       // Azure ARKit map (index → morph index) for speakWithAzureBlendShapes
