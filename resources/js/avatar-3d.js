@@ -456,8 +456,9 @@ export class Avatar3DPlayer {
   }
 
   _clearMouthShapes () {
-    if (!this._meshes.length) return
-    const dict = (this._richestMesh ?? this._meshes[0]).morphTargetDictionary
+    const mesh = this._richestMesh
+    if (!mesh) return
+    const dict = mesh.morphTargetDictionary
     if (!dict) return
     const toClear = [
       'jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthSmileLeft', 'mouthSmileRight',
@@ -465,9 +466,7 @@ export class Avatar3DPlayer {
     ]
     for (const name of toClear) {
       const i = dict[name]
-      if (i !== undefined) for (const m of this._meshes) {
-        if (i < m.morphTargetInfluences.length) m.morphTargetInfluences[i] = 0
-      }
+      if (i !== undefined && i < mesh.morphTargetInfluences.length) mesh.morphTargetInfluences[i] = 0
     }
   }
 
@@ -546,16 +545,15 @@ export class Avatar3DPlayer {
       }
     }
 
-    // Apply with smooth lerp
+    // Apply with smooth lerp — only on the richest mesh (face mesh that owns all viseme morphs)
+    const faceMesh = this._richestMesh
+    if (!faceMesh) return
     for (const viseme of OCULUS_VISEMES) {
       const mi = vm[viseme]
-      if (mi === undefined) continue
+      if (mi === undefined || mi >= faceMesh.morphTargetInfluences.length) continue
       const target = weights[viseme] ?? 0
-      for (const mesh of this._meshes) {
-        if (mi >= mesh.morphTargetInfluences.length) continue
-        const cur = mesh.morphTargetInfluences[mi] || 0
-        mesh.morphTargetInfluences[mi] = cur + (target - cur) * 0.3
-      }
+      const cur = faceMesh.morphTargetInfluences[mi] || 0
+      faceMesh.morphTargetInfluences[mi] = cur + (target - cur) * 0.3
     }
   }
 
@@ -585,18 +583,15 @@ export class Avatar3DPlayer {
     const targetJaw    = Math.min(0.7,  (rms / 255) * 2.2)
     const targetFunnel = Math.min(0.35, (rms / 255) * 1.1)
 
-    // Smooth lerp — fast open, slower close
+    // Smooth lerp — fast open, slower close — only on richest mesh (face mesh)
     const lerpSpeed = targetJaw > (refMesh.morphTargetInfluences[jawIdx] || 0) ? 0.35 : 0.18
-
-    for (const m of this._meshes) {
-      if (jawIdx < m.morphTargetInfluences.length) {
-        const cur = m.morphTargetInfluences[jawIdx] || 0
-        m.morphTargetInfluences[jawIdx] = cur + (targetJaw - cur) * lerpSpeed
-      }
-      if (funnelIdx !== undefined && funnelIdx < m.morphTargetInfluences.length) {
-        const curF = m.morphTargetInfluences[funnelIdx] || 0
-        m.morphTargetInfluences[funnelIdx] = curF + (targetFunnel - curF) * lerpSpeed
-      }
+    if (jawIdx < refMesh.morphTargetInfluences.length) {
+      const cur = refMesh.morphTargetInfluences[jawIdx] || 0
+      refMesh.morphTargetInfluences[jawIdx] = cur + (targetJaw - cur) * lerpSpeed
+    }
+    if (funnelIdx !== undefined && funnelIdx < refMesh.morphTargetInfluences.length) {
+      const curF = refMesh.morphTargetInfluences[funnelIdx] || 0
+      refMesh.morphTargetInfluences[funnelIdx] = curF + (targetFunnel - curF) * lerpSpeed
     }
   }
 
@@ -1117,13 +1112,12 @@ export class Avatar3DPlayer {
     const f0 = frames[idx]
     const f1 = frames[Math.min(idx + 1, frames.length - 1)]
     const a  = f1.t > f0.t ? Math.min(1, (t - f0.t) / (f1.t - f0.t)) : 0
+    const faceMesh = this._richestMesh
+    if (!faceMesh) return
     for (const [si, mi] of Object.entries(this._morphMap)) {
       const w = (f0.w[si] ?? 0) + ((f1.w[si] ?? 0) - (f0.w[si] ?? 0)) * a
-      for (const mesh of this._meshes) {
-        // Guard: skip meshes whose morph array is shorter than this index
-        if (mi < mesh.morphTargetInfluences.length) {
-          mesh.morphTargetInfluences[mi] = w
-        }
+      if (mi < faceMesh.morphTargetInfluences.length) {
+        faceMesh.morphTargetInfluences[mi] = w
       }
     }
   }
@@ -1269,26 +1263,19 @@ export class Avatar3DPlayer {
    * @param {number} holdMs     — how long to hold before releasing (default 300ms)
    */
   debugViseme (visemeName, weight = 0.8, holdMs = 300) {
-    if (!this._meshes.length) { console.warn('[Avatar3D] debugViseme: no meshes loaded yet'); return }
+    const mesh = this._richestMesh
+    if (!mesh) { console.warn('[Avatar3D] debugViseme: no mesh loaded yet'); return }
     const mi = this._visemeMap[visemeName]
     if (mi === undefined) {
-      console.warn(`[Avatar3D] debugViseme: '${visemeName}' not in visemeMap. Available: ${Object.keys(this._visemeMap).join(', ')}`)
+      console.warn(`[Avatar3D] debugViseme: '${visemeName}' not in visemeMap`)
       return
     }
-    console.log(`[Avatar3D] debugViseme: '${visemeName}' → morph index ${mi}, weight=${weight}, meshes=${this._meshes.length}`)
-    for (const m of this._meshes) {
-      const before = m.morphTargetInfluences[mi]
-      if (mi < m.morphTargetInfluences.length) {
-        m.morphTargetInfluences[mi] = weight
-        console.log(`[Avatar3D]   mesh '${m.name}': ${before} → ${m.morphTargetInfluences[mi]} (len=${m.morphTargetInfluences.length})`)
-      } else {
-        console.log(`[Avatar3D]   mesh '${m.name}': index ${mi} out of bounds (len=${m.morphTargetInfluences.length})`)
-      }
+    if (mi < mesh.morphTargetInfluences.length) {
+      mesh.morphTargetInfluences[mi] = weight
+      console.log(`[Avatar3D] debugViseme: '${visemeName}' idx=${mi} weight=${weight} on '${mesh.name}'`)
     }
     setTimeout(() => {
-      for (const m of this._meshes) {
-        if (mi < m.morphTargetInfluences.length) m.morphTargetInfluences[mi] = 0
-      }
+      if (mi < mesh.morphTargetInfluences.length) mesh.morphTargetInfluences[mi] = 0
     }, holdMs)
   }
 
