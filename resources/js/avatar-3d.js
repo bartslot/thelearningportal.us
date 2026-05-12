@@ -1269,14 +1269,21 @@ export class Avatar3DPlayer {
    * @param {number} holdMs     — how long to hold before releasing (default 300ms)
    */
   debugViseme (visemeName, weight = 0.8, holdMs = 300) {
-    if (!this._meshes.length) return
+    if (!this._meshes.length) { console.warn('[Avatar3D] debugViseme: no meshes loaded yet'); return }
     const mi = this._visemeMap[visemeName]
     if (mi === undefined) {
-      console.warn(`[Avatar3D] debugViseme: '${visemeName}' not in visemeMap`)
+      console.warn(`[Avatar3D] debugViseme: '${visemeName}' not in visemeMap. Available: ${Object.keys(this._visemeMap).join(', ')}`)
       return
     }
+    console.log(`[Avatar3D] debugViseme: '${visemeName}' → morph index ${mi}, weight=${weight}, meshes=${this._meshes.length}`)
     for (const m of this._meshes) {
-      if (mi < m.morphTargetInfluences.length) m.morphTargetInfluences[mi] = weight
+      const before = m.morphTargetInfluences[mi]
+      if (mi < m.morphTargetInfluences.length) {
+        m.morphTargetInfluences[mi] = weight
+        console.log(`[Avatar3D]   mesh '${m.name}': ${before} → ${m.morphTargetInfluences[mi]} (len=${m.morphTargetInfluences.length})`)
+      } else {
+        console.log(`[Avatar3D]   mesh '${m.name}': index ${mi} out of bounds (len=${m.morphTargetInfluences.length})`)
+      }
     }
     setTimeout(() => {
       for (const m of this._meshes) {
