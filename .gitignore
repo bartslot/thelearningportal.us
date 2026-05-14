@@ -32,6 +32,8 @@ Thumbs.db
 /public/avatars/*/*.bak2morph
 /public/avatars/animations/**/*.fbx
 /public/avatars/animations/mixamo/
+/public/avatars/animation-library/**/fbx/
+/public/avatars/animation-library/**/*.glb
 /bin/fbx2gltf
 NUL
 /public/NUL
