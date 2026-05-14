@@ -23,4 +23,10 @@ class AnimationClip extends Model
     {
         return asset($this->fbx_path);
     }
+
+    /** Returns the public URL for the webp thumbnail, or null if none. */
+    public function thumbnailUrl(): ?string
+    {
+        return $this->thumbnail_path ? asset($this->thumbnail_path) : null;
+    }
 }

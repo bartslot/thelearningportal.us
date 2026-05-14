@@ -11,6 +11,7 @@ use App\Services\ElevenLabsService;
 use App\Services\TtsService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -31,9 +32,10 @@ class AvatarLab extends Component
     public ?string $previewClipName = null;
 
     // Settings (under Settings sidebar section)
-    public string $gender = 'male';
-    public int    $age    = 35;
-    public string $name   = '';
+    public string $gender          = 'male';
+    public int    $age             = 35;
+    public string $name            = '';
+    public string $sceneBackground = '#f0f0f0';
 
     // Narration & Audio
     public string  $narrationScript       = '';
@@ -47,8 +49,8 @@ class AvatarLab extends Component
 
     // Per-category file upload properties
     public $idleFile;
-    public $presentingFile;
-    public $greetingFile;
+    public $expressionFile;
+    public $danceFile;
 
     public Collection $avatars;
 
@@ -96,9 +98,11 @@ class AvatarLab extends Component
 
         // Tell the JS player to load this avatar's GLB
         $this->dispatch('avatar3d:load', characterUrl: "/avatars/{$avatar->id}/character.glb");
+        $this->dispatch('avatar3d:setBg', hex: $this->sceneBackground);
 
-        // Auto-play first working idle: prefer clips assigned to this avatar's controller,
-        // fall back to any global idle that has an FBX file on disk.
+        // Auto-play first idle matching the avatar's gender.
+        // Prefer clips assigned to this avatar's controller; fall back to any gender-matching idle.
+        $clipGender     = $this->gender === 'female' ? 'feminine' : 'masculine';
         $controller     = AvatarAnimationController::where('avatar_id', $avatar->id)->first();
         $controllerData = $controller?->controller ?? AvatarAnimationController::defaultControllerData();
         $assignedIds    = $controllerData['idle'] ?? [];
@@ -106,13 +110,15 @@ class AvatarLab extends Component
         $firstIdle = ! empty($assignedIds)
             ? AnimationClip::whereIn('id', $assignedIds)
                 ->where('category', 'idle')
-                ->where('fbx_path', '!=', '')
+                ->where('gender', $clipGender)
+                ->whereNotNull('glb_path')
                 ->orderBy('sort_order')
                 ->first()
             : null;
 
         $firstIdle ??= AnimationClip::where('category', 'idle')
-            ->where('fbx_path', '!=', '')
+            ->where('gender', $clipGender)
+            ->whereNotNull('glb_path')
             ->orderBy('sort_order')
             ->first();
 
@@ -131,8 +137,31 @@ class AvatarLab extends Component
         // Filter to voices matching the avatar's gender (male/female).
         // Fall back to all voices if none match (e.g. gender not set or API labels missing).
         $filtered = array_values(array_filter($all, fn ($v) => $v['gender'] === $this->gender));
+        $voices   = count($filtered) >= 2 ? $filtered : $all;
 
-        return count($filtered) >= 2 ? $filtered : $all;
+        // Cap at 4 samples and cache previews to the server for reliable playback.
+        return $this->cacheVoicePreviews(array_slice($voices, 0, 4));
+    }
+
+    private function cacheVoicePreviews(array $voices): array
+    {
+        return array_map(function (array $v) {
+            if (empty($v['preview_url'])) return $v;
+            $localPath = "avatars/voice-previews/{$v['id']}.mp3";
+            $absPath   = storage_path("app/public/{$localPath}");
+            if (! file_exists($absPath)) {
+                try {
+                    $res = Http::timeout(10)->get($v['preview_url']);
+                    if ($res->ok()) {
+                        Storage::disk('public')->put($localPath, $res->body());
+                    }
+                } catch (\Throwable) {}
+            }
+            if (file_exists($absPath)) {
+                $v['preview_url'] = '/storage/' . $localPath;
+            }
+            return $v;
+        }, $voices);
     }
 
     #[Computed]
@@ -140,7 +169,8 @@ class AvatarLab extends Component
     {
         $all      = app(ElevenLabsService::class)->getVoices();
         $filtered = array_values(array_filter($all, fn ($v) => $v['gender'] === $this->newAvatarGender));
-        return count($filtered) >= 2 ? $filtered : $all;
+        $voices   = count($filtered) >= 2 ? $filtered : $all;
+        return $this->cacheVoicePreviews(array_slice($voices, 0, 4));
     }
 
     public function selectVoice(string $voiceId): void
@@ -176,6 +206,11 @@ class AvatarLab extends Component
         $this->narrationCachedScript = '';
     }
 
+    public function updatedSceneBackground(string $value): void
+    {
+        $this->dispatch('avatar3d:setBg', hex: $value);
+    }
+
     // ── File upload lifecycle hooks ────────────────────────────────────────
 
     public function updatedIdleFile(): void
@@ -183,14 +218,14 @@ class AvatarLab extends Component
         $this->processUpload('idle', $this->idleFile);
     }
 
-    public function updatedPresentingFile(): void
+    public function updatedExpressionFile(): void
     {
-        $this->processUpload('presenting', $this->presentingFile);
+        $this->processUpload('expression', $this->expressionFile);
     }
 
-    public function updatedGreetingFile(): void
+    public function updatedDanceFile(): void
     {
-        $this->processUpload('greeting', $this->greetingFile);
+        $this->processUpload('dance', $this->danceFile);
     }
 
     public function updatedNewAvatarGlbFile(): void
@@ -364,7 +399,7 @@ class AvatarLab extends Component
         // Remove from all controllers
         AvatarAnimationController::all()->each(function (AvatarAnimationController $ctrl) use ($clip): void {
             $data = $ctrl->controller;
-            foreach (['idle', 'presenting', 'greeting'] as $cat) {
+            foreach (['idle', 'expression', 'dance'] as $cat) {
                 if (isset($data[$cat])) {
                     $data[$cat] = array_values(
                         array_filter($data[$cat], fn ($cid) => $cid !== (string) $clip->id)
@@ -415,6 +450,7 @@ class AvatarLab extends Component
             clipName:        $clip->name,
             category:        $clip->category,
             fbxUrl:          $clip->fbx_path ? $clip->fbxUrl() : null,
+            glbUrl:          $clip->glb_path ? asset($clip->glb_path) : null,
             isAssigned:      $isAssigned,
             speed:           $clip->speed           ?? 1.0,
             expressiveness:  $clip->expressiveness  ?? 1.0,
@@ -582,7 +618,10 @@ class AvatarLab extends Component
 
     public function render(): View
     {
+        // Only show clips that match the selected avatar's gender
+        $clipGender      = $this->gender === 'female' ? 'feminine' : 'masculine';
         $clipsByCategory = AnimationClip::orderBy('sort_order')->orderBy('name')
+            ->where('gender', $clipGender)
             ->get()
             ->groupBy('category');
 

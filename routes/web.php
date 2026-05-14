@@ -18,6 +18,10 @@ Route::get('/', function () {
     return view('historyportal');
 })->name('home');
 
+Route::get('/about', function () {
+    return view('about');
+})->name('about');
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 Route::middleware('guest')->group(function () {

@@ -282,18 +282,7 @@ export class Avatar3DPlayer {
     this._renderer.shadowMap.type    = THREE.PCFSoftShadowMap
 
     this._scene = new THREE.Scene()
-
-    // ── Light gradient background (model-viewer style) ───────────────────────
-    const bgCanvas  = document.createElement('canvas')
-    bgCanvas.width  = 2
-    bgCanvas.height = 256
-    const bgCtx = bgCanvas.getContext('2d')
-    const grad  = bgCtx.createLinearGradient(0, 0, 0, 256)
-    grad.addColorStop(0,   '#f0f0f0')
-    grad.addColorStop(1,   '#d8d8d8')
-    bgCtx.fillStyle = grad
-    bgCtx.fillRect(0, 0, 2, 256)
-    this._scene.background = new THREE.CanvasTexture(bgCanvas)
+    this._scene.background = new THREE.Color('#f0f0f0')
 
     // ── Camera ────────────────────────────────────────────────────────────────
     this._camera = new THREE.PerspectiveCamera(CAMERA_PRESET.fov, w / h, 0.01, 100)
@@ -325,10 +314,11 @@ export class Avatar3DPlayer {
     fill.position.set(2, 2, -1)
     this._scene.add(fill)
 
-    // Rim light: very soft back-light lifts the silhouette from background
+    // Rim light: back-light lifts the silhouette from background
     const rim = new THREE.DirectionalLight(0xffffff, 0.3)
     rim.position.set(0, 1.5, -3)
     this._scene.add(rim)
+    this._rimLight = rim
 
     // ── Contact shadow plane (receives shadows, invisible otherwise) ──────────
     const shadowGeo = new THREE.PlaneGeometry(4, 4)
@@ -418,12 +408,15 @@ export class Avatar3DPlayer {
     this._frames      = []
     this._visemeTimings = []
 
-    const audio = new Audio(audioUrl)
+    const audio = new Audio()
+    audio.crossOrigin = 'anonymous'
+    audio.src = audioUrl
     this._audio = audio
 
     audio.addEventListener('ended', () => {
       this._playing = false
       this._clearMouthShapes()
+      window.dispatchEvent(new CustomEvent('avatar3d:speakend'))
     })
 
     this._playing = false
@@ -488,34 +481,40 @@ export class Avatar3DPlayer {
       return
     }
 
-    // Build timeline: [{t, viseme, weight}]
-    // Each character gets a ramp-up at start_time and ramp-down before end_time
-    const timeline = []
+    // Build per-viseme keyframe tracks.
+    // Peak weight 0.75 — matches the feel of the debug viseme buttons (0.8) at full
+    // ARKit morph intensity without deforming the mesh.
+    const PEAK = 0.75
+    const byViseme = {}
     for (const entry of alignment) {
       const viseme = charToViseme(entry.character)
       const t0 = entry.start_time
       const t1 = entry.end_time
       const dur = t1 - t0
-      // Ramp up at t0, hold, ramp down 30ms before t1
-      timeline.push({ t: t0,              viseme, weight: 0 })
-      timeline.push({ t: t0 + dur * 0.1,  viseme, weight: 1 })
-      timeline.push({ t: t1 - dur * 0.1,  viseme, weight: 1 })
-      timeline.push({ t: t1,              viseme, weight: 0 })
+      if (!byViseme[viseme]) byViseme[viseme] = []
+      byViseme[viseme].push({ t: t0,             w: 0 })
+      byViseme[viseme].push({ t: t0 + dur * 0.1, w: PEAK })
+      byViseme[viseme].push({ t: t1 - dur * 0.1, w: PEAK })
+      byViseme[viseme].push({ t: t1,             w: 0 })
     }
-    timeline.sort((a, b) => a.t - b.t)
+    // Sort each track by time
+    for (const v of Object.keys(byViseme)) byViseme[v].sort((a, b) => a.t - b.t)
 
     if (this._audio) { this._audio.pause(); this._audio = null }
     if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
     this._visemeTimings = []
     this._frames = []
-    this._elevenTimeline = timeline
+    this._elevenTimeline = byViseme
 
-    const audio = new Audio(audioUrl)
+    const audio = new Audio()
+    audio.crossOrigin = 'anonymous'
+    audio.src = audioUrl
     this._audio = audio
     audio.addEventListener('ended', () => {
       this._playing = false
       this._elevenTimeline = null
       this._clearMouthShapes()
+      window.dispatchEvent(new CustomEvent('avatar3d:speakend'))
     })
 
     this._playing = false
@@ -525,7 +524,7 @@ export class Avatar3DPlayer {
       this._playing = true
     }, 600)
 
-    console.log(`[Avatar3D] ElevenLabs alignment: ${alignment.length} chars, ${timeline.length} keyframes`)
+    console.log(`[Avatar3D] ElevenLabs alignment: ${alignment.length} chars, ${Object.keys(byViseme).length} active visemes`)
   }
 
   _applyElevenLabsVisemes () {
@@ -533,16 +532,20 @@ export class Avatar3DPlayer {
     const t = this._audio.currentTime
     const vm = this._visemeMap
 
-    // Find all active entries in timeline window
+    // For each viseme, linearly interpolate between the two bracketing keyframes.
+    // This avoids the windowed-max approach that could show multiple visemes at peak simultaneously.
     const weights = {}
-    for (const entry of this._elevenTimeline) {
-      if (entry.t > t + 0.1) break
-      if (entry.t < t - 0.3) continue
-      // Linear interpolate weight at current time
-      const w = entry.weight
-      if (!weights[entry.viseme] || weights[entry.viseme] < w) {
-        weights[entry.viseme] = w
+    for (const [viseme, track] of Object.entries(this._elevenTimeline)) {
+      let w = 0
+      for (let i = 0; i < track.length - 1; i++) {
+        const a = track[i], b = track[i + 1]
+        if (t >= a.t && t <= b.t) {
+          const frac = (t - a.t) / (b.t - a.t)
+          w = a.w + frac * (b.w - a.w)
+          break
+        }
       }
+      if (w > 0) weights[viseme] = w
     }
 
     // Apply with smooth lerp — only on the richest mesh (face mesh that owns all viseme morphs)
@@ -601,6 +604,25 @@ export class Avatar3DPlayer {
     if (this._camera) {
       this._camera.aspect = w / h
       this._camera.updateProjectionMatrix()
+    }
+  }
+
+  setSceneBackground (hex) {
+    if (!this._scene) return
+
+    // Dispose previous canvas texture if any
+    if (this._scene.background && this._scene.background.isTexture) {
+      this._scene.background.dispose()
+    }
+
+    // Solid colour — no gradient so black stays black
+    this._scene.background = new THREE.Color(hex)
+
+    // Adjust rim light: dark backgrounds need stronger back-separation
+    if (this._rimLight) {
+      const c = new THREE.Color(hex)
+      const luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+      this._rimLight.intensity = luminance < 0.25 ? 1.2 : 0.3
     }
   }
 
@@ -1335,27 +1357,33 @@ export class Avatar3DPlayer {
     return clip
   }
 
-  // ── Body animation (FBX upload) ───────────────────────────────────────────
+  // ── Body animation (FBX or GLB) ──────────────────────────────────────────
 
-  async loadBodyAnimation (fbxUrl) {
+  async loadBodyAnimation (url) {
     if (!this._characterRoot) return
 
     if (!this._animMixer) {
       this._animMixer = new THREE.AnimationMixer(this._characterRoot)
     }
 
-    const fbx  = await new Promise((res, rej) => this._fbxLoader.load(fbxUrl, res, undefined, rej))
-    const clip = fbx.animations?.[0]
-    if (!clip) { console.warn('[Avatar3D] FBX has no animation clips:', fbxUrl); return }
-
-    // Strip "mixamorig" + optional digit prefix from Mixamo exports
-    clip.tracks.forEach(track => {
-      track.name = track.name.replace(/^mixamorig\d*/g, '')
-    })
+    let clip
+    if (url.toLowerCase().endsWith('.glb') || url.toLowerCase().endsWith('.gltf')) {
+      const gltf = await new GLTFLoader().loadAsync(url)
+      clip = gltf.animations?.[0]
+      if (!clip) { console.warn('[Avatar3D] GLB has no animation clips:', url); return }
+    } else {
+      const fbx = await new Promise((res, rej) => this._fbxLoader.load(url, res, undefined, rej))
+      clip = fbx.animations?.[0]
+      if (!clip) { console.warn('[Avatar3D] FBX has no animation clips:', url); return }
+      // Strip "mixamorig" + optional digit prefix from Mixamo FBX exports
+      clip.tracks.forEach(track => {
+        track.name = track.name.replace(/^mixamorig\d*/g, '')
+      })
+    }
 
     this._prepareClip(clip)
 
-    console.log(`[Avatar3D] FBX body animation loaded: ${fbxUrl} (${clip.tracks.length} tracks)`)
+    console.log(`[Avatar3D] Body animation loaded: ${url} (${clip.tracks.length} tracks)`)
 
     if (this._bodyAction) this._bodyAction.fadeOut(0.3)
 
@@ -1502,9 +1530,15 @@ window.addEventListener('avatar3d:showGlasses', (ev) => {
 })
 
 // After a character loads, broadcast whether it has glasses so the UI can show/hide the toggle.
+// Also play any animation that arrived before the character finished loading.
 window.addEventListener('avatar3d:loadend', () => {
   const hasGlasses = window._avatar3d?.hasGlasses ?? false
   window.dispatchEvent(new CustomEvent('avatar3d:glassesAvailable', { detail: { hasGlasses } }))
+
+  if (window._pendingAnimUrl) {
+    window._avatar3d?.loadBodyAnimation(window._pendingAnimUrl)
+    window._pendingAnimUrl = null
+  }
 })
 
 // ── Livewire event → load preview ────────────────────────────────────────────
@@ -1516,9 +1550,15 @@ window.addEventListener('avatar3d:previewReady', (ev) => {
 
 // ── Body animation preview (Avatar Lab) ──────────────────────────────────────
 window.addEventListener('preview-clip', (ev) => {
-  if (!ev.detail.fbxUrl) return
-  window._avatar3d?.loadBodyAnimation(ev.detail.fbxUrl)
-    .catch(err => console.error('[Avatar3D] Failed to load FBX:', err))
+  const url = ev.detail.fbxUrl || ev.detail.glbUrl
+  if (!url) return
+  // If character not loaded yet, queue it — loadend will pick it up
+  if (!window._avatar3d?._characterRoot) {
+    window._pendingAnimUrl = url
+    return
+  }
+  window._avatar3d?.loadBodyAnimation(url)
+    .catch(err => console.error('[Avatar3D] Failed to load animation:', err))
 })
 
 // ── Narration speak (Avatar Lab) ──────────────────────────────────────────────
@@ -1552,6 +1592,10 @@ async function _handleSpeak (ev) {
   }
 }
 window.addEventListener('avatar3d:speak', _handleSpeak)
+
+window.addEventListener('avatar3d:setBg', (ev) => {
+  window._avatar3d?.setSceneBackground(ev.detail.hex)
+})
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
 if (import.meta.hot) {

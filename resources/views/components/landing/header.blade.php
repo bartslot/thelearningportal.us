@@ -12,7 +12,7 @@
         </a>
 
         <nav class="flex items-center gap-8">
-            <a href="#about" class="text-sm text-white/80 transition hover:text-white">About</a>
+            <a href="{{ route('about') }}" class="text-sm text-white/80 transition hover:text-white">About</a>
             <a href="#pricing" class="text-sm text-white/80 transition hover:text-white">Pricing</a>
             @if($isTeacher)
                 <a

@@ -31,6 +31,7 @@
     style="height: calc(100vh - 64px)"
     x-data
     x-on:avatar3d:zoomtohead.window="window._avatar3d?.zoomToHead()"
+    x-on:avatar3d:setbg.window="window._avatar3d?.setSceneBackground($event.detail.hex)"
     x-init="
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
@@ -39,6 +40,9 @@
                 $wire.arrowNav(e.key === 'ArrowRight' ? 1 : -1);
             }
         });
+        const savedBg = localStorage.getItem('avatarLabBg');
+        if (savedBg) $wire.set('sceneBackground', savedBg);
+        $wire.\$watch('sceneBackground', val => localStorage.setItem('avatarLabBg', val));
     "
 >
 
@@ -184,77 +188,81 @@
 
         @elseif($activeSection === 'animation-groups')
 
-            <h2 class="text-lg font-semibold text-slate-100 mb-6">Animation</h2>
+            <h2 class="text-lg font-semibold text-slate-100 mb-4">Animation</h2>
 
-            @foreach(['idle' => 'Idle animations', 'presenting' => 'Presenting', 'greeting' => 'Greeting'] as $cat => $label)
-                <div class="mb-8">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-semibold text-slate-200">{{ $label }}</h3>
+            @foreach(['idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
+                @php $clips = $clipsByCategory->get($cat, collect()) @endphp
 
-                        <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700/30 border border-teal-600/30 text-teal-300 text-xs font-medium hover:bg-teal-700/50 transition-colors">
+                {{-- DaisyUI collapse — checkbox is z-1 and covers the title area,
+                     so the Add+ label needs relative z-10 to sit above it. --}}
+                <div class="collapse collapse-arrow rounded-xl border border-slate-700/40 bg-slate-900/50 mb-3 overflow-visible">
+                    <input type="checkbox" checked class="min-h-0" />
+                    <div class="collapse-title flex items-center justify-between py-3 px-4 min-h-0 text-sm font-semibold text-slate-200">
+                        {{ $label }}
+                        <label
+                            class="relative z-10 cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 mr-6
+                                   rounded-lg bg-teal-700/30 border border-teal-600/30 text-teal-300 text-xs
+                                   font-medium hover:bg-teal-700/50 transition-colors"
+                        >
                             Add +
                             <input
                                 type="file"
-                                wire:model="{{ $cat }}File"
+                                wire:model="{{ $cat === 'expression' ? 'expressionFile' : ($cat === 'dance' ? 'danceFile' : 'idleFile') }}"
                                 accept=".fbx"
                                 class="hidden"
                             />
                         </label>
                     </div>
 
-                    @php $clips = $clipsByCategory->get($cat, collect()) @endphp
-
-                    @if($clips->isEmpty())
-                        <p class="text-slate-600 text-xs py-3 italic">No clips yet — upload a Mixamo FBX with "In Place" checked.</p>
-                    @else
-                        @php
-                            $icons   = ['idle' => 'standing', 'presenting' => 'walking', 'greeting' => 'waving'];
-                            $icon    = $icons[$cat] ?? 'standing';
-                            $scroll  = $clips->count() > 4;
-                        @endphp
-                        {{-- Scroll-snap row: activates when > 4 clips, otherwise wraps --}}
-                        <div class="relative">
-                            <div class="flex gap-2 pb-2
-                                {{ $scroll ? 'overflow-x-auto scroll-smooth' : 'flex-wrap' }}"
-                                style="{{ $scroll ? 'scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;' : '' }}"
-                                @wheel.stop
-                            >
+                    <div class="collapse-content !pt-0 !px-3 !pb-3">
+                        @if($clips->isEmpty())
+                            <p class="text-slate-600 text-xs py-2 italic">No clips.</p>
+                        @else
+                            <div class="grid grid-cols-4 gap-2">
                                 @foreach($clips as $clip)
+                                    @php
+                                        $thumb    = $clip->thumbnailUrl();
+                                        $isActive = $previewClipId === $clip->id;
+                                    @endphp
                                     <button
                                         wire:click="loadPreview({{ $clip->id }})"
-                                        style="{{ $scroll ? 'scroll-snap-align:start;' : '' }}"
-                                        class="shrink-0 w-[72px] rounded-xl p-2 flex flex-col items-center gap-1 transition-all border
-                                            {{ $previewClipId === $clip->id
-                                                ? 'border-amber-400 bg-slate-700/80 shadow-md shadow-amber-500/10'
-                                                : 'border-slate-700/60 bg-slate-800/60 hover:border-indigo-500/50 hover:bg-slate-800' }}"
+                                        title="{{ $clip->name }}"
+                                        class="group relative rounded-xl overflow-hidden aspect-square transition-all
+                                            {{ $isActive
+                                                ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'
+                                                : 'ring-1 ring-slate-700/50 hover:ring-slate-500 opacity-70 hover:opacity-100' }}"
+                                        style="background-color: {{ $sceneBackground }}"
                                     >
-                                        {{-- Assigned indicator --}}
-                                        <div class="w-full flex justify-end">
-                                            <div class="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0
-                                                {{ $assignedClipIds->contains($clip->id)
-                                                    ? 'bg-indigo-500 border-indigo-400 text-white'
-                                                    : 'border-slate-600 bg-transparent' }}">
-                                                @if($assignedClipIds->contains($clip->id))
-                                                    <svg class="w-2 h-2" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                                @endif
+                                        @if($thumb)
+                                            <img src="{{ $thumb }}" alt="{{ $clip->name }}"
+                                                 class="w-full h-full object-cover object-top" />
+                                        @else
+                                            <div class="w-full h-full flex items-center justify-center" style="background-color: {{ $sceneBackground }}">
+                                                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0"/>
+                                                </svg>
                                             </div>
+                                        @endif
+
+                                        {{-- Assigned indicator (top-right dot) --}}
+                                        @if($assignedClipIds->contains($clip->id))
+                                            <div class="absolute top-1 right-1 w-4 h-4 rounded-full bg-indigo-500 border border-indigo-400 flex items-center justify-center">
+                                                <svg class="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none">
+                                                    <path d="M1 4l3 3 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            </div>
+                                        @endif
+
+                                        {{-- Name label — always visible when selected, on hover otherwise --}}
+                                        <div class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent px-1 py-1
+                                            opacity-0 group-hover:opacity-100 {{ $isActive ? 'opacity-100' : '' }} transition-opacity">
+                                            <p class="text-[9px] text-white leading-tight truncate">{{ $clip->name }}</p>
                                         </div>
-
-                                        <x-animation-icon :type="$icon" class="w-8 h-8 text-indigo-400" />
-
-                                        <span class="text-[10px] text-slate-400 text-center leading-tight w-full truncate px-0.5">
-                                            {{ $clip->name }}
-                                        </span>
                                     </button>
                                 @endforeach
                             </div>
-
-                            {{-- Fade-out hint when scrollable --}}
-                            @if($scroll)
-                                <div class="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-slate-900/80 to-transparent pointer-events-none rounded-r-xl"></div>
-                            @endif
-                        </div>
-                    @endif
+                        @endif
+                    </div>
                 </div>
             @endforeach
 
@@ -300,16 +308,44 @@
                             title="{{ $voice['label'] }}"
                         >
                             <div class="absolute top-1 right-1 z-10">
+                                @if($voice['preview_url'])
+                                <span
+                                    role="button"
+                                    tabindex="0"
+                                    x-show="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
+                                    x-on:click.stop="
+                                        $store.voiceStrip.playingId = '{{ $voice['id'] }}';
+                                        window.dispatchEvent(new CustomEvent('avatar3d:speak', {
+                                            detail: { audioUrl: '{{ $voice['preview_url'] }}', alignment: [], text: '' }
+                                        }));
+                                        window.addEventListener('avatar3d:speakend', () => {
+                                            if ($store.voiceStrip.playingId === '{{ $voice['id'] }}') $store.voiceStrip.playingId = null;
+                                        }, { once: true });
+                                    "
+                                    class="text-amber-400 hover:text-white text-xs leading-none cursor-pointer"
+                                    :class="{ 'animate-pulse': $store.voiceStrip.playingId === '{{ $voice['id'] }}' }"
+                                    title="Preview this voice"
+                                >✓</span>
+                                @else
                                 <span
                                     x-show="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
                                     class="text-amber-400 text-xs"
                                 >✓</span>
+                                @endif
                                 @if($voice['preview_url'])
                                 <span
                                     role="button"
                                     tabindex="0"
                                     x-show="$store.voiceStrip.selectedId !== '{{ $voice['id'] }}'"
-                                    x-on:click.stop="$store.voiceStrip.play('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
+                                    x-on:click.stop="
+                                        $store.voiceStrip.playingId = '{{ $voice['id'] }}';
+                                        window.dispatchEvent(new CustomEvent('avatar3d:speak', {
+                                            detail: { audioUrl: '{{ $voice['preview_url'] }}', alignment: [], text: '' }
+                                        }));
+                                        window.addEventListener('avatar3d:speakend', () => {
+                                            if ($store.voiceStrip.playingId === '{{ $voice['id'] }}') $store.voiceStrip.playingId = null;
+                                        }, { once: true });
+                                    "
                                     class="text-slate-400 hover:text-white text-xs leading-none cursor-pointer"
                                     :class="{ 'text-indigo-400': $store.voiceStrip.playingId === '{{ $voice['id'] }}' }"
                                 >
@@ -455,6 +491,34 @@
                     </div>
                 </div>
 
+                {{-- Scene Background --}}
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Scene Background</label>
+                    <div class="flex gap-2 flex-wrap">
+                        @foreach([
+                            '#f0f0f0' => 'Studio',
+                            '#ffffff' => 'White',
+                            '#1e293b' => 'Dark',
+                            '#000000' => 'Black',
+                        ] as $hex => $label)
+                            <button
+                                wire:click="$set('sceneBackground', '{{ $hex }}')"
+                                title="{{ $label }}"
+                                class="w-9 h-9 rounded-lg border-2 transition-all {{ $sceneBackground === $hex ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400' }}"
+                                style="background-color: {{ $hex }}"
+                            ></button>
+                        @endforeach
+                        {{-- Custom color picker --}}
+                        <label class="relative w-9 h-9 rounded-lg border-2 transition-all cursor-pointer
+                            {{ !in_array($sceneBackground, ['#f0f0f0','#ffffff','#1e293b','#000000']) ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400' }}"
+                            style="background: conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"
+                            title="Custom color"
+                        >
+                            <input type="color" wire:model.live="sceneBackground" class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+                        </label>
+                    </div>
+                </div>
+
             </div>
 
         @elseif($activeSection === 'controller')
@@ -464,7 +528,7 @@
             @if(! $selectedAvatarId)
                 <p class="text-slate-500 text-sm">Select an avatar to view its controller.</p>
             @else
-                @foreach(['idle' => 'Idle', 'presenting' => 'Presenting', 'greeting' => 'Greeting'] as $cat => $label)
+                @foreach(['idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
                     <div class="mb-6 bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
                         <h3 class="text-sm font-semibold text-slate-200 mb-3">{{ $label }}</h3>
 
@@ -587,7 +651,7 @@
 
         {{-- Bottom control bar: sliders + delete — only in animation tab --}}
         <div
-            class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-[440px] max-w-[calc(100%-2rem)]"
+            class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-110 max-w-[calc(100%-2rem)]"
             x-show="clipId !== null && !confirmDelete && $wire.activeSection === 'animation-groups'"
             x-cloak
             x-transition:enter="transition ease-out duration-200"
@@ -905,7 +969,7 @@
                     <button
                         wire:click="saveNewAvatarVoice('{{ $voice['id'] }}')"
                         title="{{ $voice['label'] }}"
-                        class="shrink-0 snap-start w-[72px] h-[72px] rounded-xl border transition-all relative overflow-hidden
+                        class="shrink-0 snap-start w-18 h-18 rounded-xl border transition-all relative overflow-hidden
                             {{ $isSelected ? 'border-amber-400 ring-2 ring-amber-400/50' : 'border-slate-700/60 hover:border-slate-500' }}
                             {{ $voice['gradient_class'] ?? 'vg-base' }}"
                     >

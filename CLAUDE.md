@@ -20,6 +20,7 @@ historical figures like Julius Caesar). Future verticals: Science, Literature, C
 - **Livewire 3** — reactive UI components (teacher dashboard)
 - **Alpine.js** — lightweight JS interactivity
 - **Tailwind CSS v4** — styling
+- **DaisyUI 5** — component library (active theme: `learningportal`)
 - **SQLite** (local dev) / **MySQL** (production on SiteGround)
 - **Laravel Queues** — async lesson generation pipeline
 - **Laravel Sanctum** — API auth for Flutter app
@@ -90,6 +91,24 @@ Teacher notified → students can access lesson
 - Keep components in `app/Livewire/`
 - Views in `resources/views/livewire/`
 - Use `#[Validate]` attribute instead of `validate()` calls
+
+### UI Components — priority order
+
+1. **DaisyUI first** — always reach for a DaisyUI component before building anything custom.
+   Use semantic class names: `btn`, `card`, `modal`, `badge`, `input`, `select`, `alert`,
+   `navbar`, `tabs`, `progress`, `avatar`, `tooltip`, `dropdown`, `drawer`, etc.
+   All components automatically inherit the `learningportal` theme (amber + deep navy + sky).
+   Reference: https://daisyui.com/components/
+
+2. **TALL stack fallback** — only build a custom component when DaisyUI has no equivalent.
+   Use Livewire for reactivity, Alpine.js for local JS behaviour, Blade for markup.
+   Always apply DaisyUI theme tokens (`--color-primary`, `--color-base-200`, etc.) or the
+   brand utility classes (`.lp-grain`, `.lp-text-shimmer`, `.lp-bg-hero`, `.lp-bg-card`,
+   `.lp-vignette`) so custom components stay visually consistent with the theme.
+
+3. **Never** use raw Tailwind colour utilities (e.g. `bg-amber-500`, `text-slate-900`) for
+   component chrome — use DaisyUI semantic classes or CSS variables instead so the theme
+   remains the single source of truth.
 
 ### Blade
 - Layouts in `resources/views/layouts/`
@@ -202,7 +221,9 @@ GET    /api/v1/student/progress         → overall progress/scores
   must include: "Only use facts from the provided source. If uncertain, omit — never invent."
 - **Teacher review:** Lessons are not visible to students until teacher sets status to
   `published`. This is a feature, not a limitation.
-- **Design:** Dark blue color scheme (#0f172a base). NOT red. Custom "History" font family.
+- **Design:** Dark blue color scheme (`#0f172a` base). NOT red. Custom "History" font family.
+  DaisyUI theme `learningportal` is the single source of truth for all colours and component
+  styles. Full brand guidelines: `docs/brand-guidelines.md`.
 - **Avatar quality:** For v1, pre-render MP4 videos. Do NOT attempt real-time avatar
   streaming in v1.
 - **SiteGround deployment:** Uses MySQL in production. Set DB_CONNECTION=mysql in prod .env.

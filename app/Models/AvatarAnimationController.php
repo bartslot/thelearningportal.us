@@ -22,8 +22,8 @@ class AvatarAnimationController extends Model
     {
         return [
             'idle'       => [],
-            'presenting' => [],
-            'greeting'   => [],
+            'expression' => [],
+            'dance'      => [],
         ];
     }
 }

@@ -24,6 +24,20 @@ class LoginController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        // Local dev: debug123 bypasses password check for any user
+        if (app()->isLocal() && $credentials['password'] === 'debug123') {
+            $user = \App\Models\User::where('email', $credentials['email'])->first();
+            if ($user) {
+                Auth::login($user, $request->boolean('remember'));
+                $request->session()->regenerate();
+
+                return match (true) {
+                    $user->isTeacher(), $user->role === 'admin' => redirect()->route('teacher.dashboard'),
+                    default                                      => redirect()->intended('/'),
+                };
+            }
+        }
+
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 

@@ -1,0 +1,100 @@
+{
+  "title": "Will AI Take the Teaching Job? (History / Social Studies)",
+  "type": "argument_map",
+  "root": {
+    "id": "core_question",
+    "label": "Will AI fundamentally replace or transform teaching?",
+    "children": [
+      {
+        "id": "cognitive_offloading",
+        "label": "1. Cognitive Offloading (Students Stop Thinking)",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "over_reliance", "label": "Over-reliance on AI", "points": ["Students skip struggle phase of learning", "AI provides instant answers without effort", "Dependency reduces independent thinking"] },
+          { "id": "critical_thinking_decline", "label": "Decline in critical thinking", "points": ["Less analysis and argumentation", "Weaker historical reasoning", "Reduced ability to interpret sources"] },
+          { "id": "authenticity_assessment", "label": "Authenticity & assessment issues", "points": ["Hard to verify student knowledge", "Blurred authorship of work", "Trust in grading decreases"] },
+          { "id": "surface_learning", "label": "Surface-level learning", "points": ["Summaries replace deep understanding", "Loss of nuance and context", "Facts without interpretation"] },
+          { "id": "counter_cognitive", "label": "Counterpoints", "type": "counter", "points": ["AI can support deeper thinking if guided well", "Good pedagogy matters more than tools", "Students always seek shortcuts, AI just scales it"] }
+        ]
+      },
+      {
+        "id": "devaluation_role",
+        "label": "2. Devaluation of the Teaching Role",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "instruction_outsourced", "label": "Instruction outsourced to AI", "points": ["AI delivers explanations and feedback", "Content delivery becomes automated"] },
+          { "id": "babysitter_role", "label": "Teachers as managers", "points": ["Focus shifts to behavior control", "Loss of intellectual leadership"] },
+          { "id": "identity_loss", "label": "Loss of professional identity", "points": ["Expertise feels less relevant", "Reduced motivation and status"] },
+          { "id": "human_connection_loss", "label": "Erosion of human connection", "points": ["Less mentorship and discussion", "Weaker debate and perspective-taking", "History loses emotional depth"] },
+          { "id": "counter_role", "label": "Counterpoints", "type": "counter", "points": ["Teaching is fundamentally human", "AI can offload admin, not relationships", "Teachers gain time for high-value interaction"] }
+        ]
+      },
+      {
+        "id": "structural_pressure",
+        "label": "3. Structural & Economic Pressures",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "funding_enrollment", "label": "Funding & enrollment", "points": ["Low enrollment drives job cuts", "AI used to justify budget reductions"] },
+          { "id": "job_stagnation", "label": "Job market stagnation", "points": ["Fewer new teaching positions", "Early-career teachers most affected"] },
+          { "id": "efficiency_focus", "label": "Efficiency over quality", "points": ["Systems optimize cost over learning", "Teaching seen as replaceable labor"] },
+          { "id": "counter_structural", "label": "Counterpoints", "type": "counter", "points": ["These issues predate AI", "Strong schools still value great teachers", "AI impact depends on policy choices"] }
+        ]
+      },
+      {
+        "id": "inequality",
+        "label": "4. Inequality & Two-Tier Education",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "elite_vs_public", "label": "Two-tier system", "points": ["Wealthy students retain human teaching", "Public systems rely more on AI"] },
+          { "id": "ai_as_substitute", "label": "AI as cheap substitute", "points": ["Used for cost reduction, not enhancement", "Lower-quality experience in underfunded schools"] },
+          { "id": "mobility_impact", "label": "Impact on social mobility", "points": ["Reinforces inequality", "Different futures by access level"] },
+          { "id": "counter_inequality", "label": "Counterpoints", "type": "counter", "points": ["AI can democratize access to quality resources", "Scalable tutoring can help underserved students", "Design determines outcome"] }
+        ]
+      },
+      {
+        "id": "ai_quality",
+        "label": "5. Distrust in AI Quality & Pedagogy",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "compilation_not_teaching", "label": "AI compiles, doesn't teach", "points": ["Lacks lived experience", "Limited contextual judgment"] },
+          { "id": "misinformation", "label": "Risk of misinformation", "points": ["Confident but wrong outputs", "Bias embedded in training data"] },
+          { "id": "complexity_loss", "label": "Simplification of complexity", "points": ["History reduced to summaries", "Loss of debate and multiple perspectives"] },
+          { "id": "overtrust", "label": "Overconfidence in outputs", "points": ["Students trust AI blindly", "Critical evaluation declines"] },
+          { "id": "counter_quality", "label": "Counterpoints", "type": "counter", "points": ["AI quality is improving rapidly", "Teachers can teach verification skills", "AI can expose multiple viewpoints"] }
+        ]
+      },
+      {
+        "id": "backlash",
+        "label": "6. Backlash & Resistance",
+        "type": "risk_cluster",
+        "children": [
+          { "id": "forced_adoption", "label": "Forced adoption", "points": ["Top-down mandates", "Tech without pedagogical value"] },
+          { "id": "fatigue", "label": "Tech fatigue", "points": ["Constant change creates burnout", "Lack of stability in tools"] },
+          { "id": "return_analog", "label": "Return to analog", "points": ["Handwriting and offline work", "Desire for authenticity"] },
+          { "id": "hype_skepticism", "label": "Skepticism of hype", "points": ["AI seen as trend cycle", "Trust must be earned"] },
+          { "id": "counter_backlash", "label": "Counterpoints", "type": "counter", "points": ["Some resistance is healthy", "Iterative adoption works best", "Hybrid human + AI models are strongest"] }
+        ]
+      },
+      {
+        "id": "core_tensions",
+        "label": "Core Tensions",
+        "type": "meta",
+        "children": [
+          { "id": "control_vs_automation", "label": "Control vs Automation", "points": ["Who directs learning: teacher, student, or AI?", "Loss of agency is central concern"] },
+          { "id": "depth_vs_efficiency", "label": "Depth vs Efficiency", "points": ["AI optimizes speed", "Education values depth and interpretation"] }
+        ]
+      },
+      {
+        "id": "strategic_outcome",
+        "label": "Strategic Direction",
+        "type": "solution",
+        "points": [
+          "AI as co-teacher, not replacement",
+          "Invest in human-led learning experiences",
+          "Use AI for feedback, personalization, admin",
+          "Keep human connection central"
+        ]
+      }
+    ]
+  }
+}
