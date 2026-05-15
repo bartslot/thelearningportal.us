@@ -1373,11 +1373,26 @@ export class Avatar3DPlayer {
    */
   _prepareClip (clip) {
     const DROP_QUAT = new Set([
+      // Root / lower body — Hips encodes ~47° forward tilt; legs need foot IK to ground
       'Hips',
       'LeftUpLeg', 'RightUpLeg',
       'LeftLeg',   'RightLeg',
       'LeftFoot',  'RightFoot',
       'LeftToeBase', 'RightToeBase',
+      // Base spine — encodes forward lean that is uncompensated without Hips; Spine1/2 kept for breathing
+      'Spine',
+      // Fingers — Mixamo T-pose finger rotations don't match RPM A-pose bind, causing deformation
+      'LeftHand',  'RightHand',
+      'LeftHandThumb1',  'LeftHandThumb2',  'LeftHandThumb3',
+      'RightHandThumb1', 'RightHandThumb2', 'RightHandThumb3',
+      'LeftHandIndex1',  'LeftHandIndex2',  'LeftHandIndex3',
+      'RightHandIndex1', 'RightHandIndex2', 'RightHandIndex3',
+      'LeftHandMiddle1', 'LeftHandMiddle2', 'LeftHandMiddle3',
+      'RightHandMiddle1','RightHandMiddle2','RightHandMiddle3',
+      'LeftHandRing1',   'LeftHandRing2',   'LeftHandRing3',
+      'RightHandRing1',  'RightHandRing2',  'RightHandRing3',
+      'LeftHandPinky1',  'LeftHandPinky2',  'LeftHandPinky3',
+      'RightHandPinky1', 'RightHandPinky2', 'RightHandPinky3',
     ])
     clip.tracks = clip.tracks.filter(track => {
       if (track.name.endsWith('.position')) return false
@@ -1579,8 +1594,11 @@ window.addEventListener('avatar3d:loadend', () => {
   window.dispatchEvent(new CustomEvent('avatar3d:glassesAvailable', { detail: { hasGlasses } }))
 
   if (window._pendingAnimUrl) {
+    console.log('[Avatar3D] loadend: consuming _pendingAnimUrl', window._pendingAnimUrl)
     window._avatar3d?.loadBodyAnimation(window._pendingAnimUrl)
     window._pendingAnimUrl = null
+  } else {
+    console.log('[Avatar3D] loadend: no _pendingAnimUrl queued')
   }
 })
 
@@ -1597,9 +1615,11 @@ window.addEventListener('preview-clip', (ev) => {
   if (!url) return
   // If character not loaded yet, queue it — loadend will pick it up
   if (!window._avatar3d?._characterRoot) {
+    console.log('[Avatar3D] preview-clip: _characterRoot null, queuing', url)
     window._pendingAnimUrl = url
     return
   }
+  console.log('[Avatar3D] preview-clip: _characterRoot exists, loading immediately', url)
   window._avatar3d?.loadBodyAnimation(url)
     .catch(err => console.error('[Avatar3D] Failed to load animation:', err))
 })

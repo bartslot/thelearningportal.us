@@ -42,7 +42,7 @@
         });
         const savedBg = localStorage.getItem('avatarLabBg');
         if (savedBg) $wire.set('sceneBackground', savedBg);
-        $wire.\$watch('sceneBackground', val => localStorage.setItem('avatarLabBg', val));
+        $wire.$watch('sceneBackground', val => localStorage.setItem('avatarLabBg', val));
     "
 >
 
