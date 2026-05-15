@@ -275,7 +275,7 @@ export class Avatar3DPlayer {
     const h = this.canvasEl.clientHeight || this.canvasEl.parentElement?.clientHeight || 500
 
     this._renderer = new THREE.WebGLRenderer({ canvas: this.canvasEl, antialias: true, alpha: false })
-    this._renderer.setSize(w, h)
+    this._renderer.setSize(w, h, false)   // false = don't override CSS (keeps w-full h-full responsive)
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this._renderer.outputColorSpace = THREE.SRGBColorSpace
     this._renderer.shadowMap.enabled = true
@@ -344,13 +344,16 @@ export class Avatar3DPlayer {
 
     if (this.characterUrl) await this._loadCharacter(this.characterUrl)
 
-    // Auto-resize
+    // Auto-resize — observe the parent container (canvas has no CSS size of its own;
+    // layout dimensions come from the parent's w-full/h-full constraints).
     if (typeof ResizeObserver !== 'undefined') {
+      const resizeTarget = this.canvasEl.parentElement ?? this.canvasEl
       this._resizeObs = new ResizeObserver(() => {
-        const el = this.canvasEl
-        if (el.clientWidth > 0 && el.clientHeight > 0) this.resize(el.clientWidth, el.clientHeight)
+        const w = resizeTarget.clientWidth
+        const h = resizeTarget.clientHeight
+        if (w > 0 && h > 0) this.resize(w, h)
       })
-      this._resizeObs.observe(this.canvasEl)
+      this._resizeObs.observe(resizeTarget)
     }
 
     this._loop()
@@ -1095,6 +1098,7 @@ export class Avatar3DPlayer {
     this._gazePass(delta * 1000)    // after mixer so it stacks on top of animation
     this._updatePoseLerp(delta)
     this._updateCameraLerp(delta)
+    this._updateZoomTargetBias()
     this._idlePass(delta * 1000)
     this._controls?.update()
     this._renderer?.render(this._scene, this._camera)
@@ -1129,6 +1133,33 @@ export class Avatar3DPlayer {
       this._controls.target.lerpVectors(this._camFrom.look, this._camTarget.look, t)
       this._controls.update()
     }
+  }
+
+  /**
+   * As the user zooms in, shift the orbit target upward in two stages:
+   *   dist >= 1.5m : body centre → chest (upper-body framing)
+   *   dist <  1.5m : chest      → eyes  (face close-up framing)
+   */
+  _updateZoomTargetBias () {
+    if (this._camLerpT < 1.0 || !this._controls || !this._characterRoot) return
+    const camDist = this._camera.position.distanceTo(this._controls.target)
+    const minDist = this._controls.minDistance   // 0.5
+    const maxDist = this._controls.maxDistance   // 6.0
+    const bodyY  = CAMERA_PRESET.target[1]
+    const headY  = this._headZoomY ?? bodyY * 1.8
+    const chestY = headY * 0.78
+    const eyeY   = headY * 0.96
+
+    let desiredY
+    if (camDist >= 1.5) {
+      const t = Math.max(0, Math.min(1, (camDist - 1.5) / (maxDist - 1.5)))
+      desiredY = chestY + (bodyY - chestY) * t   // far → body, close → chest
+    } else {
+      const t = Math.max(0, Math.min(1, (camDist - minDist) / (1.5 - minDist)))
+      desiredY = eyeY + (chestY - eyeY) * t      // very close → eyes, 1.5m → chest
+    }
+
+    this._controls.target.y += (desiredY - this._controls.target.y) * 0.08
   }
 
   _applyBlendShapes (t) {
@@ -1509,6 +1540,18 @@ window.addEventListener('avatar3d:load', async (ev) => {
   const { characterUrl } = ev.detail
 
   if (window._avatar3d && window._avatar3d._characterUrl === characterUrl) return
+
+  // Synchronously clear characterRoot BEFORE any await so that preview-clip events
+  // dispatched in the same Livewire response fire after this and correctly queue
+  // via _pendingAnimUrl (instead of calling loadBodyAnimation on the old character).
+  const p = window._avatar3d
+  if (p?._characterRoot) {
+    p._scene?.remove(p._characterRoot)
+    p._animMixer?.stopAllAction()
+    p._animMixer = null
+    p._bodyAction = null
+    p._characterRoot = null
+  }
 
   const canvas = await waitForCanvas().catch(() => null)
   if (!canvas) { console.error('[Avatar3D] canvas never appeared'); return }
