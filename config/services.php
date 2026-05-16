@@ -49,9 +49,15 @@ return [
     // ── Production AI APIs ────────────────────────────────────────────────────
 
     'openai' => [
-        'api_key'   => env('OPENAI_API_KEY'),
-        'tts_model' => env('OPENAI_TTS_MODEL', 'tts-1'),
-        'tts_voice' => env('OPENAI_TTS_VOICE', 'alloy'),
+        'api_key'      => env('OPENAI_API_KEY'),
+        'organization' => env('OPENAI_ORGANIZATION'),
+        'model'        => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'image_model'  => env('OPENAI_IMAGE_MODEL', 'dall-e-3'),
+        'image_size'   => env('OPENAI_IMAGE_SIZE', '1792x1024'),
+        'base_url'     => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'timeout'      => (int) env('OPENAI_TIMEOUT', 60),
+        'tts_model'    => env('OPENAI_TTS_MODEL', 'tts-1'),
+        'tts_voice'    => env('OPENAI_TTS_VOICE', 'alloy'),
     ],
 
     'elevenlabs' => [
