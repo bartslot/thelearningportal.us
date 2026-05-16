@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\LessonTeamController;
 use App\Http\Controllers\Api\StudentLessonController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -33,4 +34,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
     });
 
+});
+
+// ── Public lesson endpoints (no auth) ─────────────────────────────────────────
+Route::prefix('lesson')->name('api.lesson.')->group(function () {
+    Route::get('/{lessonCode}/teams',  [LessonTeamController::class, 'index'])->name('teams.index');
+    Route::post('/{lessonCode}/teams', [LessonTeamController::class, 'store'])->name('teams.store');
 });

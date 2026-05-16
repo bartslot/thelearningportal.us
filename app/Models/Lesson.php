@@ -21,6 +21,7 @@ class Lesson extends Model
     protected $fillable = [
         'teacher_id',
         'avatar_id',
+        'strategy_game_id',
         'title',
         'topic',
         'subject',
@@ -36,8 +37,11 @@ class Lesson extends Model
         'generation_attempts',
         'portrait_path',
         'audio_path',
-        'video_path',
         'slideshow_images',
+        'intel_drop_enabled',
+        'intel_drop_at_minutes',
+        'intel_drop_script',
+        'intel_drop_audio_path',
         'duration_seconds',
         'visemes_path',
         'audio_3d_path',
@@ -59,10 +63,12 @@ class Lesson extends Model
     protected function casts(): array
     {
         return [
-            'status'               => LessonStatus::class,
-            'generation_attempts'  => 'integer',
-            'duration_seconds'     => 'integer',
-            'slideshow_images'     => 'array',
+            'status'                 => LessonStatus::class,
+            'generation_attempts'    => 'integer',
+            'duration_seconds'       => 'integer',
+            'slideshow_images'       => 'array',
+            'intel_drop_enabled'     => 'boolean',
+            'intel_drop_at_minutes'  => 'integer',
         ];
     }
 
@@ -94,6 +100,16 @@ class Lesson extends Model
     public function avatar(): BelongsTo
     {
         return $this->belongsTo(Avatar::class);
+    }
+
+    public function strategyGame(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\StrategyGame::class);
+    }
+
+    public function teams(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\LessonTeam::class);
     }
 
     public function teacher(): BelongsTo
@@ -205,11 +221,6 @@ class Lesson extends Model
     public function visemesUrl(): ?string
     {
         return $this->publicMediaUrl($this->visemes_path);
-    }
-
-    public function videoUrl(): ?string
-    {
-        return $this->publicMediaUrl($this->video_path);
     }
 
     public function audioUrl(): ?string

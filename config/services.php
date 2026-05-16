@@ -42,12 +42,6 @@ return [
         'model' => env('OLLAMA_MODEL', 'llama3.1:8b'),
     ],
 
-    'sadtalker' => [
-        'url'    => env('SADTALKER_URL'),
-        'dir'    => env('SADTALKER_DIR'),
-        'python' => env('SADTALKER_PYTHON'),
-    ],
-
     'comfyui' => [
         'url' => env('COMFYUI_URL', 'http://localhost:8188'),
     ],
@@ -69,10 +63,6 @@ return [
         'binary' => env('RHUBARB_BINARY', '/Users/bartslot/bin/rhubarb'),
     ],
 
-    'fal' => [
-        'api_key' => env('FAL_AI_KEY'),
-    ],
-
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
@@ -81,6 +71,14 @@ return [
 
     'europeana' => [
         'key' => env('EUROPEANA_API_KEY'),
+    ],
+
+    'unsplash' => [
+        'access_key' => env('UNSPLASH_ACCESS_KEY'),
+    ],
+
+    'pexels' => [
+        'api_key' => env('PEXELS_API_KEY'),
     ],
 
     // ── Vercel serverless functions (avatar studio / audio manifest) ──────────

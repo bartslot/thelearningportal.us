@@ -8,7 +8,6 @@ use App\Enums\LessonStatus;
 use App\Models\Avatar;
 use App\Models\Lesson;
 use App\Models\QuizQuestion;
-use App\Services\AvatarService;
 use App\Services\ImageSearchService;
 use App\Services\LlmService;
 use App\Services\TtsService;
@@ -96,7 +95,6 @@ FACTS;
         WikipediaService   $wikipedia,
         LlmService         $llm,
         TtsService         $tts,
-        AvatarService      $avatarService,
         ImageSearchService $imageSearch,
     ): void {
         $lesson = Lesson::with('avatar')->findOrFail($this->lessonId);
@@ -187,44 +185,7 @@ FACTS;
 
             $lesson->update(['audio_path' => $audioPath]);
 
-            // ── Step 5: Avatar video (optional — skipped when no provider available) ──
-            // Lesson is marked Ready regardless. Video enhances the experience but
-            // isn't required. SadTalker local or fal.ai key enables this step.
-            $portraitPath = $avatar?->portrait_path
-                ? public_path($avatar->portrait_path)
-                : null;
-
-            if ($portraitPath && file_exists($portraitPath)) {
-                Log::info("GenerateLesson #{$lesson->id}: attempting avatar video generation");
-                try {
-                    // Copy portrait to lesson storage so AvatarService can read it
-                    $lessonPortraitPath = "lessons/{$lesson->id}/portrait.jpg";
-                    \Illuminate\Support\Facades\Storage::disk('public')->put(
-                        $lessonPortraitPath,
-                        file_get_contents($portraitPath)
-                    );
-
-                    $videoPath = $avatarService->generateVideo(
-                        audioPath:   $audioPath,
-                        portraitPath: $lessonPortraitPath,
-                        lessonId:    (string) $lesson->id,
-                    );
-
-                    if ($videoPath) {
-                        $lesson->update(['video_path' => $videoPath]);
-                        Log::info("GenerateLesson #{$lesson->id}: avatar video generated at {$videoPath}");
-                    } else {
-                        Log::info("GenerateLesson #{$lesson->id}: avatar video skipped — no provider available (SadTalker or fal.ai)");
-                    }
-                } catch (\Throwable $e) {
-                    // Video failure never blocks lesson completion
-                    Log::warning("GenerateLesson #{$lesson->id}: avatar video failed (non-fatal) — " . $e->getMessage());
-                }
-            } else {
-                Log::info("GenerateLesson #{$lesson->id}: avatar video skipped — no portrait found");
-            }
-
-            // ── Step 6: Fetch background slideshow images (optional — non-blocking) ──
+            // ── Step 5: Fetch background slideshow images (optional — non-blocking) ──
             // Europeana first, Wikimedia Commons as fallback.
             // A lesson is marked Ready regardless of whether images were fetched.
             try {

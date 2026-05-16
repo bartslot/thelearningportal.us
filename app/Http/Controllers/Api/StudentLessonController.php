@@ -60,7 +60,6 @@ class StudentLessonController extends Controller
                 'grade_level'       => $lesson->grade_level,
                 'historical_figure' => $lesson->historical_figure,
                 'duration_seconds'  => $lesson->duration_seconds,
-                'video_url'         => $lesson->videoUrl(),
                 'audio_url'         => $lesson->audioUrl(),
                 'portrait_url'      => $lesson->portraitUrl(),
                 'quiz_questions'    => $lesson->quizQuestions->map(fn($q) => [

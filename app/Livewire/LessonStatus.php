@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Enums\LessonStatus as LessonStatusEnum;
-use App\Jobs\GenerateAvatarVideo;
 use App\Models\Lesson;
 use App\Services\ImageSearchService;
 use Livewire\Attributes\Computed;
@@ -17,11 +16,13 @@ class LessonStatus extends Component
 
     public function refresh(): void
     {
-        $wasPolling = $this->shouldPoll;
+        $wasGenerating = $this->lesson->isGenerating() || $this->lesson->status === LessonStatusEnum::Pending;
         $this->lesson->refresh();
         $this->lesson->load('quizQuestions');
 
-        if ($wasPolling && ! $this->shouldPoll) {
+        $nowDone = ! ($this->lesson->isGenerating() || $this->lesson->status === LessonStatusEnum::Pending);
+
+        if ($wasGenerating && $nowDone) {
             $this->dispatch('lesson-updated');
         }
     }
@@ -42,9 +43,6 @@ class LessonStatus extends Component
         $lesson   = $this->lesson;
         $isFailed = $lesson->status === LessonStatusEnum::Failed;
 
-        $sadtalkerConfigured = ! empty(config('services.sadtalker.url'))
-            && ! empty(config('services.fal.api_key'));
-        $sadtalkerLocal      = ! empty(config('services.sadtalker.url'));
         $europeanaConfigured = ! empty(config('services.europeana.key'));
 
         $steps = [
@@ -81,19 +79,9 @@ class LessonStatus extends Component
                 'canRetry'    => false,
             ],
             [
-                'key'         => 'render-video',
-                'label'       => 'Render avatar video',
-                'description' => 'Animating the historical figure',
-                'done'        => $lesson->video_path !== null,
-                'skipReason'  => $sadtalkerLocal
-                    ? 'SadTalker URL set — portrait required, or regenerate'
-                    : 'Configure SadTalker (local) or fal.ai key to enable',
-                'canRetry'    => $sadtalkerLocal && $lesson->audio_path !== null,
-            ],
-            [
                 'key'         => 'fetch-images',
                 'label'       => 'Fetch background images',
-                'description' => 'Pulling historical images from Europeana & Wikimedia',
+                'description' => 'Pulling historical images from Europeana, Wikimedia, Unsplash & Pexels',
                 'done'        => $lesson->hasSlideshowImages(),
                 'skipReason'  => $europeanaConfigured
                     ? 'Europeana key set — click to fetch now'
@@ -141,7 +129,7 @@ class LessonStatus extends Component
     #[Computed]
     public function allStepsComplete(): bool
     {
-        // Video (step 5) is optional — lesson is complete once the 4 core steps are done.
+        // fetch-images is optional — lesson is complete once the 4 core steps are done.
         $states = collect($this->steps)->pluck('state');
         return $states->filter(fn ($s) => in_array($s, ['pending', 'active'], true))->isEmpty()
             && $states->contains('done');
@@ -159,7 +147,6 @@ class LessonStatus extends Component
 
         match ($key) {
             'fetch-images' => $this->runFetchImages(),
-            'render-video' => $this->runRenderVideo(),
             default        => null,
         };
 
@@ -176,18 +163,6 @@ class LessonStatus extends Component
         } catch (\Throwable $e) {
             // Surface nothing to the UI — the step will remain skipped
         }
-    }
-
-    private function runRenderVideo(): void
-    {
-        if (! $this->lesson->audio_path) {
-            return;
-        }
-
-        GenerateAvatarVideo::dispatch($this->lesson->id);
-
-        // Optimistically mark generating so the UI shows the spinner immediately
-        $this->lesson->update(['status' => LessonStatusEnum::Generating]);
     }
 
     public function render()

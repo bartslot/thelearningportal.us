@@ -100,7 +100,6 @@ class GenerateLessonCommand extends Command
                 ['Quiz questions',  $lesson->quizQuestions()->count()],
                 ['Portrait',        $lesson->portrait_path ?? '(none)'],
                 ['Audio',           $lesson->audio_path    ?? '(none)'],
-                ['Video',           $lesson->video_path    ?? '(none — audio only)'],
                 ['Wikipedia',       strlen($lesson->wikipedia_source ?? '') . ' chars'],
             ]);
         } else {

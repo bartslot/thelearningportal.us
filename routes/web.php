@@ -2,6 +2,7 @@
 
 use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\LessonPlayerController;
 use App\Livewire\Admin\AvatarLab;
 use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\CreateLesson;
@@ -21,6 +22,9 @@ Route::get('/', function () {
 Route::get('/about', function () {
     return view('about');
 })->name('about');
+
+// Student lesson player — public, no auth required
+Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -68,7 +72,6 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
             'script' => null,
             'portrait_path' => null,
             'audio_path' => null,
-            'video_path' => null,
             'duration_seconds' => null,
         ]);
 
