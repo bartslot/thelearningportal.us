@@ -46,6 +46,12 @@ class Lesson extends Model
         'visemes_path',
         'audio_3d_path',
         'blendshapes_path',
+        'image_style',
+        'source_mode',
+        'team_count',
+        'game_split_count',
+        'outline',
+        'wizard_step',
     ];
 
     protected static function booted(): void
@@ -69,6 +75,10 @@ class Lesson extends Model
             'slideshow_images'       => 'array',
             'intel_drop_enabled'     => 'boolean',
             'intel_drop_at_minutes'  => 'integer',
+            'outline'                => 'array',
+            'team_count'             => 'integer',
+            'game_split_count'       => 'integer',
+            'wizard_step'            => 'integer',
         ];
     }
 
@@ -131,6 +141,16 @@ class Lesson extends Model
     public function studentProgress(): HasMany
     {
         return $this->hasMany(StudentProgress::class);
+    }
+
+    public function scenes(): HasMany
+    {
+        return $this->hasMany(Scene::class)->orderBy('order');
+    }
+
+    public function source(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(LessonSource::class)->latestOfMany();
     }
 
     // ── Scopes ──────────────────────────────────────────────────────────────
