@@ -204,7 +204,9 @@ const SKYBOX_FRAG = /* glsl */`
   uniform sampler2D uTexBase;
   uniform sampler2D uTexLayer;
   uniform float     uBlend;
-  uniform vec3      uNoiseColor;
+  uniform vec4      uNoiseColor;
+  uniform float     uOpacity;
+  uniform vec3      uBgColor;
   uniform bool      uHasLayer;
   varying vec2      vUv;
 
@@ -228,7 +230,7 @@ const SKYBOX_FRAG = /* glsl */`
 
   void main() {
     vec4 base = texture2D(uTexBase, vUv);
-    if (!uHasLayer || uBlend <= 0.001) { gl_FragColor = base; return; }
+    if (!uHasLayer || uBlend <= 0.001) { gl_FragColor = vec4(mix(uBgColor, base.rgb, uOpacity), 1.0); return; }
 
     vec4 layer = texture2D(uTexLayer, vUv);
     float n     = fbm(vUv * 5.0);
@@ -240,8 +242,8 @@ const SKYBOX_FRAG = /* glsl */`
     float band    = max(0.0, 1.0 - abs(n - uBlend) / (edge * 1.5)) * inTrans;
 
     vec4 blended  = mix(base, layer, mask);
-    blended.rgb   = mix(blended.rgb, uNoiseColor, band * 0.55);
-    gl_FragColor  = blended;
+    blended.rgb   = mix(blended.rgb, uNoiseColor.rgb, uNoiseColor.a * band * 0.55);
+    gl_FragColor  = vec4(mix(uBgColor, blended.rgb, uOpacity), 1.0);
   }
 `
 
@@ -274,7 +276,8 @@ export class Avatar3DPlayer {
     this._skyboxLayers     = []       // [{ url, blur, texture }]
     this._currentLayerIdx  = 0
     this._skyboxBlend      = 0.0
-    this._skyboxNoiseColor = new THREE.Color(1, 1, 1)
+    this._skyboxNoiseColor = new THREE.Vector4(1, 1, 1, 1)
+    this._skyboxOpacity    = 1.0
     this._transPhase       = 'base-hold'   // 'base-hold'|'to-layer'|'layer-hold'|'to-base'
     this._transTimer       = 0.0
     this._skyboxHoldTime   = 10.0          // seconds each image is displayed
@@ -752,6 +755,8 @@ export class Avatar3DPlayer {
         uTexLayer:   { value: this._skyboxBaseTex },
         uBlend:      { value: 0.0 },
         uNoiseColor: { value: this._skyboxNoiseColor },
+        uOpacity:    { value: this._skyboxOpacity },
+        uBgColor:    { value: new THREE.Color(this._lastSolidBg ?? '#f0f0f0') },
         uHasLayer:   { value: false },
       },
       side:       THREE.BackSide,
@@ -841,9 +846,15 @@ export class Avatar3DPlayer {
     this._updateSkyboxUniforms()
   }
 
-  setNoiseColor (hex) {
-    this._skyboxNoiseColor = new THREE.Color(hex)
+  setNoiseColor (hex, alpha = 1.0) {
+    const c = new THREE.Color(hex)
+    this._skyboxNoiseColor = new THREE.Vector4(c.r, c.g, c.b, Math.max(0, Math.min(1, alpha)))
     if (this._skyboxSphere) this._skyboxSphere.material.uniforms.uNoiseColor.value = this._skyboxNoiseColor
+  }
+
+  setSkyboxOpacity (opacity) {
+    this._skyboxOpacity = Math.max(0, Math.min(1, opacity))
+    if (this._skyboxSphere) this._skyboxSphere.material.uniforms.uOpacity.value = this._skyboxOpacity
   }
 
   clearSkybox () {
@@ -1957,7 +1968,11 @@ window.addEventListener('avatar3d:removeskyboxlayer', (ev) => {
 })
 
 window.addEventListener('avatar3d:setnoisecolor', (ev) => {
-  window._avatar3d?.setNoiseColor(ev.detail.hex)
+  window._avatar3d?.setNoiseColor(ev.detail.hex, ev.detail.alpha ?? 1.0)
+})
+
+window.addEventListener('avatar3d:setskyboxopacity', (ev) => {
+  window._avatar3d?.setSkyboxOpacity(ev.detail.opacity)
 })
 
 window.addEventListener('avatar3d:settransitiontimes', (ev) => {
@@ -1976,9 +1991,11 @@ window.skyboxPanel = function () {
   return {
     skyboxImages:     [],   // [{ objectUrl, idbKey }]  index 0 = base
     skyboxBlur:       0.5,
+    skyboxOpacity:    1.0,
     skyboxGrain:      0.06,
     skyboxGrainColor: '#1a1a1a',
     skyboxNoiseColor: '#ffffff',
+    skyboxNoiseAlpha: 1.0,
     skyboxHoldTime:   10,
     skyboxFadeTime:   2,
     _db:              null,
@@ -2031,9 +2048,11 @@ window.skyboxPanel = function () {
     _saveSettings () {
       localStorage.setItem('avatar-lab-skybox-v1', JSON.stringify({
         blur:       this.skyboxBlur,
+        opacity:    this.skyboxOpacity,
         grain:      this.skyboxGrain,
         grainColor: this.skyboxGrainColor,
         noiseColor: this.skyboxNoiseColor,
+        noiseAlpha: this.skyboxNoiseAlpha,
         holdTime:   Number(this.skyboxHoldTime),
         fadeTime:   Number(this.skyboxFadeTime),
         imageKeys:  this.skyboxImages.map(img => img.idbKey),
@@ -2055,9 +2074,11 @@ window.skyboxPanel = function () {
       if (!s) return
 
       this.skyboxBlur       = s.blur       ?? this.skyboxBlur
+      this.skyboxOpacity    = s.opacity    ?? this.skyboxOpacity
       this.skyboxGrain      = s.grain      ?? this.skyboxGrain
       this.skyboxGrainColor = s.grainColor ?? this.skyboxGrainColor
       this.skyboxNoiseColor = s.noiseColor ?? this.skyboxNoiseColor
+      this.skyboxNoiseAlpha = s.noiseAlpha ?? this.skyboxNoiseAlpha
       this.skyboxHoldTime   = s.holdTime   ?? this.skyboxHoldTime
       this.skyboxFadeTime   = s.fadeTime   ?? this.skyboxFadeTime
       // Support old format (hasBase + layerKeys) and new format (imageKeys)
@@ -2082,11 +2103,16 @@ window.skyboxPanel = function () {
         window.dispatchEvent(new CustomEvent('avatar3d:rebuildskybox', {
           detail: { urls, blur: Number(this.skyboxBlur) },
         }))
+        window.dispatchEvent(new CustomEvent('avatar3d:setskyboxopacity', {
+          detail: { opacity: Number(this.skyboxOpacity) },
+        }))
         if (urls.length > 1) {
           window.dispatchEvent(new CustomEvent('avatar3d:settransitiontimes', {
             detail: { hold: Number(this.skyboxHoldTime), fade: Number(this.skyboxFadeTime) },
           }))
-          window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: this.skyboxNoiseColor } }))
+          window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', {
+            detail: { hex: this.skyboxNoiseColor, alpha: Number(this.skyboxNoiseAlpha) },
+          }))
         }
       }
     },

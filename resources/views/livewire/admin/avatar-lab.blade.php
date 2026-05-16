@@ -479,15 +479,17 @@
                         ] as $hex => $label)
                             <button
                                 wire:click="$set('sceneBackground', '{{ $hex }}')"
+                                @click="clearAll()"
                                 title="{{ $label }}"
-                                class="w-9 h-9 rounded-lg border-2 transition-all {{ $sceneBackground === $hex ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400' }}"
+                                class="w-9 h-9 rounded-lg border-2 transition-all"
+                                :class="skyboxImages.length === 0 && '{{ $sceneBackground }}' === '{{ $hex }}' ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400'"
                                 style="background-color: {{ $hex }}"
                             ></button>
                         @endforeach
 
                         {{-- Custom color picker --}}
-                        <label class="relative w-9 h-9 rounded-lg border-2 transition-all cursor-pointer
-                            {{ !in_array($sceneBackground, ['#f0f0f0','#ffffff','#1e293b','#000000']) ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400' }}"
+                        <label class="relative w-9 h-9 rounded-lg border-2 transition-all cursor-pointer"
+                            :class="skyboxImages.length === 0 && {{ json_encode(!in_array($sceneBackground, ['#f0f0f0','#ffffff','#1e293b','#000000'])) }} ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400'"
                             style="background: conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"
                             title="Custom color"
                         >
@@ -572,6 +574,19 @@
                                 />
                             </div>
 
+                            {{-- Opacity --}}
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-slate-500">Opacity</label>
+                                    <span class="text-[10px] font-mono text-indigo-400" x-text="Math.round(skyboxOpacity * 100) + '%'"></span>
+                                </div>
+                                <input type="range" min="0" max="1" step="0.01" x-model="skyboxOpacity"
+                                    @input="window.dispatchEvent(new CustomEvent('avatar3d:setskyboxopacity', { detail: { opacity: Number(skyboxOpacity) } }))"
+                                    @change="_saveSettings()"
+                                    class="w-full accent-indigo-500"
+                                />
+                            </div>
+
                             {{-- Grain + color --}}
                             <div>
                                 <div class="flex items-center justify-between mb-1">
@@ -590,14 +605,23 @@
                             <template x-if="skyboxImages.length > 1">
                                 <div class="flex flex-col gap-3">
 
-                                    <div class="flex items-center justify-between">
-                                        <label class="text-[10px] uppercase tracking-widest text-slate-500">Noise color</label>
-                                        <label class="relative w-4 h-4 rounded cursor-pointer border border-slate-600 overflow-hidden shrink-0" :style="'background:' + skyboxNoiseColor" title="Transition noise color">
-                                            <input type="color" x-model="skyboxNoiseColor"
-                                                @input="window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: skyboxNoiseColor } }))"
-                                                @change="_saveSettings()"
-                                                class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"/>
-                                        </label>
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-[10px] uppercase tracking-widest text-slate-500">Noise color</label>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[10px] font-mono text-indigo-400" x-text="Math.round(skyboxNoiseAlpha * 100) + '%'"></span>
+                                                <label class="relative w-4 h-4 rounded cursor-pointer border border-slate-600 overflow-hidden shrink-0" :style="'background:' + skyboxNoiseColor" title="Transition noise color">
+                                                    <input type="color" x-model="skyboxNoiseColor"
+                                                        @input="window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: skyboxNoiseColor, alpha: Number(skyboxNoiseAlpha) } }))"
+                                                        @change="_saveSettings()"
+                                                        class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"/>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <input type="range" min="0" max="1" step="0.05" x-model="skyboxNoiseAlpha"
+                                            @input="window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: skyboxNoiseColor, alpha: Number(skyboxNoiseAlpha) } }))"
+                                            @change="_saveSettings()"
+                                            class="w-full accent-indigo-500"/>
                                     </div>
 
                                     <div>
