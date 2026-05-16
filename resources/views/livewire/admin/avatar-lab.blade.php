@@ -82,6 +82,7 @@
             {{-- Narration & Audio --}}
             <button
                 wire:click="$set('activeSection', 'narration')"
+                @click="window._avatar3d?.zoomToHead()"
                 class="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors
                     {{ $activeSection === 'narration' ? 'text-amber-400 bg-amber-500/10' : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800/50' }}"
             >Narration &amp; Audio</button>
@@ -299,7 +300,16 @@
                     >
                         @foreach($this->voices as $voice)
                         <button
-                            wire:click="selectVoice('{{ $voice['id'] }}')"
+                            x-on:click="
+                                $wire.selectVoice('{{ $voice['id'] }}');
+                                @if($voice['preview_url'])
+                                $store.voiceStrip.playingId = '{{ $voice['id'] }}';
+                                $wire.previewVoiceWithAlignment('{{ $voice['id'] }}');
+                                window.addEventListener('avatar3d:speakend', () => {
+                                    if ($store.voiceStrip.playingId === '{{ $voice['id'] }}') $store.voiceStrip.playingId = null;
+                                }, { once: true });
+                                @endif
+                            "
                             :class="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'
                                 ? 'border-amber-400'
                                 : 'border-slate-700/60 hover:border-indigo-500/50'"
@@ -307,56 +317,20 @@
                             style="scroll-snap-align:start; min-height:80px;"
                             title="{{ $voice['label'] }}"
                         >
+                            {{-- Selected indicator / playing animation --}}
                             <div class="absolute top-1 right-1 z-10">
-                                @if($voice['preview_url'])
                                 <span
-                                    role="button"
-                                    tabindex="0"
-                                    x-show="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
-                                    x-on:click.stop="
-                                        $store.voiceStrip.playingId = '{{ $voice['id'] }}';
-                                        window.dispatchEvent(new CustomEvent('avatar3d:speak', {
-                                            detail: { audioUrl: '{{ $voice['preview_url'] }}', alignment: [], text: '' }
-                                        }));
-                                        window.addEventListener('avatar3d:speakend', () => {
-                                            if ($store.voiceStrip.playingId === '{{ $voice['id'] }}') $store.voiceStrip.playingId = null;
-                                        }, { once: true });
-                                    "
-                                    class="text-amber-400 hover:text-white text-xs leading-none cursor-pointer"
-                                    :class="{ 'animate-pulse': $store.voiceStrip.playingId === '{{ $voice['id'] }}' }"
-                                    title="Preview this voice"
-                                >✓</span>
-                                @else
-                                <span
-                                    x-show="$store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
-                                    class="text-amber-400 text-xs"
-                                >✓</span>
-                                @endif
-                                @if($voice['preview_url'])
-                                <span
-                                    role="button"
-                                    tabindex="0"
-                                    x-show="$store.voiceStrip.selectedId !== '{{ $voice['id'] }}'"
-                                    x-on:click.stop="
-                                        $store.voiceStrip.playingId = '{{ $voice['id'] }}';
-                                        window.dispatchEvent(new CustomEvent('avatar3d:speak', {
-                                            detail: { audioUrl: '{{ $voice['preview_url'] }}', alignment: [], text: '' }
-                                        }));
-                                        window.addEventListener('avatar3d:speakend', () => {
-                                            if ($store.voiceStrip.playingId === '{{ $voice['id'] }}') $store.voiceStrip.playingId = null;
-                                        }, { once: true });
-                                    "
-                                    class="text-slate-400 hover:text-white text-xs leading-none cursor-pointer"
-                                    :class="{ 'text-indigo-400': $store.voiceStrip.playingId === '{{ $voice['id'] }}' }"
+                                    x-show="$store.voiceStrip.playingId === '{{ $voice['id'] }}'"
+                                    class="flex gap-0.5 items-end h-3 text-indigo-400"
                                 >
-                                    <span x-show="$store.voiceStrip.playingId !== '{{ $voice['id'] }}'">▶</span>
-                                    <span x-show="$store.voiceStrip.playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
-                                        <span class="wave-bar h-3"></span>
-                                        <span class="wave-bar h-2"></span>
-                                        <span class="wave-bar h-3"></span>
-                                    </span>
+                                    <span class="wave-bar h-3"></span>
+                                    <span class="wave-bar h-2"></span>
+                                    <span class="wave-bar h-3"></span>
                                 </span>
-                                @endif
+                                <span
+                                    x-show="$store.voiceStrip.playingId !== '{{ $voice['id'] }}' && $store.voiceStrip.selectedId === '{{ $voice['id'] }}'"
+                                    class="text-amber-400 text-xs leading-none"
+                                >✓</span>
                             </div>
                             <div class="flex items-center justify-center h-8 z-10 relative mt-1">
                                 <svg class="w-6 h-6 text-white/50" viewBox="0 0 24 24" fill="currentColor">
@@ -432,7 +406,7 @@
                     </span>
                     <span wire:loading wire:target="speakScript,selectAvatar,selectVoice">Generating…</span>
                     <span wire:loading.remove wire:target="speakScript,selectAvatar,selectVoice">
-                        {{ $narrationAudioUrl && $narrationCachedScript === $narrationScript ? '▶ Play Narration' : 'Generate &amp; Play' }}
+                        {{ $narrationAudioUrl && $narrationCachedScript === $narrationScript ? '▶ Play Narration' : 'Generate & Play' }}
                     </span>
                 </button>
 
@@ -491,9 +465,11 @@
                     </div>
                 </div>
 
-                {{-- Scene Background --}}
-                <div>
+                {{-- Scene Background + Skybox --}}
+                <div x-data="skyboxPanel()" x-on:avatar3d:setbg.window="clearAll()">
                     <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 block">Scene Background</label>
+
+                    {{-- Swatch row: preset colors + custom color picker + skybox image upload --}}
                     <div class="flex gap-2 flex-wrap">
                         @foreach([
                             '#f0f0f0' => 'Studio',
@@ -508,6 +484,7 @@
                                 style="background-color: {{ $hex }}"
                             ></button>
                         @endforeach
+
                         {{-- Custom color picker --}}
                         <label class="relative w-9 h-9 rounded-lg border-2 transition-all cursor-pointer
                             {{ !in_array($sceneBackground, ['#f0f0f0','#ffffff','#1e293b','#000000']) ? 'border-amber-400 scale-110' : 'border-slate-600 hover:border-slate-400' }}"
@@ -516,6 +493,157 @@
                         >
                             <input type="color" wire:model.live="sceneBackground" class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
                         </label>
+
+                        {{-- Skybox image upload — image icon, same swatch style --}}
+                        <label
+                            class="relative w-9 h-9 rounded-lg border-2 transition-all cursor-pointer flex items-center justify-center bg-slate-800/60 hover:bg-slate-800"
+                            :class="skyboxImages.length > 0 ? 'border-amber-400' : 'border-slate-600 hover:border-slate-400'"
+                            title="Add skybox images (equirectangular)"
+                        >
+                            <input type="file" accept="image/png,image/webp,image/jpeg" multiple class="sr-only"
+                                @change="onImagesAdd($event.target.files); $event.target.value = ''"
+                            />
+                            <svg class="w-4 h-4 text-slate-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                        </label>
+                    </div>
+
+                    {{-- Skybox image list (draggable) + add-more + controls --}}
+                    <div class="mt-2">
+
+                        {{-- Draggable image rows --}}
+                        <template x-for="(img, i) in skyboxImages" :key="img.idbKey">
+                            <div
+                                class="flex items-center gap-2 mb-1 rounded transition-all select-none"
+                                :class="{
+                                    'opacity-40': _dragSrcIdx === i,
+                                    'ring-1 ring-indigo-400': _dragOverIdx === i && _dragSrcIdx !== i
+                                }"
+                                draggable="true"
+                                @dragstart="dragStart(i)"
+                                @dragover.prevent="dragOver(i)"
+                                @dragleave="_dragOverIdx = null"
+                                @drop.prevent="drop(i)"
+                                @dragend="dragEnd()"
+                            >
+                                <svg class="w-3 h-3 text-slate-600 cursor-grab active:cursor-grabbing shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                    <rect y="2.5"  width="16" height="1.5" rx="0.75"/>
+                                    <rect y="7.25" width="16" height="1.5" rx="0.75"/>
+                                    <rect y="12"   width="16" height="1.5" rx="0.75"/>
+                                </svg>
+                                <div class="relative w-9 h-9 rounded-lg overflow-hidden shrink-0 border"
+                                     :class="i === 0 ? 'border-amber-400/70' : 'border-indigo-400/50'">
+                                    <img :src="img.objectUrl" class="w-full h-full object-cover" alt=""/>
+                                </div>
+                                <button @click.prevent="onImageRemove(i)"
+                                    class="ml-auto text-slate-600 hover:text-red-400 transition-colors text-xs leading-none"
+                                    title="Remove image">✕</button>
+                            </div>
+                        </template>
+
+                        {{-- Add more — + icon square, only when images already exist --}}
+                        <label x-show="skyboxImages.length > 0" x-cloak
+                            class="mt-1 mb-2 relative w-9 h-9 rounded-lg border-2 border-slate-600 hover:border-slate-400 transition-all cursor-pointer flex items-center justify-center bg-slate-800/60 hover:bg-slate-800"
+                            title="Add more images"
+                        >
+                            <input type="file" accept="image/png,image/webp,image/jpeg" multiple class="sr-only"
+                                @change="onImagesAdd($event.target.files); $event.target.value = ''"
+                            />
+                            <svg class="w-4 h-4 text-slate-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                        </label>
+
+                        {{-- Controls — only when at least one image --}}
+                        <div x-show="skyboxImages.length > 0" x-cloak class="flex flex-col gap-3">
+
+                            {{-- Blur --}}
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-slate-500">Blur</label>
+                                    <span class="text-[10px] font-mono text-indigo-400" x-text="Number(skyboxBlur).toFixed(2)"></span>
+                                </div>
+                                <input type="range" min="0.01" max="0.9" step="0.01" x-model="skyboxBlur"
+                                    @change="window.dispatchEvent(new CustomEvent('avatar3d:setskyboxblur', { detail: { blur: Number(skyboxBlur) } })); _saveSettings();"
+                                    class="w-full accent-indigo-500"
+                                />
+                            </div>
+
+                            {{-- Grain + color --}}
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-slate-500">Grain</label>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-mono text-indigo-400" x-text="Math.round(skyboxGrain * 100) + '%'"></span>
+                                        <label class="relative w-4 h-4 rounded cursor-pointer border border-slate-600 overflow-hidden shrink-0" :style="'background:' + skyboxGrainColor" title="Grain color">
+                                            <input type="color" x-model="skyboxGrainColor" @change="_saveSettings()" class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"/>
+                                        </label>
+                                    </div>
+                                </div>
+                                <input type="range" min="0" max="0.3" step="0.01" x-model="skyboxGrain" @change="_saveSettings()" class="w-full accent-indigo-500"/>
+                            </div>
+
+                            {{-- Transition settings — only when 2+ images --}}
+                            <template x-if="skyboxImages.length > 1">
+                                <div class="flex flex-col gap-3">
+
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[10px] uppercase tracking-widest text-slate-500">Noise color</label>
+                                        <label class="relative w-4 h-4 rounded cursor-pointer border border-slate-600 overflow-hidden shrink-0" :style="'background:' + skyboxNoiseColor" title="Transition noise color">
+                                            <input type="color" x-model="skyboxNoiseColor"
+                                                @input="window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: skyboxNoiseColor } }))"
+                                                @change="_saveSettings()"
+                                                class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"/>
+                                        </label>
+                                    </div>
+
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-[10px] uppercase tracking-widest text-slate-500">Image time</label>
+                                            <span class="text-[10px] font-mono text-indigo-400" x-text="skyboxHoldTime + 's'"></span>
+                                        </div>
+                                        <input type="range" min="2" max="30" step="1" x-model="skyboxHoldTime"
+                                            @input="window.dispatchEvent(new CustomEvent('avatar3d:settransitiontimes', { detail: { hold: Number(skyboxHoldTime), fade: Number(skyboxFadeTime) } }))"
+                                            @change="_saveSettings()"
+                                            class="w-full accent-indigo-500"/>
+                                    </div>
+
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="text-[10px] uppercase tracking-widest text-slate-500">Fade time</label>
+                                            <span class="text-[10px] font-mono text-indigo-400" x-text="skyboxFadeTime + 's'"></span>
+                                        </div>
+                                        <input type="range" min="0.5" max="5" step="0.5" x-model="skyboxFadeTime"
+                                            @input="window.dispatchEvent(new CustomEvent('avatar3d:settransitiontimes', { detail: { hold: Number(skyboxHoldTime), fade: Number(skyboxFadeTime) } }))"
+                                            @change="_saveSettings()"
+                                            class="w-full accent-indigo-500"/>
+                                    </div>
+
+                                </div>
+                            </template>
+
+                        </div>
+
+                        {{-- Grain overlay driver --}}
+                        <div x-effect="
+                            (() => {
+                                const hex = skyboxGrainColor.replace('#', '');
+                                const r = (parseInt(hex.slice(0,2), 16) / 255).toFixed(3);
+                                const g = (parseInt(hex.slice(2,4), 16) / 255).toFixed(3);
+                                const b = (parseInt(hex.slice(4,6), 16) / 255).toFixed(3);
+                                const m = '0 0 0 0 ' + r + ' 0 0 0 0 ' + g + ' 0 0 0 0 ' + b + ' 0.3 0.59 0.11 0 -0.15';
+                                const svg = '<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'256\' height=\'256\'><filter id=\'n\'><feTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/><feColorMatrix type=\'matrix\' values=\'' + m + '\'/></filter><rect width=\'256\' height=\'256\' filter=\'url(#n)\'/></svg>';
+                                const url = 'data:image/svg+xml,' + encodeURIComponent(svg);
+                                const el = document.querySelector('.skybox-grain-overlay');
+                                if (el) {
+                                    el.style.backgroundImage = 'url(\'' + url + '\')';
+                                    el.style.opacity = skyboxImages.length > 0 ? skyboxGrain : 0;
+                                }
+                            })()
+                        "></div>
                     </div>
                 </div>
 
@@ -807,10 +935,16 @@
         <div
             class="w-full h-full relative"
             wire:ignore
-            x-data="{ glbLoading: false }"
+            x-data="{ glbLoading: false, skyboxActive: false }"
             @avatar3d:loadstart.window="glbLoading = true"
             @avatar3d:loadend.window="glbLoading = false"
+            @avatar3d:rebuildskybox.window="skyboxActive = true"
+            @avatar3d:clearskybox.window="skyboxActive = false"
+            @avatar3d:setbg.window="skyboxActive = false"
         >
+            {{-- Film grain overlay — opacity driven by the grain slider via x-effect --}}
+            <div class="skybox-grain-overlay"></div>
+
             <canvas
                 id="avatar-lab-canvas"
                 data-character-url="{{ $selectedAvatarId ? '/avatars/'.$selectedAvatarId.'/character.glb' : '' }}"

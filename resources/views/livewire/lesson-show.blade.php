@@ -1,4 +1,5 @@
 <div
+    @if($this->shouldPoll) wire:poll.5s="refreshLesson" @endif
     class="space-y-8"
 >
     {{-- ── Breadcrumb ─────────────────────────────────────────────────────── --}}
@@ -96,7 +97,7 @@
                 <div class="space-y-6">
 
                     {{-- ── Lesson player (slideshow background + avatar overlay) ────── --}}
-                    <x-lesson-player :lesson="$lesson" />
+                    <x-lesson-player :lesson="$lesson" wire:key="player-{{ $lesson->status->value }}" />
 
                     {{-- Script preview (collapsible) --}}
                     @if($lesson->script)

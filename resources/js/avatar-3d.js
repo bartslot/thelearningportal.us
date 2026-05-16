@@ -191,6 +191,60 @@ function easeInOut (t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
+// ── Skybox shaders ────────────────────────────────────────────────────────────
+const SKYBOX_VERT = /* glsl */`
+  varying vec2 vUv;
+  void main() {
+    vUv = vec2(1.0 - uv.x, uv.y);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+const SKYBOX_FRAG = /* glsl */`
+  uniform sampler2D uTexBase;
+  uniform sampler2D uTexLayer;
+  uniform float     uBlend;
+  uniform vec3      uNoiseColor;
+  uniform bool      uHasLayer;
+  varying vec2      vUv;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(234.34, 435.345));
+    p += dot(p, p + 34.23);
+    return fract(p.x * p.y);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i+vec2(1,0)), u.x),
+               mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), u.x), u.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 4; i++) { v += a * vnoise(p); p = rot * p * 2.0 + 1.7; a *= 0.5; }
+    return v;
+  }
+
+  void main() {
+    vec4 base = texture2D(uTexBase, vUv);
+    if (!uHasLayer || uBlend <= 0.001) { gl_FragColor = base; return; }
+
+    vec4 layer = texture2D(uTexLayer, vUv);
+    float n     = fbm(vUv * 5.0);
+    float edge  = 0.06;
+    float mask  = 1.0 - smoothstep(uBlend - edge, uBlend + edge, n);
+
+    // Tinted noise band visible only mid-transition
+    float inTrans = smoothstep(0.0, 0.12, uBlend) * smoothstep(1.0, 0.88, uBlend);
+    float band    = max(0.0, 1.0 - abs(n - uBlend) / (edge * 1.5)) * inTrans;
+
+    vec4 blended  = mix(base, layer, mask);
+    blended.rgb   = mix(blended.rgb, uNoiseColor, band * 0.55);
+    gl_FragColor  = blended;
+  }
+`
+
 export class Avatar3DPlayer {
   constructor (canvasEl, {
     characterUrl = null,
@@ -212,7 +266,21 @@ export class Avatar3DPlayer {
     this._boneRestQ  = {}       // name → Quaternion (bind-pose snapshot)
     this._boneRestY  = 0        // Hips rest position.y
     this._headZoomY  = 1.62     // updated per-model after bounding box fit
-    this._shadowPlane = null
+    this._shadowPlane      = null
+    this._lastSolidBg      = '#f0f0f0'
+    // Skybox sphere + layers
+    this._skyboxSphere     = null
+    this._skyboxBaseTex    = null
+    this._skyboxLayers     = []       // [{ url, blur, texture }]
+    this._currentLayerIdx  = 0
+    this._skyboxBlend      = 0.0
+    this._skyboxNoiseColor = new THREE.Color(1, 1, 1)
+    this._transPhase       = 'base-hold'   // 'base-hold'|'to-layer'|'layer-hold'|'to-base'
+    this._transTimer       = 0.0
+    this._skyboxHoldTime   = 10.0          // seconds each image is displayed
+    this._skyboxFadeTime   = 2.0           // seconds for noise dissolve transition
+    this._skyboxUrl        = null
+    this._skyboxBlur       = 0.5
 
     // Accessories
     this._glassesMeshes = []    // Wolf3D_Glasses nodes, toggled via showGlasses()
@@ -372,6 +440,7 @@ export class Avatar3DPlayer {
       this._controls.target.set(...CAMERA_PRESET.target)
       this._controls.update()
     }
+    this._zoomBiasLock = performance.now() + 1500
   }
 
   /** Smooth camera dolly to head close-up (physical move only, FOV unchanged). */
@@ -380,6 +449,7 @@ export class Avatar3DPlayer {
     const currentFov = this._camera.fov
     this._camTarget = { pos: new THREE.Vector3(0, headY, 1.1), look: new THREE.Vector3(0, headY, 0), fov: currentFov }
     this._camLerpT  = 0
+    this._zoomBiasLock = performance.now() + 1500  // block bias drift for 1.5s after dolly lands
     this._camFrom   = {
       pos:  this._camera.position.clone(),
       look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
@@ -391,6 +461,7 @@ export class Avatar3DPlayer {
   zoomToBody () {
     this._camTarget = { pos: new THREE.Vector3(...CAMERA_PRESET.pos), look: new THREE.Vector3(...CAMERA_PRESET.target), fov: CAMERA_PRESET.fov }
     this._camLerpT  = 0
+    this._zoomBiasLock = performance.now() + 1500
     this._camFrom   = {
       pos:  this._camera.position.clone(),
       look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
@@ -402,7 +473,7 @@ export class Avatar3DPlayer {
    * Speak audio with amplitude-driven jaw animation via Web Audio AnalyserNode.
    * Word timings are ignored — real-time RMS from the audio drives jawOpen.
    */
-  speakWithVisemes (audioUrl) {
+  speakWithVisemes (audioUrl, { zoom = true, delay = 600 } = {}) {
     // Tear down previous audio
     if (this._audio) { this._audio.pause(); this._audio = null }
     if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
@@ -423,9 +494,8 @@ export class Avatar3DPlayer {
     })
 
     this._playing = false
-    this.zoomToHead()
+    if (zoom) this.zoomToHead()
 
-    // Slight delay so zoom starts before audio plays
     setTimeout(() => {
       // Set up Web Audio analyser for real-time amplitude
       try {
@@ -471,16 +541,16 @@ export class Avatar3DPlayer {
    * alignment: array of {character, start_time, end_time} from /with-timestamps.
    * audioUrl: pre-generated audio to play simultaneously.
    */
-  speakWithElevenLabsAlignment (audioUrl, alignment) {
+  speakWithElevenLabsAlignment (audioUrl, alignment, { zoom = true, delay = 600 } = {}) {
     if (!this._meshes.length) {
-      this.speakWithVisemes(audioUrl)
+      this.speakWithVisemes(audioUrl, { zoom, delay })
       return
     }
 
     const hasVisemes = Object.keys(this._visemeMap).filter(k => k.startsWith('viseme_')).length > 0
     if (!hasVisemes) {
       console.warn('[Avatar3D] No Oculus visemes mapped — amplitude fallback')
-      this.speakWithVisemes(audioUrl)
+      this.speakWithVisemes(audioUrl, { zoom, delay })
       return
     }
 
@@ -521,11 +591,11 @@ export class Avatar3DPlayer {
     })
 
     this._playing = false
-    this.zoomToHead()
+    if (zoom) this.zoomToHead()
     setTimeout(() => {
       audio.play().catch(e => console.warn('[Avatar3D] play() failed:', e))
       this._playing = true
-    }, 600)
+    }, delay)
 
     console.log(`[Avatar3D] ElevenLabs alignment: ${alignment.length} chars, ${Object.keys(byViseme).length} active visemes`)
   }
@@ -612,21 +682,222 @@ export class Avatar3DPlayer {
 
   setSceneBackground (hex) {
     if (!this._scene) return
-
-    // Dispose previous canvas texture if any
-    if (this._scene.background && this._scene.background.isTexture) {
-      this._scene.background.dispose()
-    }
-
-    // Solid colour — no gradient so black stays black
+    this._clearSkyboxInternal()
+    this._lastSolidBg = hex
     this._scene.background = new THREE.Color(hex)
-
-    // Adjust rim light: dark backgrounds need stronger back-separation
     if (this._rimLight) {
       const c = new THREE.Color(hex)
-      const luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
-      this._rimLight.intensity = luminance < 0.25 ? 1.2 : 0.3
+      const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+      this._rimLight.intensity = lum < 0.25 ? 1.2 : 0.3
     }
+  }
+
+  // ── Skybox sphere + layer system ──────────────────────────────────────────
+
+  _clearSkyboxInternal () {
+    if (this._skyboxSphere) {
+      this._scene?.remove(this._skyboxSphere)
+      this._skyboxSphere.geometry.dispose()
+      this._skyboxSphere.material.dispose()
+      this._skyboxSphere = null
+    }
+    this._skyboxBaseTex?.dispose(); this._skyboxBaseTex = null
+    for (const l of this._skyboxLayers) l.texture?.dispose()
+    this._skyboxLayers    = []
+    this._currentLayerIdx = 0
+    this._transPhase      = 'base-hold'
+    this._transTimer      = 0.0
+    this._skyboxUrl       = null
+    this._scene && (this._scene.background = null)
+  }
+
+  _loadSkyboxTexture (url, blur) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX_W = 2048
+        const scale = Math.min(1, MAX_W / img.naturalWidth)
+        const w   = Math.round(img.naturalWidth  * scale)
+        const h   = Math.round(img.naturalHeight * scale)
+        const pad = Math.max(1, Math.ceil(blur * 3))
+
+        // Tile 3× horizontally so blur samples the wrap at left/right edges
+        const wide = document.createElement('canvas')
+        wide.width = w * 3; wide.height = h
+        const wCtx = wide.getContext('2d')
+        wCtx.drawImage(img, 0,   0, w, h)
+        wCtx.drawImage(img, w,   0, w, h)
+        wCtx.drawImage(img, w*2, 0, w, h)
+
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        const ctx = canvas.getContext('2d')
+        ctx.filter = `blur(${blur}px)`
+        ctx.drawImage(wide, w - pad, -pad, w + pad*2, h + pad*2, -pad, -pad, w + pad*2, h + pad*2)
+
+        resolve(new THREE.CanvasTexture(canvas))
+      }
+      img.onerror = reject
+      img.src = url
+    })
+  }
+
+  _createSkyboxSphere () {
+    const geo = new THREE.SphereGeometry(50, 64, 40)
+    const mat = new THREE.ShaderMaterial({
+      vertexShader:   SKYBOX_VERT,
+      fragmentShader: SKYBOX_FRAG,
+      uniforms: {
+        uTexBase:    { value: this._skyboxBaseTex },
+        uTexLayer:   { value: this._skyboxBaseTex },
+        uBlend:      { value: 0.0 },
+        uNoiseColor: { value: this._skyboxNoiseColor },
+        uHasLayer:   { value: false },
+      },
+      side:       THREE.BackSide,
+      depthTest:  false,
+      depthWrite: false,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.renderOrder = -1000
+    this._scene.add(mesh)
+    this._skyboxSphere = mesh
+  }
+
+  _updateSkyboxUniforms () {
+    if (!this._skyboxSphere) return
+    const u = this._skyboxSphere.material.uniforms
+    const hasLayer = this._skyboxLayers.length > 0
+    u.uHasLayer.value = hasLayer
+    if (hasLayer) u.uTexLayer.value = this._skyboxLayers[this._currentLayerIdx % this._skyboxLayers.length].texture
+    u.uBlend.value = this._skyboxBlend
+  }
+
+  async setSkyboxFromUrl (url, blur = this._skyboxBlur) {
+    if (!this._scene) return
+    this._skyboxUrl  = url
+    this._skyboxBlur = blur
+    const tex = await this._loadSkyboxTexture(url, blur).catch(e => { console.warn('[Avatar3D] skybox load failed:', e) })
+    if (!tex) return
+    this._skyboxBaseTex?.dispose()
+    this._skyboxBaseTex = tex
+    if (!this._skyboxSphere) {
+      this._scene.background = null
+      this._createSkyboxSphere()
+    } else {
+      this._skyboxSphere.material.uniforms.uTexBase.value = tex
+    }
+    this._transPhase  = 'base-hold'
+    this._transTimer  = 0.0
+    this._skyboxBlend = 0.0
+    this._updateSkyboxUniforms()
+    if (this._rimLight) this._rimLight.intensity = 0.5
+  }
+
+  async setSkyboxBlur (blur) {
+    this._skyboxBlur = blur
+    if (this._skyboxUrl) {
+      const tex = await this._loadSkyboxTexture(this._skyboxUrl, blur).catch(() => null)
+      if (tex && this._skyboxSphere) {
+        this._skyboxBaseTex?.dispose()
+        this._skyboxBaseTex = tex
+        this._skyboxSphere.material.uniforms.uTexBase.value = tex
+      }
+    }
+    // Re-process all layers with new blur too
+    for (const layer of this._skyboxLayers) {
+      const tex = await this._loadSkyboxTexture(layer.url, blur).catch(() => null)
+      if (tex) { layer.texture?.dispose(); layer.texture = tex }
+    }
+    this._updateSkyboxUniforms()
+  }
+
+  async addSkyboxLayer (url, slot) {
+    if (!this._scene) return -1
+    const tex = await this._loadSkyboxTexture(url, this._skyboxBlur).catch(e => { console.warn('[Avatar3D] layer load failed:', e) })
+    if (!tex) return -1
+    const wasEmpty = this._skyboxLayers.length === 0
+    if (typeof slot === 'number' && slot >= 0 && slot < this._skyboxLayers.length) {
+      this._skyboxLayers[slot].texture?.dispose()
+      this._skyboxLayers[slot] = { url, texture: tex }
+    } else {
+      this._skyboxLayers.push({ url, texture: tex })
+    }
+    if (wasEmpty) {
+      this._transPhase = 'base-hold'
+      this._transTimer = 0.0
+      this._skyboxBlend = 0.0
+    }
+    this._updateSkyboxUniforms()
+    return typeof slot === 'number' && slot < this._skyboxLayers.length ? slot : this._skyboxLayers.length - 1
+  }
+
+  removeSkyboxLayer (index) {
+    if (index < 0 || index >= this._skyboxLayers.length) return
+    this._skyboxLayers[index].texture?.dispose()
+    this._skyboxLayers.splice(index, 1)
+    this._currentLayerIdx = Math.min(this._currentLayerIdx, Math.max(0, this._skyboxLayers.length - 1))
+    this._transPhase = 'base-hold'; this._transTimer = 0.0; this._skyboxBlend = 0.0
+    this._updateSkyboxUniforms()
+  }
+
+  setNoiseColor (hex) {
+    this._skyboxNoiseColor = new THREE.Color(hex)
+    if (this._skyboxSphere) this._skyboxSphere.material.uniforms.uNoiseColor.value = this._skyboxNoiseColor
+  }
+
+  clearSkybox () {
+    this._clearSkyboxInternal()
+    if (this._scene) this._scene.background = new THREE.Color(this._lastSolidBg ?? '#f0f0f0')
+    if (this._rimLight) {
+      const c = new THREE.Color(this._lastSolidBg ?? '#f0f0f0')
+      const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+      this._rimLight.intensity = lum < 0.25 ? 1.2 : 0.3
+    }
+  }
+
+  async rebuildSkybox (urls, blur) {
+    if (!urls || !urls.length) { this.clearSkybox(); return }
+    this._clearSkyboxInternal()
+    await this.setSkyboxFromUrl(urls[0], blur ?? this._skyboxBlur)
+    for (const url of urls.slice(1)) {
+      await this.addSkyboxLayer(url)
+    }
+  }
+
+  setTransitionTimes (hold, fade) {
+    this._skyboxHoldTime = Math.max(0.5, hold)
+    this._skyboxFadeTime = Math.max(0.1, fade)
+  }
+
+  _updateSkyboxTransition (delta) {
+    if (!this._skyboxSphere || !this._skyboxLayers.length) return
+    const HOLD = this._skyboxHoldTime
+    const TRANS = this._skyboxFadeTime
+    this._transTimer += Math.min(delta, 0.1)  // cap delta so tab-switch spikes don't skip phases
+    switch (this._transPhase) {
+      case 'base-hold':
+        this._skyboxBlend = 0.0
+        if (this._transTimer >= HOLD) { this._transTimer = 0; this._transPhase = 'to-layer' }
+        break
+      case 'to-layer':
+        this._skyboxBlend = Math.min(1, this._transTimer / TRANS)
+        if (this._transTimer >= TRANS) { this._transTimer = 0; this._transPhase = 'layer-hold'; this._skyboxBlend = 1.0 }
+        break
+      case 'layer-hold':
+        this._skyboxBlend = 1.0
+        if (this._transTimer >= HOLD) { this._transTimer = 0; this._transPhase = 'to-base' }
+        break
+      case 'to-base':
+        this._skyboxBlend = 1.0 - Math.min(1, this._transTimer / TRANS)
+        if (this._transTimer >= TRANS) {
+          this._transTimer = 0; this._transPhase = 'base-hold'; this._skyboxBlend = 0.0
+          this._currentLayerIdx = (this._currentLayerIdx + 1) % this._skyboxLayers.length
+          this._updateSkyboxUniforms()
+        }
+        break
+    }
+    if (this._skyboxSphere) this._skyboxSphere.material.uniforms.uBlend.value = this._skyboxBlend
   }
 
   // ── Pose system ────────────────────────────────────────────────────────────
@@ -904,7 +1175,7 @@ export class Avatar3DPlayer {
 </speak>`
 
     const config = sdk.SpeechConfig.fromSubscription(azureKey, azureRegion)
-    config.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Raw22050Hz16BitMonoPcm
+    config.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3
 
     // Collect blend shape frames from viseme events
     const framesBuffer = {}
@@ -937,11 +1208,13 @@ export class Avatar3DPlayer {
     }
 
     // Perform synthesis — audio discarded, we only need the viseme frames
+    let azureAudioData = null
     const azureDone = new Promise((resolve, reject) => {
       synthesizer.speakSsmlAsync(ssml,
         (result) => {
           synthesizer.close()
           if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+            azureAudioData = result.audioData  // MP3 bytes from Azure
             resolve()
           } else {
             reject(new Error(`Azure TTS failed: ${result.reason}`))
@@ -951,15 +1224,8 @@ export class Avatar3DPlayer {
       )
     })
 
-    // Load the Pocket TTS audio element to get its duration in parallel
-    const audioDuration = new Promise((resolve) => {
-      const a = new Audio(audioUrl)
-      a.addEventListener('loadedmetadata', () => resolve(a.duration))
-      a.addEventListener('error', () => resolve(0))
-    })
-
     try {
-      const [, pocketSecs] = await Promise.all([azureDone, audioDuration])
+      await azureDone
 
       if (!framesOrdered.length) {
         console.warn('[Avatar3D] Azure returned 0 viseme frames — check SSML / API key')
@@ -967,24 +1233,26 @@ export class Avatar3DPlayer {
         return
       }
 
-      const FPS         = 60
-      const azureSecs   = framesOrdered.length / FPS
-      const timeScale   = pocketSecs > 0.1 && azureSecs > 0.1 ? pocketSecs / azureSecs : 1
+      const FPS       = 60
+      const azureSecs = framesOrdered.length / FPS
 
-      // Build _frames in the format expected by _applyBlendShapes: [{t, w:[52 floats]}]
+      // Use Azure's own audio — no timeScale needed, timing is exact
       this._frames = framesOrdered.map((weights, i) => ({
-        t: (i / FPS) * timeScale,
+        t: i / FPS,
         w: weights,
       }))
 
-      console.log(`[Avatar3D] Azure: ${framesOrdered.length} frames, azure=${azureSecs.toFixed(2)}s, pocket=${pocketSecs.toFixed(2)}s, scale=${timeScale.toFixed(3)}`)
+      console.log(`[Avatar3D] Azure: ${framesOrdered.length} frames, ${azureSecs.toFixed(2)}s, using Azure audio (no timeScale)`)
 
-      // Play the Pocket TTS audio with Azure blend shapes driving the face
       if (this._audio) { this._audio.pause(); this._audio = null }
       if (this._audioCtx) { this._audioCtx.close(); this._audioCtx = null }
       this._visemeTimings = []
 
-      const audio = new Audio(audioUrl)
+      // Play Azure's own MP3 — timing matches blend shapes exactly
+      const blob  = new Blob([azureAudioData], { type: 'audio/mpeg' })
+      const blobUrl = URL.createObjectURL(blob)
+      const audio = new Audio(blobUrl)
+      audio.addEventListener('ended', () => URL.revokeObjectURL(blobUrl))
       this._audio = audio
       audio.addEventListener('ended', () => {
         this._playing = false
@@ -1100,6 +1368,7 @@ export class Avatar3DPlayer {
     this._updateCameraLerp(delta)
     this._updateZoomTargetBias()
     this._idlePass(delta * 1000)
+    this._updateSkyboxTransition(delta)
     this._controls?.update()
     this._renderer?.render(this._scene, this._camera)
   }
@@ -1142,6 +1411,7 @@ export class Avatar3DPlayer {
    */
   _updateZoomTargetBias () {
     if (this._camLerpT < 1.0 || !this._controls || !this._characterRoot) return
+    if (this._zoomBiasLock && performance.now() < this._zoomBiasLock) return
     const camDist = this._camera.position.distanceTo(this._controls.target)
     const minDist = this._controls.minDistance   // 0.5
     const maxDist = this._controls.maxDistance   // 6.0
@@ -1471,6 +1741,16 @@ export class Avatar3DPlayer {
     this._audioCtx = null
     if (this._animMixer) { this._animMixer.stopAllAction(); this._animMixer = null }
     this._controls?.dispose()
+    this._skyboxBaseTex?.dispose()
+    this._skyboxBaseTex = null
+    for (const layer of this._skyboxLayers) layer.texture?.dispose()
+    this._skyboxLayers = []
+    if (this._skyboxSphere) {
+      this._scene?.remove(this._skyboxSphere)
+      this._skyboxSphere.geometry.dispose()
+      this._skyboxSphere.material.dispose()
+      this._skyboxSphere = null
+    }
     this._renderer?.dispose()
     this._scene?.traverse((obj) => {
       obj.geometry?.dispose()
@@ -1626,7 +1906,7 @@ window.addEventListener('preview-clip', (ev) => {
 
 // ── Narration speak (Avatar Lab) ──────────────────────────────────────────────
 async function _handleSpeak (ev) {
-  const { audioUrl, text, alignment } = ev.detail
+  const { audioUrl, text, alignment, preview = false } = ev.detail
   const player = window._avatar3d
   if (!player) return
 
@@ -1636,29 +1916,249 @@ async function _handleSpeak (ev) {
     return
   }
 
-  // Best path: ElevenLabs character alignment → Oculus visemes (no Azure needed)
+  // preview=true: no camera zoom, no delay (voice card previews)
+  const opts = preview ? { zoom: false, delay: 0 } : { zoom: true, delay: 600 }
+
+  // Best path: ElevenLabs character alignment → Oculus visemes
+  console.log('[Avatar3D] avatar3d:speak received — alignment entries:', alignment?.length ?? 0, 'preview:', preview)
   if (alignment && alignment.length > 0) {
-    player.speakWithElevenLabsAlignment(audioUrl, alignment)
+    player.speakWithElevenLabsAlignment(audioUrl, alignment, opts)
     return
   }
 
-  // Second: Azure blend shapes (requires key + SDK)
-  const canvas = document.getElementById('avatar-lab-canvas')
-  const azureKey    = canvas?.dataset.azureKey    ?? ''
-  const azureRegion = canvas?.dataset.azureRegion ?? 'eastus'
-
-  if (azureKey && text && window.SpeechSDK) {
-    await player.speakWithAzureBlendShapes(audioUrl, text, azureKey, azureRegion)
-  } else {
-    // Fallback: amplitude-driven jaw
-    player.speakWithVisemes(audioUrl)
-  }
+  // No alignment — amplitude-driven jaw
+  console.log('[Avatar3D] No ElevenLabs alignment — using amplitude jaw fallback')
+  player.speakWithVisemes(audioUrl, opts)
 }
 window.addEventListener('avatar3d:speak', _handleSpeak)
 
 window.addEventListener('avatar3d:setBg', (ev) => {
   window._avatar3d?.setSceneBackground(ev.detail.hex)
 })
+
+window.addEventListener('avatar3d:setskybox', (ev) => {
+  window._avatar3d?.setSkyboxFromUrl(ev.detail.url, ev.detail.blur ?? 0.5)
+})
+
+window.addEventListener('avatar3d:setskyboxblur', (ev) => {
+  window._avatar3d?.setSkyboxBlur(ev.detail.blur)
+})
+
+window.addEventListener('avatar3d:clearskybox', () => {
+  window._avatar3d?.clearSkybox()
+})
+
+window.addEventListener('avatar3d:addskyboxlayer', async (ev) => {
+  await window._avatar3d?.addSkyboxLayer(ev.detail.url, ev.detail.slot)
+})
+
+window.addEventListener('avatar3d:removeskyboxlayer', (ev) => {
+  window._avatar3d?.removeSkyboxLayer(ev.detail.index)
+})
+
+window.addEventListener('avatar3d:setnoisecolor', (ev) => {
+  window._avatar3d?.setNoiseColor(ev.detail.hex)
+})
+
+window.addEventListener('avatar3d:settransitiontimes', (ev) => {
+  window._avatar3d?.setTransitionTimes(ev.detail.hold, ev.detail.fade)
+})
+
+window.addEventListener('avatar3d:rebuildskybox', async (ev) => {
+  await window._avatar3d?.rebuildSkybox(ev.detail.urls, ev.detail.blur)
+})
+
+// ── Skybox panel Alpine component ────────────────────────────────────────────
+// Single ordered image list: index 0 = skybox base, 1..n = transition layers.
+// Drag to reorder rebuilds the skybox with new ordering.
+// Blobs persist in IndexedDB; settings in localStorage.
+window.skyboxPanel = function () {
+  return {
+    skyboxImages:     [],   // [{ objectUrl, idbKey }]  index 0 = base
+    skyboxBlur:       0.5,
+    skyboxGrain:      0.06,
+    skyboxGrainColor: '#1a1a1a',
+    skyboxNoiseColor: '#ffffff',
+    skyboxHoldTime:   10,
+    skyboxFadeTime:   2,
+    _db:              null,
+    _nextId:          0,
+    _dragSrcIdx:      null,
+    _dragOverIdx:     null,
+
+    async init () {
+      this._db = await this._openDb()
+      await this._restore()
+    },
+
+    // ── IndexedDB helpers ──────────────────────────────────────────────────
+
+    _openDb () {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('avatar-lab-skybox', 1)
+        req.onupgradeneeded = e => { e.target.result.createObjectStore('images') }
+        req.onsuccess = e => resolve(e.target.result)
+        req.onerror   = e => reject(e.target.error)
+      })
+    },
+
+    _idbGet (key) {
+      return new Promise((resolve, reject) => {
+        const req = this._db.transaction('images', 'readonly').objectStore('images').get(key)
+        req.onsuccess = e => resolve(e.target.result ?? null)
+        req.onerror   = e => reject(e.target.error)
+      })
+    },
+
+    _idbPut (key, value) {
+      return new Promise((resolve, reject) => {
+        const req = this._db.transaction('images', 'readwrite').objectStore('images').put(value, key)
+        req.onsuccess = () => resolve()
+        req.onerror   = e => reject(e.target.error)
+      })
+    },
+
+    _idbDel (key) {
+      return new Promise((resolve, reject) => {
+        const req = this._db.transaction('images', 'readwrite').objectStore('images').delete(key)
+        req.onsuccess = () => resolve()
+        req.onerror   = e => reject(e.target.error)
+      })
+    },
+
+    // ── Persistence ────────────────────────────────────────────────────────
+
+    _saveSettings () {
+      localStorage.setItem('avatar-lab-skybox-v1', JSON.stringify({
+        blur:       this.skyboxBlur,
+        grain:      this.skyboxGrain,
+        grainColor: this.skyboxGrainColor,
+        noiseColor: this.skyboxNoiseColor,
+        holdTime:   Number(this.skyboxHoldTime),
+        fadeTime:   Number(this.skyboxFadeTime),
+        imageKeys:  this.skyboxImages.map(img => img.idbKey),
+        nextId:     this._nextId,
+      }))
+    },
+
+    _waitForScene () {
+      if (window._avatar3d?._scene) return Promise.resolve()
+      return new Promise(resolve => {
+        const tick = () => window._avatar3d?._scene ? resolve() : requestAnimationFrame(tick)
+        requestAnimationFrame(tick)
+      })
+    },
+
+    async _restore () {
+      let s
+      try { s = JSON.parse(localStorage.getItem('avatar-lab-skybox-v1') ?? 'null') } catch { s = null }
+      if (!s) return
+
+      this.skyboxBlur       = s.blur       ?? this.skyboxBlur
+      this.skyboxGrain      = s.grain      ?? this.skyboxGrain
+      this.skyboxGrainColor = s.grainColor ?? this.skyboxGrainColor
+      this.skyboxNoiseColor = s.noiseColor ?? this.skyboxNoiseColor
+      this.skyboxHoldTime   = s.holdTime   ?? this.skyboxHoldTime
+      this.skyboxFadeTime   = s.fadeTime   ?? this.skyboxFadeTime
+      // Support old format (hasBase + layerKeys) and new format (imageKeys)
+      const keys = s.imageKeys ?? [
+        ...(s.hasBase ? ['base'] : []),
+        ...(s.layerKeys ?? []),
+      ]
+      this._nextId = s.nextId ?? s.nextLayerId ?? 0
+
+      await this._waitForScene()
+
+      const urls = []
+      for (const key of keys) {
+        const blob = await this._idbGet(key).catch(() => null)
+        if (!blob) continue
+        const url = URL.createObjectURL(blob)
+        this.skyboxImages.push({ objectUrl: url, idbKey: key })
+        urls.push(url)
+      }
+
+      if (urls.length) {
+        window.dispatchEvent(new CustomEvent('avatar3d:rebuildskybox', {
+          detail: { urls, blur: Number(this.skyboxBlur) },
+        }))
+        if (urls.length > 1) {
+          window.dispatchEvent(new CustomEvent('avatar3d:settransitiontimes', {
+            detail: { hold: Number(this.skyboxHoldTime), fade: Number(this.skyboxFadeTime) },
+          }))
+          window.dispatchEvent(new CustomEvent('avatar3d:setnoisecolor', { detail: { hex: this.skyboxNoiseColor } }))
+        }
+      }
+    },
+
+    // ── Core rebuild ───────────────────────────────────────────────────────
+
+    _dispatchRebuild () {
+      const urls = this.skyboxImages.map(img => img.objectUrl)
+      window.dispatchEvent(new CustomEvent('avatar3d:rebuildskybox', {
+        detail: { urls, blur: Number(this.skyboxBlur) },
+      }))
+    },
+
+    // ── Actions ────────────────────────────────────────────────────────────
+
+    async onImagesAdd (fileList) {
+      for (const file of Array.from(fileList)) {
+        const key = 'img-' + this._nextId++
+        const url = URL.createObjectURL(file)
+        this.skyboxImages.push({ objectUrl: url, idbKey: key })
+        await this._idbPut(key, file)
+      }
+      this._dispatchRebuild()
+      this._saveSettings()
+    },
+
+    async onImageRemove (i) {
+      const img = this.skyboxImages[i]
+      if (img.objectUrl) URL.revokeObjectURL(img.objectUrl)
+      await this._idbDel(img.idbKey).catch(() => {})
+      this.skyboxImages.splice(i, 1)
+      this._dispatchRebuild()
+      this._saveSettings()
+    },
+
+    async clearAll () {
+      for (const img of this.skyboxImages) {
+        if (img.objectUrl) URL.revokeObjectURL(img.objectUrl)
+        await this._idbDel(img.idbKey).catch(() => {})
+      }
+      this.skyboxImages = []
+      this._nextId = 0
+      window.dispatchEvent(new CustomEvent('avatar3d:clearskybox'))
+      this._saveSettings()
+    },
+
+    // ── Drag to reorder ────────────────────────────────────────────────────
+
+    dragStart (i) {
+      this._dragSrcIdx = i
+    },
+
+    dragOver (i) {
+      if (this._dragSrcIdx !== null && i !== this._dragSrcIdx) this._dragOverIdx = i
+    },
+
+    async drop (i) {
+      this._dragOverIdx = null
+      if (this._dragSrcIdx === null || this._dragSrcIdx === i) { this._dragSrcIdx = null; return }
+      const [item] = this.skyboxImages.splice(this._dragSrcIdx, 1)
+      this.skyboxImages.splice(i, 0, item)
+      this._dragSrcIdx = null
+      this._dispatchRebuild()
+      this._saveSettings()
+    },
+
+    dragEnd () {
+      this._dragSrcIdx = null
+      this._dragOverIdx = null
+    },
+  }
+}
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
 if (import.meta.hot) {

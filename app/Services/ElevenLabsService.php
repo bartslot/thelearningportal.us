@@ -76,11 +76,19 @@ class ElevenLabsService
             );
 
             if (! $response->successful()) {
+                \Log::error('[ElevenLabs] with-timestamps HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 300));
                 return null;
             }
 
             $data     = $response->json();
             $audioB64 = $data['audio_base64'] ?? '';
+
+            // Debug: log raw API structure so we can verify the shape in console
+            \Log::debug('[ElevenLabs] with-timestamps raw response keys: ' . implode(', ', array_keys($data)));
+            \Log::debug('[ElevenLabs] alignment keys: ' . implode(', ', array_keys($data['alignment'] ?? [])));
+            \Log::debug('[ElevenLabs] first 3 chars: ' . json_encode(array_slice($data['alignment']['characters'] ?? [], 0, 3)));
+            \Log::debug('[ElevenLabs] first 3 starts: ' . json_encode(array_slice($data['alignment']['character_start_times_seconds'] ?? [], 0, 3)));
+            \Log::debug('[ElevenLabs] first 3 ends: ' . json_encode(array_slice($data['alignment']['character_end_times_seconds'] ?? [], 0, 3)));
 
             if ($audioB64 === '') {
                 return null;
@@ -100,6 +108,8 @@ class ElevenLabsService
                     'end_time'   => $ends[$i]   ?? 0.0,
                 ];
             }
+
+            \Log::debug('[ElevenLabs] built ' . count($alignment) . ' alignment entries, sample: ' . json_encode(array_slice($alignment, 0, 3)));
 
             return [
                 'audio'     => base64_decode($audioB64),

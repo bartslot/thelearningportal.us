@@ -240,28 +240,16 @@ OUT_FILE = {$this->pythonStringLiteral($outFile)}
 TIMINGS_FILE = {$this->pythonStringLiteral($timingsFile)}
 COLLECT_TIMINGS = {$this->pythonStringLiteral($collectWordTimings ? '1' : '0')}
 
+# edge-tts v7 only emits 'audio' and 'SentenceBoundary'.
+# WordBoundary and VisemeEvent were dropped in v7.
+# Visemes require either ElevenLabs /with-timestamps or Azure Speech SDK.
+
 async def main():
     communicate = edge_tts.Communicate(TEXT, VOICE, rate=RATE)
-    boundaries = []
     with open(OUT_FILE, "wb") as audio:
         async for chunk in communicate.stream():
-            ctype = chunk.get("type")
-            if ctype == "audio":
+            if chunk.get("type") == "audio":
                 audio.write(chunk.get("data", b""))
-            elif COLLECT_TIMINGS == "1" and ctype == "WordBoundary":
-                offset = float(chunk.get("offset", 0)) / 10000000.0
-                duration = float(chunk.get("duration", 0)) / 10000000.0
-                text = str(chunk.get("text", "")).strip()
-                if text:
-                    boundaries.append({
-                        "text": text,
-                        "start": max(0.0, offset),
-                        "end": max(0.0, offset + duration)
-                    })
-
-    if COLLECT_TIMINGS == "1":
-        with open(TIMINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(boundaries, f)
 
 asyncio.run(main())
 PY;

@@ -564,6 +564,38 @@ class AvatarLab extends Component
 
     // ── Narration ─────────────────────────────────────────────────────────
 
+    public function previewVoiceWithAlignment(string $voiceId): void
+    {
+        $service    = app(ElevenLabsService::class);
+        $previewUrl = $service->getVoicePreviewUrl($voiceId) ?? '';
+        $result     = $service->generateWithTimestamps('Hello! I am your guide. Let me show you what I can do.', $voiceId);
+
+        if ($result === null) {
+            \Log::warning('[AvatarLab] previewVoiceWithAlignment: ElevenLabs returned null for voice ' . $voiceId . ', falling back to preview_url');
+            // Fall back to the voice preview URL — amplitude jaw, no zoom, instant play
+            if ($previewUrl !== '') {
+                $this->dispatch('avatar3d:speak',
+                    audioUrl:  $previewUrl,
+                    alignment: [],
+                    text:      '',
+                    preview:   true,
+                );
+            }
+            return;
+        }
+
+        $path = "avatars/lab-preview/{$voiceId}-preview.mp3";
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $result['audio']);
+        \Log::debug('[AvatarLab] previewVoiceWithAlignment: ' . count($result['alignment']) . ' alignment entries for voice ' . $voiceId);
+
+        $this->dispatch('avatar3d:speak',
+            audioUrl:  '/storage/' . $path,
+            alignment: $result['alignment'],
+            text:      '',
+            preview:   true,
+        );
+    }
+
     public function speakScript(): void
     {
         if (! $this->selectedAvatarId || $this->narrationBusy) return;
@@ -574,6 +606,7 @@ class AvatarLab extends Component
                 audioUrl:  $this->narrationAudioUrl,
                 alignment: $this->narrationAlignment,
                 text:      app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+                preview:   true,  // camera already at head from tab switch — no re-zoom
             );
             return;
         }
@@ -588,6 +621,7 @@ class AvatarLab extends Component
                     audioUrl:  $this->narrationAudioUrl,
                     alignment: $this->narrationAlignment,
                     text:      app(\App\Services\TtsService::class)->prepareSpeechText($this->narrationScript),
+                    preview:   true,  // camera already at head from tab switch — no re-zoom
                 );
             }
         } finally {
@@ -636,10 +670,6 @@ class AvatarLab extends Component
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
-
-        if ($this->activeSection === 'narration') {
-            $this->dispatch('avatar3d:zoomtohead');
-        }
 
         return view('livewire.admin.avatar-lab', compact(
             'clipsByCategory', 'controllerData', 'assignedClipIds',
