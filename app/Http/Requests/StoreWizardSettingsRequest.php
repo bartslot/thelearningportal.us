@@ -23,7 +23,7 @@ class StoreWizardSettingsRequest extends FormRequest
             'tone'             => ['nullable', 'string', 'max:150'],
             'details'          => ['nullable', 'string', 'max:500'],
             'source_mode'      => ['required', 'in:wikipedia,upload,both'],
-            'sourceUpload'     => ['nullable', 'file', 'mimes:pdf,docx', 'max:10240'],
+            'sourceUpload'     => ['nullable', 'required_if:source_mode,upload', 'file', 'mimes:pdf,docx', 'max:10240'],
             'image_style'      => ['required', 'in:' . implode(',', ImageStyleTemplate::styles())],
             'avatar_id'        => ['required', 'exists:avatars,id'],
             'strategy_game_id' => ['nullable', 'exists:strategy_games,id'],

@@ -118,6 +118,24 @@ class Step1SettingsTest extends TestCase
         Bus::assertDispatched(BuildLessonOutline::class);
     }
 
+    public function test_rejects_save_when_upload_mode_has_no_file(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->set('topic',            'X')
+            ->set('subject',          'history')
+            ->set('grade_level',      '9th grade')
+            ->set('source_mode',      'upload')
+            ->set('sourceUpload',     null)
+            ->set('image_style',      'painted')
+            ->set('avatar_id',        $this->avatar->id)
+            ->set('game_split_count', 1)
+            ->call('saveDraft')
+            ->assertHasErrors(['sourceUpload']);
+
+        $this->assertSame(0, LessonSource::count());
+    }
+
     public function test_rejects_upload_over_10mb_or_wrong_mime(): void
     {
         $tooBig = UploadedFile::fake()->create('big.pdf', 11 * 1024);

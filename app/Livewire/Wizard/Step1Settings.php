@@ -155,7 +155,7 @@ class Step1Settings extends Component
         $source = \App\Models\LessonSource::firstOrNew(['lesson_id' => $lesson->id]);
 
         $combinedText = '';
-        $kind         = $this->source_mode;
+        $kind         = null;
         $filePath     = null;
         $original     = null;
 
@@ -169,14 +169,17 @@ class Step1Settings extends Component
             $absolute     = \Illuminate\Support\Facades\Storage::disk('public')->path($filePath);
             $combinedText = app(DocumentExtractor::class)->extractFromPath($absolute);
 
-            if ($this->source_mode === 'upload') {
-                $kind = $kindUp;
-            }
+            $kind = $this->source_mode === 'both' ? 'both' : $kindUp;
         }
 
         if (in_array($this->source_mode, ['wikipedia', 'both'], true)) {
             $wiki = app(WikipediaService::class)->fetchFacts($lesson->topic) ?? '';
             $combinedText = trim($combinedText . "\n\n" . $wiki);
+            $kind ??= 'wikipedia';
+        }
+
+        if ($kind === null) {
+            return; // No source data captured — skip persisting an invalid row.
         }
 
         $source->fill([
