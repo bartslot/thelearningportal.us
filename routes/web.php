@@ -53,13 +53,6 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
-    Route::patch('/lessons/{lesson}/publish', function (Lesson $lesson) {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
-        abort_unless($lesson->isReady(), 422, 'Lesson is not ready to publish');
-        $lesson->update(['status' => LessonStatusEnum::Published]);
-        return back()->with('success', 'Lesson published!');
-    })->name('lessons.publish');
-
     Route::post('/lessons/{lesson}/retry', function (Lesson $lesson) {
         abort_unless(app()->environment(['local', 'testing']), 403);
         abort_unless($lesson->teacher_id === auth()->id(), 403);
