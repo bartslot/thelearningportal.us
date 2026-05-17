@@ -56,6 +56,7 @@ return [
         'image_size'        => env('OPENAI_IMAGE_SIZE', '1536x1024'),
         'image_format'      => env('OPENAI_IMAGE_FORMAT', 'webp'),       // png|jpeg|webp
         'image_compression' => (int) env('OPENAI_IMAGE_COMPRESSION', 50), // 0-100 (jpeg/webp only)
+        'image_stitch'      => filter_var(env('OPENAI_IMAGE_STITCH', true), FILTER_VALIDATE_BOOLEAN), // 2-image stitched panorama
         'base_url'     => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'timeout'      => (int) env('OPENAI_TIMEOUT', 60),
         'tts_model'    => env('OPENAI_TTS_MODEL', 'tts-1'),

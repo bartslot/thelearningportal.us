@@ -21,6 +21,7 @@ class OpenAiImageServiceTest extends TestCase
             'image_size'        => '1536x1024',
             'image_format'      => 'webp',
             'image_compression' => 50,
+            'image_stitch'      => false,
             'base_url'          => 'https://api.openai.com/v1',
             'timeout'           => 60,
         ]);
@@ -73,6 +74,35 @@ class OpenAiImageServiceTest extends TestCase
                 && str_contains($prompt, 'film still')
                 && str_contains($prompt, 'battle/scene illustration');
         });
+    }
+
+    public function test_stitch_mode_issues_two_image_requests_with_left_right_hints(): void
+    {
+        config()->set('services.openai.image_stitch', true);
+
+        Http::fake([
+            'https://api.openai.com/v1/images/generations' => Http::response([
+                'data' => [['url' => 'https://example.com/x.png']],
+            ], 200),
+            'https://example.com/x.png' => Http::response('X', 200),
+        ]);
+
+        app(OpenAiImageService::class)->generate(
+            seedPrompt:  'A quiet meadow',
+            style:       'realistic',
+            destination: 'lessons/1/scenes/4/skybox.webp',
+        );
+
+        $sentPrompts = [];
+        Http::assertSent(function ($request) use (&$sentPrompts) {
+            if (! str_ends_with($request->url(), '/images/generations')) return false;
+            $sentPrompts[] = $request->data()['prompt'] ?? '';
+            return true;
+        });
+
+        $this->assertCount(2, $sentPrompts, 'Stitch mode should fire two image requests');
+        $this->assertTrue(collect($sentPrompts)->contains(fn ($p) => str_contains($p, 'left half of a continuous panorama')));
+        $this->assertTrue(collect($sentPrompts)->contains(fn ($p) => str_contains($p, 'right half of a continuous panorama')));
     }
 
     public function test_sends_skybox_panorama_hint_and_webp_compression_flags(): void
