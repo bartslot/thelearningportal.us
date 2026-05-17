@@ -38,6 +38,11 @@ class BuildLessonOutline implements ShouldQueue
         $lesson->update(['status' => LessonStatus::Outlining]);
 
         try {
+            // Defensive: previous attempts (manual retry, queue retry, user clicked Generate twice)
+            // may have left Scene rows around. The (lesson_id, order) unique index would then trip
+            // on re-insert. Wipe and rebuild from scratch.
+            $lesson->scenes()->delete();
+
             $sourceText = (string) ($lesson->source?->extracted_text ?? '');
 
             $outline = $llm->json(
