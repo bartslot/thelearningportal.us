@@ -8,6 +8,9 @@ import { SceneTimelinePlayer } from './scene/SceneTimelinePlayer.js';
 import { GameTimerOverlay }    from './scene/GameTimerOverlay.js';
 import { AmplitudeWaveform }   from './scene/AmplitudeWaveform.js';
 import { mountWizardScene }    from './scene/wizard-bridge.js';
+import Sortable                from 'sortablejs';
+
+window.Sortable = Sortable;
 
 window.LessonScene = {
     SkyboxSphere, SceneOverlay, SceneTimelinePlayer, GameTimerOverlay, AmplitudeWaveform,
