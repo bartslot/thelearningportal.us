@@ -11,6 +11,14 @@ class WikipediaService
 {
     private const API_BASE   = 'https://en.wikipedia.org/api/rest_v1';
     private const SEARCH_API = 'https://en.wikipedia.org/w/api.php';
+    private const USER_AGENT = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com)';
+
+    private function http(int $timeout = 10): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::timeout($timeout)
+            ->withUserAgent(self::USER_AGENT)
+            ->acceptJson();
+    }
 
     // Titles containing these words are almost certainly not educational articles
     private const SKIP_KEYWORDS = [
@@ -91,7 +99,7 @@ class WikipediaService
         try {
             foreach ($this->buildQuerySet($topic, $title) as $q) {
                 $slug = urlencode(str_replace(' ', '_', $q));
-                $res  = Http::timeout(10)->get(self::API_BASE . "/page/summary/{$slug}");
+                $res  = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
                 if ($res->successful() && $res->json('thumbnail.source')) {
                     return $res->json('thumbnail.source');
                 }
@@ -99,7 +107,7 @@ class WikipediaService
 
             foreach ($this->openSearch($topic) as $canonical) {
                 $slug = urlencode(str_replace(' ', '_', $canonical));
-                $res  = Http::timeout(10)->get(self::API_BASE . "/page/summary/{$slug}");
+                $res  = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
                 if ($res->successful() && $res->json('thumbnail.source')) {
                     return $res->json('thumbnail.source');
                 }
@@ -252,7 +260,7 @@ class WikipediaService
     private function openSearch(string $query, int $limit = 5): array
     {
         try {
-            $res = Http::timeout(8)->get(self::SEARCH_API, [
+            $res = $this->http(8)->get(self::SEARCH_API, [
                 'action'   => 'opensearch',
                 'search'   => $query,
                 'limit'    => $limit,
@@ -278,7 +286,7 @@ class WikipediaService
     private function bestSearchResult(string $query, int $limit = 8): ?string
     {
         try {
-            $res = Http::timeout(10)->get(self::SEARCH_API, [
+            $res = $this->http(10)->get(self::SEARCH_API, [
                 'action'   => 'query',
                 'list'     => 'search',
                 'srsearch' => $query,
@@ -358,9 +366,7 @@ class WikipediaService
         $slug = urlencode(str_replace(' ', '_', $title));
 
         try {
-            $res = Http::timeout(10)
-                ->withHeaders(['Accept' => 'application/json'])
-                ->get(self::API_BASE . "/page/summary/{$slug}");
+            $res = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
 
             if ($res->successful()) {
                 $extract = $res->json('extract');
@@ -375,7 +381,7 @@ class WikipediaService
     private function fetchExtract(string $title): ?string
     {
         try {
-            $res = Http::timeout(10)->get(self::SEARCH_API, [
+            $res = $this->http(10)->get(self::SEARCH_API, [
                 'action'      => 'query',
                 'prop'        => 'extracts',
                 'titles'      => $title,
