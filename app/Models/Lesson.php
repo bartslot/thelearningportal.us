@@ -153,6 +153,16 @@ class Lesson extends Model
         return $this->hasOne(LessonSource::class)->latestOfMany();
     }
 
+    public function startGenerationPipeline(): void
+    {
+        if (! $this->source()->exists()) {
+            throw new \RuntimeException('Cannot start pipeline: no LessonSource attached.');
+        }
+
+        $this->update(['status' => LessonStatus::SourceReady]);
+        \App\Jobs\BuildLessonOutline::dispatch($this->id);
+    }
+
     // ── Scopes ──────────────────────────────────────────────────────────────
 
     public function scopePublished($query)
