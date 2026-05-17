@@ -25,6 +25,8 @@ class OpenAiImageServiceTest extends TestCase
             'base_url'          => 'https://api.openai.com/v1',
             'timeout'           => 60,
         ]);
+        // Keep fal.ai out of the network during unit tests.
+        config()->set('services.falai.upscale_enabled', false);
         Storage::fake('public');
     }
 

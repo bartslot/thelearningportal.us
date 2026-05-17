@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Services\Support\ImageStyleTemplate;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -32,10 +33,87 @@ class OpenAiImageService
         $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
         $bytes = $this->trimBlackBars($bytes);
         $bytes = $this->cropTo2x1($bytes);
+        $bytes = $this->upscaleWithFalai($bytes);
 
         Storage::disk('public')->put($destination, $bytes);
 
         return $destination;
+    }
+
+    /**
+     * Post-process the panorama with a fal.ai upscaler (Real-ESRGAN-class). Doubles
+     * the effective resolution so the texture wrapped on the sphere holds detail
+     * even when the teacher orbits close. Failures fall through gracefully — the
+     * original bytes are returned and the lesson still works.
+     */
+    private function upscaleWithFalai(string $bytes): string
+    {
+        if (! (bool) config('services.falai.upscale_enabled', false)) {
+            return $bytes;
+        }
+        $key = (string) config('services.falai.api_key', '');
+        if ($key === '') {
+            return $bytes;
+        }
+
+        $model   = (string) config('services.falai.upscale_model', 'fal-ai/clarity-upscaler');
+        $scale   = (int)    config('services.falai.upscale_factor', 2);
+        $timeout = (int)    config('services.falai.timeout', 120);
+
+        $dataUri = 'data:image/webp;base64,' . base64_encode($bytes);
+
+        try {
+            $res = Http::withHeaders(['Authorization' => 'Key ' . $key])
+                ->timeout($timeout)
+                ->acceptJson()
+                ->post("https://fal.run/{$model}", [
+                    'image_url'     => $dataUri,
+                    'scale_factor'  => $scale,
+                    'output_format' => 'webp',
+                ]);
+
+            if (! $res->successful()) {
+                Log::warning('[fal.ai] upscale ' . $res->status() . ': ' . substr($res->body(), 0, 200));
+                return $bytes;
+            }
+
+            $url = $res->json('image.url')
+                ?? $res->json('images.0.url')
+                ?? $res->json('output.url')
+                ?? null;
+            if (! is_string($url) || $url === '') {
+                Log::warning('[fal.ai] upscale response missing image url', ['body' => substr($res->body(), 0, 200)]);
+                return $bytes;
+            }
+
+            $dl = Http::timeout(60)->get($url);
+            if (! $dl->successful()) {
+                Log::warning('[fal.ai] failed to download upscaled image: ' . $dl->status());
+                return $bytes;
+            }
+
+            // fal.ai may return png or webp depending on the model — normalise to webp
+            // at our configured quality so storage stays consistent.
+            $normalized = $this->reencodeWebp($dl->body());
+            return $normalized !== '' ? $normalized : $bytes;
+        } catch (\Throwable $e) {
+            Log::warning('[fal.ai] upscale exception: ' . $e->getMessage());
+            return $bytes;
+        }
+    }
+
+    private function reencodeWebp(string $bytes): string
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            return $bytes;
+        }
+        $img = @imagecreatefromstring($bytes);
+        if ($img === false) {
+            return $bytes;
+        }
+        $out = $this->encodeWebp($img);
+        imagedestroy($img);
+        return $out;
     }
 
     /**
