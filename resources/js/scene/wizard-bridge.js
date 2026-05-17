@@ -69,17 +69,23 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     const applyScene = async (payload) => {
         if (!payload) return
+        const view = payload.sceneView === 'slideshow' ? 'slideshow' : 'skybox'
+
         if (playerReady && payload.imageUrl) {
             try {
-                await activePlayer.setSkyboxFromUrl(payload.imageUrl, payload.skyboxBlur ?? 0)
+                if (view === 'slideshow') {
+                    await applySlideshowBackground(payload.imageUrl)
+                } else {
+                    await applySkyboxView(payload.imageUrl, payload.skyboxBlur ?? 0)
+                }
             } catch (err) {
-                console.warn('[wizard-bridge] skybox load failed', err)
+                console.warn('[wizard-bridge] background load failed', err)
             }
         }
-        if (playerReady && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
+        if (playerReady && view === 'skybox' && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
             try { activePlayer.setSkyboxOpacity(payload.skyboxOpacity) } catch {}
         }
-        if (playerReady && typeof payload.backgroundColor === 'string') {
+        if (playerReady && view === 'skybox' && typeof payload.backgroundColor === 'string') {
             applyBackgroundColor(payload.backgroundColor)
         }
         if (playerReady && payload.animationClipUrl && typeof activePlayer.loadAnimation === 'function') {
@@ -125,6 +131,34 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             }
         } catch (err) {
             console.warn('[wizard-bridge] bg color failed', err)
+        }
+    }
+
+    async function applySkyboxView(url, blur) {
+        if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = true
+        await activePlayer.setSkyboxFromUrl(url, blur)
+    }
+
+    // Slideshow mode: hide the inverted-sphere skybox and put the image directly
+    // on the scene's clear color so it renders as a flat 2D backdrop.
+    const slideshowTextureCache = new Map()
+    async function applySlideshowBackground(url) {
+        if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
+        try {
+            let tex = slideshowTextureCache.get(url)
+            if (!tex) {
+                tex = await new Promise((resolve, reject) => {
+                    new THREE.TextureLoader().load(url, t => {
+                        t.colorSpace = THREE.SRGBColorSpace
+                        t.mapping    = THREE.UVMapping
+                        resolve(t)
+                    }, undefined, reject)
+                })
+                slideshowTextureCache.set(url, tex)
+            }
+            activePlayer._scene.background = tex
+        } catch (err) {
+            console.warn('[wizard-bridge] slideshow texture load failed', err)
         }
     }
 
