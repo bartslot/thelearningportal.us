@@ -23,8 +23,12 @@
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>
         </div>
     @else
-        <img src="{{ $scene->image_path ? asset('storage/' . $scene->image_path) : asset('assets/scene-placeholder.png') }}"
-             class="w-full h-full object-cover" alt="" />
+        @if ($scene->image_path)
+            <img src="{{ asset('storage/' . $scene->image_path) }}"
+                 class="w-full h-full object-cover" alt="" />
+        @else
+            <div class="w-full h-full bg-slate-800/60 flex items-center justify-center text-[10px] text-slate-500 tracking-widest">SCENE {{ $scene->order }}</div>
+        @endif
         <span class="absolute bottom-0 inset-x-0 bg-black/55 text-[9px] text-white px-1 py-0.5">
             {{ $scene->year ?? '—' }} · {{ $scene->location ?? '—' }}
         </span>
