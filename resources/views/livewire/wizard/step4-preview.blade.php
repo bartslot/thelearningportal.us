@@ -1,7 +1,8 @@
 <div class="contents" x-data="step4Preview" x-init="init()">
 
     {{-- Fullscreen canvas wrapper (same as Step 3) --}}
-    <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root">
+    <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
+         data-character-url="{{ $lesson->avatar?->glbUrl() }}">
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
@@ -56,13 +57,17 @@
             async init() {
                 if (!window.LessonScene?.mountWizardScene) return;
 
-                const dataEl = document.getElementById('step4-scenes-data');
-                const scenes = dataEl ? JSON.parse(dataEl.textContent) : [];
-                const overlayEl = document.getElementById('lesson-overlay');
-                const timerEl   = document.getElementById('lesson-game-overlay');
-                const canvasEl  = document.getElementById('lesson-canvas');
+                const dataEl       = document.getElementById('step4-scenes-data');
+                const scenes       = dataEl ? JSON.parse(dataEl.textContent) : [];
+                const overlayEl    = document.getElementById('lesson-overlay');
+                const timerEl      = document.getElementById('lesson-game-overlay');
+                const canvasEl     = document.getElementById('lesson-canvas');
+                const rootEl       = document.getElementById('lesson-canvas-root');
+                const characterUrl = rootEl?.dataset.characterUrl || null;
 
-                this.stage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes });
+                this.stage = await window.LessonScene.mountWizardScene({
+                    canvasEl, overlayEl, timerEl, scenes, characterUrl,
+                });
                 if (!this.stage) return;
 
                 this.total   = this.stage.sequencer.totalSeconds();

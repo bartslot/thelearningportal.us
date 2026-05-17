@@ -1,7 +1,8 @@
 <div class="contents" x-data="step3SceneConfigurator" x-init="init()">
 
     {{-- Fullscreen canvas wrapper --}}
-    <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root">
+    <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
+         data-character-url="{{ $lesson->avatar?->glbUrl() }}">
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
@@ -15,7 +16,7 @@
 
     {{-- Inspector drawer --}}
     <aside x-show="inspectorOpen" x-transition.opacity
-           class="fixed top-0 right-0 bottom-24 z-30 w-[360px] bg-base-300/90 backdrop-blur border-l border-slate-700/40 p-4 overflow-y-auto">
+           class="fixed top-16 right-0 bottom-24 z-30 w-[360px] bg-base-300/90 backdrop-blur border-l border-slate-700/40 p-4 overflow-y-auto">
         @php $sceneModel = $this->selectedSceneModel; @endphp
         @if ($sceneModel)
             @if ($sceneModel->kind === 'game')
@@ -57,13 +58,17 @@
 
                 if (!window.LessonScene?.mountWizardScene) return;
 
-                const dataEl = document.getElementById('step3-scenes-data');
-                const scenes = dataEl ? JSON.parse(dataEl.textContent) : [];
-                const overlayEl = document.getElementById('lesson-overlay');
-                const timerEl   = document.getElementById('lesson-game-overlay');
-                const canvasEl  = document.getElementById('lesson-canvas');
+                const dataEl       = document.getElementById('step3-scenes-data');
+                const scenes       = dataEl ? JSON.parse(dataEl.textContent) : [];
+                const overlayEl    = document.getElementById('lesson-overlay');
+                const timerEl      = document.getElementById('lesson-game-overlay');
+                const canvasEl     = document.getElementById('lesson-canvas');
+                const rootEl       = document.getElementById('lesson-canvas-root');
+                const characterUrl = rootEl?.dataset.characterUrl || null;
 
-                window.__lessonStage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes });
+                window.__lessonStage = await window.LessonScene.mountWizardScene({
+                    canvasEl, overlayEl, timerEl, scenes, characterUrl,
+                });
             },
         }));
     });
