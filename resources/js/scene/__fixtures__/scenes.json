@@ -1,0 +1,5 @@
+[
+  { "id": 1, "kind": "narration", "year": "1810", "location": "Paris", "image_path": "/img/paris.png", "audio_path": "/audio/1.mp3", "audio_alignment": [], "duration_seconds": 10 },
+  { "id": 2, "kind": "game",      "year": null,   "location": null,    "image_path": "/img/game.png",  "audio_path": "/audio/g.mp3", "audio_alignment": [], "duration_seconds": 5 },
+  { "id": 3, "kind": "narration", "year": "1812", "location": "Moscow","image_path": "/img/mosc.png",  "audio_path": "/audio/3.mp3", "audio_alignment": [], "duration_seconds": 10 }
+]
