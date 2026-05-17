@@ -13,16 +13,16 @@ final class ImageStyleTemplate
      * VR skybox texture on an inverted sphere. The model can't natively output 2:1, but
      * we tell it the composition rules so the chosen landscape framing still wraps.
      */
-    public const PANORAMIC_HINT = 'equirectangular 360-degree panorama suitable as a VR skybox texture, '
-        . 'full 360-degree horizontal coverage by 180-degree vertical coverage, '
-        . '2:1 ultra-wide aspect ratio framing, '
+    public const PANORAMIC_HINT = '360 degree panoramic scene, equirectangular projection, '
+        . 'immersive VR panorama, 2:1 ultra-wide aspect ratio, '
         . 'horizon line level and centered vertically, '
         . 'seamless continuity between the left and right edges, '
         . 'no subjects or hard edges crossing the seam, '
         . 'no fisheye or lens distortion, no cropped foreground objects, '
-        . 'environmental establishing shot only — no close-up subjects, '
+        . 'environmental establishing shot only, no close-up subjects, no people visible, '
         . 'consistent ambient lighting from all directions, '
-        . 'realistic scale and depth, sky visible above, ground visible below';
+        . 'sky visible above, ground visible below, '
+        . 'cinematic atmosphere, ultra detailed';
 
     public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
 

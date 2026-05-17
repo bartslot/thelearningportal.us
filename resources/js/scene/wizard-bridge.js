@@ -120,12 +120,13 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         }
     }
 
-    // Wizard is not an avatar inspector — lock down the orbit/zoom camera so a
-    // stray scroll or drag on the canvas doesn't reframe the stage.
+    // Allow the teacher to orbit and inspect the skybox, but keep zoom + pan off
+    // so they can't dolly into the avatar or wander out of the panorama.
     if (player._controls) {
-        player._controls.enabled    = false
-        player._controls.enableZoom = false
-        player._controls.enableRotate = false
+        player._controls.enabled      = true
+        player._controls.enableRotate = true
+        player._controls.enableZoom   = false
+        player._controls.enablePan    = false
     }
 
     activePlayer = player

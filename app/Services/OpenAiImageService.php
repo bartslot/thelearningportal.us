@@ -59,8 +59,53 @@ class OpenAiImageService
             throw new RuntimeException('Image API returned neither url nor b64_json.');
         }
 
+        // gpt-image-1 max size is 1536x1024 (3:2). Center-crop to 2:1 so the skybox
+        // sphere doesn't squash the image vertically when wrapped.
+        $bytes = $this->cropTo2x1($bytes);
+
         Storage::disk('public')->put($destination, $bytes);
 
         return $destination;
+    }
+
+    private function cropTo2x1(string $bytes): string
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            return $bytes;
+        }
+
+        $img = @imagecreatefromstring($bytes);
+        if ($img === false) {
+            return $bytes;
+        }
+
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $targetH = (int) round($w / 2);
+
+        if ($h <= $targetH) {
+            imagedestroy($img);
+            return $bytes;
+        }
+
+        $cropped = imagecrop($img, [
+            'x'      => 0,
+            'y'      => (int) round(($h - $targetH) / 2),
+            'width'  => $w,
+            'height' => $targetH,
+        ]);
+        imagedestroy($img);
+
+        if ($cropped === false) {
+            return $bytes;
+        }
+
+        $quality = (int) config('services.openai.image_compression', 50);
+        ob_start();
+        imagewebp($cropped, null, $quality);
+        $out = (string) ob_get_clean();
+        imagedestroy($cropped);
+
+        return $out !== '' ? $out : $bytes;
     }
 }

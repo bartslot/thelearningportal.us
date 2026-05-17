@@ -97,7 +97,8 @@ class OpenAiImageServiceTest extends TestCase
             $data   = $request->data();
             $prompt = $data['prompt'] ?? '';
 
-            return str_contains($prompt, 'equirectangular 360-degree panorama')
+            return str_contains($prompt, '360 degree panoramic scene')
+                && str_contains($prompt, 'equirectangular projection')
                 && str_contains($prompt, 'seamless continuity between the left and right edges')
                 && str_contains($prompt, 'horizon line level and centered')
                 && ($data['output_format'] ?? null) === 'webp'
