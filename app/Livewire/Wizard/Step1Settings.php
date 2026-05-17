@@ -133,7 +133,7 @@ class Step1Settings extends Component
         return array_map(fn (string $k) => [
             'key'   => $k,
             'label' => ucfirst($k),
-            'thumb' => asset("assets/style-{$k}.png"),
+            'thumb' => asset("assets/style-{$k}.webp"),
         ], ImageStyleTemplate::styles());
     }
 
