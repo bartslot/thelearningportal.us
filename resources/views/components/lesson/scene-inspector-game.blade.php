@@ -1,8 +1,12 @@
 @props(['scene' => null])
 
+@php
+    $isGenerating = $scene->status === 'generating';
+@endphp
+
 <div class="space-y-3 text-sm">
     <header>
-        <h3 class="text-amber-300 font-semibold flex items-center gap-2">🎲 {{ $scene->lesson->strategyGame?->title ?? 'Strategy Game' }}</h3>
+        <h3 class="text-amber-300 font-semibold">{{ $scene->lesson->strategyGame?->title ?? 'Strategy Game' }}</h3>
         <p class="text-xs text-slate-400">Segment {{ $scene->game_segment_index }} of {{ $scene->lesson->game_split_count }}</p>
     </header>
 
@@ -11,12 +15,26 @@
         <textarea wire:model.blur="selectedScene.script_segment" wire:change="saveSelected" rows="6"
                   class="textarea textarea-sm textarea-bordered bg-slate-900 w-full"></textarea>
         <div class="flex gap-2 flex-wrap">
-            @if ($scene->hasFreshAudio())
+            @if ($scene->hasFreshAudio() && ! $isGenerating)
                 <button type="button" wire:click="playSelected"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">▶ Play</button>
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 inline-flex items-center gap-1.5">
+                    <x-icons.play class="w-3 h-3" />
+                    <span>Play</span>
+                </button>
             @else
-                <button type="button" wire:click="regenerate({{ $scene->id }}, 'audio')"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔊 Re-narrate</button>
+                <button type="button"
+                        wire:click="regenerate({{ $scene->id }}, 'audio')"
+                        wire:loading.attr="disabled" wire:target="regenerate"
+                        @disabled($isGenerating)
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                    @if ($isGenerating)
+                        <x-icons.spinner class="w-3 h-3 animate-spin" />
+                        <span>Re-narrating…</span>
+                    @else
+                        <x-icons.regenerate class="w-3 h-3" />
+                        <span>Re-narrate</span>
+                    @endif
+                </button>
             @endif
         </div>
     </div>
@@ -27,8 +45,19 @@
             @if ($scene->image_path)
                 <img src="{{ asset('storage/' . $scene->image_path) }}" class="w-20 h-12 rounded object-cover" />
             @endif
-            <button type="button" wire:click="regenerate({{ $scene->id }}, 'image')"
-                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔄 Regenerate</button>
+            <button type="button"
+                    wire:click="regenerate({{ $scene->id }}, 'image')"
+                    wire:loading.attr="disabled" wire:target="regenerate"
+                    @disabled($isGenerating)
+                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                @if ($isGenerating)
+                    <x-icons.spinner class="w-3 h-3 animate-spin" />
+                    <span>Generating…</span>
+                @else
+                    <x-icons.regenerate class="w-3 h-3" />
+                    <span>Regenerate</span>
+                @endif
+            </button>
         </div>
     </div>
 
@@ -46,5 +75,5 @@
 
     <button type="button" wire:click="deleteScene({{ $scene->id }})"
             wire:confirm="Delete this game segment?"
-            class="text-rose-300 hover:text-rose-200 text-xs underline mt-2">⋯ Delete segment</button>
+            class="text-rose-300 hover:text-rose-200 text-xs underline mt-2">Delete segment</button>
 </div>

@@ -1,4 +1,4 @@
-<div class="contents" x-data="step3SceneConfigurator">
+<div class="contents" x-data="step3SceneConfigurator" wire:poll.3s>
 
     {{-- Fullscreen canvas wrapper — wire:ignore so Livewire never re-renders the
          canvas (which would force a new Avatar3DPlayer + reset camera/orbit). --}}

@@ -1,5 +1,9 @@
 @props(['scene' => null, 'clips' => collect()])
 
+@php
+    $isGenerating = $scene->status === 'generating';
+@endphp
+
 <div class="space-y-3 text-sm">
     <h3 class="text-amber-300 font-semibold">Scene {{ $scene->order }}</h3>
 
@@ -42,8 +46,19 @@
             @if ($scene->image_path)
                 <img src="{{ asset('storage/' . $scene->image_path) }}" class="w-20 h-12 rounded object-cover" />
             @endif
-            <button type="button" wire:click="regenerate({{ $scene->id }}, 'image')"
-                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔄 Regenerate</button>
+            <button type="button"
+                    wire:click="regenerate({{ $scene->id }}, 'image')"
+                    wire:loading.attr="disabled" wire:target="regenerate"
+                    @disabled($isGenerating)
+                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                @if ($isGenerating)
+                    <x-icons.spinner class="w-3 h-3 animate-spin" />
+                    <span>Generating…</span>
+                @else
+                    <x-icons.regenerate class="w-3 h-3" />
+                    <span>Regenerate</span>
+                @endif
+            </button>
         </div>
         <details class="text-xs">
             <summary class="cursor-pointer text-slate-400">Prompt</summary>
@@ -57,13 +72,28 @@
         <textarea wire:model.blur="selectedScene.script_segment" wire:change="saveSelected" rows="8"
                   class="textarea textarea-sm textarea-bordered bg-slate-900 w-full"></textarea>
         <div class="flex gap-2 flex-wrap">
-            @if ($scene->hasFreshAudio())
-                <button type="button" wire:click="playSelected"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">▶ Play</button>
+            @if ($scene->hasFreshAudio() && ! $isGenerating)
+                <button type="button"
+                        wire:click="playSelected"
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 inline-flex items-center gap-1.5">
+                    <x-icons.play class="w-3 h-3" />
+                    <span>Play</span>
+                </button>
             @else
-                <button type="button" wire:click="regenerate({{ $scene->id }}, 'audio')"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔊 Re-narrate</button>
-                @if ($scene->script_segment && $scene->audio_path)
+                <button type="button"
+                        wire:click="regenerate({{ $scene->id }}, 'audio')"
+                        wire:loading.attr="disabled" wire:target="regenerate"
+                        @disabled($isGenerating)
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                    @if ($isGenerating)
+                        <x-icons.spinner class="w-3 h-3 animate-spin" />
+                        <span>Re-narrating…</span>
+                    @else
+                        <x-icons.regenerate class="w-3 h-3" />
+                        <span>Re-narrate</span>
+                    @endif
+                </button>
+                @if ($scene->script_segment && $scene->audio_path && ! $isGenerating)
                     <span class="text-xs text-slate-400 self-center">script changed — re-narrate to refresh audio</span>
                 @endif
             @endif
@@ -72,5 +102,5 @@
 
     <button type="button" wire:click="deleteScene({{ $scene->id }})"
             wire:confirm="Delete this scene?"
-            class="text-rose-300 hover:text-rose-200 text-xs underline mt-2">⋯ Delete scene</button>
+            class="text-rose-300 hover:text-rose-200 text-xs underline mt-2">Delete scene</button>
 </div>

@@ -31,9 +31,9 @@
         <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 3]) }}"
            wire:navigate class="btn btn-sm btn-outline">← Configure</a>
         <button type="button" @click="togglePlay()"
-                class="btn btn-circle bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 w-14 h-14 text-2xl">
-            <span x-show="!playing">▶</span>
-            <span x-show="playing">⏸</span>
+                class="btn btn-circle bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 w-14 h-14 flex items-center justify-center">
+            <span x-show="!playing"><x-icons.play class="w-5 h-5" /></span>
+            <span x-show="playing"  x-cloak><x-icons.pause class="w-5 h-5" /></span>
         </button>
         <span class="text-xs text-slate-300" x-text="readout"></span>
     </div>
