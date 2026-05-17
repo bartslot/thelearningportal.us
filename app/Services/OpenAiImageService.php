@@ -40,17 +40,24 @@ class OpenAiImageService
             throw new RuntimeException("Image API returned {$response->status()}: {$response->body()}");
         }
 
-        $url = $response->json('data.0.url');
-        if (! is_string($url) || $url === '') {
-            throw new RuntimeException('Image API returned no URL.');
+        $payload = $response->json('data.0') ?? [];
+        $bytes   = null;
+
+        if (is_string($payload['b64_json'] ?? null) && $payload['b64_json'] !== '') {
+            $bytes = base64_decode($payload['b64_json'], true) ?: null;
+        } elseif (is_string($payload['url'] ?? null) && $payload['url'] !== '') {
+            $binary = Http::timeout(30)->get($payload['url']);
+            if (! $binary->successful()) {
+                throw new RuntimeException("Failed to download generated image: {$binary->status()}");
+            }
+            $bytes = $binary->body();
         }
 
-        $binary = Http::timeout(30)->get($url);
-        if (! $binary->successful()) {
-            throw new RuntimeException("Failed to download generated image: {$binary->status()}");
+        if ($bytes === null) {
+            throw new RuntimeException('Image API returned neither url nor b64_json.');
         }
 
-        Storage::disk('public')->put($destination, $binary->body());
+        Storage::disk('public')->put($destination, $bytes);
 
         return $destination;
     }
