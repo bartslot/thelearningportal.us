@@ -65,6 +65,8 @@
             <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
                       class="textarea textarea-sm textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
         </details>
+
+        <x-lesson.skybox-controls :scene="$scene" />
     </div>
 
     <div class="space-y-1">

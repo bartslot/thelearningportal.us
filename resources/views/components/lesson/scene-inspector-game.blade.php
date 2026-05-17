@@ -59,6 +59,8 @@
                 @endif
             </button>
         </div>
+
+        <x-lesson.skybox-controls :scene="$scene" />
     </div>
 
     <label class="form-control">

@@ -70,10 +70,13 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (!payload) return
         if (playerReady && payload.imageUrl) {
             try {
-                await activePlayer.setSkyboxFromUrl(payload.imageUrl, 0)
+                await activePlayer.setSkyboxFromUrl(payload.imageUrl, payload.skyboxBlur ?? 0)
             } catch (err) {
                 console.warn('[wizard-bridge] skybox load failed', err)
             }
+        }
+        if (playerReady && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
+            try { activePlayer.setSkyboxOpacity(payload.skyboxOpacity) } catch {}
         }
         if (playerReady && payload.animationClipUrl && typeof activePlayer.loadAnimation === 'function') {
             try { await activePlayer.loadAnimation(payload.animationClipUrl) }
@@ -87,6 +90,20 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             timer?.hide()
         }
     }
+
+    // Live preview while the teacher drags a slider — bypasses the Livewire
+    // round-trip for instant feedback. The matching wire:change on the slider
+    // persists the final value to the DB.
+    window.addEventListener('lesson:skybox:blur', e => {
+        if (playerReady && typeof activePlayer.setSkyboxBlur === 'function') {
+            try { activePlayer.setSkyboxBlur(Number(e.detail?.blur ?? 0)) } catch {}
+        }
+    })
+    window.addEventListener('lesson:skybox:opacity', e => {
+        if (playerReady && typeof activePlayer.setSkyboxOpacity === 'function') {
+            try { activePlayer.setSkyboxOpacity(Number(e.detail?.opacity ?? 1)) } catch {}
+        }
+    })
 
     window.Livewire?.on('scene:load', ({ payload }) => {
         pendingScene = payload
