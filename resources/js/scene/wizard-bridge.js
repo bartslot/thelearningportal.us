@@ -33,6 +33,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 console.warn('[wizard-bridge] skybox load failed', err)
             }
         }
+        if (playerReady && payload.animationClipUrl && typeof activePlayer.loadAnimation === 'function') {
+            try { await activePlayer.loadAnimation(payload.animationClipUrl) }
+            catch (err) { console.warn('[wizard-bridge] loadAnimation failed', err) }
+        }
         overlay?.update({ year: payload.year, location: payload.location })
         if (payload.kind === 'game') {
             timer?.show({ durationSeconds: payload.duration || 0 })
@@ -44,6 +48,20 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     window.Livewire?.on('scene:load', ({ payload }) => {
         pendingScene = payload
         if (playerReady) applyScene(payload)
+    })
+
+    // Manual Play button from the inspector: lip-sync with the scene's alignment.
+    window.Livewire?.on('scene:play', ({ payload }) => {
+        if (!playerReady || !payload?.audioUrl) return
+        try {
+            activePlayer.speakWithElevenLabsAlignment(
+                payload.audioUrl,
+                payload.alignment || [],
+                { zoom: false, delay: 0 },
+            )
+        } catch (err) {
+            console.warn('[wizard-bridge] speak failed', err)
+        }
     })
 
     // Re-use an existing player on the same canvas if we already mounted one.
@@ -89,22 +107,18 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         overlay,
         timer,
         avatar: {
-            setClip: (clipId) => {
-                if (typeof player.setAnimation === 'function') {
-                    player.setAnimation(clipId)
+            setClip: () => { /* now handled by applyScene via animationClipUrl */ },
+            speak: ({ audioUrl, alignment }) => new Promise(resolve => {
+                if (!audioUrl) return resolve()
+                try {
+                    player.speakWithElevenLabsAlignment(audioUrl, alignment || [], { zoom: false, delay: 0 })
+                } catch {}
+                // Best-effort: resolve when the player's audio element ends.
+                const tick = () => {
+                    if (!player._audio || player._audio.ended) return resolve()
+                    setTimeout(tick, 250)
                 }
-            },
-            speak: ({ audioUrl, alignment, text }) => new Promise(resolve => {
-                if (typeof player.speak === 'function') {
-                    player.speak({ audioUrl, alignment, text }).then(resolve).catch(resolve)
-                } else if (audioUrl) {
-                    const audio = new Audio(audioUrl)
-                    audio.onended = resolve
-                    audio.onerror = resolve
-                    audio.play().catch(resolve)
-                } else {
-                    resolve()
-                }
+                setTimeout(tick, 250)
             }),
         },
     }

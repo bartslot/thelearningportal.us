@@ -10,8 +10,15 @@
         <p class="text-xs uppercase tracking-wider text-slate-400">Segment intro</p>
         <textarea wire:model.blur="selectedScene.script_segment" wire:change="saveSelected" rows="6"
                   class="textarea textarea-sm textarea-bordered bg-slate-900 w-full"></textarea>
-        <button type="button" wire:click="regenerate({{ $scene->id }}, 'audio')"
-                class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔊 Re-narrate</button>
+        <div class="flex gap-2 flex-wrap">
+            @if ($scene->hasFreshAudio())
+                <button type="button" wire:click="playSelected"
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">▶ Play</button>
+            @else
+                <button type="button" wire:click="regenerate({{ $scene->id }}, 'audio')"
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">🔊 Re-narrate</button>
+            @endif
+        </div>
     </div>
 
     <div class="space-y-1">

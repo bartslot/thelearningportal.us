@@ -80,13 +80,48 @@ class Step3SceneConfigurator extends Component
         $this->selectedScene   = $this->snapshot($scene);
 
         $this->dispatch('scene:load', payload: [
-            'sceneId'         => $scene->id,
-            'imageUrl'        => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
-            'animationClipId' => $scene->animation_clip_id,
-            'year'            => $scene->year,
-            'location'        => $scene->location,
-            'kind'            => $scene->kind,
-            'duration'        => $scene->duration_seconds,
+            'sceneId'           => $scene->id,
+            'imageUrl'          => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
+            'animationClipId'   => $scene->animation_clip_id,
+            'animationClipUrl'  => $this->animationGlbUrlFor($scene),
+            'year'              => $scene->year,
+            'location'          => $scene->location,
+            'kind'              => $scene->kind,
+            'duration'          => $scene->duration_seconds,
+        ]);
+    }
+
+    /**
+     * The GLB URL to load on the avatar for this scene. Falls back to a default idle
+     * clip when no animation has been explicitly chosen — mirrors avatar-lab behavior.
+     */
+    private function animationGlbUrlFor(Scene $scene): ?string
+    {
+        if ($scene->animation_clip_id) {
+            $clip = AnimationClip::find($scene->animation_clip_id);
+            if ($clip?->glb_path) {
+                return $clip->glbUrl();
+            }
+        }
+        $idlePath = AnimationClip::where('category', 'idle')
+            ->whereNotNull('glb_path')
+            ->orderBy('sort_order')
+            ->value('glb_path');
+        return $idlePath ? asset($idlePath) : null;
+    }
+
+    public function playSelected(): void
+    {
+        if (! $this->selectedSceneModel) {
+            return;
+        }
+        $s = $this->selectedSceneModel;
+        if (! $s->audio_path) {
+            return;
+        }
+        $this->dispatch('scene:play', payload: [
+            'audioUrl'  => asset('storage/' . $s->audio_path),
+            'alignment' => $s->audio_alignment ?? [],
         ]);
     }
 
