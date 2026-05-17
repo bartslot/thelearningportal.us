@@ -63,8 +63,15 @@ class TtsService
         $text = $this->prepareSpeechText($text);
         $timingData = null;
 
+        if ($provider === 'azure') {
+            return $this->tryAzure($text, $voiceId, $speed)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryMacosTts($text);
+        }
+
         if ($provider === 'elevenlabs') {
             return $this->tryElevenLabs($text, $voiceId, $timingData)
+                ?? $this->tryAzure($text, $voiceId, $speed)
                 ?? $this->tryPocketTts($text, $voiceId)
                 ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
                 ?? $this->tryMacosTts($text);
@@ -82,11 +89,57 @@ class TtsService
                 ?? $this->tryMacosTts($text);
         }
 
-        // 'auto' or unknown: ElevenLabs → PocketTTS → edge-tts → macOS
+        // 'auto' or unknown: ElevenLabs → Azure → PocketTTS → edge-tts → macOS
         return $this->tryElevenLabs($text, $voiceId, $timingData)
+            ?? $this->tryAzure($text, $voiceId, $speed)
             ?? $this->tryPocketTts($text, $voiceId)
             ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
             ?? $this->tryMacosTts($text);
+    }
+
+    private function tryAzure(string $text, string $voiceId, float $speed = 1.0): ?string
+    {
+        $key    = (string) config('services.azure_speech.key', '');
+        $region = (string) config('services.azure_speech.region', 'eastus');
+        if ($key === '' || $text === '') {
+            return null;
+        }
+
+        $voice    = $voiceId !== '' ? $voiceId : 'en-US-GuyNeural';
+        $ratePct  = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
+        $rateAttr = ($ratePct >= 0 ? '+' : '') . $ratePct . '%';
+        $escaped  = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        $ssml = <<<SSML
+<speak version="1.0" xml:lang="en-US">
+  <voice name="{$voice}">
+    <prosody rate="{$rateAttr}">{$escaped}</prosody>
+  </voice>
+</speak>
+SSML;
+
+        try {
+            $response = Http::withHeaders([
+                'Ocp-Apim-Subscription-Key' => $key,
+                'Content-Type'              => 'application/ssml+xml',
+                'X-Microsoft-OutputFormat'  => 'audio-24khz-48kbitrate-mono-mp3',
+                'User-Agent'                => 'TheLearningPortal',
+            ])
+            ->timeout(30)
+            ->withBody($ssml, 'application/ssml+xml')
+            ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
+
+            if (! $response->successful()) {
+                Log::error('[Azure TTS] HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 200));
+                return null;
+            }
+
+            $this->generatedAudioExtension = 'mp3';
+            return $response->body();
+        } catch (\Throwable $e) {
+            Log::error('[Azure TTS] exception: ' . $e->getMessage());
+            return null;
+        }
     }
 
     /**
