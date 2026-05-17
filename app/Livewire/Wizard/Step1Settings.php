@@ -157,9 +157,14 @@ class Step1Settings extends Component
 
     public function generate(): void
     {
+        $this->validate();
         $lesson = $this->persist(LessonStatus::Draft);
         $lesson->refresh()->startGenerationPipeline();
-        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2], navigate: true);
+
+        $this->redirect(
+            route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]),
+            navigate: true,
+        );
     }
 
     private function persist(LessonStatus $status): Lesson
