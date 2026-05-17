@@ -10,15 +10,16 @@ export class SkyboxSphere {
     const radius = opts.radius ?? 500
     const geometry = new THREE.SphereGeometry(radius, 60, 40)
 
-    this._spheres = [0, 1].map(i => {
+    this._spheres = [0, 1].map(() => {
       const material = new THREE.MeshBasicMaterial({
         side: THREE.BackSide,
         transparent: true,
-        opacity: i === 0 ? 1 : 0,
+        opacity: 0,            // start invisible — only become opaque after a texture loads
         depthWrite: false,
       })
       const mesh = new THREE.Mesh(geometry, material)
-      mesh.scale.x = -1
+      mesh.scale.x   = -1
+      mesh.visible   = false   // also hidden until first crossfadeTo
       mesh.userData.role = 'skybox'
       scene.add(mesh)
       return mesh
@@ -48,6 +49,7 @@ export class SkyboxSphere {
     toMesh.material.map = tex
     toMesh.material.needsUpdate = true
     toMesh.material.opacity = 0
+    toMesh.visible = true
 
     const start = performance.now()
     return new Promise(resolve => {
@@ -67,6 +69,7 @@ export class SkyboxSphere {
       setTimeout(() => {
         toMesh.material.opacity   = 1
         fromMesh.material.opacity = 0
+        fromMesh.visible          = !!fromMesh.material.map
         this._activeIdx = toIdx
         resolve()
       }, duration + 10)
