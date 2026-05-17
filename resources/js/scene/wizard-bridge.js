@@ -117,15 +117,28 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     overlay      = new Scene.SceneOverlay(overlayEl); overlay.mount()
     timer        = new Scene.GameTimerOverlay(timerEl)
 
+    // DB stores asset paths as relative (e.g. "lessons/31/scenes/241/narration.mp3").
+    // The sequencer feeds these straight to the avatar player / skybox, where the
+    // browser would otherwise resolve them relative to the current URL. Normalise
+    // once so every consumer downstream gets site-absolute URLs.
+    const toStorage = (p) => (typeof p === 'string' && p.length > 0)
+        ? (p.startsWith('/') || p.startsWith('http') ? p : '/storage/' + p)
+        : null
+    const normalizedScenes = (scenes || []).map(s => ({
+        ...s,
+        image_path: toStorage(s.image_path),
+        audio_path: toStorage(s.audio_path),
+    }))
+
     if (pendingScene) {
         await applyScene(pendingScene)
-    } else if (scenes?.[0]?.image_path) {
+    } else if (normalizedScenes[0]?.image_path) {
         await applyScene({
-            imageUrl: '/storage/' + scenes[0].image_path,
-            year:     scenes[0].year,
-            location: scenes[0].location,
-            kind:     scenes[0].kind,
-            duration: scenes[0].duration_seconds,
+            imageUrl: normalizedScenes[0].image_path,
+            year:     normalizedScenes[0].year,
+            location: normalizedScenes[0].location,
+            kind:     normalizedScenes[0].kind,
+            duration: normalizedScenes[0].duration_seconds,
         })
     }
 
@@ -150,7 +163,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         },
     }
 
-    const sequencer = new Scene.SceneTimelinePlayer({ scenes, ...adapter })
+    const sequencer = new Scene.SceneTimelinePlayer({ scenes: normalizedScenes, ...adapter })
 
     canvasEl.__lessonBridge = { player, sequencer, overlay, timer }
     canvasEl.__lessonBridgeMounting = false
