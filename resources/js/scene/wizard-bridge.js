@@ -51,6 +51,21 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let overlay      = null
     let timer        = null
 
+    // Pre-warmed audio elements per URL — keeps the browser's HTTP cache hot AND
+    // primes the media pipeline so audio.play() starts instantly when the teacher
+    // hits ▶ (no ~1s decode gap that would freeze the visemes).
+    const audioWarmCache = new Map()
+    const preloadAudio = (url) => {
+        if (!url || audioWarmCache.has(url)) return
+        try {
+            const a = new Audio()
+            a.preload     = 'auto'
+            a.crossOrigin = 'anonymous'
+            a.src         = url
+            audioWarmCache.set(url, a)
+        } catch {}
+    }
+
     const applyScene = async (payload) => {
         if (!payload) return
         if (playerReady && payload.imageUrl) {
@@ -64,6 +79,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             try { await activePlayer.loadAnimation(payload.animationClipUrl) }
             catch (err) { console.warn('[wizard-bridge] loadAnimation failed', err) }
         }
+        if (payload.audioUrl) preloadAudio(payload.audioUrl)
         overlay?.update({ year: payload.year, location: payload.location })
         if (payload.kind === 'game') {
             timer?.show({ durationSeconds: payload.duration || 0 })
@@ -129,6 +145,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         image_path: toStorage(s.image_path),
         audio_path: toStorage(s.audio_path),
     }))
+
+    // Eagerly warm every scene's narration so Step 4's sequencer + Step 3's Play
+    // button hit cached audio on first ▶.
+    normalizedScenes.forEach(s => preloadAudio(s.audio_path))
 
     if (pendingScene) {
         await applyScene(pendingScene)

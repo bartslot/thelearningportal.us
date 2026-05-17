@@ -82,6 +82,7 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('scene:load', payload: [
             'sceneId'           => $scene->id,
             'imageUrl'          => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
+            'audioUrl'          => $scene->audio_path ? asset('storage/' . $scene->audio_path) : null,
             'animationClipId'   => $scene->animation_clip_id,
             'animationClipUrl'  => $this->animationGlbUrlFor($scene),
             'year'              => $scene->year,
