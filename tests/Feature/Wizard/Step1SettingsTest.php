@@ -47,6 +47,48 @@ class Step1SettingsTest extends TestCase
         $this->mock(WikipediaService::class, fn ($m) => $m->shouldReceive('fetchFacts')->andReturn('wiki text'));
     }
 
+    public function test_audience_grade_mode_sets_grade_level_from_dropdown(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->call('setAudienceMode', 'grade')
+            ->set('grade_choice', '5th grade')
+            ->assertSet('grade_level', '5th grade');
+    }
+
+    public function test_audience_age_mode_sets_grade_level_to_age_string(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->call('setAudienceMode', 'age')
+            ->set('audience_age', 8)
+            ->assertSet('grade_level', 'Age 8');
+    }
+
+    public function test_audience_age_clamps_to_bounds(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->call('setAudienceMode', 'age');
+
+        $component->set('audience_age', 99)->assertSet('grade_level', 'Age 16');
+        $component->set('audience_age', 2)->assertSet('grade_level', 'Age 6');
+    }
+
+    public function test_mount_hydrates_age_mode_from_existing_lesson(): void
+    {
+        $lesson = Lesson::create([
+            'teacher_id'  => $this->teacher->id,
+            'topic'       => 'X', 'subject' => 'history',
+            'grade_level' => 'Age 11',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => $lesson])
+            ->assertSet('audience_mode', 'age')
+            ->assertSet('audience_age', 11);
+    }
+
     public function test_saves_a_wikipedia_only_lesson_as_draft(): void
     {
         Livewire::actingAs($this->teacher)

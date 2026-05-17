@@ -27,6 +27,9 @@ class Step1Settings extends Component
     public string $topic            = '';
     public string $subject          = 'history';
     public string $grade_level      = '9th grade';
+    public string $audience_mode    = 'grade';   // 'grade' | 'age'
+    public string $grade_choice     = '9th grade';
+    public int    $audience_age     = 12;
     public string $tone             = '';
     public string $details          = '';
     public string $source_mode      = 'wikipedia';
@@ -48,6 +51,7 @@ class Step1Settings extends Component
             $this->topic            = $lesson->topic ?? '';
             $this->subject          = $lesson->subject ?? 'history';
             $this->grade_level      = $lesson->grade_level ?? '9th grade';
+            $this->hydrateAudienceFromGradeLevel($this->grade_level);
             $this->tone             = $lesson->tone ?? '';
             $this->details          = $lesson->details ?? '';
             $this->source_mode      = $lesson->source_mode ?? 'wikipedia';
@@ -65,6 +69,50 @@ class Step1Settings extends Component
             $this->lesson_code = strtoupper(Str::random(6));
             $this->image_style = GradeBandStyleRecommender::recommend($this->grade_level)[0];
         }
+    }
+
+    public const GRADE_OPTIONS = ['3rd grade','4th grade','5th grade','6th grade','7th grade','8th grade','9th grade'];
+    public const AGE_MIN = 6;
+    public const AGE_MAX = 16;
+
+    public function setAudienceMode(string $mode): void
+    {
+        $this->audience_mode = in_array($mode, ['grade', 'age'], true) ? $mode : 'grade';
+        $this->syncGradeLevel();
+    }
+
+    public function updatedGradeChoice(): void
+    {
+        $this->syncGradeLevel();
+    }
+
+    public function updatedAudienceAge(): void
+    {
+        $this->syncGradeLevel();
+    }
+
+    private function syncGradeLevel(): void
+    {
+        $this->grade_level = $this->audience_mode === 'age'
+            ? 'Age ' . max(self::AGE_MIN, min(self::AGE_MAX, $this->audience_age))
+            : $this->grade_choice;
+    }
+
+    private function hydrateAudienceFromGradeLevel(string $level): void
+    {
+        if (preg_match('/age\s*(\d+)/i', $level, $m)) {
+            $this->audience_mode = 'age';
+            $this->audience_age  = max(self::AGE_MIN, min(self::AGE_MAX, (int) $m[1]));
+            return;
+        }
+        $this->audience_mode = 'grade';
+        $this->grade_choice  = in_array($level, self::GRADE_OPTIONS, true) ? $level : '9th grade';
+    }
+
+    #[Computed]
+    public function gradeOptions(): array
+    {
+        return self::GRADE_OPTIONS;
     }
 
     #[Computed]

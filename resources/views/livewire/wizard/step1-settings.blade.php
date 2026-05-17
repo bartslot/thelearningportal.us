@@ -22,11 +22,44 @@
                 </select>
             </label>
 
-            <label class="form-control">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Grade level</span>
-                <input type="text" wire:model.live.debounce.500ms="grade_level"
-                       class="input input-bordered bg-slate-900 mt-1" />
-            </label>
+            <div class="form-control">
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400">
+                    Target audience — {{ $audience_mode === 'age' ? 'Age' : 'Grade' }}
+                </span>
+
+                <div class="flex gap-2 mt-1">
+                    <div class="join">
+                        <button type="button"
+                                wire:click="setAudienceMode('grade')"
+                                @class([
+                                    'btn btn-sm join-item',
+                                    'btn-primary'  => $audience_mode === 'grade',
+                                    'btn-outline'  => $audience_mode !== 'grade',
+                                ])>Grade</button>
+                        <button type="button"
+                                wire:click="setAudienceMode('age')"
+                                @class([
+                                    'btn btn-sm join-item',
+                                    'btn-primary'  => $audience_mode === 'age',
+                                    'btn-outline'  => $audience_mode !== 'age',
+                                ])>Age</button>
+                    </div>
+
+                    @if ($audience_mode === 'grade')
+                        <select wire:model.live="grade_choice"
+                                class="select select-bordered bg-slate-900 flex-1">
+                            @foreach ($this->gradeOptions as $g)
+                                <option value="{{ $g }}">{{ $g }}</option>
+                            @endforeach
+                        </select>
+                    @else
+                        <input type="number"
+                               wire:model.live.debounce.300ms="audience_age"
+                               min="6" max="16"
+                               class="input input-bordered bg-slate-900 flex-1" />
+                    @endif
+                </div>
+            </div>
 
             <label class="form-control">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Tone (optional)</span>
