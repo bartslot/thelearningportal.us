@@ -56,11 +56,13 @@ class BuildLessonOutline implements ShouldQueue
                 'status'  => LessonStatus::ScenesGenerating,
             ]);
 
+            // Ignore any "order" the LLM emitted — assign sequential 1-based positions so
+            // we never trip the (lesson_id, order) unique index when the model repeats numbers.
             $scenes = [];
-            foreach (($outline['scene_briefs'] ?? []) as $brief) {
+            foreach (($outline['scene_briefs'] ?? []) as $idx => $brief) {
                 $scenes[] = Scene::create([
                     'lesson_id'          => $lesson->id,
-                    'order'              => (int) ($brief['order'] ?? count($scenes) + 1),
+                    'order'              => $idx + 1,
                     'kind'               => $brief['kind'] ?? 'narration',
                     'year'               => $brief['year']     ?? null,
                     'location'           => $brief['location'] ?? null,
