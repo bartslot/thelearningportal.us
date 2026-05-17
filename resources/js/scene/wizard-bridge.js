@@ -74,7 +74,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (playerReady && payload.imageUrl) {
             try {
                 if (view === 'slideshow') {
-                    await applySlideshowBackground(payload.imageUrl)
+                    await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10)
                 } else {
                     await applySkyboxView(payload.imageUrl, payload.skyboxBlur ?? 0)
                 }
@@ -136,30 +136,112 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     async function applySkyboxView(url, blur) {
         if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = true
+        // Pause Ken Burns animation when leaving slideshow.
+        kenBurnsState = null
         await activePlayer.setSkyboxFromUrl(url, blur)
     }
 
     // Slideshow mode: hide the inverted-sphere skybox and put the image directly
     // on the scene's clear color so it renders as a flat 2D backdrop.
     const slideshowTextureCache = new Map()
-    async function applySlideshowBackground(url) {
+    async function applySlideshowBackground(url, sceneId = 0, durationSec = 10) {
         if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
         try {
             let tex = slideshowTextureCache.get(url)
             if (!tex) {
                 tex = await new Promise((resolve, reject) => {
                     new THREE.TextureLoader().load(url, t => {
-                        t.colorSpace = THREE.SRGBColorSpace
-                        t.mapping    = THREE.UVMapping
+                        t.colorSpace        = THREE.SRGBColorSpace
+                        t.mapping           = THREE.UVMapping
+                        t.matrixAutoUpdate  = true
                         resolve(t)
                     }, undefined, reject)
                 })
                 slideshowTextureCache.set(url, tex)
             }
             activePlayer._scene.background = tex
+            startKenBurns(tex, sceneId, Math.max(4, durationSec || 10))
         } catch (err) {
             console.warn('[wizard-bridge] slideshow texture load failed', err)
         }
+    }
+
+    // ── Ken Burns ──────────────────────────────────────────────────────────────
+    // Each variant: start/end UV offset + start/end "repeat" (visible portion).
+    // repeat < 1 = zoomed in; repeat = 1.0 fills the texture. Image always covers.
+    const KEN_BURNS_VARIANTS = [
+        { from: { ox: 0.00, oy: 0.00, r: 0.91 }, to: { ox: 0.09, oy: 0.09, r: 1.00 } }, // TL → BR, zoom out
+        { from: { ox: 0.09, oy: 0.00, r: 0.91 }, to: { ox: 0.00, oy: 0.09, r: 1.00 } }, // TR → BL
+        { from: { ox: 0.09, oy: 0.09, r: 0.91 }, to: { ox: 0.00, oy: 0.00, r: 1.00 } }, // BR → TL
+        { from: { ox: 0.00, oy: 0.09, r: 0.91 }, to: { ox: 0.09, oy: 0.00, r: 1.00 } }, // BL → TR
+        { from: { ox: 0.045, oy: 0.045, r: 0.91 }, to: { ox: 0.045, oy: 0.045, r: 1.00 } }, // centered zoom
+        { from: { ox: 0.00, oy: 0.045, r: 0.91 }, to: { ox: 0.09, oy: 0.045, r: 0.91 } },  // pan L→R, no zoom
+    ]
+    let kenBurnsState = null
+    function startKenBurns(tex, sceneId, durationSec) {
+        const idx = ((Number(sceneId) || 0) % KEN_BURNS_VARIANTS.length + KEN_BURNS_VARIANTS.length) % KEN_BURNS_VARIANTS.length
+        kenBurnsState = {
+            tex,
+            variant:    KEN_BURNS_VARIANTS[idx],
+            startedAt:  performance.now(),
+            durationMs: durationSec * 1000,
+        }
+    }
+    function tickKenBurns(now) {
+        if (!kenBurnsState) return
+        const { tex, variant, startedAt, durationMs } = kenBurnsState
+        // Loop so the effect persists if a scene is held past its duration.
+        const t = Math.min(1, ((now - startedAt) % durationMs) / durationMs)
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+        const ox = variant.from.ox + (variant.to.ox - variant.from.ox) * eased
+        const oy = variant.from.oy + (variant.to.oy - variant.from.oy) * eased
+        const r  = variant.from.r  + (variant.to.r  - variant.from.r)  * eased
+        tex.offset.set(ox, oy)
+        tex.repeat.set(r, r)
+    }
+
+    // ── Auto-orbit + handheld vibration ───────────────────────────────────────
+    let resumeOrbitTimer = null
+    function pauseOrbit() {
+        if (!activePlayer?._controls) return
+        activePlayer._controls.autoRotate = false
+        if (resumeOrbitTimer) clearTimeout(resumeOrbitTimer)
+    }
+    function scheduleOrbitResume() {
+        if (!activePlayer?._controls) return
+        if (resumeOrbitTimer) clearTimeout(resumeOrbitTimer)
+        resumeOrbitTimer = setTimeout(() => {
+            if (activePlayer?._controls) activePlayer._controls.autoRotate = true
+        }, 2000)
+    }
+
+    // Subtle handheld jitter. Apply just before render, undo just after, so
+    // OrbitControls' spherical state isn't perturbed.
+    function startHandheldVibration(player) {
+        if (!player?._renderer || !player?._camera) return
+        const originalRender = player._renderer.render.bind(player._renderer)
+        player._renderer.render = function (scene, camera) {
+            const t = performance.now() / 1000
+            const dx = Math.sin(t * 1.7) * 0.0035 + Math.sin(t * 0.7) * 0.0015
+            const dy = Math.cos(t * 2.3) * 0.0035 + Math.cos(t * 0.9) * 0.0015
+            camera.position.x += dx
+            camera.position.y += dy
+            try { originalRender(scene, camera) }
+            finally {
+                camera.position.x -= dx
+                camera.position.y -= dy
+            }
+        }
+    }
+
+    // Frame tick for Ken Burns (texture UV animation). Runs alongside the
+    // player's own RAF; cheap (just mutates texture matrix).
+    function startKenBurnsTick() {
+        const loop = () => {
+            requestAnimationFrame(loop)
+            tickKenBurns(performance.now())
+        }
+        requestAnimationFrame(loop)
     }
 
     window.Livewire?.on('scene:load', ({ payload }) => {
@@ -196,15 +278,24 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     // Allow the teacher to orbit and inspect the skybox, but keep zoom + pan off
     // so they can't dolly into the avatar or wander out of the panorama.
+    // Auto-orbit slowly around the storyteller; pauses on user input and
+    // resumes 2s after the last interaction ends.
     if (player._controls) {
-        player._controls.enabled      = true
-        player._controls.enableRotate = true
-        player._controls.enableZoom   = false
-        player._controls.enablePan    = false
+        player._controls.enabled         = true
+        player._controls.enableRotate    = true
+        player._controls.enableZoom      = false
+        player._controls.enablePan       = false
+        player._controls.autoRotate      = true
+        player._controls.autoRotateSpeed = 0.4
+        player._controls.addEventListener('start', pauseOrbit)
+        player._controls.addEventListener('end',   scheduleOrbitResume)
     }
 
     activePlayer = player
     playerReady  = true
+
+    startHandheldVibration(player)
+    startKenBurnsTick()
     overlay      = new Scene.SceneOverlay(overlayEl); overlay.mount()
     timer        = new Scene.GameTimerOverlay(timerEl)
 
