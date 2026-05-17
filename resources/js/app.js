@@ -2,6 +2,15 @@ import './bootstrap';
 import { gsap } from 'gsap';
 import Flickity from 'flickity';
 import 'flickity/css/flickity.css';
+import { SkyboxSphere }        from './scene/SkyboxSphere.js';
+import { SceneOverlay }        from './scene/SceneOverlay.js';
+import { SceneTimelinePlayer } from './scene/SceneTimelinePlayer.js';
+import { GameTimerOverlay }    from './scene/GameTimerOverlay.js';
+import { AmplitudeWaveform }   from './scene/AmplitudeWaveform.js';
+
+window.LessonScene = {
+    SkyboxSphere, SceneOverlay, SceneTimelinePlayer, GameTimerOverlay, AmplitudeWaveform,
+};
 
 const isHeroBackgroundHover = (eventTarget) => {
     const hero = document.querySelector('#home');
