@@ -7,9 +7,11 @@ import { SceneOverlay }        from './scene/SceneOverlay.js';
 import { SceneTimelinePlayer } from './scene/SceneTimelinePlayer.js';
 import { GameTimerOverlay }    from './scene/GameTimerOverlay.js';
 import { AmplitudeWaveform }   from './scene/AmplitudeWaveform.js';
+import { mountWizardScene }    from './scene/wizard-bridge.js';
 
 window.LessonScene = {
     SkyboxSphere, SceneOverlay, SceneTimelinePlayer, GameTimerOverlay, AmplitudeWaveform,
+    mountWizardScene,
 };
 
 const isHeroBackgroundHover = (eventTarget) => {
