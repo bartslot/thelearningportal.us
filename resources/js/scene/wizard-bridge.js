@@ -59,6 +59,14 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         }
     }
 
+    // Wizard is not an avatar inspector — lock down the orbit/zoom camera so a
+    // stray scroll or drag on the canvas doesn't reframe the stage.
+    if (player._controls) {
+        player._controls.enabled    = false
+        player._controls.enableZoom = false
+        player._controls.enableRotate = false
+    }
+
     activePlayer = player
     playerReady  = true
     overlay      = new Scene.SceneOverlay(overlayEl); overlay.mount()

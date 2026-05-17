@@ -1,17 +1,14 @@
 @props([
-    'scene'      => null,
-    'selected'   => false,
-    'startTime'  => 0,
-    'widthPct'   => 10,
+    'scene'    => null,
+    'selected' => false,
 ])
 
 <button type="button"
         wire:key="scene-thumb-{{ $scene->id }}"
         wire:click="selectScene({{ $scene->id }})"
         data-scene-id="{{ $scene->id }}"
-        style="width: {{ $widthPct }}%;"
         @class([
-            'group relative shrink-0 rounded-xl overflow-hidden aspect-video transition-all',
+            'group relative shrink-0 w-32 aspect-video rounded-xl overflow-hidden transition-all',
             'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'        => $selected,
             'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $selected && $scene->status !== 'failed',
             'ring-1 ring-rose-500/50'                                          => $scene->status === 'failed',
