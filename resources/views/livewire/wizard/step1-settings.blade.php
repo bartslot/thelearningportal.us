@@ -5,16 +5,17 @@
         <h2 class="text-lg font-semibold text-amber-300">1. Topic & Source</h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label class="form-control">
+            <label class="form-control" for="lw-topic">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Topic</span>
-                <input type="text" wire:model="topic"
+                <input id="lw-topic" name="topic" type="text" wire:model="topic"
                        class="input input-bordered bg-slate-900 mt-1" />
                 @error('topic') <span class="text-rose-400 text-xs mt-1">{{ $message }}</span> @enderror
             </label>
 
-            <label class="form-control">
+            <label class="form-control" for="lw-subject">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Subject</span>
-                <select wire:model="subject" class="select select-bordered bg-slate-900 mt-1">
+                <select id="lw-subject" name="subject" wire:model="subject"
+                        class="select select-bordered bg-slate-900 mt-1">
                     <option value="history">History</option>
                     <option value="science">Science</option>
                     <option value="literature">Literature</option>
@@ -46,14 +47,15 @@
                     </div>
 
                     @if ($audience_mode === 'grade')
-                        <select wire:model.live="grade_choice"
+                        <select id="lw-grade-choice" name="grade_choice"
+                                wire:model.live="grade_choice"
                                 class="select select-bordered bg-slate-900 flex-1">
                             @foreach ($this->gradeOptions as $g)
                                 <option value="{{ $g }}">{{ $g }}</option>
                             @endforeach
                         </select>
                     @else
-                        <input type="number"
+                        <input id="lw-audience-age" name="audience_age" type="number"
                                wire:model.live.debounce.300ms="audience_age"
                                min="6" max="16"
                                class="input input-bordered bg-slate-900 flex-1" />
@@ -61,15 +63,15 @@
                 </div>
             </div>
 
-            <label class="form-control">
+            <label class="form-control" for="lw-tone">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Tone (optional)</span>
-                <input type="text" wire:model="tone"
+                <input id="lw-tone" name="tone" type="text" wire:model="tone"
                        class="input input-bordered bg-slate-900 mt-1" />
             </label>
 
-            <label class="form-control md:col-span-2">
+            <label class="form-control md:col-span-2" for="lw-details">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Teacher details (optional)</span>
-                <textarea wire:model="details" rows="3"
+                <textarea id="lw-details" name="details" wire:model="details" rows="3"
                           class="textarea textarea-bordered bg-slate-900 mt-1"></textarea>
             </label>
         </div>
@@ -90,7 +92,8 @@
 
             @if ($source_mode !== 'wikipedia')
                 <div class="mt-2">
-                    <input type="file" wire:model="sourceUpload" accept=".pdf,.docx"
+                    <input id="lw-source-upload" name="sourceUpload" type="file"
+                           wire:model="sourceUpload" accept=".pdf,.docx"
                            class="file-input file-input-bordered w-full bg-slate-900" />
                     @error('sourceUpload') <span class="text-rose-400 text-xs">{{ $message }}</span> @enderror
                 </div>
@@ -122,38 +125,6 @@
                               :split-count="$game_split_count" />
     </section>
 
-    {{-- 5. Lesson Meta --}}
-    <section class="bg-base-300 rounded-2xl p-6 space-y-4">
-        <h2 class="text-lg font-semibold text-amber-300">5. Lesson Meta</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <label class="form-control">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Lesson code</span>
-                <div class="flex gap-2 mt-1">
-                    <input type="text" wire:model="lesson_code"
-                           class="input input-bordered bg-slate-900 flex-1" />
-                </div>
-            </label>
-
-            <label class="form-control">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Duration (min)</span>
-                <input type="number" wire:model="duration_minutes" min="1" max="60"
-                       class="input input-bordered bg-slate-900 mt-1" />
-            </label>
-
-            <label class="form-control">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Seconds</span>
-                <input type="number" wire:model="duration_seconds" min="0" max="59"
-                       class="input input-bordered bg-slate-900 mt-1" />
-            </label>
-
-            <label class="form-control md:col-span-3">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Portrait (optional)</span>
-                <input type="file" wire:model="portrait" accept="image/*"
-                       class="file-input file-input-bordered w-full bg-slate-900 mt-1" />
-            </label>
-        </div>
-    </section>
-
     {{-- Actions --}}
     <div class="flex justify-end gap-3 pt-2">
         <button type="button" wire:click="saveDraft"
@@ -161,5 +132,17 @@
         <button type="button" wire:click="generate"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">Generate lesson →</button>
     </div>
+
+    {{-- Surface any validation errors so silent fails are visible --}}
+    @if ($errors->any())
+        <div class="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4 text-sm text-rose-200 space-y-1">
+            <p class="font-semibold">Cannot generate yet — fix these:</p>
+            <ul class="list-disc ml-5">
+                @foreach ($errors->all() as $err)
+                    <li>{{ $err }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
 </div>

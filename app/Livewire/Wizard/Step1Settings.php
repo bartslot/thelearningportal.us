@@ -24,7 +24,7 @@ class Step1Settings extends Component
 
     public ?Lesson $lesson = null;
 
-    public string $topic            = '';
+    public string $topic            = 'French Revolution';
     public string $subject          = 'history';
     public string $grade_level      = '9th grade';
     public string $audience_mode    = 'grade';   // 'grade' | 'age'
@@ -68,6 +68,7 @@ class Step1Settings extends Component
         } else {
             $this->lesson_code = strtoupper(Str::random(6));
             $this->image_style = GradeBandStyleRecommender::recommend($this->grade_level)[0];
+            $this->avatar_id   = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
         }
     }
 

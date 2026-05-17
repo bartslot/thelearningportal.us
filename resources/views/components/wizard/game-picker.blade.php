@@ -9,7 +9,8 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
     <div>
         <label class="text-xs uppercase tracking-wider text-slate-400">Strategy game</label>
-        <select wire:model.live="strategy_game_id"
+        <select id="lw-strategy-game" name="strategy_game_id"
+                wire:model.live="strategy_game_id"
                 class="select select-bordered w-full bg-slate-900 mt-1">
             <option value="">— no game —</option>
             @foreach ($games as $g)
@@ -20,7 +21,8 @@
 
     <div>
         <label class="text-xs uppercase tracking-wider text-slate-400">Teams</label>
-        <input type="number" wire:model="team_count" min="1" max="8"
+        <input id="lw-team-count" name="team_count" type="number"
+               wire:model="team_count" min="1" max="8"
                class="input input-bordered w-full bg-slate-900 mt-1" />
     </div>
 
