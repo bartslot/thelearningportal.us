@@ -1,8 +1,9 @@
 <div class="min-h-screen bg-base-200 text-base-content" wire:key="lesson-wizard-{{ $lesson?->id ?? 'new' }}">
 
-    <x-wizard.step-indicator :step="$step" />
+    <x-wizard.step-indicator :step="$step" :lesson="$lesson" />
 
-    <div class="max-w-5xl mx-auto px-4 pb-24">
+    {{-- pt-14 leaves room under the fixed step indicator (~h-12 + border). --}}
+    <div class="max-w-5xl mx-auto px-4 pt-14 pb-24">
         @if ($step === 1)
             <livewire:wizard.step1-settings :lesson="$lesson" :key="'step1-' . ($lesson?->id ?? 'new')" />
         @elseif ($step === 2)
