@@ -18,6 +18,33 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         return null
     }
 
+    // ── Subscribe to scene:load BEFORE the slow avatar init so we don't miss the
+    // initial dispatch that fires during Livewire hydration. Buffer the last
+    // payload and apply it as soon as the skybox is ready.
+    let pendingScene = null
+    let skybox       = null   // assigned below, after player.init()
+    let overlay      = null
+    let timer        = null
+
+    const applyScene = async (payload) => {
+        if (!payload) return
+        if (skybox && payload.imageUrl) {
+            try { await skybox.crossfadeTo(payload.imageUrl, 600) }
+            catch (err) { console.warn('[wizard-bridge] skybox load failed', err) }
+        }
+        overlay?.update({ year: payload.year, location: payload.location })
+        if (payload.kind === 'game') {
+            timer?.show({ durationSeconds: payload.duration || 0 })
+        } else {
+            timer?.hide()
+        }
+    }
+
+    window.Livewire?.on('scene:load', ({ payload }) => {
+        pendingScene = payload
+        if (skybox) applyScene(payload)
+    })
+
     // Re-use an existing player on the same canvas if we already mounted one
     // (Livewire morphs can re-fire alpine:init without destroying the canvas).
     let player = canvasEl.__lessonPlayer
@@ -32,9 +59,24 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         }
     }
 
-    const skybox  = new Scene.SkyboxSphere(player._scene)
-    const overlay = new Scene.SceneOverlay(overlayEl); overlay.mount()
-    const timer   = new Scene.GameTimerOverlay(timerEl)
+    skybox  = new Scene.SkyboxSphere(player._scene)
+    overlay = new Scene.SceneOverlay(overlayEl); overlay.mount()
+    timer   = new Scene.GameTimerOverlay(timerEl)
+
+    // If a scene:load payload arrived before init finished, OR if none came in
+    // at all (e.g. opening Step 4 directly without a fresh dispatch), fall back
+    // to the first scene's image so the canvas isn't an empty void.
+    if (pendingScene) {
+        await applyScene(pendingScene)
+    } else if (scenes?.[0]?.image_path) {
+        await applyScene({
+            imageUrl: '/storage/' + scenes[0].image_path,
+            year:     scenes[0].year,
+            location: scenes[0].location,
+            kind:     scenes[0].kind,
+            duration: scenes[0].duration_seconds,
+        })
+    }
 
     const adapter = {
         skybox,
@@ -62,20 +104,6 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     }
 
     const sequencer = new Scene.SceneTimelinePlayer({ scenes, ...adapter })
-
-    // Livewire → bridge: when a scene is selected in Step 3, swap skybox + HUDs.
-    window.Livewire?.on('scene:load', async ({ payload }) => {
-        if (payload?.imageUrl) {
-            try { await skybox.crossfadeTo(payload.imageUrl, 600) }
-            catch (err) { console.warn('[wizard-bridge] skybox load failed', err) }
-        }
-        overlay.update({ year: payload?.year, location: payload?.location })
-        if (payload?.kind === 'game') {
-            timer.show({ durationSeconds: payload.duration || 0 })
-        } else {
-            timer.hide()
-        }
-    })
 
     return { player, sequencer, skybox, overlay, timer }
 }
