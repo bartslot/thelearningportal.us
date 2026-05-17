@@ -21,7 +21,13 @@ class LessonWizard extends Component
         if ($lesson?->exists) {
             abort_unless($lesson->teacher_id === auth()->id(), 403);
             $this->lesson = $lesson;
-            $this->step   = max(1, min(4, (int) ($lesson->wizard_step ?? $this->step ?: 1)));
+
+            // If the URL has an explicit ?step=N, honor it. Otherwise fall back to
+            // the lesson's last-visited step so the dashboard "resume" link still works.
+            $urlStep = request()->integer('step');
+            $this->step = $urlStep >= 1 && $urlStep <= 4
+                ? $urlStep
+                : max(1, min(4, (int) ($lesson->wizard_step ?? 1)));
         }
     }
 

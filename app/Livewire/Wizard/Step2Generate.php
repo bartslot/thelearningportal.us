@@ -23,12 +23,6 @@ class Step2Generate extends Component
         abort_unless($lesson->teacher_id === auth()->id(), 403);
         $this->lesson = $lesson;
 
-        if ($lesson->status === LessonStatus::ScenesReady) {
-            $lesson->update(['wizard_step' => 3]);
-            $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 3], navigate: true);
-            return;
-        }
-
         // Claim this step in the parent's authoritative DB pointer.
         if ((int) $lesson->wizard_step !== 2) {
             $lesson->update(['wizard_step' => 2]);

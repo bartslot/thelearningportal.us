@@ -90,12 +90,12 @@ class Step2GenerateTest extends TestCase
         Bus::assertDispatched(BuildLessonOutline::class);
     }
 
-    public function test_auto_redirects_to_step3_when_scenes_ready(): void
+    public function test_visiting_step2_when_scenes_ready_does_not_auto_redirect(): void
     {
         $this->lesson->update(['status' => LessonStatus::ScenesReady]);
 
         Livewire::actingAs($this->teacher)
             ->test(Step2Generate::class, ['lesson' => $this->lesson])
-            ->assertRedirect(route('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 3]));
+            ->assertNoRedirect();
     }
 }
