@@ -24,6 +24,12 @@ class AnimationClip extends Model
         return asset($this->fbx_path);
     }
 
+    /** Returns the public URL for this clip's GLB file, or null if not converted. */
+    public function glbUrl(): ?string
+    {
+        return $this->glb_path ? asset($this->glb_path) : null;
+    }
+
     /** Returns the public URL for the webp thumbnail, or null if none. */
     public function thumbnailUrl(): ?string
     {
