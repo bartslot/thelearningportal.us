@@ -6,28 +6,30 @@ namespace App\Livewire;
 
 use App\Models\Lesson;
 use Illuminate\Contracts\View\View;
-use Livewire\Attributes\Url;
 use Livewire\Component;
 
 class LessonWizard extends Component
 {
     public ?Lesson $lesson = null;
 
-    #[Url(as: 'step')]
     public int $step = 1;
 
     public function mount(?Lesson $lesson = null): void
     {
+        // Parse ?step=N from the URL ourselves. Avoid Livewire's #[Url] attribute
+        // because its two-way sync was rewriting the URL on every component update,
+        // making it impossible to land on a different step via the address bar.
+        $urlStep = request()->integer('step');
+        $resolvedStep = $urlStep >= 1 && $urlStep <= 4 ? $urlStep : null;
+
         if ($lesson?->exists) {
             abort_unless($lesson->teacher_id === auth()->id(), 403);
             $this->lesson = $lesson;
 
-            // If the URL has an explicit ?step=N, honor it. Otherwise fall back to
-            // the lesson's last-visited step so the dashboard "resume" link still works.
-            $urlStep = request()->integer('step');
-            $this->step = $urlStep >= 1 && $urlStep <= 4
-                ? $urlStep
-                : max(1, min(4, (int) ($lesson->wizard_step ?? 1)));
+            $this->step = $resolvedStep
+                ?? max(1, min(4, (int) ($lesson->wizard_step ?? 1)));
+        } else {
+            $this->step = $resolvedStep ?? 1;
         }
     }
 
