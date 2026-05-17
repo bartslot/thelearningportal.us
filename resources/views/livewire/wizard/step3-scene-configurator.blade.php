@@ -49,9 +49,11 @@
                     this.$watch('inspectorOpen', v => localStorage.setItem('wizard.inspector', v ? '1' : '0'))
 
                     if (!window.LessonScene?.mountWizardScene) return
-                    const scenes = @json($this->scenes->map->only([
-                        'id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id',
-                    ]))
+                    @php
+                        $sceneFields = ['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'];
+                        $scenesJson  = $this->scenes->map->only($sceneFields);
+                    @endphp
+                    const scenes = @json($scenesJson)
                     const overlayEl = document.getElementById('lesson-overlay')
                     const timerEl   = document.getElementById('lesson-game-overlay')
                     const canvasEl  = document.getElementById('lesson-canvas')
