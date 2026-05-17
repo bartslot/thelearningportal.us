@@ -151,10 +151,19 @@ class Step3SceneConfigurator extends Component
         $payload     = collect($this->selectedScene)->only(self::EDITABLE_FIELDS)->all();
         $scriptDirty = ($scene->script_segment ?? '') !== ($payload['script_segment'] ?? '');
 
+        // Detect changes that should re-paint the 3D stage so the canvas updates.
+        $stageDirty = (int) ($payload['animation_clip_id'] ?? 0) !== (int) ($scene->animation_clip_id ?? 0)
+            || ($payload['year']     ?? null) !== ($scene->year     ?? null)
+            || ($payload['location'] ?? null) !== ($scene->location ?? null);
+
         $scene->update($payload);
 
         if ($scriptDirty) {
             $scene->update(['audio_script_hash' => null]);
+        }
+
+        if ($stageDirty) {
+            $this->selectSceneInternal($scene->id);
         }
     }
 
