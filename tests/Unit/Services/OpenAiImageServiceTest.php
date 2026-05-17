@@ -76,10 +76,8 @@ class OpenAiImageServiceTest extends TestCase
         });
     }
 
-    public function test_stitch_mode_issues_two_image_requests_with_left_right_hints(): void
+    public function test_prompt_requests_letterbox_black_bars_for_2_to_1_framing(): void
     {
-        config()->set('services.openai.image_stitch', true);
-
         Http::fake([
             'https://api.openai.com/v1/images/generations' => Http::response([
                 'data' => [['url' => 'https://example.com/x.png']],
@@ -93,16 +91,12 @@ class OpenAiImageServiceTest extends TestCase
             destination: 'lessons/1/scenes/4/skybox.webp',
         );
 
-        $sentPrompts = [];
-        Http::assertSent(function ($request) use (&$sentPrompts) {
+        Http::assertSent(function ($request): bool {
             if (! str_ends_with($request->url(), '/images/generations')) return false;
-            $sentPrompts[] = $request->data()['prompt'] ?? '';
-            return true;
+            $prompt = $request->data()['prompt'] ?? '';
+            return str_contains($prompt, 'letterbox')
+                && str_contains($prompt, 'solid pure black bars above and below');
         });
-
-        $this->assertCount(2, $sentPrompts, 'Stitch mode should fire two image requests');
-        $this->assertTrue(collect($sentPrompts)->contains(fn ($p) => str_contains($p, 'left half of a continuous panorama')));
-        $this->assertTrue(collect($sentPrompts)->contains(fn ($p) => str_contains($p, 'right half of a continuous panorama')));
     }
 
     public function test_sends_skybox_panorama_hint_and_webp_compression_flags(): void
@@ -129,8 +123,8 @@ class OpenAiImageServiceTest extends TestCase
 
             return str_contains($prompt, '360 degree panoramic scene')
                 && str_contains($prompt, 'equirectangular projection')
-                && str_contains($prompt, 'seamless continuity between the left and right edges')
-                && str_contains($prompt, 'horizon line level and centered')
+                && stripos($prompt, 'seamless continuity between the left and right edges') !== false
+                && stripos($prompt, 'horizon line level and centered') !== false
                 && ($data['output_format'] ?? null) === 'webp'
                 && ($data['output_compression'] ?? null) === 50;
         });

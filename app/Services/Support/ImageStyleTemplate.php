@@ -14,14 +14,17 @@ final class ImageStyleTemplate
      * we tell it the composition rules so the chosen landscape framing still wraps.
      */
     public const PANORAMIC_HINT = '360 degree panoramic scene, equirectangular projection, '
-        . 'immersive VR panorama, 2:1 ultra-wide aspect ratio, '
-        . 'horizon line level and centered vertically, '
-        . 'seamless continuity between the left and right edges, '
+        . 'immersive VR panorama, framed inside a 2:1 ultra-wide aspect ratio. '
+        . 'Render the scene in a wide 2:1 letterbox: the panorama fills the middle '
+        . 'horizontal band edge-to-edge, with solid pure black bars above and below '
+        . 'so the overall canvas remains the requested square or 3:2 frame. '
+        . 'Horizon line level and centered vertically within the panorama band. '
+        . 'Seamless continuity between the left and right edges, '
         . 'no subjects or hard edges crossing the seam, '
         . 'no fisheye or lens distortion, no cropped foreground objects, '
         . 'environmental establishing shot only, no close-up subjects, no people visible, '
         . 'consistent ambient lighting from all directions, '
-        . 'sky visible above, ground visible below, '
+        . 'sky visible above the horizon band, ground visible below, '
         . 'ultra detailed';
 
     public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';

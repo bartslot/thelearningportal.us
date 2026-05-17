@@ -11,6 +11,12 @@ use RuntimeException;
 
 class OpenAiImageService
 {
+    /** Pixel-channel value below which we treat a pixel as "black bar" filler. */
+    private const BLACK_BAR_THRESHOLD = 12;
+
+    /** Fraction of a row that must be near-black before we trim it. */
+    private const BLACK_BAR_ROW_RATIO = 0.98;
+
     public function generate(
         string $seedPrompt,
         string $style,
@@ -19,21 +25,13 @@ class OpenAiImageService
     ): string {
         $prompt = ImageStyleTemplate::build($seedPrompt, $style, $isGame);
 
-        $stitch = (bool) config('services.openai.image_stitch', true);
-
-        if ($stitch) {
-            // Two 1024×1024 generations stitched horizontally → 2048×1024 (true 2:1
-            // panorama, ~33% more horizontal resolution than a single 1536-wide image).
-            // The left half is told it's the LEFT, the right half is told the RIGHT,
-            // so gpt-image-1 at least varies composition rather than rendering the
-            // same shot twice.
-            $left  = $this->requestOne($prompt . ' Composition: left half of a continuous panorama, the scene continues off to the right.',  '1024x1024');
-            $right = $this->requestOne($prompt . ' Composition: right half of a continuous panorama, the scene continues off to the left.', '1024x1024');
-            $bytes = $this->stitchAndSoften($left, $right);
-        } else {
-            $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
-            $bytes = $this->cropTo2x1($bytes);
-        }
+        // Single API call — we ask for letterbox black bars so the panorama itself
+        // is the desired 2:1 band inside whatever frame gpt-image-1 supports
+        // (1024 square or 1536×1024). The post-processor then trims the bars and
+        // (optionally) center-crops to a clean 2:1.
+        $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
+        $bytes = $this->trimBlackBars($bytes);
+        $bytes = $this->cropTo2x1($bytes);
 
         Storage::disk('public')->put($destination, $bytes);
 
@@ -88,56 +86,95 @@ class OpenAiImageService
     }
 
     /**
-     * Place two images side-by-side and fade the outer left + right edges to black
-     * so the wrap-around seam on the skybox sphere is no longer a hard cut.
+     * Detect and crop solid-black letterbox bars on the top and bottom (and, defensively,
+     * left/right) of the returned image. The model is asked to letterbox to 2:1; this
+     * trims whatever bars actually came back.
      */
-    private function stitchAndSoften(string $leftBytes, string $rightBytes): string
+    private function trimBlackBars(string $bytes): string
     {
         if (! function_exists('imagecreatefromstring')) {
-            return $leftBytes; // GD missing — best-effort fallback to a single image
+            return $bytes;
         }
 
-        $left  = @imagecreatefromstring($leftBytes);
-        $right = @imagecreatefromstring($rightBytes);
-        if ($left === false || $right === false) {
-            if ($left  !== false) imagedestroy($left);
-            if ($right !== false) imagedestroy($right);
-            return $leftBytes;
+        $img = @imagecreatefromstring($bytes);
+        if ($img === false) {
+            return $bytes;
         }
 
-        $h = min(imagesy($left), imagesy($right));
-        $wL = imagesx($left);
-        $wR = imagesx($right);
-        $W = $wL + $wR;
+        $w = imagesx($img);
+        $h = imagesy($img);
 
-        $out = imagecreatetruecolor($W, $h);
-        imagesavealpha($out, true);
-        imagealphablending($out, true);
-        imagecopy($out, $left,  0,    0, 0, 0, $wL, $h);
-        imagecopy($out, $right, $wL,  0, 0, 0, $wR, $h);
+        $top    = 0;
+        $bottom = $h - 1;
+        $left   = 0;
+        $right  = $w - 1;
 
-        imagedestroy($left);
-        imagedestroy($right);
+        while ($top    < $bottom && $this->isBlackRow($img,    $top,    $w))    $top++;
+        while ($bottom > $top    && $this->isBlackRow($img,    $bottom, $w))    $bottom--;
+        while ($left   < $right  && $this->isBlackColumn($img, $left,   $h))    $left++;
+        while ($right  > $left   && $this->isBlackColumn($img, $right,  $h))    $right--;
 
-        // Soft edge mask: fade outermost ~5% on each side toward black so the seam
-        // where left meets right on the sphere blurs into a dim band instead of a
-        // visible cut. GD's alpha is 0=opaque, 127=transparent.
-        $fade = (int) round($W * 0.05);
-        for ($x = 0; $x < $fade; $x++) {
-            $strength = 1.0 - ($x / $fade);          // 1.0 at the edge, 0 at $fade
-            $alpha    = (int) round(127 * (1 - $strength));
-            $col      = imagecolorallocatealpha($out, 0, 0, 0, $alpha);
-            imagefilledrectangle($out, $x,           0, $x,           $h - 1, $col);
-            imagefilledrectangle($out, $W - 1 - $x,  0, $W - 1 - $x,  $h - 1, $col);
+        $newW = $right  - $left + 1;
+        $newH = $bottom - $top  + 1;
+
+        // No meaningful trim → leave the bytes alone.
+        if ($newW >= $w && $newH >= $h) {
+            imagedestroy($img);
+            return $bytes;
+        }
+        if ($newW <= 0 || $newH <= 0) {
+            imagedestroy($img);
+            return $bytes;
         }
 
-        $quality = (int) config('services.openai.image_compression', 50);
-        ob_start();
-        imagewebp($out, null, $quality);
-        $bytes = (string) ob_get_clean();
-        imagedestroy($out);
+        $cropped = imagecrop($img, [
+            'x'      => $left,
+            'y'      => $top,
+            'width'  => $newW,
+            'height' => $newH,
+        ]);
+        imagedestroy($img);
 
-        return $bytes !== '' ? $bytes : $leftBytes;
+        if ($cropped === false) {
+            return $bytes;
+        }
+
+        $out = $this->encodeWebp($cropped);
+        imagedestroy($cropped);
+        return $out !== '' ? $out : $bytes;
+    }
+
+    private function isBlackRow(\GdImage $img, int $y, int $w): bool
+    {
+        $step      = max(1, (int) ($w / 64));      // sample ~64 columns
+        $samples   = 0;
+        $blackCnt  = 0;
+        for ($x = 0; $x < $w; $x += $step) {
+            $samples++;
+            if ($this->isBlackPixel($img, $x, $y)) $blackCnt++;
+        }
+        return $samples > 0 && ($blackCnt / $samples) >= self::BLACK_BAR_ROW_RATIO;
+    }
+
+    private function isBlackColumn(\GdImage $img, int $x, int $h): bool
+    {
+        $step      = max(1, (int) ($h / 64));
+        $samples   = 0;
+        $blackCnt  = 0;
+        for ($y = 0; $y < $h; $y += $step) {
+            $samples++;
+            if ($this->isBlackPixel($img, $x, $y)) $blackCnt++;
+        }
+        return $samples > 0 && ($blackCnt / $samples) >= self::BLACK_BAR_ROW_RATIO;
+    }
+
+    private function isBlackPixel(\GdImage $img, int $x, int $y): bool
+    {
+        $rgb = imagecolorat($img, $x, $y);
+        $r   = ($rgb >> 16) & 0xFF;
+        $g   = ($rgb >> 8)  & 0xFF;
+        $b   =  $rgb        & 0xFF;
+        return max($r, $g, $b) <= self::BLACK_BAR_THRESHOLD;
     }
 
     private function cropTo2x1(string $bytes): string
@@ -172,12 +209,16 @@ class OpenAiImageService
             return $bytes;
         }
 
+        $out = $this->encodeWebp($cropped);
+        imagedestroy($cropped);
+        return $out !== '' ? $out : $bytes;
+    }
+
+    private function encodeWebp(\GdImage $img): string
+    {
         $quality = (int) config('services.openai.image_compression', 50);
         ob_start();
-        imagewebp($cropped, null, $quality);
-        $out = (string) ob_get_clean();
-        imagedestroy($cropped);
-
-        return $out !== '' ? $out : $bytes;
+        imagewebp($img, null, $quality);
+        return (string) ob_get_clean();
     }
 }
