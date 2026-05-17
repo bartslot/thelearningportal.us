@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Livewire\Wizard;
 
 use App\Enums\LessonStatus;
+use App\Models\AnimationClip;
 use App\Models\Lesson;
+use App\Models\Scene;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 class Step4Preview extends Component
 {
-    public Lesson $lesson;
-    public string $publishError = '';
+    public Lesson  $lesson;
+    public ?int    $selectedSceneId = null;
+    public string  $publishError    = '';
 
     public function mount(Lesson $lesson): void
     {
@@ -21,6 +24,11 @@ class Step4Preview extends Component
 
         if ($this->lesson->status !== LessonStatus::Published) {
             $this->lesson->update(['status' => LessonStatus::Previewable, 'wizard_step' => 4]);
+        }
+
+        $first = $this->lesson->scenes()->ordered()->first();
+        if ($first) {
+            $this->selectSceneInternal($first->id);
         }
     }
 
@@ -35,6 +43,44 @@ class Step4Preview extends Component
     {
         return $this->scenes->isNotEmpty()
             && $this->scenes->every(fn ($s) => $s->status === 'ready');
+    }
+
+    public function selectScene(int $id): void
+    {
+        $this->selectSceneInternal($id);
+    }
+
+    private function selectSceneInternal(int $id): void
+    {
+        $scene = $this->lesson->scenes()->find($id);
+        if (! $scene) {
+            return;
+        }
+        $this->selectedSceneId = $id;
+        $this->dispatch('scene:load', payload: [
+            'sceneId'           => $scene->id,
+            'imageUrl'          => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
+            'animationClipUrl'  => $this->animationGlbUrlFor($scene),
+            'year'              => $scene->year,
+            'location'          => $scene->location,
+            'kind'              => $scene->kind,
+            'duration'          => $scene->duration_seconds,
+        ]);
+    }
+
+    private function animationGlbUrlFor(Scene $scene): ?string
+    {
+        if ($scene->animation_clip_id) {
+            $clip = AnimationClip::find($scene->animation_clip_id);
+            if ($clip?->glb_path) {
+                return $clip->glbUrl();
+            }
+        }
+        $idlePath = AnimationClip::where('category', 'idle')
+            ->whereNotNull('glb_path')
+            ->orderBy('sort_order')
+            ->value('glb_path');
+        return $idlePath ? asset($idlePath) : null;
     }
 
     public function publish(): void

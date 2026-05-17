@@ -38,8 +38,8 @@
         <span class="text-xs text-slate-300" x-text="readout"></span>
     </div>
 
-    {{-- Read-only timeline --}}
-    <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="null" :editable="false" />
+    {{-- Read-only timeline — clickable to seek, highlights the playing scene --}}
+    <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" :editable="false" />
 
     {{-- Scenes payload as inert JSON --}}
     <script type="application/json" id="step4-scenes-data">
@@ -77,6 +77,8 @@
 
                 this.stage.sequencer.on('scenechange', s => {
                     document.documentElement.style.setProperty('--playhead-scene-id', s.id);
+                    // Mirror to Livewire so the timeline thumb shows the amber ring.
+                    this.$wire?.set('selectedSceneId', s.id, false);
                 });
                 this.stage.sequencer.on('timelineend', () => { this.playing = false; });
             },
