@@ -1,4 +1,4 @@
-<div class="contents" x-data="step4Preview" x-init="init()">
+<div class="contents" x-data="step4Preview">
 
     {{-- Fullscreen canvas wrapper (same as Step 3) — wire:ignore so playback
          survives Livewire morphs (e.g. Publish click). --}}
