@@ -18,7 +18,13 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // Idempotency: Alpine init can re-fire under some Livewire morph paths. Return
     // the cached bridge so we don't stack additional scene:load / scene:play
     // listeners (which would cause double audio playback, etc).
-    if (canvasEl.__lessonBridge) return canvasEl.__lessonBridge
+    //
+    // Claim the slot SYNCHRONOUSLY before any await so two concurrent inits
+    // don't both pass the check.
+    if (canvasEl.__lessonBridge || canvasEl.__lessonBridgeMounting) {
+        return canvasEl.__lessonBridge || null
+    }
+    canvasEl.__lessonBridgeMounting = true
 
     // Subscribe to scene:load BEFORE the slow avatar init so we don't miss the
     // initial dispatch that fires during Livewire hydration. Buffer the last
@@ -131,5 +137,6 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     const sequencer = new Scene.SceneTimelinePlayer({ scenes, ...adapter })
 
     canvasEl.__lessonBridge = { player, sequencer, overlay, timer }
+    canvasEl.__lessonBridgeMounting = false
     return canvasEl.__lessonBridge
 }
