@@ -16,11 +16,13 @@ class OpenAiImageServiceTest extends TestCase
         parent::setUp();
 
         config()->set('services.openai', [
-            'api_key'     => 'test-key',
-            'image_model' => 'dall-e-3',
-            'image_size'  => '1792x1024',
-            'base_url'    => 'https://api.openai.com/v1',
-            'timeout'     => 60,
+            'api_key'           => 'test-key',
+            'image_model'       => 'gpt-image-1',
+            'image_size'        => '1536x1024',
+            'image_format'      => 'webp',
+            'image_compression' => 50,
+            'base_url'          => 'https://api.openai.com/v1',
+            'timeout'           => 60,
         ]);
         Storage::fake('public');
     }
@@ -70,6 +72,36 @@ class OpenAiImageServiceTest extends TestCase
             return str_contains($prompt, 'no children')
                 && str_contains($prompt, 'film still')
                 && str_contains($prompt, 'battle/scene illustration');
+        });
+    }
+
+    public function test_sends_skybox_panorama_hint_and_webp_compression_flags(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/images/generations' => Http::response([
+                'data' => [['url' => 'https://example.com/x.png']],
+            ], 200),
+            'https://example.com/x.png' => Http::response('X', 200),
+        ]);
+
+        app(OpenAiImageService::class)->generate(
+            seedPrompt:  'Roman forum at dusk',
+            style:       'painted',
+            destination: 'lessons/1/scenes/3/skybox.webp',
+        );
+
+        Http::assertSent(function ($request): bool {
+            if (! str_ends_with($request->url(), '/images/generations')) {
+                return false;
+            }
+            $data   = $request->data();
+            $prompt = $data['prompt'] ?? '';
+
+            return str_contains($prompt, 'equirectangular 360-degree panorama')
+                && str_contains($prompt, 'seamless continuity between the left and right edges')
+                && str_contains($prompt, 'horizon line level and centered')
+                && ($data['output_format'] ?? null) === 'webp'
+                && ($data['output_compression'] ?? null) === 50;
         });
     }
 }

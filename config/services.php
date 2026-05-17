@@ -52,8 +52,10 @@ return [
         'api_key'      => env('OPENAI_API_KEY'),
         'organization' => env('OPENAI_ORGANIZATION'),
         'model'        => env('OPENAI_MODEL', 'gpt-4o-mini'),
-        'image_model'  => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
-        'image_size'   => env('OPENAI_IMAGE_SIZE', '1536x1024'),
+        'image_model'       => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+        'image_size'        => env('OPENAI_IMAGE_SIZE', '1536x1024'),
+        'image_format'      => env('OPENAI_IMAGE_FORMAT', 'webp'),       // png|jpeg|webp
+        'image_compression' => (int) env('OPENAI_IMAGE_COMPRESSION', 50), // 0-100 (jpeg/webp only)
         'base_url'     => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'timeout'      => (int) env('OPENAI_TIMEOUT', 60),
         'tts_model'    => env('OPENAI_TTS_MODEL', 'tts-1'),

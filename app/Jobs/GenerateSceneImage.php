@@ -34,7 +34,8 @@ class GenerateSceneImage implements ShouldQueue
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
 
         try {
-            $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox.png";
+            $ext         = (string) config('services.openai.image_format', 'webp');
+            $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox.{$ext}";
             $path = $image->generate(
                 seedPrompt:  (string) ($scene->image_prompt ?? $scene->location ?? $scene->lesson->topic),
                 style:       (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic'),

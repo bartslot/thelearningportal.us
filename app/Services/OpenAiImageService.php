@@ -27,10 +27,12 @@ class OpenAiImageService
                 ->timeout((int) config('services.openai.timeout', 60))
                 ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
                 ->post(rtrim($base, '/') . '/images/generations', [
-                    'model'  => config('services.openai.image_model'),
-                    'prompt' => $prompt,
-                    'size'   => config('services.openai.image_size'),
-                    'n'      => 1,
+                    'model'              => config('services.openai.image_model'),
+                    'prompt'             => $prompt,
+                    'size'               => config('services.openai.image_size'),
+                    'output_format'      => (string) config('services.openai.image_format', 'webp'),
+                    'output_compression' => (int) config('services.openai.image_compression', 50),
+                    'n'                  => 1,
                 ]);
         } catch (\Throwable $e) {
             throw new RuntimeException('Image API request failed: ' . $e->getMessage(), previous: $e);

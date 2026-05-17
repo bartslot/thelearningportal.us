@@ -7,8 +7,24 @@ namespace App\Services\Support;
 final class ImageStyleTemplate
 {
     public const SAFETY_GUARDRAIL = 'no children, no real living people, no readable text in image';
-    public const PANORAMIC_HINT   = '2:1 wide aspect, panoramic composition, ambient periphery';
-    public const GAME_HINT        = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
+
+    /**
+     * Equirectangular panorama spec — drives gpt-image-1 toward something usable as a
+     * VR skybox texture on an inverted sphere. The model can't natively output 2:1, but
+     * we tell it the composition rules so the chosen landscape framing still wraps.
+     */
+    public const PANORAMIC_HINT = 'equirectangular 360-degree panorama suitable as a VR skybox texture, '
+        . 'full 360-degree horizontal coverage by 180-degree vertical coverage, '
+        . '2:1 ultra-wide aspect ratio framing, '
+        . 'horizon line level and centered vertically, '
+        . 'seamless continuity between the left and right edges, '
+        . 'no subjects or hard edges crossing the seam, '
+        . 'no fisheye or lens distortion, no cropped foreground objects, '
+        . 'environmental establishing shot only — no close-up subjects, '
+        . 'consistent ambient lighting from all directions, '
+        . 'realistic scale and depth, sky visible above, ground visible below';
+
+    public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
 
     private const STYLES = [
         'realistic' => 'photographic, period-accurate, natural light, shallow DOF, people in period clothing',
