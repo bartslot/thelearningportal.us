@@ -160,6 +160,26 @@ class Step1SettingsTest extends TestCase
         Bus::assertDispatched(BuildLessonOutline::class);
     }
 
+    public function test_generate_advances_wizard_step_to_2_so_parent_renders_step_2(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->set('topic',            'Roman Empire')
+            ->set('subject',          'history')
+            ->set('grade_level',      '7th grade')
+            ->set('source_mode',      'wikipedia')
+            ->set('image_style',      'painted')
+            ->set('avatar_id',        $this->avatar->id)
+            ->set('game_split_count', 1)
+            ->call('generate')
+            ->assertHasNoErrors();
+
+        $lesson = Lesson::where('teacher_id', $this->teacher->id)->first();
+        $this->assertSame(2, $lesson->wizard_step, 'wizard_step must be 2 after generate so LessonWizard parent renders Step2');
+    }
+
     public function test_rejects_save_when_upload_mode_has_no_file(): void
     {
         Livewire::actingAs($this->teacher)

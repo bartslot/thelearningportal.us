@@ -161,6 +161,11 @@ class Step1Settings extends Component
         $lesson = $this->persist(LessonStatus::Draft);
         $lesson->refresh()->startGenerationPipeline();
 
+        // The parent LessonWizard reads $lesson->wizard_step on mount and uses it as the
+        // authoritative step (it overrides the URL's ?step). Advance it here so the
+        // redirect actually lands on Step 2 instead of bouncing back to Step 1.
+        $lesson->update(['wizard_step' => 2]);
+
         $this->redirect(
             route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]),
             navigate: true,
