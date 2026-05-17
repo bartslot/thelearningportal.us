@@ -5,9 +5,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Livewire\Admin\AvatarLab;
 use App\Livewire\Admin\AvatarStudio;
-use App\Livewire\CreateLesson;
-use App\Livewire\LessonShow;
-use App\Livewire\LessonStatus;
+use App\Livewire\LessonWizard;
 use App\Jobs\GenerateLesson;
 use App\Models\Avatar;
 use App\Models\Lesson;
@@ -48,9 +46,12 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         return view('teacher.dashboard', compact('lessons'));
     })->name('dashboard');
 
-    Route::get('/lessons/create', CreateLesson::class)->name('lessons.create');
+    Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
-    Route::get('/lessons/{lesson}', LessonShow::class)->name('lessons.show');
+    Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
+
+    // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
+    Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
     Route::patch('/lessons/{lesson}/publish', function (Lesson $lesson) {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
