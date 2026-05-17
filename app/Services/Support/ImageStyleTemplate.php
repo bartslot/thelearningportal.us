@@ -22,7 +22,7 @@ final class ImageStyleTemplate
         . 'environmental establishing shot only, no close-up subjects, no people visible, '
         . 'consistent ambient lighting from all directions, '
         . 'sky visible above, ground visible below, '
-        . 'cinematic atmosphere, ultra detailed';
+        . 'ultra detailed';
 
     public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
 
