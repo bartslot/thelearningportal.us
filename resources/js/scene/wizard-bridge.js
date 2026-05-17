@@ -1,6 +1,22 @@
 import { Avatar3DPlayer } from '../avatar-3d.js'
 
 /**
+ * Push every alignment entry earlier by VISEME_LEAD_SECONDS. The avatar player
+ * builds keyframes whose peak lands at the START of each phoneme; on screen the
+ * morph-target update happens a frame or two after audio.currentTime advances,
+ * so visemes visibly lag audio. Leading the alignment compensates.
+ */
+const VISEME_LEAD_SECONDS = 0.08
+function shiftAlignment(alignment) {
+    if (!Array.isArray(alignment)) return []
+    return alignment.map(c => ({
+        character:  c.character,
+        start_time: Math.max(0, (c.start_time ?? 0) - VISEME_LEAD_SECONDS),
+        end_time:   Math.max(0, (c.end_time   ?? 0) - VISEME_LEAD_SECONDS),
+    }))
+}
+
+/**
  * Mount the 3D stage for Step 3 / Step 4. Reuses Avatar3DPlayer's built-in skybox
  * shader pipeline (player.setSkyboxFromUrl) instead of stacking a second sphere.
  */
@@ -67,7 +83,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         try {
             activePlayer.speakWithElevenLabsAlignment(
                 payload.audioUrl,
-                payload.alignment || [],
+                shiftAlignment(payload.alignment || []),
                 { zoom: false, delay: 0 },
             )
         } catch (err) {
@@ -122,7 +138,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             speak: ({ audioUrl, alignment }) => new Promise(resolve => {
                 if (!audioUrl) return resolve()
                 try {
-                    player.speakWithElevenLabsAlignment(audioUrl, alignment || [], { zoom: false, delay: 0 })
+                    player.speakWithElevenLabsAlignment(audioUrl, shiftAlignment(alignment || []), { zoom: false, delay: 0 })
                 } catch {}
                 // Best-effort: resolve when the player's audio element ends.
                 const tick = () => {
