@@ -13,7 +13,7 @@ class Scene extends Model
         'lesson_id', 'order', 'kind',
         'year', 'location', 'script_segment',
         'image_prompt', 'image_path', 'image_style',
-        'skybox_blur', 'skybox_opacity',
+        'skybox_blur', 'skybox_opacity', 'background_color',
         'animation_clip_id',
         'audio_path', 'audio_alignment', 'audio_script_hash',
         'duration_seconds', 'game_segment_index',

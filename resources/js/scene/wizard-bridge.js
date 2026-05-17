@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import { Avatar3DPlayer } from '../avatar-3d.js'
 
 /**
@@ -78,6 +79,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (playerReady && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
             try { activePlayer.setSkyboxOpacity(payload.skyboxOpacity) } catch {}
         }
+        if (playerReady && typeof payload.backgroundColor === 'string') {
+            applyBackgroundColor(payload.backgroundColor)
+        }
         if (playerReady && payload.animationClipUrl && typeof activePlayer.loadAnimation === 'function') {
             try { await activePlayer.loadAnimation(payload.animationClipUrl) }
             catch (err) { console.warn('[wizard-bridge] loadAnimation failed', err) }
@@ -104,6 +108,25 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             try { activePlayer.setSkyboxOpacity(Number(e.detail?.opacity ?? 1)) } catch {}
         }
     })
+    window.addEventListener('lesson:skybox:bgcolor', e => {
+        applyBackgroundColor(String(e.detail?.color ?? '#000000'))
+    })
+
+    // Update the scene clear color + the skybox shader's bg uniform without
+    // clearing the skybox sphere (Avatar3DPlayer.setSceneBackground destroys it).
+    function applyBackgroundColor(hex) {
+        if (!playerReady || !activePlayer?._scene) return
+        try {
+            const color = new THREE.Color(hex)
+            activePlayer._scene.background = color
+            activePlayer._lastSolidBg      = hex
+            if (activePlayer._skyboxSphere?.material?.uniforms?.uBgColor) {
+                activePlayer._skyboxSphere.material.uniforms.uBgColor.value.set(hex)
+            }
+        } catch (err) {
+            console.warn('[wizard-bridge] bg color failed', err)
+        }
+    }
 
     window.Livewire?.on('scene:load', ({ payload }) => {
         pendingScene = payload

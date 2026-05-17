@@ -21,7 +21,7 @@ class Step3SceneConfigurator extends Component
     private const EDITABLE_FIELDS = [
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
-        'skybox_blur', 'skybox_opacity',
+        'skybox_blur', 'skybox_opacity', 'background_color',
     ];
 
     public Lesson $lesson;
@@ -92,6 +92,7 @@ class Step3SceneConfigurator extends Component
             'duration'          => $scene->duration_seconds,
             'skyboxBlur'        => (float) ($scene->skybox_blur    ?? 0.5),
             'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
+            'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
         ]);
     }
 

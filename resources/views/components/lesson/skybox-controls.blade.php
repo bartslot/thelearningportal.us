@@ -1,16 +1,19 @@
 @props(['scene' => null])
 
 @php
-    $blur    = (float) ($scene->skybox_blur    ?? 0.5);
-    $opacity = (float) ($scene->skybox_opacity ?? 1.0);
+    $blur    = (float)  ($scene->skybox_blur     ?? 0.5);
+    $opacity = (float)  ($scene->skybox_opacity  ?? 1.0);
+    $bgColor = (string) ($scene->background_color ?? '#000000');
 @endphp
 
 <div class="mt-2 space-y-3"
      x-data="{
         blur:    {{ $blur }},
         opacity: {{ $opacity }},
+        bgColor: '{{ $bgColor }}',
         emitBlur()    { window.dispatchEvent(new CustomEvent('lesson:skybox:blur',    { detail: { blur:    Number(this.blur)    } })); },
         emitOpacity() { window.dispatchEvent(new CustomEvent('lesson:skybox:opacity', { detail: { opacity: Number(this.opacity) } })); },
+        emitBg()      { window.dispatchEvent(new CustomEvent('lesson:skybox:bgcolor', { detail: { color:   String(this.bgColor) } })); },
      }">
     {{-- Blur --}}
     <div>
@@ -36,5 +39,24 @@
                @input="emitOpacity()"
                @change="$wire.set('selectedScene.skybox_opacity', Number(opacity)); $wire.call('saveSelected')"
                class="range range-xs accent-amber-400 w-full" />
+    </div>
+
+    {{-- Background color (visible through transparent skybox) --}}
+    <div>
+        <div class="flex items-center justify-between mb-1">
+            <label class="text-[10px] uppercase tracking-widest text-slate-500">Background</label>
+            <span class="text-[10px] font-mono text-amber-300" x-text="bgColor"></span>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer">
+            <span class="w-6 h-6 rounded border border-slate-600 overflow-hidden relative shrink-0"
+                  :style="'background:' + bgColor">
+                <input type="color"
+                       x-model="bgColor"
+                       @input="emitBg()"
+                       @change="$wire.set('selectedScene.background_color', String(bgColor)); $wire.call('saveSelected')"
+                       class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+            </span>
+            <span class="text-[10px] text-slate-400">Visible behind transparent skybox</span>
+        </label>
     </div>
 </div>

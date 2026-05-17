@@ -68,6 +68,7 @@ class Step4Preview extends Component
             'duration'          => $scene->duration_seconds,
             'skyboxBlur'        => (float) ($scene->skybox_blur    ?? 0.5),
             'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
+            'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
         ]);
     }
 
