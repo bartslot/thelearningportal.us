@@ -1,4 +1,4 @@
-<div class="contents" x-data="step3SceneConfigurator()" x-init="init()">
+<div class="contents" x-data="step3SceneConfigurator" x-init="init()">
 
     {{-- Fullscreen canvas wrapper --}}
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root">
@@ -39,30 +39,35 @@
     {{-- Bottom timeline --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
-    @push('scripts')
-    <script>
-        function step3SceneConfigurator() {
-            return {
-                inspectorOpen: true,
-                async init() {
-                    this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1'
-                    this.$watch('inspectorOpen', v => localStorage.setItem('wizard.inspector', v ? '1' : '0'))
-
-                    if (!window.LessonScene?.mountWizardScene) return
-                    @php
-                        $sceneFields = ['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'];
-                        $scenesJson  = $this->scenes->map->only($sceneFields);
-                    @endphp
-                    const scenes = @json($scenesJson)
-                    const overlayEl = document.getElementById('lesson-overlay')
-                    const timerEl   = document.getElementById('lesson-game-overlay')
-                    const canvasEl  = document.getElementById('lesson-canvas')
-                    window.__lessonStage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes })
-                },
-            }
-        }
-
-        window.addEventListener('timeline:reordered', e => window.Livewire?.dispatch('reorder', { orderedIds: e.detail.ids }))
+    {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
+    <script type="application/json" id="step3-scenes-data">
+        {!! $this->scenes->map->only(['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
     </script>
-    @endpush
 </div>
+
+@push('head-scripts')
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('step3SceneConfigurator', () => ({
+            inspectorOpen: true,
+
+            async init() {
+                this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1';
+                this.$watch('inspectorOpen', v => localStorage.setItem('wizard.inspector', v ? '1' : '0'));
+
+                if (!window.LessonScene?.mountWizardScene) return;
+
+                const dataEl = document.getElementById('step3-scenes-data');
+                const scenes = dataEl ? JSON.parse(dataEl.textContent) : [];
+                const overlayEl = document.getElementById('lesson-overlay');
+                const timerEl   = document.getElementById('lesson-game-overlay');
+                const canvasEl  = document.getElementById('lesson-canvas');
+
+                window.__lessonStage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes });
+            },
+        }));
+    });
+
+    window.addEventListener('timeline:reordered', e => window.Livewire?.dispatch('reorder', { orderedIds: e.detail.ids }));
+</script>
+@endpush

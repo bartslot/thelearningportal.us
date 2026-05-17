@@ -1,4 +1,4 @@
-<div class="contents" x-data="step4Preview()" x-init="init()">
+<div class="contents" x-data="step4Preview" x-init="init()">
 
     {{-- Fullscreen canvas wrapper (same as Step 3) --}}
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root">
@@ -38,54 +38,58 @@
     {{-- Read-only timeline --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="null" :editable="false" />
 
-    @push('scripts')
-    <script>
-        function step4Preview() {
-            return {
-                playing: false,
-                readout: '0:00 / 0:00',
-                stage:   null,
-                total:   0,
-
-                async init() {
-                    if (!window.LessonScene?.mountWizardScene) return
-                    @php
-                        $sceneFields = ['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'];
-                        $scenesJson  = $this->scenes->map->only($sceneFields);
-                    @endphp
-                    const scenes = @json($scenesJson)
-                    const overlayEl = document.getElementById('lesson-overlay')
-                    const timerEl   = document.getElementById('lesson-game-overlay')
-                    const canvasEl  = document.getElementById('lesson-canvas')
-                    this.stage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes })
-                    if (!this.stage) return
-
-                    this.total   = this.stage.sequencer.totalSeconds()
-                    this.readout = `0:00 / ${this._fmt(this.total)}`
-
-                    this.stage.sequencer.on('scenechange', s => {
-                        document.documentElement.style.setProperty('--playhead-scene-id', s.id)
-                    })
-                    this.stage.sequencer.on('timelineend', () => { this.playing = false })
-                },
-
-                async togglePlay() {
-                    if (!this.stage) return
-                    if (this.playing) {
-                        this.stage.sequencer.pause()
-                        this.playing = false
-                    } else {
-                        this.playing = true
-                        await this.stage.sequencer.playFrom(0)
-                    }
-                },
-
-                _fmt(s) {
-                    const m = Math.floor(s / 60), r = Math.floor(s % 60)
-                    return `${m}:${String(r).padStart(2, '0')}`
-                },
-            }
-        }
+    {{-- Scenes payload as inert JSON --}}
+    <script type="application/json" id="step4-scenes-data">
+        {!! $this->scenes->map->only(['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
     </script>
-    @endpush
 </div>
+
+@push('head-scripts')
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('step4Preview', () => ({
+            playing: false,
+            readout: '0:00 / 0:00',
+            stage:   null,
+            total:   0,
+
+            async init() {
+                if (!window.LessonScene?.mountWizardScene) return;
+
+                const dataEl = document.getElementById('step4-scenes-data');
+                const scenes = dataEl ? JSON.parse(dataEl.textContent) : [];
+                const overlayEl = document.getElementById('lesson-overlay');
+                const timerEl   = document.getElementById('lesson-game-overlay');
+                const canvasEl  = document.getElementById('lesson-canvas');
+
+                this.stage = window.LessonScene.mountWizardScene({ canvasEl, overlayEl, timerEl, scenes });
+                if (!this.stage) return;
+
+                this.total   = this.stage.sequencer.totalSeconds();
+                this.readout = `0:00 / ${this._fmt(this.total)}`;
+
+                this.stage.sequencer.on('scenechange', s => {
+                    document.documentElement.style.setProperty('--playhead-scene-id', s.id);
+                });
+                this.stage.sequencer.on('timelineend', () => { this.playing = false; });
+            },
+
+            async togglePlay() {
+                if (!this.stage) return;
+                if (this.playing) {
+                    this.stage.sequencer.pause();
+                    this.playing = false;
+                } else {
+                    this.playing = true;
+                    await this.stage.sequencer.playFrom(0);
+                }
+            },
+
+            _fmt(s) {
+                const m = Math.floor(s / 60), r = Math.floor(s % 60);
+                return `${m}:${String(r).padStart(2, '0')}`;
+            },
+        }));
+    });
+</script>
+@endpush
