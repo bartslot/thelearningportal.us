@@ -105,7 +105,13 @@ class TtsService
             return null;
         }
 
-        $voice    = $voiceId !== '' ? $voiceId : 'en-US-GuyNeural';
+        // Reject non-Azure voice IDs (Azure voices match xx-XX-NameNeural)
+        $candidateVoice = $voiceId !== '' ? $voiceId : 'en-US-GuyNeural';
+        if (! preg_match('/^[a-z]{2}-[A-Z]{2}-.+Neural$/', $candidateVoice)) {
+            Log::warning('[Azure TTS] skipped — voice ID does not look like an Azure Neural voice: ' . $candidateVoice);
+            return null;
+        }
+        $voice    = $candidateVoice;
         $ratePct  = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
         $rateAttr = ($ratePct >= 0 ? '+' : '') . $ratePct . '%';
         $escaped  = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
@@ -125,12 +131,13 @@ SSML;
                 'X-Microsoft-OutputFormat'  => 'audio-24khz-48kbitrate-mono-mp3',
                 'User-Agent'                => 'TheLearningPortal',
             ])
-            ->timeout(30)
+            ->timeout(25)
+            ->connectTimeout(5)
             ->withBody($ssml, 'application/ssml+xml')
             ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
 
             if (! $response->successful()) {
-                Log::error('[Azure TTS] HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 200));
+                Log::error('[Azure TTS] HTTP ' . $response->status() . ' (voice=' . $voice . '): ' . substr($response->body(), 0, 400));
                 return null;
             }
 
@@ -309,7 +316,9 @@ PY;
 
             file_put_contents($scriptFile, $pyScript);
 
-            $cmd = escapeshellcmd($python) . ' ' . escapeshellarg($scriptFile) . ' 2>' . escapeshellarg($errFile);
+            $timeoutBin = PHP_OS_FAMILY === 'Darwin' ? 'gtimeout' : 'timeout';
+            $wrappedPython = escapeshellcmd($python);
+            $cmd = "({$timeoutBin} 55 {$wrappedPython} " . escapeshellarg($scriptFile) . ' 2>' . escapeshellarg($errFile) . ') || true';
             exec($cmd, $output, $exitCode);
             $stderr = file_exists($errFile) ? trim((string) file_get_contents($errFile)) : '';
             @unlink($scriptFile);

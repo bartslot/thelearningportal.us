@@ -63,7 +63,7 @@ class ElevenLabsService
             $response = Http::withHeaders([
                 'xi-api-key'   => $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->timeout(45)->connectTimeout(3)->post(
+            ])->timeout(25)->connectTimeout(3)->post(
                 "{$this->baseUrl}/v1/text-to-speech/{$voiceId}/with-timestamps",
                 [
                     'text'           => $text,
