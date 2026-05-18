@@ -71,7 +71,7 @@ export class SceneTimelinePlayer {
   async _playOne(scene) {
     this._emit('scenechange', scene)
 
-    await this.skybox.crossfadeTo(scene.image_path)
+    await this.skybox.crossfadeTo(scene.world_pano_path || scene.image_path)
     this.overlay.update({ year: scene.year, location: scene.location })
 
     if (scene.animation_clip_id) {

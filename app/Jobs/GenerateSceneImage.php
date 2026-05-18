@@ -44,6 +44,10 @@ class GenerateSceneImage implements ShouldQueue
             );
             $scene->update(['image_path' => $path]);
             $this->maybeMarkReady($scene->fresh());
+
+            if ((bool) config('services.worldlabs.enabled', false)) {
+                GenerateWorldLabsScene::dispatch($this->sceneId);
+            }
         } catch (Throwable $e) {
             $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
             throw $e;

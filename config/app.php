@@ -123,4 +123,6 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    'auto_login' => filter_var(env('APP_AUTO_LOGIN', false), FILTER_VALIDATE_BOOLEAN),
+
 ];

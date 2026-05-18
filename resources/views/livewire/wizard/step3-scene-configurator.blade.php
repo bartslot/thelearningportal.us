@@ -44,37 +44,49 @@
 
     {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
     <script type="application/json" id="step3-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
+        {!! $this->scenes->map->only(['id','kind','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
     </script>
 </div>
 
-@push('head-scripts')
+@script
 <script>
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('step3SceneConfigurator', () => ({
-            inspectorOpen: true,
+    (function () {
+        function registerStep3() {
+            if (window.__step3AlpineRegistered) return;
+            window.__step3AlpineRegistered = true;
 
-            async init() {
-                this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1';
-                this.$watch('inspectorOpen', v => localStorage.setItem('wizard.inspector', v ? '1' : '0'));
+            Alpine.data('step3SceneConfigurator', () => ({
+                inspectorOpen: true,
 
-                if (!window.LessonScene?.mountWizardScene) return;
+                async init() {
+                    this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1';
+                    this.$watch('inspectorOpen', v => localStorage.setItem('wizard.inspector', v ? '1' : '0'));
 
-                const dataEl       = document.getElementById('step3-scenes-data');
-                const scenes       = dataEl ? JSON.parse(dataEl.textContent) : [];
-                const overlayEl    = document.getElementById('lesson-overlay');
-                const timerEl      = document.getElementById('lesson-game-overlay');
-                const canvasEl     = document.getElementById('lesson-canvas');
-                const rootEl       = document.getElementById('lesson-canvas-root');
-                const characterUrl = rootEl?.dataset.characterUrl || null;
+                    if (!window.LessonScene?.mountWizardScene) return;
 
-                window.__lessonStage = await window.LessonScene.mountWizardScene({
-                    canvasEl, overlayEl, timerEl, scenes, characterUrl,
-                });
-            },
-        }));
-    });
+                    const dataEl       = document.getElementById('step3-scenes-data');
+                    const scenes       = dataEl ? JSON.parse(dataEl.textContent) : [];
+                    const overlayEl    = document.getElementById('lesson-overlay');
+                    const timerEl      = document.getElementById('lesson-game-overlay');
+                    const canvasEl     = document.getElementById('lesson-canvas');
+                    const rootEl       = document.getElementById('lesson-canvas-root');
+                    const characterUrl = rootEl?.dataset.characterUrl || null;
 
-    window.addEventListener('timeline:reordered', e => window.Livewire?.dispatch('reorder', { orderedIds: e.detail.ids }));
+                    window.__lessonStage = await window.LessonScene.mountWizardScene({
+                        canvasEl, overlayEl, timerEl, scenes, characterUrl,
+                    });
+                },
+            }));
+
+            window.addEventListener('timeline:reordered', e => window.Livewire?.dispatch('reorder', { orderedIds: e.detail.ids }));
+        }
+
+        // Alpine may already be booted (Livewire defers scripts); register immediately if so.
+        if (window.Alpine) {
+            registerStep3();
+        } else {
+            document.addEventListener('alpine:init', registerStep3);
+        }
+    })();
 </script>
-@endpush
+@endscript

@@ -8,6 +8,7 @@ use App\Enums\LessonStatus;
 use App\Jobs\GenerateSceneAudio;
 use App\Jobs\GenerateSceneImage;
 use App\Jobs\GenerateSceneScript;
+use App\Jobs\GenerateWorldLabsScene;
 use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
 use App\Models\Lesson;
@@ -22,6 +23,7 @@ class Step3SceneConfigurator extends Component
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
         'skybox_blur', 'skybox_opacity', 'background_color', 'scene_view',
+        'world_y_offset', 'world_scale', 'world_char_scale',
     ];
 
     public Lesson $lesson;
@@ -94,6 +96,18 @@ class Step3SceneConfigurator extends Component
             'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
             'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
             'sceneView'         => (string) ($scene->scene_view ?? 'skybox'),
+            'worldPanoUrl'      => $scene->world_pano_path ? asset('storage/' . $scene->world_pano_path) : null,
+            'worldSpzUrl'       => $scene->world_spz_path  ? asset('storage/' . $scene->world_spz_path)  : null,
+            'worldGlbUrl'       => $scene->world_glb_path  ? asset('storage/' . $scene->world_glb_path)  : null,
+            'worldLabsStatus'   => (string) ($scene->world_labs_status ?? ''),
+            'worldYOffset'      => (float)  ($scene->world_y_offset    ?? 0),
+            'worldScale'        => (float)  ($scene->world_scale       ?? 1),
+            'worldCharScale'    => (float)  ($scene->world_char_scale  ?? 0.53),
+            'worldSemantics'    => [
+                'groundPlaneOffset' => (float) (($scene->world_semantics ?? [])['ground_plane_offset'] ?? 0),
+                'flipY'             => (bool)  (($scene->world_semantics ?? [])['flip_y']              ?? true),
+                'metricScaleFactor' => (float) (($scene->world_semantics ?? [])['metric_scale_factor'] ?? 1),
+            ],
         ]);
     }
 
@@ -198,8 +212,27 @@ class Step3SceneConfigurator extends Component
             'script' => GenerateSceneScript::dispatch($scene->id),
             'image'  => GenerateSceneImage::dispatch($scene->id),
             'audio'  => GenerateSceneAudio::dispatch($scene->id),
+            'world'  => $this->generateWorld($scene->id),
             default  => null,
         };
+    }
+
+    public function generateWorld(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        if (! $scene->image_path) {
+            $this->dispatch('toast', message: 'Generate the skybox image first before creating a WorldLabs world.', type: 'warning');
+            return;
+        }
+
+        $scene->update(['world_labs_status' => 'pending', 'scene_view' => 'world']);
+        GenerateWorldLabsScene::dispatch($scene->id);
+
+        // Refresh selectedScene so the UI reflects the new status immediately
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectedScene = $scene->fresh()->toArray();
+        }
     }
 
     public function addScene(): void
@@ -250,14 +283,55 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    public function saveWorldSettings(float $yOffset, float $scale, float $charScale): void
+    {
+        if (! $this->selectedSceneId) return;
+        Scene::where('lesson_id', $this->lesson->id)
+            ->findOrFail($this->selectedSceneId)
+            ->update([
+                'world_y_offset'   => $yOffset,
+                'world_scale'      => $scale,
+                'world_char_scale' => $charScale,
+            ]);
+        if ($this->selectedScene) {
+            $this->selectedScene['world_y_offset']   = $yOffset;
+            $this->selectedScene['world_scale']      = $scale;
+            $this->selectedScene['world_char_scale'] = $charScale;
+        }
+    }
+
     public function continueToPreview(): void
     {
         $this->lesson->update(['wizard_step' => 4, 'status' => LessonStatus::Previewable]);
         $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 4], navigate: true);
     }
 
+    /** Called on every poll tick — pushes updated world status to the canvas. */
+    public function pollWorldStatus(): void
+    {
+        if (! $this->selectedSceneId) return;
+
+        $scene = $this->lesson->scenes()->find($this->selectedSceneId);
+        if (! $scene || $scene->scene_view !== 'world') return;
+
+        $semantics = $scene->world_semantics ?? [];
+        $this->dispatch('scene:worldstatus', payload: [
+            'sceneId'            => $scene->id,
+            'worldLabsStatus'    => (string) ($scene->world_labs_status ?? ''),
+            'worldPanoUrl'       => $scene->world_pano_path ? asset('storage/' . $scene->world_pano_path) : null,
+            'worldSpzUrl'        => $scene->world_spz_path ? asset('storage/' . $scene->world_spz_path) : null,
+            'worldGlbUrl'        => $scene->world_glb_path ? asset('storage/' . $scene->world_glb_path) : null,
+            'worldSemantics'     => [
+                'groundPlaneOffset' => (float) ($semantics['ground_plane_offset'] ?? 0),
+                'flipY'             => (bool)  ($semantics['flip_y']              ?? true),
+                'metricScaleFactor' => (float) ($semantics['metric_scale_factor'] ?? 1),
+            ],
+        ]);
+    }
+
     public function render()
     {
+        $this->pollWorldStatus();
         return view('livewire.wizard.step3-scene-configurator');
     }
 }

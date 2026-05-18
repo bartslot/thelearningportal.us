@@ -3,6 +3,7 @@
     $feedback = $this->feedback;
 @endphp
 
+<div>
 {{-- Only render if there's an active avatar and the teacher hasn't responded yet --}}
 @if($avatar && $feedback && !$hasResponded && !$dismissed)
 <div
@@ -118,3 +119,4 @@
     <button wire:click="dismiss" class="ml-auto text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0">✕</button>
 </div>
 @endif
+</div>

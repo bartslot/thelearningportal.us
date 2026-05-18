@@ -133,4 +133,11 @@ return [
         'hf_token' => env('HF_TOKEN'),
     ],
 
+    // ── WorldLabs Marble (3D Gaussian-splat world from image) ─────────────────
+
+    'worldlabs' => [
+        'api_key' => env('WORLD_LABS_API_KEY'),
+        'enabled' => filter_var(env('WORLD_LABS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
 ];

@@ -43,7 +43,7 @@
 
     {{-- Scenes payload as inert JSON --}}
     <script type="application/json" id="step4-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','year','location','image_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
+        {!! $this->scenes->map->only(['id','kind','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
     </script>
 </div>
 

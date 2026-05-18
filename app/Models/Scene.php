@@ -18,6 +18,10 @@ class Scene extends Model
         'audio_path', 'audio_alignment', 'audio_script_hash',
         'duration_seconds', 'game_segment_index',
         'status', 'error_message',
+        'world_labs_status', 'world_labs_operation_id',
+        'world_pano_path', 'world_spz_path', 'world_glb_path',
+        'world_semantics',
+        'world_y_offset', 'world_scale', 'world_char_scale',
     ];
 
     protected function casts(): array
@@ -29,6 +33,10 @@ class Scene extends Model
             'game_segment_index' => 'integer',
             'skybox_blur'        => 'float',
             'skybox_opacity'     => 'float',
+            'world_semantics'    => 'array',
+            'world_y_offset'     => 'float',
+            'world_scale'        => 'float',
+            'world_char_scale'   => 'float',
         ];
     }
 
