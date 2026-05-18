@@ -229,9 +229,9 @@ class Step3SceneConfigurator extends Component
         $scene->update(['world_labs_status' => 'pending', 'scene_view' => 'world']);
         GenerateWorldLabsScene::dispatch($scene->id);
 
-        // Refresh selectedScene so the UI reflects the new status immediately
+        // Reload via selectSceneInternal so scene:load fires → canvas switches to waiting state
         if ($this->selectedSceneId === $sceneId) {
-            $this->selectedScene = $scene->fresh()->toArray();
+            $this->selectSceneInternal($sceneId);
         }
     }
 
