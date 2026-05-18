@@ -199,7 +199,7 @@ class AvatarLab extends Component
     {
         $value = trim($value);
         if ($this->selectedAvatarId && $value !== '') {
-            Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
+            Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value, 'short_name' => $value]);
             $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
 
             // Invalidate cached greeting audio so MeetYourNarrator regenerates with new name
