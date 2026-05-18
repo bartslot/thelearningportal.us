@@ -27,13 +27,17 @@ class GenerateWorldLabsScene implements ShouldQueue
     {
         $apiKey = (string) config('services.worldlabs.api_key', '');
         if ($apiKey === '') {
-            return; // silently skip if not configured
+            Scene::find($this->sceneId)?->update(['world_labs_status' => 'failed']);
+            \Illuminate\Support\Facades\Log::error('[WorldLabs] WORLD_LABS_API_KEY not configured — scene ' . $this->sceneId);
+            return;
         }
 
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
 
         if (! $scene->image_path) {
-            return; // need the source image first
+            $scene->update(['world_labs_status' => 'failed']);
+            \Illuminate\Support\Facades\Log::error('[WorldLabs] scene ' . $this->sceneId . ' has no image_path — generate the skybox image first');
+            return;
         }
 
         $scene->update(['world_labs_status' => 'pending']);
