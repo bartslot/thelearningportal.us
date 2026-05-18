@@ -52,8 +52,6 @@ class AvatarLab extends Component
     public $expressionFile;
     public $danceFile;
 
-    public Collection $avatars;
-
     // ── New avatar upload modal state ─────────────────────────────────────────
     public ?int    $newAvatarId          = null;
     public string  $newAvatarName        = '';
@@ -64,12 +62,17 @@ class AvatarLab extends Component
     public string  $newAvatarModalTab    = 'info';
     public $newAvatarGlbFile;
 
+    #[Computed]
+    public function avatars(): Collection
+    {
+        return Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+    }
+
     public function mount(): void
     {
-        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
-
-        if ($this->avatars->isNotEmpty()) {
-            $this->selectAvatar($this->avatars->first()->id);
+        $first = $this->avatars->first();
+        if ($first) {
+            $this->selectAvatar($first->id);
         }
     }
 
@@ -201,7 +204,7 @@ class AvatarLab extends Component
         $value = trim($value);
         if ($this->selectedAvatarId && $value !== '') {
             Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
-            $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+            unset($this->avatars); // bust computed cache
         }
     }
 
@@ -273,8 +276,7 @@ class AvatarLab extends Component
         }
         $this->newAvatarGlbFile->move($dir, 'character.glb');
 
-        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+        unset($this->avatars); // bust computed cache
 
         $this->newAvatarId          = $avatar->id;
         $this->newAvatarName        = '';
@@ -305,8 +307,7 @@ class AvatarLab extends Component
             'is_active' => (bool) $this->newAvatarName,
         ]);
 
-        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+        unset($this->avatars); // bust computed cache
     }
 
     public function saveNewAvatarVoice(string $voiceId): void
@@ -342,14 +343,12 @@ class AvatarLab extends Component
             }
         }
         $this->reset('newAvatarId', 'newAvatarName', 'newAvatarGender', 'newAvatarAge', 'newAvatarVoiceId', 'newAvatarMorphStatus', 'newAvatarModalTab');
-        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+        unset($this->avatars); // bust computed cache
     }
 
     public function refreshAvatarList(): void
     {
-        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+        unset($this->avatars); // bust computed cache
 
         if ($this->newAvatarId) {
             $avatar = Avatar::find($this->newAvatarId);
