@@ -201,7 +201,7 @@ class AvatarLab extends Component
         $value = trim($value);
         if ($this->selectedAvatarId && $value !== '') {
             Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
-            unset($this->avatars); // refresh computed sidebar list
+            $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
         }
     }
 
