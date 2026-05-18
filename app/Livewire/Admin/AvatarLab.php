@@ -201,6 +201,14 @@ class AvatarLab extends Component
         if ($this->selectedAvatarId && $value !== '') {
             Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
             $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+
+            // Invalidate cached greeting audio so MeetYourNarrator regenerates with new name
+            \App\Models\AvatarTeacherFeedback::where('avatar_id', $this->selectedAvatarId)
+                ->whereNotNull('greeting_audio_path')
+                ->each(function ($feedback) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($feedback->greeting_audio_path);
+                    $feedback->update(['greeting_audio_path' => null]);
+                });
         }
     }
 
