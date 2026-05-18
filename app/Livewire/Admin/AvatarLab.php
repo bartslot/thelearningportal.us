@@ -196,6 +196,15 @@ class AvatarLab extends Component
         $this->dispatch('voice-selected', voiceId: $voiceId);
     }
 
+    public function updatedName(string $value): void
+    {
+        $value = trim($value);
+        if ($this->selectedAvatarId && $value !== '') {
+            Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
+            unset($this->avatars); // refresh computed sidebar list
+        }
+    }
+
     public function updatedVoiceSpeed(float $value): void
     {
         if ($this->selectedAvatarId) {

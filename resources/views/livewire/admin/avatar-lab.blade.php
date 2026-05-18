@@ -427,7 +427,7 @@
                     <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-1 block">Name</label>
                     <input
                         type="text"
-                        wire:model="name"
+                        wire:model.live.debounce.600ms="name"
                         class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
                     />
                 </div>
