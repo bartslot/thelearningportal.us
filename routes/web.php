@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 
 // ── Public ───────────────────────────────────────────────────────────────────
 
+
 Route::get('/', function () {
     return view('historyportal');
 })->name('home');

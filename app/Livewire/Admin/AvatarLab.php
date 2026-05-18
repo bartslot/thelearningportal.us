@@ -62,17 +62,13 @@ class AvatarLab extends Component
     public string  $newAvatarModalTab    = 'info';
     public $newAvatarGlbFile;
 
-    #[Computed]
-    public function avatars(): Collection
-    {
-        return Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
-    }
+    public Collection $avatars;
 
     public function mount(): void
     {
-        $first = $this->avatars->first();
-        if ($first) {
-            $this->selectAvatar($first->id);
+        $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
+        if ($this->avatars->isNotEmpty()) {
+            $this->selectAvatar($this->avatars->first()->id);
         }
     }
 
@@ -202,11 +198,9 @@ class AvatarLab extends Component
     public function updatedName(string $value): void
     {
         $value = trim($value);
-        \Illuminate\Support\Facades\Log::info('[AvatarLab] updatedName called', ['value' => $value, 'avatarId' => $this->selectedAvatarId]);
         if ($this->selectedAvatarId && $value !== '') {
-            $rows = Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
-            \Illuminate\Support\Facades\Log::info('[AvatarLab] updatedName DB rows updated: ' . $rows);
-            unset($this->avatars);
+            Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
+            $this->avatars = Avatar::orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'sort_order', 'morph_status', 'is_active']);
         }
     }
 
