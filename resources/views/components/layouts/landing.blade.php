@@ -1,6 +1,6 @@
 @props(['title' => config('app.name')])
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full scroll-smooth">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full scroll-smooth" data-theme="learningportal">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,6 +24,7 @@
 
     {{ $slot }}
 
+    @stack('scripts')
     @livewireScripts
 </body>
 </html>

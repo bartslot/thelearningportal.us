@@ -51,5 +51,12 @@ class DatabaseSeeder extends Seeder
 
         // ── Avatars ───────────────────────────────────────────────────────────
         $this->call(AvatarSeeder::class);
+
+        // ── Strategy games ────────────────────────────────────────────────────
+        $this->call(StrategyGameSeeder::class);
+
+        // ── French Revolution demo lesson ─────────────────────────────────────
+        $this->call(FrenchRevolutionDemoSeeder::class);
+
     }
 }

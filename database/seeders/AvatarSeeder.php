@@ -6,40 +6,76 @@ namespace Database\Seeders;
 
 use App\Models\Avatar;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AvatarSeeder extends Seeder
 {
     public function run(): void
     {
-        // ── The Professor ─────────────────────────────────────────────────────
-        // A distinguished Spanish professor who lectures in English.
-        // Portrait: public/assets/professor.webp (already in the project).
-        // Default voice: bm_george (British male, distinguished) — use the
-        // Avatar Studio admin panel to audition voices and switch.
+        // Hard-delete all existing avatars (including soft-deleted)
+        DB::statement('DELETE FROM avatars');
+        DB::statement('DELETE FROM sqlite_sequence WHERE name = "avatars"');
 
-        Avatar::updateOrCreate(
-            ['slug' => 'professor'],
-            [
-                'name'           => 'The Professor',
-                'short_name'     => 'The Professor',     // used in greeting: "I am The Professor"
-                'avatar_title'   => 'History Professor', // used in greeting: "a History Professor here at..."
-                'description'    => 'A distinguished Spanish professor who brings history to life in English. Warm, authoritative, and deeply passionate about his subject.',
-                'portrait_path'  => 'assets/professor.webp',
-                'subject'        => 'all',
+        $avatarDir = public_path('avatars');
+        $inserted  = 0;
 
-                // ── Voice settings ────────────────────────────────────────────
-                // Primary: edge-tts es-ES-AlvaroNeural = Spanish male voice
-                // that speaks English with a natural Spanish accent (FREE).
-                // Switch to kokoro/bm_george for fully offline operation.
-                'voice_provider' => 'edge_tts',
-                'voice_id'       => 'es-ES-AlvaroNeural',
-                'voice_speed'    => 0.92,
-                'voice_pitch'    => 1.0,
-                'voice_settings' => [],
+        // Scan numbered subfolders 1–99 for avatarinfo.json
+        for ($i = 1; $i <= 99; $i++) {
+            $jsonPath = "{$avatarDir}/{$i}/avatarinfo.json";
 
-                'is_active'      => true,
-                'sort_order'     => 0,
-            ]
-        );
+            if (! file_exists($jsonPath)) {
+                continue;
+            }
+
+            $info = json_decode(file_get_contents($jsonPath), true);
+
+            if (! $info) {
+                continue;
+            }
+
+            $name = $info['name'] ?? "Avatar {$i}";
+            $slug = Str::slug($name) ?: "avatar-{$i}";
+
+            // Ensure slug uniqueness
+            $baseSlug = $slug;
+            $suffix   = 1;
+            while (Avatar::withTrashed()->where('slug', $slug)->exists()) {
+                $slug = "{$baseSlug}-{$suffix}";
+                $suffix++;
+            }
+
+            Avatar::create([
+                'id'               => $i,
+                'name'             => $name,
+                'slug'             => $slug,
+                'short_name'       => $name,
+                'description'      => null,
+                'portrait_path'    => "avatars/{$i}/thumbnail.webp",
+                'subject'          => 'all',
+                'gender'           => $info['gender'] ?? 'male',
+                'age'              => $info['age']    ?? 30,
+                'skin_tone'        => $info['skinTone']  ?? null,
+                'body_type'        => $info['bodyType']  ?? null,
+                'source_id'        => $info['sourceId']  ?? null,
+                'voice_provider'   => 'elevenlabs',
+                'voice_id'         => '',
+                'voice_speed'      => 1.0,
+                'voice_pitch'      => 1.0,
+                'voice_settings'   => '[]',
+                'is_active'        => true,
+                'sort_order'       => $i,
+                'sprite_status'    => 'pending',
+                'presentation_mode'=> 'framed',
+                'emotion_style'    => 'auto',
+                'expressiveness'   => 1.2,
+                'speaking_speed'   => 1.0,
+                'frame_background' => '#0f172a',
+            ]);
+
+            $inserted++;
+        }
+
+        $this->command?->info("Seeded {$inserted} rpme avatars.");
     }
 }

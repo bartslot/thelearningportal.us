@@ -21,6 +21,7 @@ class Lesson extends Model
     protected $fillable = [
         'teacher_id',
         'avatar_id',
+        'strategy_game_id',
         'title',
         'topic',
         'subject',
@@ -36,10 +37,21 @@ class Lesson extends Model
         'generation_attempts',
         'portrait_path',
         'audio_path',
-        'video_path',
         'slideshow_images',
+        'intel_drop_enabled',
+        'intel_drop_at_minutes',
+        'intel_drop_script',
+        'intel_drop_audio_path',
         'duration_seconds',
         'visemes_path',
+        'audio_3d_path',
+        'blendshapes_path',
+        'image_style',
+        'source_mode',
+        'team_count',
+        'game_split_count',
+        'outline',
+        'wizard_step',
     ];
 
     protected static function booted(): void
@@ -57,10 +69,16 @@ class Lesson extends Model
     protected function casts(): array
     {
         return [
-            'status'               => LessonStatus::class,
-            'generation_attempts'  => 'integer',
-            'duration_seconds'     => 'integer',
-            'slideshow_images'     => 'array',
+            'status'                 => LessonStatus::class,
+            'generation_attempts'    => 'integer',
+            'duration_seconds'       => 'integer',
+            'slideshow_images'       => 'array',
+            'intel_drop_enabled'     => 'boolean',
+            'intel_drop_at_minutes'  => 'integer',
+            'outline'                => 'array',
+            'team_count'             => 'integer',
+            'game_split_count'       => 'integer',
+            'wizard_step'            => 'integer',
         ];
     }
 
@@ -94,6 +112,16 @@ class Lesson extends Model
         return $this->belongsTo(Avatar::class);
     }
 
+    public function strategyGame(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\StrategyGame::class);
+    }
+
+    public function teams(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\LessonTeam::class);
+    }
+
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(User::class, 'teacher_id');
@@ -113,6 +141,26 @@ class Lesson extends Model
     public function studentProgress(): HasMany
     {
         return $this->hasMany(StudentProgress::class);
+    }
+
+    public function scenes(): HasMany
+    {
+        return $this->hasMany(Scene::class)->orderBy('order');
+    }
+
+    public function source(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(LessonSource::class)->latestOfMany();
+    }
+
+    public function startGenerationPipeline(): void
+    {
+        if (! $this->source()->exists()) {
+            throw new \RuntimeException('Cannot start pipeline: no LessonSource attached.');
+        }
+
+        $this->update(['status' => LessonStatus::SourceReady]);
+        \App\Jobs\BuildLessonOutline::dispatch($this->id);
     }
 
     // ── Scopes ──────────────────────────────────────────────────────────────
@@ -203,11 +251,6 @@ class Lesson extends Model
     public function visemesUrl(): ?string
     {
         return $this->publicMediaUrl($this->visemes_path);
-    }
-
-    public function videoUrl(): ?string
-    {
-        return $this->publicMediaUrl($this->video_path);
     }
 
     public function audioUrl(): ?string

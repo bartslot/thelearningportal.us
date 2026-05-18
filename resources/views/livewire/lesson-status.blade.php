@@ -5,7 +5,7 @@
     {{-- Header --}}
     <div class="flex items-center justify-between gap-4">
         <h2 class="text-sm font-semibold text-slate-100 uppercase tracking-widest">Generation pipeline</h2>
-        <span class="text-xs text-slate-400">{{ $this->completedCount }}/6 steps</span>
+        <span class="text-xs text-slate-400">{{ $this->completedCount }}/5 steps</span>
     </div>
 
     {{-- Progress bar --}}
@@ -13,7 +13,7 @@
         <div
             class="h-full rounded-full transition-all duration-700 ease-out
                 {{ $lesson->status === \App\Enums\LessonStatus::Failed ? 'bg-rose-500' : 'bg-amber-400' }}"
-            style="width: {{ round(($this->completedCount / 6) * 100) }}%"
+            style="width: {{ round(($this->completedCount / 5) * 100) }}%"
         ></div>
     </div>
 

@@ -31,6 +31,17 @@ class Avatar extends Model
         'portrait_original_path',
         'landmarks_json',
         'sprite_status',
+        'presentation_mode',
+        'age',
+        'gender',
+        'emotion_style',
+        'expressiveness',
+        'speaking_speed',
+        'frame_background',
+        'skin_tone',
+        'body_type',
+        'source_id',
+        'morph_status',   // 'pending' | 'processing' | 'ready' | 'failed'
     ];
 
     protected function casts(): array
@@ -43,6 +54,9 @@ class Avatar extends Model
             'sort_order'     => 'integer',
             'landmarks_json' => 'array',
             'sprite_status'  => \App\Enums\SpriteStatus::class,
+            'age'            => 'integer',
+            'expressiveness' => 'float',
+            'speaking_speed' => 'float',
         ];
     }
 
@@ -93,12 +107,24 @@ class Avatar extends Model
             return null;
         }
 
-        // Public asset (e.g. assets/professor.webp)
-        if (str_starts_with($this->portrait_path, 'assets/')) {
+        // Public asset paths (avatars/* or assets/*) — served directly from public/
+        if (str_starts_with($this->portrait_path, 'avatars/') || str_starts_with($this->portrait_path, 'assets/')) {
             return asset($this->portrait_path);
         }
 
         return \Illuminate\Support\Facades\Storage::disk('public')->url($this->portrait_path);
+    }
+
+    public function thumbnailUrl(): ?string
+    {
+        $path = public_path("avatars/{$this->id}/thumbnail.webp");
+
+        return file_exists($path) ? asset("avatars/{$this->id}/thumbnail.webp") : null;
+    }
+
+    public function glbUrl(): string
+    {
+        return asset("avatars/{$this->id}/character.glb");
     }
 
     // ── Greeting ──────────────────────────────────────────────────────────────
@@ -238,33 +264,91 @@ class Avatar extends Model
     }
 
     /**
-     * All Kokoro speaker IDs we support in the studio.
+     * Maps ElevenLabs voice label metadata to gradient class.
+     * Mirrors ElevenLabsService::gradientClass() for convenience.
      */
-    public static function kokoroVoices(): array
+    public static function elevenlabsVoiceGradient(array $labels): string
+    {
+        $accent = strtolower($labels['accent'] ?? '');
+        $gender = strtolower($labels['gender'] ?? '');
+
+        if (str_contains($accent, 'british') && $gender === 'male') {
+            return 'vg-navy';
+        }
+
+        if (str_contains($accent, 'narration') || str_contains($accent, 'calm')) {
+            return 'vg-teal';
+        }
+
+        if (str_contains($accent, 'american') || str_contains($accent, 'neutral')) {
+            return $gender === 'female' ? 'vg-violet' : 'vg-indigo';
+        }
+
+        if ($gender === 'female') {
+            return 'vg-violet';
+        }
+
+        if ($accent !== '' && ! str_contains($accent, 'american') && ! str_contains($accent, 'british')) {
+            return 'vg-amber';
+        }
+
+        return 'vg-base';
+    }
+
+    /**
+     * Edge TTS voices in card shape: [id, label, preview_url, gradient_class].
+     */
+    public static function edgeTtsVoicesForCards(): array
+    {
+        $voices = static::edgeTtsVoices();
+        $cards  = [];
+
+        foreach ($voices as $id => $label) {
+            $cards[] = [
+                'id'             => $id,
+                'label'          => $label,
+                'preview_url'    => '',
+                'gradient_class' => static::edgeTtsGradientClass($id),
+            ];
+        }
+
+        return $cards;
+    }
+
+    /**
+     * Determine gradient class for an Edge TTS voice by ID.
+     */
+    private static function edgeTtsGradientClass(string $voiceId): string
+    {
+        if (str_starts_with($voiceId, 'en-GB-')) {
+            return 'vg-navy';
+        }
+
+        if (str_starts_with($voiceId, 'en-US-') || str_starts_with($voiceId, 'en-CA-')) {
+            return 'vg-indigo';
+        }
+
+        if (str_starts_with($voiceId, 'en-AU-') || str_starts_with($voiceId, 'en-NZ-')) {
+            return 'vg-teal';
+        }
+
+        // Non-English locale → amber
+        if (! str_starts_with($voiceId, 'en-')) {
+            return 'vg-amber';
+        }
+
+        return 'vg-base';
+    }
+
+    /**
+     * Pocket TTS preset voices in card shape.
+     */
+    public static function pocketTtsVoices(): array
     {
         return [
-            // British male — best for a distinguished professor character
-            'bm_george' => 'British Male — George (distinguished)',
-            'bm_lewis'  => 'British Male — Lewis (authoritative)',
-            'bm_daniel' => 'British Male — Daniel (calm)',
-            'bm_fable'  => 'British Male — Fable (storytelling)',
-
-            // American male
-            'am_adam'    => 'American Male — Adam (neutral)',
-            'am_michael' => 'American Male — Michael (natural)',
-            'am_fenrir'  => 'American Male — Fenrir (deep)',
-            'am_echo'    => 'American Male — Echo',
-
-            // British female
-            'bf_emma'     => 'British Female — Emma (polished)',
-            'bf_isabella' => 'British Female — Isabella (refined)',
-
-            // American female
-            'af_heart'   => 'American Female — Heart (warm)',
-            'af_bella'   => 'American Female — Bella (expressive)',
-            'af_nicole'  => 'American Female — Nicole (professional)',
-            'af_sarah'   => 'American Female — Sarah (clear)',
-            'af_sky'     => 'American Female — Sky (bright)',
+            ['id' => 'default',  'label' => 'Default Voice',  'preview_url' => '', 'gradient_class' => 'vg-teal'],
+            ['id' => 'male_1',   'label' => 'Male Voice 1',   'preview_url' => '', 'gradient_class' => 'vg-indigo'],
+            ['id' => 'female_1', 'label' => 'Female Voice 1', 'preview_url' => '', 'gradient_class' => 'vg-violet'],
         ];
     }
 

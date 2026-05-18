@@ -43,12 +43,13 @@
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
             {{-- Play icon --}}
-            <svg x-show="!loading && !playing" class="h-4 w-4 fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 5v14l11-7z"/>
+            <svg x-show="!loading && !playing" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M0 0L8 4.19615L0 8V0Z" fill="currentColor"/>
             </svg>
             {{-- Pause icon --}}
-            <svg x-show="!loading && playing" class="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            <svg x-show="!loading && playing" width="9" height="8" viewBox="0 0 9 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect width="3" height="8" fill="currentColor"/>
+                <rect x="5.11328" width="3" height="8" fill="currentColor"/>
             </svg>
         </button>
 

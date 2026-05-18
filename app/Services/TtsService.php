@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Storage;
 class TtsService
 {
     private ?string $generatedAudioExtension = null;
-    private static bool $kokoroStartAttempted = false;
 
     private function lessonDisk()
     {
@@ -51,11 +50,6 @@ class TtsService
     }
 
     /**
-     * Generate raw audio bytes for a given text, voice and speed.
-     * Used by Avatar Studio to produce audition samples.
-     * Returns the raw audio content or null on failure.
-     */
-    /**
      * Returns the file extension ('mp3' or 'm4a') produced by the last generateAudioRaw() call.
      */
     public function lastExtension(): string
@@ -63,28 +57,89 @@ class TtsService
         return $this->generatedAudioExtension ?? 'mp3';
     }
 
-    public function generateAudioRaw(string $text, string $voiceId, float $speed = 1.0, string $provider = 'auto', ?array &$wordTimings = null): ?string
+    public function generateAudioRaw(string $text, string $voiceId, float $speed = 1.0, string $provider = 'auto', ?array &$timingData = null): ?string
     {
         $this->generatedAudioExtension = 'mp3'; // default; overridden by tryMacosTts
         $text = $this->prepareSpeechText($text);
-        $wordTimings = null;
+        $timingData = null;
 
-        // Explicit provider — try it first, then fall back gracefully for local dev
+        if ($provider === 'azure') {
+            return $this->tryAzure($text, $voiceId, $speed)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryMacosTts($text);
+        }
+
+        if ($provider === 'elevenlabs') {
+            return $this->tryElevenLabs($text, $voiceId, $timingData)
+                ?? $this->tryAzure($text, $voiceId, $speed)
+                ?? $this->tryPocketTts($text, $voiceId)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryMacosTts($text);
+        }
+
+        if ($provider === 'pocket_tts') {
+            return $this->tryPocketTts($text, $voiceId)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryMacosTts($text);
+        }
+
         if ($provider === 'edge_tts') {
-            return $this->tryEdgeTts($text, $voiceId, $speed, true, $wordTimings)
-                ?? $this->tryKokoro($text, 'bm_george', $speed)
-                ?? $this->tryMacosTts($text);
-        }
-        if ($provider === 'kokoro') {
-            return $this->tryKokoro($text, $voiceId, $speed)
+            return $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryPocketTts($text, $voiceId)
                 ?? $this->tryMacosTts($text);
         }
 
-        // Auto: try kokoro → edge-tts → openai → macOS say
-        return $this->tryKokoro($text, $voiceId, $speed)
-            ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $wordTimings)
-            ?? $this->tryOpenAiTts($text, $voiceId)
+        // 'auto' or unknown: ElevenLabs → Azure → PocketTTS → edge-tts → macOS
+        return $this->tryElevenLabs($text, $voiceId, $timingData)
+            ?? $this->tryAzure($text, $voiceId, $speed)
+            ?? $this->tryPocketTts($text, $voiceId)
+            ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
             ?? $this->tryMacosTts($text);
+    }
+
+    private function tryAzure(string $text, string $voiceId, float $speed = 1.0): ?string
+    {
+        $key    = (string) config('services.azure_speech.key', '');
+        $region = (string) config('services.azure_speech.region', 'eastus');
+        if ($key === '' || $text === '') {
+            return null;
+        }
+
+        $voice    = $voiceId !== '' ? $voiceId : 'en-US-GuyNeural';
+        $ratePct  = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
+        $rateAttr = ($ratePct >= 0 ? '+' : '') . $ratePct . '%';
+        $escaped  = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        $ssml = <<<SSML
+<speak version="1.0" xml:lang="en-US">
+  <voice name="{$voice}">
+    <prosody rate="{$rateAttr}">{$escaped}</prosody>
+  </voice>
+</speak>
+SSML;
+
+        try {
+            $response = Http::withHeaders([
+                'Ocp-Apim-Subscription-Key' => $key,
+                'Content-Type'              => 'application/ssml+xml',
+                'X-Microsoft-OutputFormat'  => 'audio-24khz-48kbitrate-mono-mp3',
+                'User-Agent'                => 'TheLearningPortal',
+            ])
+            ->timeout(30)
+            ->withBody($ssml, 'application/ssml+xml')
+            ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
+
+            if (! $response->successful()) {
+                Log::error('[Azure TTS] HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 200));
+                return null;
+            }
+
+            $this->generatedAudioExtension = 'mp3';
+            return $response->body();
+        } catch (\Throwable $e) {
+            Log::error('[Azure TTS] exception: ' . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -95,16 +150,17 @@ class TtsService
     {
         $text = $this->prepareSpeechText($text);
         $this->generatedAudioExtension = 'mp3';
+        $timingData = null;
 
         // If the avatar explicitly chose edge_tts, try it first
         if (str_starts_with($voice, 'es-') || str_starts_with($voice, 'en-GB-') || str_starts_with($voice, 'en-US-')) {
             $audioContent = $this->tryEdgeTts($text, $voice, $speed)
-                ?? $this->tryKokoro($text, 'bm_george', $speed)
+                ?? $this->tryPocketTts($text)
                 ?? $this->tryMacosTts($text);
         } else {
-            $audioContent = $this->tryKokoro($text, $voice, $speed)
+            $audioContent = $this->tryElevenLabs($text, $voice, $timingData)
+                ?? $this->tryPocketTts($text, $voice)
                 ?? $this->tryEdgeTts($text, 'es-ES-AlvaroNeural', $speed)
-                ?? $this->tryOpenAiTts($text, $voice)
                 ?? $this->tryMacosTts($text);
         }
 
@@ -119,32 +175,53 @@ class TtsService
         return $audioPath;
     }
 
-    private function tryKokoro(string $text, string $voice, float $speed = 1.0): ?string
+    private function tryElevenLabs(string $text, string $voiceId, ?array &$timingData = null): ?string
     {
-        $baseUrl = config('services.kokoro.url', 'http://localhost:8880');
-        $baseUrl = rtrim($baseUrl, '/');
+        /** @var \App\Services\ElevenLabsService $service */
+        $service = app(\App\Services\ElevenLabsService::class);
 
-        if (! $this->isRunning($baseUrl)) {
-            $this->ensureKokoroRunning($baseUrl);
+        $result = $service->generateWithTimestamps($text, $voiceId);
+
+        if ($result === null) {
+            return null;
+        }
+
+        $timingData = ['character_timings' => $result['alignment']];
+
+        return $result['audio'];
+    }
+
+    private function tryPocketTts(string $text, string $voiceId = ''): ?string
+    {
+        $url = config('services.pocket_tts.url');
+
+        if (! $url) {
+            return null;
         }
 
         try {
-            $response = Http::timeout(120)
-                ->post("{$baseUrl}/v1/audio/speech", [
-                    'model' => 'kokoro',
-                    'input' => $text,
-                    'voice' => $voice,
-                    'speed' => $speed,
-                ]);
+            $request = Http::timeout(60)->accept('audio/wav, audio/mpeg, */*');
 
-            if ($response->successful()) {
-                return $response->body();
+            $hfToken = config('services.pocket_tts.hf_token');
+            if ($hfToken) {
+                $request = $request->withToken($hfToken);
             }
-        } catch (\Exception $e) {
-            Log::info('TtsService: Kokoro unavailable, trying fallback. ' . $e->getMessage());
-        }
 
-        return null;
+            $multipart = [['name' => 'text', 'contents' => $text]];
+            if ($voiceId !== '') {
+                $multipart[] = ['name' => 'voice_id', 'contents' => $voiceId];
+            }
+
+            $response = $request->asMultipart()->post("{$url}/tts", $multipart);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            return $response->body();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function isHeadingLine(string $line): bool
@@ -153,45 +230,6 @@ class TtsService
             '/^(?:#{1,6}\s+.+|\*\*\[(?:.+)\]\*\*|\[(?:.+)\])$/',
             $line
         );
-    }
-
-    private function ensureKokoroRunning(string $baseUrl): void
-    {
-        if (self::$kokoroStartAttempted || ! $this->isLocalKokoroUrl($baseUrl)) {
-            return;
-        }
-
-        self::$kokoroStartAttempted = true;
-
-        if (! $this->commandExists('python3')) {
-            Log::warning('TtsService: python3 not available, cannot auto-start Kokoro');
-            return;
-        }
-
-        $python = $this->pythonBinary();
-
-        if (! $this->kokoroPackageInstalled($python)) {
-            Log::warning('TtsService: Kokoro package not installed, cannot auto-start');
-            return;
-        }
-
-        $startCommand = $this->kokoroStartCommand($python);
-        if (! $startCommand) {
-            Log::warning('TtsService: Kokoro package is present but no runnable server entrypoint was found. Set KOKORO_START_CMD to your server command.');
-            return;
-        }
-
-        exec($startCommand . ' > /tmp/kokoro.log 2>&1 &');
-
-        for ($i = 0; $i < 20; $i++) {
-            usleep(500000);
-            if ($this->isRunning($baseUrl)) {
-                Log::info("TtsService: auto-started Kokoro at {$baseUrl}");
-                return;
-            }
-        }
-
-        Log::warning("TtsService: attempted to auto-start Kokoro at {$baseUrl} but it did not become ready in time");
     }
 
     private function isRunning(string $baseUrl): bool
@@ -204,12 +242,6 @@ class TtsService
         }
     }
 
-    private function isLocalKokoroUrl(string $baseUrl): bool
-    {
-        return str_contains($baseUrl, 'localhost')
-            || str_contains($baseUrl, '127.0.0.1');
-    }
-
     /**
      * edge-tts: Microsoft Edge browser neural TTS via Python CLI.
      * Completely FREE — no API key, no account.
@@ -220,11 +252,11 @@ class TtsService
      *
      * Speed is converted from a multiplier (0.92) to a rate string (e.g. "-8%").
      */
-    private function tryEdgeTts(string $text, string $voice, float $speed = 1.0, bool $collectWordTimings = false, ?array &$wordTimings = null): ?string
+    private function tryEdgeTts(string $text, string $voice, float $speed = 1.0, bool $collectWordTimings = false, ?array &$timingData = null): ?string
     {
         // edge-tts requires Python and the edge-tts package
         $python = $this->pythonBinary();
-        $wordTimings = null;
+        $timingData = null;
 
         // Check if edge_tts module is available
         $checkCmd = escapeshellcmd($python) . ' -c "import edge_tts" 2>/dev/null';
@@ -261,28 +293,16 @@ OUT_FILE = {$this->pythonStringLiteral($outFile)}
 TIMINGS_FILE = {$this->pythonStringLiteral($timingsFile)}
 COLLECT_TIMINGS = {$this->pythonStringLiteral($collectWordTimings ? '1' : '0')}
 
+# edge-tts v7 only emits 'audio' and 'SentenceBoundary'.
+# WordBoundary and VisemeEvent were dropped in v7.
+# Visemes require either ElevenLabs /with-timestamps or Azure Speech SDK.
+
 async def main():
     communicate = edge_tts.Communicate(TEXT, VOICE, rate=RATE)
-    boundaries = []
     with open(OUT_FILE, "wb") as audio:
         async for chunk in communicate.stream():
-            ctype = chunk.get("type")
-            if ctype == "audio":
+            if chunk.get("type") == "audio":
                 audio.write(chunk.get("data", b""))
-            elif COLLECT_TIMINGS == "1" and ctype == "WordBoundary":
-                offset = float(chunk.get("offset", 0)) / 10000000.0
-                duration = float(chunk.get("duration", 0)) / 10000000.0
-                text = str(chunk.get("text", "")).strip()
-                if text:
-                    boundaries.append({
-                        "text": text,
-                        "start": max(0.0, offset),
-                        "end": max(0.0, offset + duration)
-                    })
-
-    if COLLECT_TIMINGS == "1":
-        with open(TIMINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(boundaries, f)
 
 asyncio.run(main())
 PY;
@@ -308,7 +328,7 @@ PY;
             if ($collectWordTimings && file_exists($timingsFile)) {
                 $decoded = json_decode((string) file_get_contents($timingsFile), true);
                 if (is_array($decoded)) {
-                    $wordTimings = array_values(array_filter(array_map(function ($item) {
+                    $timingData = array_values(array_filter(array_map(function ($item) {
                         if (! is_array($item)) {
                             return null;
                         }
@@ -438,46 +458,6 @@ PY;
     {
         exec("command -v {$command} 2>/dev/null", $out, $rc);
         return $rc === 0;
-    }
-
-    private function kokoroPackageInstalled(string $python): bool
-    {
-        $command = escapeshellcmd($python) . ' -c "import importlib.util; import sys; sys.exit(0 if importlib.util.find_spec(\'kokoro_onnx\') or importlib.util.find_spec(\'kokoro\') else 1)" 2>/dev/null';
-
-        exec(
-            $command,
-            $out,
-            $rc
-        );
-
-        return $rc === 0;
-    }
-
-    private function kokoroStartCommand(string $python): ?string
-    {
-        $configured = trim((string) env('KOKORO_START_CMD', ''));
-        if ($configured !== '') {
-            return $configured;
-        }
-
-        $venvCli = dirname($python) . '/kokoro-server';
-        if (is_executable($venvCli)) {
-            return escapeshellarg($venvCli) . ' --port 8880';
-        }
-
-        if ($this->commandExists('kokoro-server')) {
-            return 'kokoro-server --port 8880';
-        }
-
-        if ($this->pythonModuleAvailable($python, 'kokoro.server')) {
-            return escapeshellcmd($python) . ' -m kokoro.server --port 8880';
-        }
-
-        if ($this->pythonModuleAvailable($python, 'kokoro_onnx.server')) {
-            return escapeshellcmd($python) . ' -m kokoro_onnx.server --port 8880';
-        }
-
-        return null;
     }
 
     private function pythonModuleAvailable(string $python, string $module): bool

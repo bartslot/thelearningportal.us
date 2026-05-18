@@ -48,8 +48,14 @@ class AvatarVoiceSample extends Model
 
     public function label(): string
     {
-        $voices = Avatar::kokoroVoices();
-        $name   = $voices[$this->voice_id] ?? $this->voice_id;
-        return "{$name} · {$this->voice_speed}×";
+        $snapshot = $this->settings_snapshot ?? [];
+
+        // Prefer the stored voice label (set at sample generation time)
+        if (! empty($snapshot['voice_label'])) {
+            return $snapshot['voice_label'];
+        }
+
+        // Fall back to voice_id
+        return $this->voice_id ?? 'Unknown';
     }
 }

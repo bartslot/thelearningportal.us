@@ -2,7 +2,7 @@
     x-lesson-player — Composite lesson player
     ─────────────────────────────────────────
     Background: Ken Burns slideshow of historical images (Europeana / Wikimedia)
-    Foreground: AI avatar video (or portrait + audio player when video not yet ready)
+    Foreground: Portrait + audio player driven by visemes (lip-sync)
 
     Props:
       $lesson  — App\Models\Lesson
@@ -12,7 +12,6 @@
 @php
     $images      = $lesson->slideshowImages();
     $hasImages   = count($images) > 0;
-    $videoUrl    = $lesson->videoUrl();
     $audioUrl    = $lesson->audioUrl();
     $portraitUrl = $lesson->portraitUrl();
     $visemesUrl  = $lesson->visemesUrl();
@@ -20,7 +19,7 @@
 @endphp
 
 <div
-    x-data="lessonPlayer(@js($images), @js($videoUrl), @js($audioUrl), @js($visemesUrl))"
+    x-data="lessonPlayer(@js($images), @js($audioUrl), @js($visemesUrl))"
     x-init="init()"
     @destroy.window="destroy()"
     class="relative w-full overflow-hidden rounded-2xl border border-slate-800"
@@ -32,18 +31,18 @@
             {{-- Two layers for crossfade --}}
             <div
                 x-ref="slideA"
-                class="absolute inset-0 bg-center bg-cover transition-opacity duration-[1200ms] ease-in-out"
+                class="absolute inset-0 bg-center bg-cover transition-opacity duration-1200 ease-in-out"
                 :style="`background-image: url('${currentImageUrl}'); opacity: ${layerAOpacity};`"
             ></div>
             <div
                 x-ref="slideB"
-                class="absolute inset-0 bg-center bg-cover transition-opacity duration-[1200ms] ease-in-out"
+                class="absolute inset-0 bg-center bg-cover transition-opacity duration-1200 ease-in-out"
                 :style="`background-image: url('${nextImageUrl}'); opacity: ${layerBOpacity};`"
             ></div>
 
             {{-- Dark gradient overlay so the avatar stays legible --}}
-            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-slate-950/10"></div>
-            <div class="absolute inset-0 bg-gradient-to-r from-slate-950/40 to-transparent"></div>
+            <div class="absolute inset-0 bg-linear-to-t from-slate-950/80 via-slate-950/30 to-slate-950/10"></div>
+            <div class="absolute inset-0 bg-linear-to-r from-slate-950/40 to-transparent"></div>
         </div>
 
         {{-- Attribution watermark --}}
@@ -85,29 +84,13 @@
 
     @else
         {{-- No images — plain dark backdrop --}}
-        <div class="absolute inset-0 z-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950"></div>
+        <div class="absolute inset-0 z-0 bg-linear-to-br from-slate-950 via-slate-900 to-slate-950"></div>
     @endif
 
-    {{-- ── Foreground: Avatar video or portrait + audio ──────────────────── --}}
+    {{-- ── Foreground: Portrait + audio (lip-sync) ──────────────────────── --}}
     <div class="absolute inset-0 z-10 flex items-center justify-center">
 
-        @if($videoUrl)
-            {{-- Full avatar video — covers the center, slight transparency on edges shows slideshow --}}
-            <video
-                x-ref="avatarVideo"
-                @play="isPlaying = true"
-                @pause="isPlaying = false"
-                @ended="isPlaying = false"
-                controls
-                preload="metadata"
-                poster="{{ $portraitUrl }}"
-                class="h-full max-h-full max-w-full object-contain drop-shadow-2xl"
-                style="filter: drop-shadow(0 0 24px rgba(0,0,0,0.8));"
-            >
-                <source src="{{ $videoUrl }}" type="video/mp4">
-            </video>
-
-        @elseif($audioUrl)
+        @if($audioUrl)
             {{-- Lip-sync avatar player (portrait + mouth sprites driven by visemes) --}}
             <div
                 x-data="lipSyncPlayer(@js($audioUrl), @js($portraitUrl), @js($visemesUrl))"
@@ -185,10 +168,8 @@
 
     </div>
 
-    {{-- ── Pause / Play overlay button (when video is present) ──────────── --}}
-    @if($videoUrl)
-        {{-- The native video controls handle this; overlay is hidden --}}
-    @elseif($hasImages)
+    {{-- ── Slideshow pause / play overlay button ─────────────────────────── --}}
+    @if($hasImages)
         {{-- Slideshow pause/play --}}
         <button
             @click="toggleSlideshow()"
@@ -355,7 +336,7 @@
         if (window.__lessonPlayerRegistered) return;
         window.__lessonPlayerRegistered = true;
 
-        Alpine.data('lessonPlayer', (images, videoUrl, audioUrl) => ({
+        Alpine.data('lessonPlayer', (images, audioUrl, visemesUrl) => ({
             // ── Slideshow state ─────────────────────────────────────────
             images:              images || [],
             currentIndex:        0,

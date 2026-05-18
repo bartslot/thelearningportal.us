@@ -42,16 +42,6 @@ return [
         'model' => env('OLLAMA_MODEL', 'llama3.1:8b'),
     ],
 
-    'kokoro' => [
-        'url' => env('KOKORO_TTS_URL', 'http://localhost:8880'),
-    ],
-
-    'sadtalker' => [
-        'url'    => env('SADTALKER_URL'),
-        'dir'    => env('SADTALKER_DIR'),
-        'python' => env('SADTALKER_PYTHON'),
-    ],
-
     'comfyui' => [
         'url' => env('COMFYUI_URL', 'http://localhost:8188'),
     ],
@@ -59,17 +49,27 @@ return [
     // ── Production AI APIs ────────────────────────────────────────────────────
 
     'openai' => [
-        'api_key'   => env('OPENAI_API_KEY'),
-        'tts_model' => env('OPENAI_TTS_MODEL', 'tts-1'),
-        'tts_voice' => env('OPENAI_TTS_VOICE', 'alloy'),
+        'api_key'      => env('OPENAI_API_KEY'),
+        'organization' => env('OPENAI_ORGANIZATION'),
+        'model'        => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'image_model'       => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+        'image_size'        => env('OPENAI_IMAGE_SIZE', '1536x1024'),
+        'image_format'      => env('OPENAI_IMAGE_FORMAT', 'webp'),       // png|jpeg|webp
+        'image_compression' => (int) env('OPENAI_IMAGE_COMPRESSION', 50), // 0-100 (jpeg/webp only)
+        'image_stitch'      => filter_var(env('OPENAI_IMAGE_STITCH', true), FILTER_VALIDATE_BOOLEAN), // 2-image stitched panorama
+        'base_url'     => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'timeout'      => (int) env('OPENAI_TIMEOUT', 60),
+        'tts_model'    => env('OPENAI_TTS_MODEL', 'tts-1'),
+        'tts_voice'    => env('OPENAI_TTS_VOICE', 'alloy'),
+    ],
+
+    'elevenlabs' => [
+        'api_key'  => env('ELEVENLABS_API_KEY'),
+        'base_url' => 'https://api.elevenlabs.io',
     ],
 
     'rhubarb' => [
         'binary' => env('RHUBARB_BINARY', '/Users/bartslot/bin/rhubarb'),
-    ],
-
-    'fal' => [
-        'api_key' => env('FAL_AI_KEY'),
     ],
 
     'anthropic' => [
@@ -82,10 +82,62 @@ return [
         'key' => env('EUROPEANA_API_KEY'),
     ],
 
+    'unsplash' => [
+        'access_key' => env('UNSPLASH_ACCESS_KEY'),
+    ],
+
+    'pexels' => [
+        'api_key' => env('PEXELS_API_KEY'),
+    ],
+
+    // ── fal.ai (image upscaling for skybox panoramas) ─────────────────────────
+
+    'falai' => [
+        'api_key'         => env('FAL_AI_KEY'),
+        // OFF by default until the storage-upload flow is in: clarity-upscaler
+        // rejects data: URIs (422 "Failed to load the image"). Flip to true after
+        // FAL_AI_KEY is set AND the upload path is in place.
+        'upscale_enabled' => filter_var(env('FAL_UPSCALE_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'upscale_model'   => env('FAL_UPSCALE_MODEL', 'fal-ai/clarity-upscaler'),
+        'upscale_factor'  => (int) env('FAL_UPSCALE_FACTOR', 2),
+        // Hard cap. fal.run can hold the connection open while the model queues
+        // server-side; we'd rather give up and serve the un-upscaled bytes than
+        // hang a queue worker indefinitely.
+        'timeout'         => (int) env('FAL_UPSCALE_TIMEOUT', 60),
+        'connect_timeout' => (int) env('FAL_UPSCALE_CONNECT_TIMEOUT', 10),
+    ],
+
     // ── Vercel serverless functions (avatar studio / audio manifest) ──────────
 
     'vercel_functions' => [
         'url' => env('VERCEL_FUNCTIONS_URL', 'http://localhost:3000'),
+    ],
+
+    // ── Animation tooling ─────────────────────────────────────────────────────
+
+    'fbx2gltf' => [
+        'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
+    ],
+
+    // ── Azure Speech Service (3D avatar lip sync) ─────────────────────────────
+
+    'azure_speech' => [
+        'key'    => env('AZURE_SPEECH_KEY'),
+        'region' => env('AZURE_SPEECH_REGION', 'eastus'),
+    ],
+
+    // ── Pocket TTS (local voice cloning) ──────────────────────────────────────
+
+    'pocket_tts' => [
+        'url'      => env('POCKET_TTS_URL', 'http://localhost:8001'),
+        'hf_token' => env('HF_TOKEN'),
+    ],
+
+    // ── WorldLabs Marble (3D Gaussian-splat world from image) ─────────────────
+
+    'worldlabs' => [
+        'api_key' => env('WORLD_LABS_API_KEY'),
+        'enabled' => filter_var(env('WORLD_LABS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
 ];
