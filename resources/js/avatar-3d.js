@@ -25,6 +25,7 @@ import * as THREE from 'three'
 import { GLTFLoader }    from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { FBXLoader }     from 'three/examples/jsm/loaders/FBXLoader.js'
+import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark'
 
 const DEG = Math.PI / 180
 
@@ -366,19 +367,20 @@ export class Avatar3DPlayer {
 
     // Key light: soft warm from upper-front-left (casts shadows)
     const key = new THREE.DirectionalLight(0xfff5e8, 1.4)
-    key.position.set(-1.5, 3.5, 2.5)
+    key.position.set(-2, 6, 3)
     key.castShadow                       = true
-    key.shadow.mapSize.width             = 1024
-    key.shadow.mapSize.height            = 1024
-    key.shadow.camera.near               = 0.5
-    key.shadow.camera.far                = 12
-    key.shadow.camera.left               = -2
-    key.shadow.camera.right              = 2
-    key.shadow.camera.top                = 4
-    key.shadow.camera.bottom             = -0.5
-    key.shadow.bias                      = -0.001
-    key.shadow.radius                    = 4      // PCFSoft softness
+    key.shadow.mapSize.width             = 2048
+    key.shadow.mapSize.height            = 2048
+    key.shadow.camera.near               = 0.1
+    key.shadow.camera.far                = 30
+    key.shadow.camera.left               = -5
+    key.shadow.camera.right              = 5
+    key.shadow.camera.top                = 8
+    key.shadow.camera.bottom             = -4
+    key.shadow.bias                      = -0.0005
+    key.shadow.radius                    = 3      // PCFSoft softness
     this._scene.add(key)
+    this._keyLight = key
 
     // Fill light: subtle cool from opposite side, no shadows
     const fill = new THREE.DirectionalLight(0xe8f0ff, 0.5)
@@ -1376,12 +1378,20 @@ export class Avatar3DPlayer {
     }
     this._gazePass(delta * 1000)    // after mixer so it stacks on top of animation
     this._updatePoseLerp(delta)
-    this._updateCameraLerp(delta)
-    this._updateZoomTargetBias()
+    if (!this._worldMode) {
+      this._updateCameraLerp(delta)
+      this._updateZoomTargetBias()
+    } else {
+      this._updateWorldCamera()
+    }
     this._idlePass(delta * 1000)
     this._updateSkyboxTransition(delta)
     this._controls?.update()
-    this._renderer?.render(this._scene, this._camera)
+    if (this._sparkRenderer) {
+      this._sparkRenderer.render(this._scene, this._camera)
+    } else {
+      this._renderer?.render(this._scene, this._camera)
+    }
   }
 
   _updatePoseLerp (deltaSec) {
@@ -1587,7 +1597,8 @@ export class Avatar3DPlayer {
     if (this._characterRoot) {
       const t       = performance.now() / 1000
       const breathe = 1 + Math.sin(t * 0.8) * 0.004   // subtle — uniform all axes
-      this._characterRoot.scale.setScalar(breathe)
+      const base    = (this._worldCharScale ?? 1) * (this._charScaleMult ?? 1)
+      this._characterRoot.scale.setScalar(base * breathe)
     }
 
     this._blinkTimer += deltaMs
@@ -1740,6 +1751,259 @@ export class Avatar3DPlayer {
   setAnimationExpressiveness (weight) {
     this._animExpressiveness = weight
     if (this._bodyAction) this._bodyAction.setEffectiveWeight(weight)
+  }
+
+  // ── WorldLabs (SPZ Gaussian splat + GLB ground) ────────────────────────────
+
+  async mountWorldLabs ({ spzUrl, glbUrl, panoUrl, semantics = {} }) {
+    // Cancel any in-flight mount so concurrent calls don't stack two worlds.
+    const mountId = (this._mountWorldId = (this._mountWorldId ?? 0) + 1)
+    const stale = () => this._mountWorldId !== mountId
+
+    this.dismountWorldLabs()
+    this._worldMode = true
+    // Disable damping so the camera doesn't coast after user input
+    if (this._controls) this._controls.enableDamping = false
+    // Stop any in-flight camera lerp (zoom animations aimed at avatar portrait framing)
+    this._camLerpT = 1.0
+
+    if (this._shadowPlane) this._shadowPlane.visible = false
+
+    const {
+      groundPlaneOffset = 0,
+      flipY             = true,
+      metricScaleFactor = 1,
+    } = semantics
+
+    const rotX = flipY ? Math.PI : 0
+
+    // ── Pano as equirectangular background / IBL ──────────────────────────
+    if (panoUrl) {
+      const tex = await new Promise((res, rej) =>
+        new THREE.TextureLoader().load(panoUrl, t => {
+          t.mapping   = THREE.EquirectangularReflectionMapping
+          t.colorSpace = THREE.SRGBColorSpace
+          res(t)
+        }, undefined, rej)
+      )
+      if (stale()) return null
+      this._scene.environment        = tex
+      this._scene.background         = tex
+      this._scene.backgroundBlurriness = 0
+      if (this._skyboxSphere) this._skyboxSphere.visible = false
+      this._worldPanoTex = tex
+    }
+
+    // ── GLB collider mesh — derive actual street Y, then shadow-catch ────────
+    let streetY = groundPlaneOffset  // fallback if no GLB
+    if (glbUrl) {
+      const gltf = await new Promise((res, rej) =>
+        new GLTFLoader().load(glbUrl, res, undefined, rej)
+      ).catch(() => null)
+
+      if (stale()) return null
+      if (gltf) {
+        const ground = gltf.scene
+        const shadowMat = new THREE.ShadowMaterial({ opacity: 0.4, transparent: true, depthWrite: false })
+        ground.traverse(child => {
+          if (child.isMesh) {
+            child.material      = shadowMat
+            child.receiveShadow = true
+            child.raycast       = () => {}
+            // Must render AFTER the SparkRenderer (renderOrder 0) so the shadow
+            // darkening composites on top of the splat instead of being buried under it.
+            // Without this, Three.js depth-sorts both transparent objects by camera
+            // distance, and the order flips with camera angle — hiding the shadow.
+            child.renderOrder   = 1
+          }
+        })
+        ground.rotation.x = rotX
+        ground.position.y = groundPlaneOffset
+        ground.scale.setScalar(metricScaleFactor)
+        this._scene.add(ground)
+        this._worldGlbMesh = ground
+
+        // Compute the real street surface Y from the GLB bounding box.
+        // The GLB is loaded with rotation.x = Math.PI (flipY), which inverts the Y
+        // axis: the original top surface (street, highest local Y) maps to the
+        // smallest world Y after the flip. So min.y = walkable street level.
+        ground.updateMatrixWorld(true)
+        const glbBox = new THREE.Box3().setFromObject(ground)
+        streetY = glbBox.min.y
+      }
+    }
+
+    // ── Scale character to 1.5 m real-world height × default fine multiplier ──
+    const WORLD_TARGET_HEIGHT  = 1.5
+    const WORLD_CHAR_SCALE_MULT = 0.53   // user-confirmed: fits through doors correctly
+    this._charScaleMult = WORLD_CHAR_SCALE_MULT
+    if (this._characterRoot) {
+      const box = new THREE.Box3().setFromObject(this._characterRoot)
+      const naturalHeight = box.getSize(new THREE.Vector3()).y
+      if (naturalHeight > 0.1) {
+        const s = WORLD_TARGET_HEIGHT / naturalHeight
+        this._worldCharScale = s
+        this._characterRoot.scale.setScalar(s * WORLD_CHAR_SCALE_MULT)
+      }
+    }
+
+    // ── Lift the WORLD so the street surface sits at Y=0 ─────────────────
+    // Character stays at position.y = 0 where lights/shadows are tuned.
+    // worldYAdjust = -streetY brings the cobblestone surface up to Y=0.
+    // WORLD_DEFAULT_FINE_OFFSET: user-confirmed tuning to align street precisely.
+    const WORLD_DEFAULT_FINE_OFFSET = -0.64
+    const worldYAdjust = -streetY + WORLD_DEFAULT_FINE_OFFSET
+    this._worldStreetY = streetY
+    this._worldYAdjust = worldYAdjust
+
+    if (this._worldGlbMesh) {
+      this._worldGlbMesh.position.y = groundPlaneOffset + worldYAdjust
+    }
+
+    if (stale()) return null
+
+    // ── SPZ Gaussian splat via @sparkjsdev/spark ──────────────────────────
+    // SparkRenderer extends THREE.Mesh — it IS a scene object. SplatMesh must
+    // be added as a child of SparkRenderer (not directly to the scene) so that
+    // SparkRenderer.render() / onBeforeRender can discover and process it.
+    if (spzUrl) {
+      this._sparkRenderer = new SparkRenderer({ renderer: this._renderer, enableLod: true })
+      const splat = new SplatMesh({ url: spzUrl })
+      splat.rotation.x = rotX
+      splat.position.y = groundPlaneOffset
+      splat.scale.setScalar(metricScaleFactor)
+      this._sparkRenderer.add(splat)   // child of SparkRenderer, not scene
+      // Lift the SparkRenderer so the splat cobblestone also sits at Y=0
+      this._sparkRenderer.position.y = worldYAdjust
+      this._scene.add(this._sparkRenderer)
+      this._worldSplatMesh = splat
+    }
+
+    return { streetY }
+  }
+
+  _getHeadWorldPos () {
+    const head = this._boneMap?.['Head'] ?? this._boneMap?.['head']
+    if (head) {
+      const wp = new THREE.Vector3()
+      head.getWorldPosition(wp)
+      return wp
+    }
+    // Fallback: use character root Y + approx head height
+    const root = this._characterRoot
+    if (root) return new THREE.Vector3(0, root.position.y + 0.75, 0)
+    return new THREE.Vector3(0, 0.75, 0)
+  }
+
+  _updateWorldCamera () {
+    if (!this._controls || !this._camera) return
+
+
+    // Pin orbit target to head bone so camera always revolves around the head
+    const headPos = this._getHeadWorldPos()
+    this._controls.target.copy(headPos)
+
+    // Dynamically clamp maxPolarAngle so OrbitControls itself never lets the camera
+    // dip below the floor. Clamping camera.position.y after the fact doesn't stick
+    // because controls.update() recalculates from internal spherical state each frame.
+    //
+    // In OrbitControls spherical coords: camera.position.y = target.y + r * cos(phi)
+    // We need camera.y >= FLOOR  →  cos(phi) >= (FLOOR - target.y) / r
+    //                              →  phi <= acos((FLOOR - target.y) / r)
+    const FLOOR = 0.5
+    const r     = this._camera.position.distanceTo(headPos)
+    if (r > 0.01) {
+      const cosMax = (FLOOR - headPos.y) / r
+      // clamp cosMax to [-1,1] so acos is always valid
+      this._controls.maxPolarAngle = Math.acos(Math.max(-1, Math.min(1, cosMax)))
+    }
+
+    // Fake fog on the splat: Spark's custom renderer ignores Three.js scene fog,
+    // so we simulate it by blending recolor toward a haze tint at distance.
+    if (this._worldSplatMesh) {
+      const FOG_START  = 4    // metres — fog begins
+      const FOG_END    = 18   // metres — full haze
+      const fogT = THREE.MathUtils.clamp((r - FOG_START) / (FOG_END - FOG_START), 0, 1)
+      // recolor multiplies each splat's RGB — lerp white→haze tint
+      const hazeR = 0.85, hazeG = 0.88, hazeB = 0.92
+      this._worldSplatMesh.recolor.setRGB(
+        1 - fogT * (1 - hazeR),
+        1 - fogT * (1 - hazeG),
+        1 - fogT * (1 - hazeB),
+      )
+      // Also fade opacity so far splats dissolve into background
+      this._worldSplatMesh.opacity = THREE.MathUtils.clamp(1 - fogT * 0.5, 0.5, 1)
+      this._worldSplatMesh.generatorDirty = true
+    }
+
+    // Collision: raycast from head toward camera; pull camera in if world GLB is hit
+    if (this._worldGlbMesh) {
+      const dir = new THREE.Vector3().subVectors(this._camera.position, headPos)
+      const dist = dir.length()
+      if (dist > 0.01) {
+        const ray = new THREE.Raycaster(headPos, dir.clone().divideScalar(dist), 0.1, dist)
+        const hits = ray.intersectObject(this._worldGlbMesh, true)
+        if (hits.length > 0) {
+          // Pull camera to just in front of the first hit surface
+          const safe = headPos.clone().addScaledVector(dir.divideScalar(dist), hits[0].distance - 0.15)
+          this._camera.position.copy(safe)
+        }
+      }
+    }
+  }
+
+  setCharScale (scale) {
+    this._charScaleMult = scale
+    if (!this._characterRoot) return
+    const base = this._worldCharScale ?? 1
+    this._characterRoot.scale.setScalar(base * scale)
+  }
+
+  setWorldScale (scale) {
+    if (this._worldGlbMesh)   this._worldGlbMesh.scale.setScalar(scale)
+    if (this._sparkRenderer)  this._sparkRenderer.scale.setScalar(scale)
+    this._worldScale = scale
+  }
+
+  dismountWorldLabs () {
+    if (this._worldPanoTex) {
+      if (this._scene.environment === this._worldPanoTex) this._scene.environment = null
+      if (this._scene.background  === this._worldPanoTex) this._scene.background  = null
+      this._worldPanoTex.dispose()
+      this._worldPanoTex = null
+      if (this._skyboxSphere) this._skyboxSphere.visible = true
+    }
+    if (this._worldGlbMesh) {
+      this._scene.remove(this._worldGlbMesh)
+      this._worldGlbMesh = null
+    }
+
+    if (this._sparkRenderer) {
+      // SparkRenderer is the scene parent of SplatMesh — removing it also removes the splat.
+      this._scene.remove(this._sparkRenderer)
+      this._sparkRenderer.dispose?.()
+      this._sparkRenderer = null
+      this._worldSplatMesh = null
+    }
+    // Restore character position and scale for non-world scene views.
+    if (this._characterRoot) {
+      if (this._worldStreetY != null) this._characterRoot.position.y = 0
+      if (this._worldCharScale != null) this._characterRoot.scale.setScalar(1)
+    }
+    if (this._shadowPlane) this._shadowPlane.visible = true
+    this._worldStreetY   = null
+    this._worldCharScale = null
+    this._charScaleMult  = null
+    this._worldMode = false
+    if (this._controls) {
+      this._controls.enableDamping = true
+      this._controls.dampingFactor = 0.08
+    }
+    if (this._keyLight) {
+      this._keyLight.target.position.set(0, 0, 0)
+      this._keyLight.target.updateMatrixWorld()
+      this._keyLight.shadow.camera.updateProjectionMatrix()
+    }
   }
 
   // ── Cleanup ────────────────────────────────────────────────────────────────

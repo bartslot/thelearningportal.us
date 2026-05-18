@@ -9,7 +9,7 @@
 
         {{-- Video track — fixed-size thumbs, scrolls horizontally if it overflows --}}
         <div id="timeline-track"
-             class="flex gap-2 items-stretch overflow-x-auto pb-1"
+             class="flex gap-2 items-stretch pb-1"
              @if ($editable) data-sortable="timeline" @endif>
             @foreach ($scenes as $scene)
                 <x-lesson.scene-thumb :scene="$scene"
