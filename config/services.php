@@ -94,10 +94,17 @@ return [
 
     'falai' => [
         'api_key'         => env('FAL_AI_KEY'),
-        'upscale_enabled' => filter_var(env('FAL_UPSCALE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        // OFF by default until the storage-upload flow is in: clarity-upscaler
+        // rejects data: URIs (422 "Failed to load the image"). Flip to true after
+        // FAL_AI_KEY is set AND the upload path is in place.
+        'upscale_enabled' => filter_var(env('FAL_UPSCALE_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'upscale_model'   => env('FAL_UPSCALE_MODEL', 'fal-ai/clarity-upscaler'),
         'upscale_factor'  => (int) env('FAL_UPSCALE_FACTOR', 2),
-        'timeout'         => (int) env('FAL_UPSCALE_TIMEOUT', 120),
+        // Hard cap. fal.run can hold the connection open while the model queues
+        // server-side; we'd rather give up and serve the un-upscaled bytes than
+        // hang a queue worker indefinitely.
+        'timeout'         => (int) env('FAL_UPSCALE_TIMEOUT', 60),
+        'connect_timeout' => (int) env('FAL_UPSCALE_CONNECT_TIMEOUT', 10),
     ],
 
     // ── Vercel serverless functions (avatar studio / audio manifest) ──────────

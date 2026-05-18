@@ -56,18 +56,25 @@ class OpenAiImageService
             return $bytes;
         }
 
-        $model   = (string) config('services.falai.upscale_model', 'fal-ai/clarity-upscaler');
-        $scale   = (int)    config('services.falai.upscale_factor', 2);
-        $timeout = (int)    config('services.falai.timeout', 120);
-
-        $dataUri = 'data:image/webp;base64,' . base64_encode($bytes);
+        $model         = (string) config('services.falai.upscale_model', 'fal-ai/clarity-upscaler');
+        $scale         = (int)    config('services.falai.upscale_factor', 2);
+        $timeout       = (int)    config('services.falai.timeout', 60);
+        $connectTimeout = (int)   config('services.falai.connect_timeout', 10);
 
         try {
+            // clarity-upscaler rejects data: URIs (422 "Failed to load the image"),
+            // so upload to fal storage first and pass the returned public URL.
+            $uploadedUrl = $this->uploadToFalStorage($bytes, $key, $connectTimeout, $timeout);
+            if ($uploadedUrl === null) {
+                return $bytes;
+            }
+
             $res = Http::withHeaders(['Authorization' => 'Key ' . $key])
                 ->timeout($timeout)
+                ->connectTimeout($connectTimeout)
                 ->acceptJson()
                 ->post("https://fal.run/{$model}", [
-                    'image_url'     => $dataUri,
+                    'image_url'     => $uploadedUrl,
                     'scale_factor'  => $scale,
                     'output_format' => 'webp',
                 ]);
@@ -99,6 +106,54 @@ class OpenAiImageService
         } catch (\Throwable $e) {
             Log::warning('[fal.ai] upscale exception: ' . $e->getMessage());
             return $bytes;
+        }
+    }
+
+    /**
+     * Upload bytes to fal.ai's storage and return a public URL we can hand to
+     * any fal.run model. Two-step flow: initiate (returns presigned PUT URL +
+     * resulting file URL), then PUT the bytes.
+     */
+    private function uploadToFalStorage(string $bytes, string $key, int $connectTimeout, int $timeout): ?string
+    {
+        try {
+            $initiate = Http::withHeaders(['Authorization' => 'Key ' . $key])
+                ->timeout($timeout)
+                ->connectTimeout($connectTimeout)
+                ->acceptJson()
+                ->asJson()
+                ->post('https://rest.alpha.fal.ai/storage/upload/initiate', [
+                    'content_type' => 'image/webp',
+                    'file_name'    => 'skybox.webp',
+                ]);
+
+            if (! $initiate->successful()) {
+                Log::warning('[fal.ai] storage initiate ' . $initiate->status() . ': ' . substr($initiate->body(), 0, 200));
+                return null;
+            }
+
+            $uploadUrl = $initiate->json('upload_url');
+            $fileUrl   = $initiate->json('file_url');
+            if (! is_string($uploadUrl) || ! is_string($fileUrl)) {
+                Log::warning('[fal.ai] storage initiate missing url(s)', ['body' => substr($initiate->body(), 0, 300)]);
+                return null;
+            }
+
+            $put = Http::withHeaders(['Content-Type' => 'image/webp'])
+                ->timeout($timeout)
+                ->connectTimeout($connectTimeout)
+                ->withBody($bytes, 'image/webp')
+                ->put($uploadUrl);
+
+            if (! $put->successful()) {
+                Log::warning('[fal.ai] storage PUT ' . $put->status() . ': ' . substr($put->body(), 0, 200));
+                return null;
+            }
+
+            return $fileUrl;
+        } catch (\Throwable $e) {
+            Log::warning('[fal.ai] storage upload exception: ' . $e->getMessage());
+            return null;
         }
     }
 
