@@ -202,9 +202,11 @@ class AvatarLab extends Component
     public function updatedName(string $value): void
     {
         $value = trim($value);
+        \Illuminate\Support\Facades\Log::info('[AvatarLab] updatedName called', ['value' => $value, 'avatarId' => $this->selectedAvatarId]);
         if ($this->selectedAvatarId && $value !== '') {
-            Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
-            unset($this->avatars); // bust computed cache
+            $rows = Avatar::where('id', $this->selectedAvatarId)->update(['name' => $value]);
+            \Illuminate\Support\Facades\Log::info('[AvatarLab] updatedName DB rows updated: ' . $rows);
+            unset($this->avatars);
         }
     }
 
