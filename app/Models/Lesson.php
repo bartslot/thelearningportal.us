@@ -52,6 +52,7 @@ class Lesson extends Model
         'game_split_count',
         'outline',
         'wizard_step',
+        'background_music',
     ];
 
     protected static function booted(): void
