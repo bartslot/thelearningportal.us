@@ -359,6 +359,26 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    /** Static music track catalogue (slot → file in public/sound/bg-music/). */
+    public function musicTracks(): array
+    {
+        return [
+            ['id' => 'default',    'label' => 'Ancient',     'file' => 'default.mp3', 'gradient_class' => 'vg-indigo'],
+            ['id' => 'track2',     'label' => 'Epic',        'file' => 'default.mp3', 'gradient_class' => 'vg-violet'],
+            ['id' => 'track3',     'label' => 'Mystical',    'file' => 'default.mp3', 'gradient_class' => 'vg-teal'],
+            ['id' => 'track4',     'label' => 'Battle',      'file' => 'default.mp3', 'gradient_class' => 'vg-navy'],
+            ['id' => 'track5',     'label' => 'Peaceful',    'file' => 'default.mp3', 'gradient_class' => 'vg-amber'],
+            ['id' => 'track6',     'label' => 'Dramatic',    'file' => 'default.mp3', 'gradient_class' => 'vg-base'],
+        ];
+    }
+
+    public function selectMusic(string $trackId): void
+    {
+        $track = collect($this->musicTracks())->firstWhere('id', $trackId);
+        $this->lesson->update(['background_music' => $track ? $track['id'] : null]);
+        $this->lesson->refresh();
+    }
+
     public function continueToPreview(): void
     {
         $this->lesson->update(['wizard_step' => 4, 'status' => LessonStatus::Previewable]);

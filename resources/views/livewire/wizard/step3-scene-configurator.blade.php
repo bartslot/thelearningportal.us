@@ -36,6 +36,51 @@
             @else
                 <p class="text-sm text-slate-400">No scene selected.</p>
             @endif
+
+            {{-- ── Background Music ──────────────────────────── --}}
+            <div class="mt-6 pt-4 border-t border-slate-700/50" x-data="musicStrip">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500">Background Music</span>
+                    @if($lesson->background_music)
+                        <button wire:click="selectMusic('')"
+                                class="text-[10px] text-slate-500 hover:text-rose-400 transition-colors">✕ off</button>
+                    @endif
+                </div>
+                <div class="flex gap-2 pb-2 overflow-x-auto scroll-smooth" style="scroll-snap-type:x mandatory; scrollbar-width:none;">
+                    @foreach($this->musicTracks() as $track)
+                    @php $url = asset('sound/bg-music/' . $track['file']); @endphp
+                    <button
+                        x-on:click="toggle('{{ $track['id'] }}', '{{ $url }}')"
+                        wire:click="selectMusic('{{ $track['id'] }}')"
+                        :class="selectedId === '{{ $track['id'] }}'
+                            ? 'border-amber-400'
+                            : 'border-slate-700/60 hover:border-indigo-500/50'"
+                        class="{{ $track['gradient_class'] }} shrink-0 w-16 rounded-xl p-2 border relative cursor-pointer transition-all"
+                        style="scroll-snap-align:start; min-height:72px;"
+                        title="{{ $track['label'] }}"
+                        x-init="@if($lesson->background_music === $track['id']) selectedId = '{{ $track['id'] }}' @endif"
+                    >
+                        <div class="absolute top-1 right-1 z-10">
+                            <span x-show="playingId === '{{ $track['id'] }}'"
+                                  class="flex gap-0.5 items-end h-3 text-indigo-400">
+                                <span class="wave-bar h-3"></span>
+                                <span class="wave-bar h-2"></span>
+                                <span class="wave-bar h-3"></span>
+                            </span>
+                            <span x-show="playingId !== '{{ $track['id'] }}' && selectedId === '{{ $track['id'] }}'"
+                                  class="text-amber-400 text-xs leading-none">✓</span>
+                        </div>
+                        <div class="flex items-center justify-center h-7 mt-1">
+                            <svg class="w-5 h-5 text-white/50" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/>
+                            </svg>
+                        </div>
+                        <p class="text-[10px] text-white/80 text-center truncate mt-1 leading-tight">{{ $track['label'] }}</p>
+                    </button>
+                    @endforeach
+                </div>
+                <p class="text-[10px] text-slate-600 mt-1">Click to preview (20s). Selected track plays during lesson.</p>
+            </div>
         </aside>
         
     {{-- Step nav floating buttons --}}
@@ -61,6 +106,44 @@
         function registerStep3() {
             if (window.__step3AlpineRegistered) return;
             window.__step3AlpineRegistered = true;
+
+            Alpine.data('musicStrip', () => ({
+                playingId: null,
+                selectedId: null,
+                _audio: null,
+                _timer: null,
+
+                toggle(trackId, url) {
+                    // Stop current preview
+                    if (this._audio) { this._audio.pause(); this._audio = null; }
+                    clearTimeout(this._timer);
+
+                    if (this.playingId === trackId) {
+                        this.playingId = null;
+                        return;
+                    }
+
+                    this.selectedId = trackId;
+                    this.playingId  = trackId;
+                    const audio = new Audio(url);
+                    audio.volume = 0.6;
+                    audio.play().catch(() => {});
+                    this._audio = audio;
+
+                    // Auto-stop after 20s
+                    this._timer = setTimeout(() => {
+                        audio.pause();
+                        this._audio = null;
+                        this.playingId = null;
+                    }, 20000);
+
+                    audio.addEventListener('ended', () => {
+                        this.playingId = null;
+                        this._audio = null;
+                        clearTimeout(this._timer);
+                    });
+                },
+            }));
 
             Alpine.data('step3SceneConfigurator', () => ({
                 inspectorOpen: true,
