@@ -6,31 +6,38 @@
          data-character-url="{{ $lesson->avatar?->glbUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none"></div>
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
+    
+        {{-- Inspector toggle chip --}}
+        <button type="button" @click="inspectorOpen = !inspectorOpen"
+                :aria-label="inspectorOpen ? 'Close inspector' : 'Open inspector'"
+                :title="inspectorOpen ? 'Close inspector' : 'Open inspector'"
+                :class="{ 'swap-active': inspectorOpen }"
+                class="fixed w-90 flex gap-4 justify-between top-4 right-4 p-4 z-60 btn btn-circle btn-sm swap swap-rotate bg-slate-900/80 backdrop-blur border-slate-700 text-slate-200 hover:border-amber-400">
+            <div class="w-4">
+            <span class="swap-on text-base leading-none">❯</span>
+            <span class="swap-off text-base leading-none">❮</span>
+            </div>
+            <div>Inspector</div>
+        </button>
 
-    {{-- Inspector toggle chip --}}
-    <button type="button" @click="inspectorOpen = !inspectorOpen"
-            class="fixed top-4 right-4 z-40 px-3 py-2 rounded-xl bg-slate-900/80 backdrop-blur border border-slate-700 text-xs text-slate-200 hover:border-amber-400">
-        ≡ Inspector
-    </button>
-
-    {{-- Inspector drawer --}}
-    <aside x-show="inspectorOpen" x-transition.opacity
-           class="fixed top-16 right-0 bottom-24 z-30 w-[360px] bg-base-300/90 backdrop-blur border-l border-slate-700/40 p-4 overflow-y-auto">
-        @php $sceneModel = $this->selectedSceneModel; @endphp
-        @if ($sceneModel)
-            @if ($sceneModel->kind === 'game')
-                <x-lesson.scene-inspector-game :scene="$sceneModel" />
+        {{-- Inspector drawer --}}
+        <aside x-show="inspectorOpen" x-transition.opacity
+            class="fixed top-16 right-0 bottom-24 z-50 w-90 bg-base-300/90 backdrop-blur border-l border-slate-700/40 p-4 overflow-y-auto">
+            @php $sceneModel = $this->selectedSceneModel; @endphp
+            @if ($sceneModel)
+                @if ($sceneModel->kind === 'game')
+                    <x-lesson.scene-inspector-game :scene="$sceneModel" />
+                @else
+                    <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
+                @endif
             @else
-                <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
+                <p class="text-sm text-slate-400">No scene selected.</p>
             @endif
-        @else
-            <p class="text-sm text-slate-400">No scene selected.</p>
-        @endif
-    </aside>
-
+        </aside>
+        
     {{-- Step nav floating buttons --}}
     <div class="fixed bottom-28 right-4 z-30 flex gap-2">
         <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"

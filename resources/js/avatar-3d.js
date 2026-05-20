@@ -194,9 +194,19 @@ function easeInOut (t) {
 
 // ── Skybox shaders ────────────────────────────────────────────────────────────
 const SKYBOX_VERT = /* glsl */`
-  varying vec2 vUv;
+  varying vec2  vUv;
+  varying float vPole;   // 0 = image band, 1 = fully at pole
+
   void main() {
-    vUv = vec2(1.0 - uv.x, uv.y);
+    // Map the equatorial band [0.18, 0.82] of the sphere to the image [0, 1].
+    // Pixels above / below that band fade to solid bg color, killing the
+    // pinch-vortex that appears when a non-equirectangular image is wrapped
+    // onto a full sphere.
+    float imgV = (uv.y - 0.18) / 0.64;
+    vUv  = vec2(1.0 - uv.x, clamp(imgV, 0.0, 1.0));
+    float poleT = 1.0 - smoothstep(0.0,  0.18, uv.y);
+    float poleB = smoothstep(0.82, 1.0, uv.y);
+    vPole = max(poleT, poleB);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `
@@ -210,6 +220,7 @@ const SKYBOX_FRAG = /* glsl */`
   uniform vec3      uBgColor;
   uniform bool      uHasLayer;
   varying vec2      vUv;
+  varying float     vPole;
 
   float hash(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -230,10 +241,21 @@ const SKYBOX_FRAG = /* glsl */`
   }
 
   void main() {
+    // Soften the left/right seam where image edges meet on the sphere.
+    // Fade a narrow band (~3 %) toward bg color so the join is invisible.
+    float seamW = 0.03;
+    float seam  = max(smoothstep(seamW, 0.0, vUv.x), smoothstep(1.0 - seamW, 1.0, vUv.x));
+
     vec4 base = texture2D(uTexBase, vUv);
+    base.rgb = mix(base.rgb, uBgColor, seam);
+    // Pole masking: fade toward bg color above/below the equatorial band.
+    base.rgb = mix(base.rgb, uBgColor, vPole);
+
     if (!uHasLayer || uBlend <= 0.001) { gl_FragColor = vec4(mix(uBgColor, base.rgb, uOpacity), 1.0); return; }
 
     vec4 layer = texture2D(uTexLayer, vUv);
+    layer.rgb = mix(layer.rgb, uBgColor, seam);
+    layer.rgb = mix(layer.rgb, uBgColor, vPole);
     float n     = fbm(vUv * 5.0);
     float edge  = 0.06;
     float mask  = 1.0 - smoothstep(uBlend - edge, uBlend + edge, n);
@@ -419,15 +441,20 @@ export class Avatar3DPlayer {
 
     // Auto-resize — observe the parent container (canvas has no CSS size of its own;
     // layout dimensions come from the parent's w-full/h-full constraints).
+    const resizeTarget = this.canvasEl.parentElement ?? this.canvasEl
+    const doResize = () => {
+      const w = resizeTarget.clientWidth  || window.innerWidth
+      const h = resizeTarget.clientHeight || window.innerHeight
+      if (w > 0 && h > 0) this.resize(w, h)
+    }
     if (typeof ResizeObserver !== 'undefined') {
-      const resizeTarget = this.canvasEl.parentElement ?? this.canvasEl
-      this._resizeObs = new ResizeObserver(() => {
-        const w = resizeTarget.clientWidth
-        const h = resizeTarget.clientHeight
-        if (w > 0 && h > 0) this.resize(w, h)
-      })
+      this._resizeObs = new ResizeObserver(doResize)
       this._resizeObs.observe(resizeTarget)
     }
+    // Fallback: window resize covers cases where the fixed container doesn't
+    // trigger the observer (e.g. mobile browser chrome show/hide).
+    this._onWindowResize = doResize
+    window.addEventListener('resize', this._onWindowResize)
 
     this._loop()
   }
@@ -2010,6 +2037,7 @@ export class Avatar3DPlayer {
 
   destroy () {
     this._resizeObs?.disconnect()
+    if (this._onWindowResize) window.removeEventListener('resize', this._onWindowResize)
     if (this._rafId) cancelAnimationFrame(this._rafId)
     this._audio?.pause()
     this._audioCtx?.close()
