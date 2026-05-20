@@ -46,11 +46,14 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // Subscribe to scene:load BEFORE the slow avatar init so we don't miss the
     // initial dispatch that fires during Livewire hydration. Buffer the last
     // payload and apply it as soon as the player is ready.
-    let pendingScene = null
-    let playerReady  = false
-    let activePlayer = null
-    let overlay      = null
-    let timer        = null
+    let pendingScene  = null
+    let playerReady   = false
+    let activePlayer  = null
+    let overlay       = null
+    let timer         = null
+    // Tracks a tab click that hasn't been confirmed by the DB yet.
+    // Prevents wire:poll from snapping Three.js back to the old view.
+    let _pendingView  = null
 
     // Pre-warmed audio elements per URL — keeps the browser's HTTP cache hot AND
     // primes the media pipeline so audio.play() starts instantly when the teacher
@@ -69,14 +72,21 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     const applyScene = async (payload) => {
         if (!payload) return
-        const view = payload.sceneView === 'slideshow' ? 'slideshow'
-                   : payload.sceneView === 'world'     ? 'world'
-                   : 'skybox'
+        const dbView = payload.sceneView === 'slideshow' ? 'slideshow'
+                     : payload.sceneView === 'world'     ? 'world'
+                     : 'skybox'
+        // Once DB confirms the clicked tab, clear the pending guard.
+        if (_pendingView && _pendingView === dbView) _pendingView = null
 
-        if (playerReady) {
+        // While a tab click hasn't been confirmed by the DB yet, skip ALL Three.js
+        // work — the lesson:scene:view handler already applied the correct view with
+        // the correct payload. Running applyScene with a stale payload causes the
+        // wrong branch to execute with the wrong image URL, creating extra texture loads.
+        if (playerReady && !_pendingView) {
+            const view = dbView
             try {
                 if (view === 'slideshow') {
-                    restoreDefaultCameraMode(activePlayer)
+                    applySlideshowCameraMode(activePlayer)
                     await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10)
                 } else if (view === 'world') {
                     applyWorldCameraMode(activePlayer)
@@ -105,10 +115,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 console.warn('[wizard-bridge] background load failed', err)
             }
         }
-        if (playerReady && view === 'skybox' && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
+        if (playerReady && dbView === 'skybox' && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
             try { activePlayer.setSkyboxOpacity(payload.skyboxOpacity) } catch {}
         }
-        if (playerReady && view === 'skybox' && typeof payload.backgroundColor === 'string') {
+        if (playerReady && dbView === 'skybox' && typeof payload.backgroundColor === 'string') {
             applyBackgroundColor(payload.backgroundColor)
         }
         if (playerReady && payload.animationClipUrl && typeof activePlayer.loadAnimation === 'function') {
@@ -162,6 +172,27 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         applyBackgroundColor(String(e.detail?.color ?? '#000000'))
     })
 
+    // Immediate scene-view tab switch — camera + background mode without waiting
+    // for the next Livewire poll to call applyScene.
+    window.addEventListener('lesson:scene:view', async e => {
+        if (!playerReady) return
+        const { view, imageUrl, sceneId, duration } = e.detail ?? {}
+        _pendingView = view ?? null
+        if (view === 'slideshow') {
+            applySlideshowCameraMode(activePlayer)
+            if (imageUrl) await applySlideshowBackground(imageUrl, sceneId ?? 0, duration ?? 10)
+        } else if (view === 'skybox') {
+            // Skybox sphere is already loaded — just restore camera + make it visible.
+            kenBurnsState = null
+            if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = true
+            activePlayer?.dismountWorldLabs?.()
+            hideWorldWaitingState(activePlayer?._scene)
+            restoreDefaultCameraMode(activePlayer)
+        } else if (view === 'world') {
+            applyWorldCameraMode(activePlayer)
+        }
+    })
+
     // Update the scene clear color + the skybox shader's bg uniform without
     // clearing the skybox sphere (Avatar3DPlayer.setSceneBackground destroys it).
     function applyBackgroundColor(hex) {
@@ -185,6 +216,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = true
         // Pause Ken Burns animation when leaving slideshow.
         kenBurnsState = null
+        // Restore orbit + rotate when coming back from slideshow or world
+        restoreDefaultCameraMode(activePlayer)
         await activePlayer.setSkyboxFromUrl(url, blur)
     }
 
@@ -278,7 +311,6 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // on the scene's clear color so it renders as a flat 2D backdrop.
     const slideshowTextureCache = new Map()
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10) {
-        if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
         try {
             let tex = slideshowTextureCache.get(url)
             if (!tex) {
@@ -292,6 +324,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 })
                 slideshowTextureCache.set(url, tex)
             }
+            // Hide sphere only after texture is ready — avoids black flash.
+            if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
             activePlayer._scene.background = tex
             startKenBurns(tex, sceneId, Math.max(4, durationSec || 10))
         } catch (err) {
@@ -310,6 +344,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         { from: { ox: 0.045, oy: 0.045, r: 0.91 }, to: { ox: 0.045, oy: 0.045, r: 1.00 } }, // centered zoom
         { from: { ox: 0.00, oy: 0.045, r: 0.91 }, to: { ox: 0.09, oy: 0.045, r: 0.91 } },  // pan L→R, no zoom
     ]
+    const KEN_BURNS_PAUSE_MS = 2000
     let kenBurnsState = null
     function startKenBurns(tex, sceneId, durationSec) {
         const idx = ((Number(sceneId) || 0) % KEN_BURNS_VARIANTS.length + KEN_BURNS_VARIANTS.length) % KEN_BURNS_VARIANTS.length
@@ -320,32 +355,70 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             durationMs: durationSec * 1000,
         }
     }
+    // Compute "cover" UV scale so the background image fills the viewport without
+    // stretching regardless of how the window is resized.
+    function coverScale(tex) {
+        const img = tex.image
+        const imgW = img?.naturalWidth  || img?.width  || 1
+        const imgH = img?.naturalHeight || img?.height || 1
+        const vpW  = activePlayer?.canvasEl?.clientWidth  || 1
+        const vpH  = activePlayer?.canvasEl?.clientHeight || 1
+        const imgAspect = imgW / imgH
+        const vpAspect  = vpW  / vpH
+        if (vpAspect > imgAspect) {
+            // viewport wider — fill by width, crop top/bottom
+            const rY = imgAspect / vpAspect
+            return { rX: 1, rY, oX: 0, oY: (1 - rY) / 2 }
+        } else {
+            // viewport taller — fill by height, crop left/right
+            const rX = vpAspect / imgAspect
+            return { rX, rY: 1, oX: (1 - rX) / 2, oY: 0 }
+        }
+    }
+
     function tickKenBurns(now) {
         if (!kenBurnsState) return
         const { tex, variant, startedAt, durationMs } = kenBurnsState
-        // Loop so the effect persists if a scene is held past its duration.
-        const t = Math.min(1, ((now - startedAt) % durationMs) / durationMs)
-        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+        // Ping-pong cycle: from → to (pan), pause, to → from (pan back), pause.
+        const cycleDuration = 2 * durationMs + 2 * KEN_BURNS_PAUSE_MS
+        const elapsed = (now - startedAt) % cycleDuration
+
+        // Direction value d: 0 = `from` position, 1 = `to` position.
+        let d
+        if (elapsed < durationMs) {
+            d = elapsed / durationMs                                   // forward
+        } else if (elapsed < durationMs + KEN_BURNS_PAUSE_MS) {
+            d = 1                                                      // hold at `to`
+        } else if (elapsed < 2 * durationMs + KEN_BURNS_PAUSE_MS) {
+            d = 1 - (elapsed - durationMs - KEN_BURNS_PAUSE_MS) / durationMs  // reverse
+        } else {
+            d = 0                                                      // hold at `from`
+        }
+
+        const eased = d < 0.5 ? 2 * d * d : 1 - Math.pow(-2 * d + 2, 2) / 2
         const ox = variant.from.ox + (variant.to.ox - variant.from.ox) * eased
         const oy = variant.from.oy + (variant.to.oy - variant.from.oy) * eased
         const r  = variant.from.r  + (variant.to.r  - variant.from.r)  * eased
-        tex.offset.set(ox, oy)
-        tex.repeat.set(r, r)
+        // Apply cover scaling so the image always fills the viewport at any size.
+        const cv = coverScale(tex)
+        tex.repeat.set(cv.rX * r, cv.rY * r)
+        tex.offset.set(cv.oX + ox * cv.rX, cv.oY + oy * cv.rY)
     }
 
     // ── Auto-orbit + handheld vibration ───────────────────────────────────────
     let resumeOrbitTimer = null
     let _worldCameraMode = false
+    let _slideshowMode   = false
     function pauseOrbit() {
         if (!activePlayer?._controls) return
         activePlayer._controls.autoRotate = false
         if (resumeOrbitTimer) clearTimeout(resumeOrbitTimer)
     }
     function scheduleOrbitResume() {
-        if (!activePlayer?._controls || _worldCameraMode) return
+        if (!activePlayer?._controls || _worldCameraMode || _slideshowMode) return
         if (resumeOrbitTimer) clearTimeout(resumeOrbitTimer)
         resumeOrbitTimer = setTimeout(() => {
-            if (activePlayer?._controls && !_worldCameraMode) activePlayer._controls.autoRotate = true
+            if (activePlayer?._controls && !_worldCameraMode && !_slideshowMode) activePlayer._controls.autoRotate = true
         }, 2000)
     }
     // ── WASD free-fly for World Scene View ───────────────────────────────────
@@ -431,7 +504,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     function applyWorldCameraMode(player) {
         if (!player?._controls) return
         _worldCameraMode = true
+        _slideshowMode   = false
         if (resumeOrbitTimer) { clearTimeout(resumeOrbitTimer); resumeOrbitTimer = null }
+        player._controls.enabled = true
         player._controls.autoRotate      = false
         player._controls.enableRotate    = true
         player._controls.enableZoom      = true
@@ -454,8 +529,16 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     function restoreDefaultCameraMode(player) {
         if (!player?._controls) return
         _worldCameraMode = false
+        _slideshowMode   = false
         _stopWasd()
 
+        player._controls.enabled         = true
+        player._controls.enableRotate    = true
+        player._controls.enableDamping   = true
+        if (player._renderer?.domElement) {
+            player._renderer.domElement.style.pointerEvents = ''
+        }
+        player._controls.dampingFactor   = 0.08
         player._controls.autoRotate      = true
         player._controls.autoRotateSpeed = 0.4
         player._controls.enableZoom      = false
@@ -465,12 +548,45 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         player._controls.maxPolarAngle   = Math.PI * 0.85
     }
 
+    function applySlideshowCameraMode(player) {
+        if (!player?._controls || !player?._camera) return
+        _worldCameraMode = false
+        _slideshowMode   = true
+        _stopWasd()
+        if (resumeOrbitTimer) { clearTimeout(resumeOrbitTimer); resumeOrbitTimer = null }
+
+        // Fully lock camera — slideshow is a static 2D backdrop, no 3D navigation
+        player._controls.autoRotate   = false
+        player._controls.enableRotate = false
+        player._controls.enableZoom   = false
+        player._controls.enablePan    = false
+        player._controls.enabled      = false
+        // Belt-and-suspenders: block pointer events on the canvas so no drag/scroll
+        // reaches OrbitControls even if enabled somehow gets reset.
+        if (player._renderer?.domElement) {
+            player._renderer.domElement.style.pointerEvents = 'none'
+        }
+        // Disable damping and zero residual angular velocity so the camera doesn't
+        // keep drifting from whatever orbit speed it had before the mode switch.
+        player._controls.enableDamping = false
+        if (player._controls._sphericalDelta) {
+            player._controls._sphericalDelta.theta = 0
+            player._controls._sphericalDelta.phi   = 0
+        }
+
+        // Position camera directly front-facing at avatar
+        player._camera.position.set(0, 1.4, 2.4)
+        player._controls.target.set(0, 1.2, 0)
+        player._controls.update()
+    }
+
     // Subtle handheld jitter. Apply just before render, undo just after, so
-    // OrbitControls' spherical state isn't perturbed.
+    // OrbitControls' spherical state isn't perturbed. Suppressed in slideshow mode.
     function startHandheldVibration(player) {
         if (!player?._renderer || !player?._camera) return
         const originalRender = player._renderer.render.bind(player._renderer)
         player._renderer.render = function (scene, camera) {
+            if (_slideshowMode) { return originalRender(scene, camera) }
             const t = performance.now() / 1000
             const dx = Math.sin(t * 1.7) * 0.0035 + Math.sin(t * 0.7) * 0.0015
             const dy = Math.cos(t * 2.3) * 0.0035 + Math.cos(t * 0.9) * 0.0015

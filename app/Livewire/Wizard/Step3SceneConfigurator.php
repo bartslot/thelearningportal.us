@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Livewire\Wizard;
 
 use App\Enums\LessonStatus;
+use App\Jobs\EnhanceSkyboxImage;
 use App\Jobs\GenerateSceneAudio;
 use App\Jobs\GenerateSceneImage;
 use App\Jobs\GenerateSceneScript;
+use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
 use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
@@ -31,6 +33,7 @@ class Step3SceneConfigurator extends Component
     /** @var array<string,mixed>|null */
     public ?array $selectedScene   = null;
     public bool   $inspectorOpen   = true;
+    public ?string $prevSelectedStatus = null;
 
     public function mount(Lesson $lesson): void
     {
@@ -82,9 +85,18 @@ class Step3SceneConfigurator extends Component
         $this->selectedSceneId = $id;
         $this->selectedScene   = $this->snapshot($scene);
 
+        $ts       = $scene->updated_at?->timestamp ?? '';
+        $view     = $scene->scene_view ?? 'skybox';
+        // Skybox view uses the equirectangular panorama if available; fall back to flat image.
+        // Slideshow view always uses the flat image.
+        $imagePath = ($view === 'skybox' && ! empty($scene->skybox_image_path))
+            ? $scene->skybox_image_path
+            : $scene->image_path;
+
         $this->dispatch('scene:load', payload: [
             'sceneId'           => $scene->id,
-            'imageUrl'          => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
+            'imageUrl'          => $imagePath ? asset('storage/' . $imagePath) . '?v=' . $ts : null,
+            'hasSkyboxImage'    => ! empty($scene->skybox_image_path),
             'audioUrl'          => $scene->audio_path ? asset('storage/' . $scene->audio_path) : null,
             'animationClipId'   => $scene->animation_clip_id,
             'animationClipUrl'  => $this->animationGlbUrlFor($scene),
@@ -153,6 +165,7 @@ class Step3SceneConfigurator extends Component
             $snap[$f] = $scene->{$f};
         }
         $snap['image_path']         = $scene->image_path;
+        $snap['skybox_image_path']  = $scene->skybox_image_path;
         $snap['audio_path']         = $scene->audio_path;
         $snap['status']             = $scene->status;
         $snap['game_segment_index'] = $scene->game_segment_index;
@@ -169,12 +182,16 @@ class Step3SceneConfigurator extends Component
             ->findOrFail($this->selectedSceneId);
 
         $payload     = collect($this->selectedScene)->only(self::EDITABLE_FIELDS)->all();
+        if (array_key_exists('animation_clip_id', $payload) && $payload['animation_clip_id'] === '') {
+            $payload['animation_clip_id'] = null;
+        }
         $scriptDirty = ($scene->script_segment ?? '') !== ($payload['script_segment'] ?? '');
 
         // Detect changes that should re-paint the 3D stage so the canvas updates.
         $stageDirty = (int) ($payload['animation_clip_id'] ?? 0) !== (int) ($scene->animation_clip_id ?? 0)
-            || ($payload['year']     ?? null) !== ($scene->year     ?? null)
-            || ($payload['location'] ?? null) !== ($scene->location ?? null);
+            || ($payload['year']      ?? null) !== ($scene->year      ?? null)
+            || ($payload['location']  ?? null) !== ($scene->location  ?? null)
+            || ($payload['scene_view'] ?? null) !== ($scene->scene_view ?? null);
 
         $scene->update($payload);
 
@@ -185,6 +202,14 @@ class Step3SceneConfigurator extends Component
         if ($stageDirty) {
             $this->selectSceneInternal($scene->id);
         }
+    }
+
+    public function setSceneView(string $view): void
+    {
+        if ($this->selectedScene) {
+            $this->selectedScene['scene_view'] = $view;
+        }
+        $this->saveSelected();
     }
 
     public function reorder(array $orderedIds): void
@@ -201,6 +226,40 @@ class Step3SceneConfigurator extends Component
                     ->update(['order' => $idx + 1]);
             }
         });
+    }
+
+    public function generateSkyboxImage(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        if (! $scene->image_path) {
+            $this->dispatch('toast', message: 'Generate the flat image first.', type: 'warning');
+            return;
+        }
+
+        $scene->update(['status' => 'generating', 'error_message' => null]);
+        GenerateSkyboxImage::dispatch($sceneId);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+    }
+
+    public function enhanceSkybox(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        if (! $scene->image_path) {
+            $this->dispatch('toast', message: 'Generate the skybox image first before enhancing.', type: 'warning');
+            return;
+        }
+
+        $scene->update(['status' => 'generating', 'error_message' => null]);
+        EnhanceSkyboxImage::dispatch($sceneId);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
     }
 
     public function regenerate(int $sceneId, string $asset): void
@@ -329,9 +388,27 @@ class Step3SceneConfigurator extends Component
         ]);
     }
 
+    /** Re-fire scene:load whenever the selected scene's status changes. */
+    private function pollSceneReady(): void
+    {
+        if (! $this->selectedSceneId) return;
+
+        $scene = $this->lesson->scenes()->find($this->selectedSceneId);
+        if (! $scene) return;
+
+        $currentStatus = (string) $scene->status;
+
+        if ($currentStatus !== $this->prevSelectedStatus) {
+            $this->selectSceneInternal($scene->id);
+        }
+
+        $this->prevSelectedStatus = $currentStatus;
+    }
+
     public function render()
     {
         $this->pollWorldStatus();
+        $this->pollSceneReady();
         return view('livewire.wizard.step3-scene-configurator');
     }
 }

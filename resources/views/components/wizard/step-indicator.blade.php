@@ -31,8 +31,8 @@
         : route('teacher.lessons.create', ['step' => $n]);
 @endphp
 
-<div class="fixed top-0 inset-x-0 z-50 bg-base-300/95 backdrop-blur border-b border-slate-700/40">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 text-xs">
+<div class="fixed top-16 inset-x-0 z-50 flex justify-center">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 text-xs bg-base-300/50 backdrop-blur border-b rounded-b-3xl border-slate-700/40">
         @foreach ($steps as $n => $label)
             @php
                 $isActive    = $n === (int) $step;
@@ -42,7 +42,7 @@
             @if ($isAvailable && ! $isActive)
                 <a href="{{ $stepUrl($n) }}" wire:navigate
                    class="flex items-center gap-2 group">
-                    <span class="w-7 h-7 rounded-full flex items-center justify-center font-semibold bg-slate-700 text-slate-200 group-hover:bg-slate-600 transition-colors">{{ $n }}</span>
+                    <span class="w-7 h-7 rounded-full flex items-center justify-center font-semibold bg-slate-900 text-slate-200 group-hover:bg-slate-600 transition-colors">{{ $n }}</span>
                     <span class="text-slate-300 group-hover:text-amber-300 transition-colors">{{ $label }}</span>
                 </a>
             @elseif ($isActive)

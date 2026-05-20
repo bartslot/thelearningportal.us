@@ -40,34 +40,7 @@
         </select>
     </label>
 
-    <div class="space-y-1">
-        <p class="text-xs uppercase tracking-wider text-slate-400">Skybox</p>
-        <div class="flex items-center gap-3">
-            @if ($scene->image_path)
-                <img src="{{ asset('storage/' . $scene->image_path) }}" class="w-20 h-12 rounded object-cover" />
-            @endif
-            <button type="button"
-                    wire:click="regenerate({{ $scene->id }}, 'image')"
-                    wire:loading.attr="disabled" wire:target="regenerate"
-                    @disabled($isGenerating)
-                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                @if ($isGenerating)
-                    <x-icons.spinner class="w-3 h-3 animate-spin" />
-                    <span>Generating…</span>
-                @else
-                    <x-icons.regenerate class="w-3 h-3" />
-                    <span>Regenerate</span>
-                @endif
-            </button>
-        </div>
-        <details class="text-xs">
-            <summary class="cursor-pointer text-slate-400">Prompt</summary>
-            <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
-                      class="textarea textarea-sm textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
-        </details>
-
-        <x-lesson.skybox-controls :scene="$scene" />
-    </div>
+    <x-lesson.skybox-controls :scene="$scene" />
 
     <div class="space-y-1">
         <p class="text-xs uppercase tracking-wider text-slate-400">Script</p>

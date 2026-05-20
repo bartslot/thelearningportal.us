@@ -6,7 +6,7 @@
          data-character-url="{{ $lesson->avatar?->glbUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none"></div>
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
 
@@ -47,10 +47,9 @@
     </script>
 </div>
 
-@push('head-scripts')
+@script
 <script>
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('step4Preview', () => ({
+    Alpine.data('step4Preview', () => ({
             playing: false,
             readout: '0:00 / 0:00',
             stage:   null,
@@ -99,6 +98,5 @@
                 return `${m}:${String(r).padStart(2, '0')}`;
             },
         }));
-    });
 </script>
-@endpush
+@endscript
