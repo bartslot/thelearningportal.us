@@ -1,0 +1,3102 @@
+[
+  {
+    "topic": "Ancient Egypt — The Pharaohs and Divine Kingship",
+    "region": "egypt",
+    "era": "Ancient Egypt — Old Kingdom (2686–2181 BCE)"
+  },
+  {
+    "topic": "Building the Pyramids",
+    "region": "egypt",
+    "era": "Ancient Egypt — Old Kingdom (2686–2181 BCE)"
+  },
+  {
+    "topic": "Egyptian Hieroglyphics and Writing",
+    "region": "egypt",
+    "era": "Ancient Egypt — Middle Kingdom (2055–1650 BCE)"
+  },
+  {
+    "topic": "Tutankhamun and the New Kingdom",
+    "region": "egypt",
+    "era": "Ancient Egypt — New Kingdom (1550–1070 BCE)"
+  },
+  {
+    "topic": "Ramesses II and the Battle of Kadesh",
+    "region": "egypt",
+    "era": "Ancient Egypt — New Kingdom (1550–1070 BCE)"
+  },
+  {
+    "topic": "Cleopatra and the End of Ancient Egypt",
+    "region": "egypt",
+    "era": "Late Period & Ptolemaic Egypt (664–30 BCE)"
+  },
+  {
+    "topic": "The Rosetta Stone and Decoding Hieroglyphics",
+    "region": "egypt",
+    "era": "Late Period & Ptolemaic Egypt (664–30 BCE)"
+  },
+  {
+    "topic": "Alexander the Great's Conquests",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Persian Wars — Marathon and Thermopylae",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Athenian Democracy",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Sparta — A Military Society",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Peloponnesian War",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Greek Philosophy — Socrates, Plato, Aristotle",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Olympic Games in Ancient Greece",
+    "region": "ancient-greece",
+    "era": "Archaic Period (800–480 BCE)"
+  },
+  {
+    "topic": "The Trojan War and Homer's Iliad",
+    "region": "ancient-greece",
+    "era": "Minoan & Mycenaean (2700–1100 BCE)"
+  },
+  {
+    "topic": "The Roman Republic — Senate and Patricians",
+    "region": "ancient-rome",
+    "era": "Roman Republic (509–27 BCE)"
+  },
+  {
+    "topic": "Julius Caesar — Rise and Assassination",
+    "region": "ancient-rome",
+    "era": "Roman Republic (509–27 BCE)"
+  },
+  {
+    "topic": "Augustus and the Birth of the Roman Empire",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "The Roman Colosseum and Gladiators",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "The Roman Army and its Legions",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "Pompeii — Life and Death Under Vesuvius",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "The Fall of the Western Roman Empire",
+    "region": "ancient-rome",
+    "era": "Fall of the Western Roman Empire (376–476 CE)"
+  },
+  {
+    "topic": "Pax Romana — Two Centuries of Peace",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "Early Christianity in the Roman Empire",
+    "region": "ancient-rome",
+    "era": "Roman Empire (27 BCE–476 CE)"
+  },
+  {
+    "topic": "Viking Raids and Exploration",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "Viking Society — Longships and Trade",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "Leif Erikson and the Discovery of North America",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "The Christianisation of Scandinavia",
+    "region": "scandinavia",
+    "era": "Christianisation & Medieval Kingdoms (1000–1397)"
+  },
+  {
+    "topic": "The Norman Conquest of England (1066)",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "Magna Carta and the Limits of Royal Power",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "The Black Death in Europe",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Hundred Years' War",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "Joan of Arc",
+    "region": "france",
+    "era": "Medieval France (987–1453)"
+  },
+  {
+    "topic": "The Crusades — Christian and Muslim Perspectives",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "Medieval Feudalism",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "Charlemagne and the Carolingian Empire",
+    "region": "france",
+    "era": "Frankish Kingdom & Carolingians (486–987)"
+  },
+  {
+    "topic": "The Byzantine Empire",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Fall of Constantinople (1453)",
+    "region": "ottoman-empire",
+    "era": "Rise of the Ottoman State (1299–1453)"
+  },
+  {
+    "topic": "The Mongol Empire and Genghis Khan",
+    "region": "china",
+    "era": "Yuan Dynasty / Mongol Rule (1271–1368)"
+  },
+  {
+    "topic": "The Silk Road — Trade and Cultural Exchange",
+    "region": "silk-road",
+    "era": "Tang-era Silk Road (618–907)"
+  },
+  {
+    "topic": "The Islamic Golden Age — Science and Philosophy",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Reconquista — Christian Kingdoms vs. Al-Andalus",
+    "region": "spain",
+    "era": "Reconquista (718–1492)"
+  },
+  {
+    "topic": "Tudor England — Henry VIII and the Reformation",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "Elizabeth I and the Elizabethan Age",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "Mary Queen of Scots",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "The Spanish Armada (1588)",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "The Protestant Reformation — Luther and Calvin",
+    "region": "germany",
+    "era": "Reformation (1517–1648)"
+  },
+  {
+    "topic": "Martin Luther and the Ninety-Five Theses",
+    "region": "germany",
+    "era": "Reformation (1517–1648)"
+  },
+  {
+    "topic": "The Thirty Years' War",
+    "region": "germany",
+    "era": "Thirty Years' War (1618–1648)"
+  },
+  {
+    "topic": "Christopher Columbus and the Age of Exploration",
+    "region": "global",
+    "era": "Age of Exploration (1400–1600)"
+  },
+  {
+    "topic": "The Spanish Conquest of the Aztec Empire",
+    "region": "aztec-empire",
+    "era": "Spanish Conquest (1519–1521)"
+  },
+  {
+    "topic": "Hernán Cortés and Moctezuma II",
+    "region": "aztec-empire",
+    "era": "Spanish Conquest (1519–1521)"
+  },
+  {
+    "topic": "The Inca Empire and Francisco Pizarro",
+    "region": "inca-empire",
+    "era": "Spanish Conquest (1532–1572)"
+  },
+  {
+    "topic": "Aztec Civilization — Religion and Society",
+    "region": "aztec-empire",
+    "era": "Triple Alliance & Expansion (1428–1519)"
+  },
+  {
+    "topic": "The Colombian Exchange — Impact on the World",
+    "region": "global",
+    "era": "Age of Exploration (1400–1600)"
+  },
+  {
+    "topic": "Vasco da Gama and the Sea Route to India",
+    "region": "global",
+    "era": "Age of Exploration (1400–1600)"
+  },
+  {
+    "topic": "The Italian Renaissance",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "Leonardo da Vinci — Artist and Inventor",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "Michelangelo and the Sistine Chapel",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "The Medici Family and Florentine Power",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "Galileo and the Scientific Revolution",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "The Dutch Golden Age — Art, Trade and Power",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "The VOC — Dutch East India Company",
+    "region": "netherlands",
+    "era": "VOC & Koloniale Expansie (1602–1799)"
+  },
+  {
+    "topic": "Rembrandt van Rijn and Dutch Painting",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "The Dutch Republic — Trade and Tolerance",
+    "region": "netherlands",
+    "era": "Republiek der Zeven Verenigde Nederlanden (1588–1795)"
+  },
+  {
+    "topic": "William of Orange and the Eighty Years' War",
+    "region": "netherlands",
+    "era": "Opstand & Tachtigjarige Oorlog (1568–1648)"
+  },
+  {
+    "topic": "The Dutch Revolt Against Spanish Rule",
+    "region": "netherlands",
+    "era": "Opstand & Tachtigjarige Oorlog (1568–1648)"
+  },
+  {
+    "topic": "Amsterdam as Centre of World Trade",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "Dutch Colonial History — Indonesia and the Caribbean",
+    "region": "netherlands",
+    "era": "VOC & Koloniale Expansie (1602–1799)"
+  },
+  {
+    "topic": "The Slave Trade and Dutch Involvement",
+    "region": "atlantic-slave-trade",
+    "era": "Peak of the Trade (1600–1800)"
+  },
+  {
+    "topic": "The French Revolution",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "The Storming of the Bastille",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "The Reign of Terror",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "The Declaration of the Rights of Man",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "Napoleon Bonaparte — Rise to Power",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "The Napoleonic Wars",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "Napoleon's Invasion of Russia",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "The Battle of Waterloo",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "The Congress of Vienna (1815)",
+    "region": "global",
+    "era": "Early Modern (1500–1800)"
+  },
+  {
+    "topic": "Louis XIV — The Sun King and Absolute Monarchy",
+    "region": "france",
+    "era": "Ancien Régime (1598–1789)"
+  },
+  {
+    "topic": "The Palace of Versailles as Political Theatre",
+    "region": "france",
+    "era": "Ancien Régime (1598–1789)"
+  },
+  {
+    "topic": "The American Revolution",
+    "region": "united-states",
+    "era": "American Revolution (1775–1783)"
+  },
+  {
+    "topic": "The Boston Tea Party",
+    "region": "united-states",
+    "era": "American Revolution (1775–1783)"
+  },
+  {
+    "topic": "The Declaration of Independence (1776)",
+    "region": "united-states",
+    "era": "American Revolution (1775–1783)"
+  },
+  {
+    "topic": "George Washington and the Continental Army",
+    "region": "united-states",
+    "era": "American Revolution (1775–1783)"
+  },
+  {
+    "topic": "The US Constitution and Bill of Rights",
+    "region": "united-states",
+    "era": "Early Republic (1783–1828)"
+  },
+  {
+    "topic": "The Lewis and Clark Expedition",
+    "region": "united-states",
+    "era": "Early Republic (1783–1828)"
+  },
+  {
+    "topic": "Slavery in the American South",
+    "region": "us-south",
+    "era": "Antebellum & Plantation Economy (1800–1860)"
+  },
+  {
+    "topic": "The Underground Railroad",
+    "region": "us-south",
+    "era": "Antebellum & Plantation Economy (1800–1860)"
+  },
+  {
+    "topic": "Frederick Douglass — Abolitionist and Orator",
+    "region": "united-states",
+    "era": "Antebellum & Slavery (1820–1860)"
+  },
+  {
+    "topic": "Harriet Tubman and the Underground Railroad",
+    "region": "united-states",
+    "era": "Antebellum & Slavery (1820–1860)"
+  },
+  {
+    "topic": "The American Civil War",
+    "region": "united-states",
+    "era": "Civil War (1861–1865)"
+  },
+  {
+    "topic": "Abraham Lincoln and the Emancipation Proclamation",
+    "region": "united-states",
+    "era": "Civil War (1861–1865)"
+  },
+  {
+    "topic": "The Battle of Gettysburg",
+    "region": "united-states",
+    "era": "Civil War (1861–1865)"
+  },
+  {
+    "topic": "Reconstruction and the Aftermath of the Civil War",
+    "region": "united-states",
+    "era": "Reconstruction (1865–1877)"
+  },
+  {
+    "topic": "Jim Crow Laws and Segregation",
+    "region": "us-south",
+    "era": "Jim Crow Era (1877–1965)"
+  },
+  {
+    "topic": "The Gilded Age — Industrialists and Inequality",
+    "region": "united-states",
+    "era": "Gilded Age (1877–1900)"
+  },
+  {
+    "topic": "The Industrial Revolution in Britain",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "Child Labour in Victorian Britain",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The British Empire at its Peak",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "Queen Victoria and the Victorian Age",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Scramble for Africa",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "The Boer War",
+    "region": "south-africa",
+    "era": "Mineral Revolution & Anglo-Boer Wars (1870–1910)"
+  },
+  {
+    "topic": "The Indian Independence Movement",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "Mahatma Gandhi and Non-Violent Resistance",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Partition of India (1947)",
+    "region": "india",
+    "era": "Independence & Partition (1947)"
+  },
+  {
+    "topic": "The Opium Wars and China's Humiliation",
+    "region": "china",
+    "era": "Qing Dynasty (1644–1912)"
+  },
+  {
+    "topic": "The Meiji Restoration — Japan's Modernisation",
+    "region": "japan",
+    "era": "Meiji Restoration & Modernisation (1868–1912)"
+  },
+  {
+    "topic": "The Russian Revolution of 1917",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "Lenin and the Bolshevik Revolution",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "The Causes of World War I",
+    "region": "global",
+    "era": "World War I (1914–1918)"
+  },
+  {
+    "topic": "Trench Warfare in World War I",
+    "region": "global",
+    "era": "World War I (1914–1918)"
+  },
+  {
+    "topic": "The Assassination of Archduke Franz Ferdinand",
+    "region": "balkans",
+    "era": "Balkan Wars & WWI (1912–1918)"
+  },
+  {
+    "topic": "The Treaty of Versailles and its Consequences",
+    "region": "global",
+    "era": "World War I (1914–1918)"
+  },
+  {
+    "topic": "The Armenian Genocide",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Weimar Republic — Democracy Under Pressure",
+    "region": "germany",
+    "era": "Weimar Republic (1918–1933)"
+  },
+  {
+    "topic": "The Great Depression",
+    "region": "united-states",
+    "era": "Great Depression (1929–1939)"
+  },
+  {
+    "topic": "The New Deal — Roosevelt's Response to the Depression",
+    "region": "united-states",
+    "era": "Great Depression (1929–1939)"
+  },
+  {
+    "topic": "The Rise of Adolf Hitler and the Nazi Party",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "Nazi Propaganda and the Control of Society",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The Holocaust",
+    "region": "global",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "Kristallnacht — The Night of Broken Glass",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The German Occupation of the Netherlands",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "Anne Frank and the Secret Annex",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "Dutch Resistance in World War II",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "The Hunger Winter (Hongerwinter) 1944–45",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "D-Day — The Normandy Landings (1944)",
+    "region": "global",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The Battle of Britain",
+    "region": "united-kingdom",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The Blitz — German Bombing of British Cities",
+    "region": "united-kingdom",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "Winston Churchill and British Leadership in WWII",
+    "region": "united-kingdom",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "Pearl Harbor and US Entry into WWII",
+    "region": "united-states",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The Pacific War — Japan vs. the United States",
+    "region": "japan",
+    "era": "Pacific War & WWII (1941–1945)"
+  },
+  {
+    "topic": "Hiroshima and Nagasaki — The Atomic Bombs",
+    "region": "japan",
+    "era": "Pacific War & WWII (1941–1945)"
+  },
+  {
+    "topic": "The Battle of Stalingrad",
+    "region": "russia",
+    "era": "Cold War USSR (1953–1991)"
+  },
+  {
+    "topic": "The Nuremberg Trials",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The Marshall Plan — Rebuilding Europe",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Cold War — USA vs. USSR",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Berlin Wall — Division and Fall",
+    "region": "germany",
+    "era": "Divided Germany / Cold War (1945–1990)"
+  },
+  {
+    "topic": "The Cuban Missile Crisis",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Space Race — Moon Landing 1969",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Korean War",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Vietnam War",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Civil Rights Movement in the USA",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "Martin Luther King Jr. — I Have a Dream",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "Rosa Parks and the Montgomery Bus Boycott",
+    "region": "us-south",
+    "era": "Civil Rights Movement (1955–1968)"
+  },
+  {
+    "topic": "The March on Washington (1963)",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "Malcolm X and Black Power",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "The Assassination of JFK",
+    "region": "united-states",
+    "era": "Cold War America (1947–1991)"
+  },
+  {
+    "topic": "The Watergate Scandal",
+    "region": "united-states",
+    "era": "Cold War America (1947–1991)"
+  },
+  {
+    "topic": "The Fall of the Berlin Wall (1989)",
+    "region": "germany",
+    "era": "Reunification & Modern Germany (1990–present)"
+  },
+  {
+    "topic": "The Collapse of the Soviet Union",
+    "region": "russia",
+    "era": "Post-Soviet Russia (1991–present)"
+  },
+  {
+    "topic": "The Yugoslav Wars and Ethnic Cleansing",
+    "region": "balkans",
+    "era": "Yugoslav Wars & Dissolution (1991–2001)"
+  },
+  {
+    "topic": "The Rwandan Genocide (1994)",
+    "region": "west-africa",
+    "era": "Modern West Africa (1975–present)"
+  },
+  {
+    "topic": "9/11 and the War on Terror",
+    "region": "united-states",
+    "era": "Modern United States (1991–present)"
+  },
+  {
+    "topic": "Apartheid in South Africa",
+    "region": "south-africa",
+    "era": "Apartheid Era (1948–1994)"
+  },
+  {
+    "topic": "Nelson Mandela — From Prison to President",
+    "region": "south-africa",
+    "era": "Post-Apartheid South Africa (1994–present)"
+  },
+  {
+    "topic": "The End of Apartheid",
+    "region": "south-africa",
+    "era": "Post-Apartheid South Africa (1994–present)"
+  },
+  {
+    "topic": "The Transatlantic Slave Trade",
+    "region": "atlantic-slave-trade",
+    "era": "Peak of the Trade (1600–1800)"
+  },
+  {
+    "topic": "The Abolition of Slavery in Britain",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "The Haitian Revolution",
+    "region": "global",
+    "era": "Atlantic Revolutions (1750–1830)"
+  },
+  {
+    "topic": "The Ottoman Empire — Rise and Fall",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "Suleiman the Magnificent",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Ottoman Empire and WWI",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "Atatürk and the Birth of Modern Turkey",
+    "region": "turkey",
+    "era": "Early Republic & Kemalism (1923–1950)"
+  },
+  {
+    "topic": "The Mughal Empire",
+    "region": "india",
+    "era": "Mughal Empire (1526–1857)"
+  },
+  {
+    "topic": "The Indian Mutiny (1857)",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Qin Dynasty — China's First Emperor",
+    "region": "china",
+    "era": "Qin & Han Dynasties (221 BCE–220 CE)"
+  },
+  {
+    "topic": "The Great Wall of China",
+    "region": "china",
+    "era": "Ming Dynasty (1368–1644)"
+  },
+  {
+    "topic": "The Ming Dynasty — Isolation and the Forbidden City",
+    "region": "china",
+    "era": "Ming Dynasty (1368–1644)"
+  },
+  {
+    "topic": "The Taiping Rebellion",
+    "region": "china",
+    "era": "Qing Dynasty (1644–1912)"
+  },
+  {
+    "topic": "Mao Zedong and the Chinese Revolution",
+    "region": "china",
+    "era": "People's Republic of China (1949–present)"
+  },
+  {
+    "topic": "The Cultural Revolution in China",
+    "region": "china",
+    "era": "Cultural Revolution (1966–1976)"
+  },
+  {
+    "topic": "Tiananmen Square (1989)",
+    "region": "china",
+    "era": "Reform Era (1978–present)"
+  },
+  {
+    "topic": "Feudal Japan and the Samurai",
+    "region": "japan",
+    "era": "Muromachi & Sengoku Period (1336–1600)"
+  },
+  {
+    "topic": "The Sengoku Period — Warring States of Japan",
+    "region": "japan",
+    "era": "Muromachi & Sengoku Period (1336–1600)"
+  },
+  {
+    "topic": "Tokugawa Japan — Isolation and Stability",
+    "region": "japan",
+    "era": "Edo / Tokugawa Period (1603–1868)"
+  },
+  {
+    "topic": "The Aztec Calendar and Cosmology",
+    "region": "aztec-empire",
+    "era": "Triple Alliance & Expansion (1428–1519)"
+  },
+  {
+    "topic": "Tenochtitlán — The Aztec Capital",
+    "region": "aztec-empire",
+    "era": "Triple Alliance & Expansion (1428–1519)"
+  },
+  {
+    "topic": "Machu Picchu and Inca Engineering",
+    "region": "inca-empire",
+    "era": "Imperial Expansion (1438–1533)"
+  },
+  {
+    "topic": "The Mali Empire and Mansa Musa",
+    "region": "west-africa",
+    "era": "Mali Empire (1235–1600)"
+  },
+  {
+    "topic": "Timbuktu — Centre of Islamic Learning",
+    "region": "west-africa",
+    "era": "Songhai Empire (1464–1591)"
+  },
+  {
+    "topic": "The Songhai Empire",
+    "region": "west-africa",
+    "era": "Songhai Empire (1464–1591)"
+  },
+  {
+    "topic": "Great Zimbabwe",
+    "region": "south-africa",
+    "era": "Indigenous Peoples & Early History (before 1652)"
+  },
+  {
+    "topic": "European Colonisation of Africa",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "The Berlin Conference — Dividing Africa (1884)",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "African Independence Movements",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "The Mexican Revolution",
+    "region": "mexico",
+    "era": "Mexican Revolution (1910–1920)"
+  },
+  {
+    "topic": "Emiliano Zapata and the Mexican Revolution",
+    "region": "mexico",
+    "era": "Mexican Revolution (1910–1920)"
+  },
+  {
+    "topic": "The Aztec Empire and Spanish Colonisation",
+    "region": "mexico",
+    "era": "New Spain / Colonial Period (1521–1821)"
+  },
+  {
+    "topic": "Mexican Independence from Spain",
+    "region": "mexico",
+    "era": "Mexican War of Independence (1810–1821)"
+  },
+  {
+    "topic": "The Irish Famine (1845–1852)",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Irish Easter Rising (1916)",
+    "region": "united-kingdom",
+    "era": "Edwardian & WWI (1901–1918)"
+  },
+  {
+    "topic": "The Troubles in Northern Ireland",
+    "region": "united-kingdom",
+    "era": "Post-war & Welfare State (1945–1979)"
+  },
+  {
+    "topic": "The Scottish Enlightenment",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "The French Resistance in WWII",
+    "region": "france",
+    "era": "Vichy & Occupation (1940–1944)"
+  },
+  {
+    "topic": "Vichy France and Collaboration",
+    "region": "france",
+    "era": "Vichy & Occupation (1940–1944)"
+  },
+  {
+    "topic": "Charles de Gaulle and Free France",
+    "region": "france",
+    "era": "Vichy & Occupation (1940–1944)"
+  },
+  {
+    "topic": "The Dreyfus Affair — Anti-Semitism in France",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "The Paris Commune (1871)",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "The Eiffel Tower and the 1889 World's Fair",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "The Franco-Prussian War (1870)",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "Bismarck and German Unification",
+    "region": "germany",
+    "era": "Prussia & German States (1648–1871)"
+  },
+  {
+    "topic": "The Austro-Hungarian Empire",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "The Balkan Wars (1912–1913)",
+    "region": "balkans",
+    "era": "Balkan Wars & WWI (1912–1918)"
+  },
+  {
+    "topic": "The Russian Revolution — February and October 1917",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "Stalin — Collectivisation and the Gulags",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "The Siege of Leningrad",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "The Iron Curtain — Europe Divided",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Marshall Plan and European Recovery",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Hungarian Revolution (1956)",
+    "region": "balkans",
+    "era": "Communist Yugoslavia (1945–1991)"
+  },
+  {
+    "topic": "The Prague Spring (1968)",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Moon Landing — Apollo 11 (1969)",
+    "region": "united-states",
+    "era": "Cold War America (1947–1991)"
+  },
+  {
+    "topic": "The Women's Suffrage Movement in the UK",
+    "region": "united-kingdom",
+    "era": "Edwardian & WWI (1901–1918)"
+  },
+  {
+    "topic": "The Women's Suffrage Movement in the USA",
+    "region": "united-states",
+    "era": "Progressive Era (1900–1920)"
+  },
+  {
+    "topic": "Women in World War II",
+    "region": "global",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The Welfare State — Post-war Britain",
+    "region": "united-kingdom",
+    "era": "Post-war & Welfare State (1945–1979)"
+  },
+  {
+    "topic": "Decolonisation in Asia and Africa",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "The Suez Crisis (1956)",
+    "region": "egypt",
+    "era": "British Occupation & Modern Egypt (1882–present)"
+  },
+  {
+    "topic": "The Six-Day War (1967)",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Creation of Israel (1948)",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Iranian Revolution (1979)",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Fall of the Shah of Iran",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "Westward Expansion and Manifest Destiny",
+    "region": "united-states",
+    "era": "Early Republic (1783–1828)"
+  },
+  {
+    "topic": "The Trail of Tears — Native American Displacement",
+    "region": "united-states",
+    "era": "Antebellum & Slavery (1820–1860)"
+  },
+  {
+    "topic": "Native American Cultures and Societies",
+    "region": "united-states",
+    "era": "Indigenous Peoples (pre-1492)"
+  },
+  {
+    "topic": "The Gold Rush (1848)",
+    "region": "united-states",
+    "era": "Antebellum & Slavery (1820–1860)"
+  },
+  {
+    "topic": "The Transcontinental Railroad",
+    "region": "united-states",
+    "era": "Gilded Age (1877–1900)"
+  },
+  {
+    "topic": "Immigration to the United States 1880–1920",
+    "region": "united-states",
+    "era": "Gilded Age (1877–1900)"
+  },
+  {
+    "topic": "The Roaring Twenties",
+    "region": "united-states",
+    "era": "World War I & Roaring Twenties (1914–1929)"
+  },
+  {
+    "topic": "The Harlem Renaissance",
+    "region": "united-states",
+    "era": "World War I & Roaring Twenties (1914–1929)"
+  },
+  {
+    "topic": "Prohibition and Organised Crime in the USA",
+    "region": "united-states",
+    "era": "World War I & Roaring Twenties (1914–1929)"
+  },
+  {
+    "topic": "The US Entry into World War I",
+    "region": "united-states",
+    "era": "World War I & Roaring Twenties (1914–1929)"
+  },
+  {
+    "topic": "The New Deal — Government and the Economy",
+    "region": "united-states",
+    "era": "Great Depression (1929–1939)"
+  },
+  {
+    "topic": "Japanese American Internment in WWII",
+    "region": "united-states",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The Manhattan Project",
+    "region": "united-states",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "McCarthyism and the Red Scare",
+    "region": "united-states",
+    "era": "Cold War America (1947–1991)"
+  },
+  {
+    "topic": "The Vietnam War — American Perspective",
+    "region": "united-states",
+    "era": "Cold War America (1947–1991)"
+  },
+  {
+    "topic": "The Civil Rights Act (1964)",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "The Stonewall Riots and LGBTQ+ Rights",
+    "region": "united-states",
+    "era": "Civil Rights Movement (1945–1968)"
+  },
+  {
+    "topic": "The Great Wall of China — History and Purpose",
+    "region": "china",
+    "era": "Ming Dynasty (1368–1644)"
+  },
+  {
+    "topic": "The Silk Road — Connecting East and West",
+    "region": "silk-road",
+    "era": "Han Dynasty Trade Networks (130 BCE–220 CE)"
+  },
+  {
+    "topic": "The Black Death — Plague in Medieval Europe",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "Copernicus and the Heliocentric Revolution",
+    "region": "global",
+    "era": "Early Modern (1500–1800)"
+  },
+  {
+    "topic": "Isaac Newton and the Scientific Revolution",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "Charles Darwin and the Theory of Evolution",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Enlightenment — Reason and Revolution",
+    "region": "france",
+    "era": "Ancien Régime (1598–1789)"
+  },
+  {
+    "topic": "John Locke and Political Philosophy",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The English Civil War and Oliver Cromwell",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The Glorious Revolution (1688)",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The Industrial Revolution — Steam and Steel",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "Karl Marx and the Communist Manifesto",
+    "region": "germany",
+    "era": "German Empire / Kaiserreich (1871–1918)"
+  },
+  {
+    "topic": "The Paris Peace Conference (1919)",
+    "region": "global",
+    "era": "World War I (1914–1918)"
+  },
+  {
+    "topic": "The League of Nations",
+    "region": "global",
+    "era": "Interwar Period (1918–1939)"
+  },
+  {
+    "topic": "The United Nations — Post-WWII Order",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The NATO Alliance",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The European Union — Origins and Expansion",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The Independence of Indonesia from the Netherlands",
+    "region": "netherlands",
+    "era": "Wederopbouw & Verzuiling (1945–1975)"
+  },
+  {
+    "topic": "Dutch Post-war Reconstruction",
+    "region": "netherlands",
+    "era": "Wederopbouw & Verzuiling (1945–1975)"
+  },
+  {
+    "topic": "The Delta Works — Mastering Water in the Netherlands",
+    "region": "netherlands",
+    "era": "Modern Nederland (1975–heden)"
+  },
+  {
+    "topic": "Liberation of the Netherlands (May 1945)",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "The Kingdom of the Netherlands — Colonial Legacy",
+    "region": "netherlands",
+    "era": "Koninkrijk der Nederlanden (1813–1914)"
+  },
+  {
+    "topic": "The Batavian Republic — French Influence on Holland",
+    "region": "netherlands",
+    "era": "Bataafse Republiek & Napoleontische tijd (1795–1813)"
+  },
+  {
+    "topic": "Spinoza — Dutch Philosophy and Free Thought",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "Spanish Civil War (1936–1939)",
+    "region": "spain",
+    "era": "Second Republic & Civil War (1931–1939)"
+  },
+  {
+    "topic": "Francisco Franco and Fascist Spain",
+    "region": "spain",
+    "era": "Francoist Spain (1939–1975)"
+  },
+  {
+    "topic": "The Spanish Inquisition",
+    "region": "spain",
+    "era": "Spanish Empire & Colonisation (1492–1700)"
+  },
+  {
+    "topic": "Columbus and the Spanish Empire",
+    "region": "spain",
+    "era": "Spanish Empire & Colonisation (1492–1700)"
+  },
+  {
+    "topic": "The Risorgimento — Italian Unification",
+    "region": "italy",
+    "era": "Risorgimento & Unification (1815–1871)"
+  },
+  {
+    "topic": "Garibaldi and the Unification of Italy",
+    "region": "italy",
+    "era": "Risorgimento & Unification (1815–1871)"
+  },
+  {
+    "topic": "Mussolini and Italian Fascism",
+    "region": "italy",
+    "era": "Fascism & WWII (1922–1945)"
+  },
+  {
+    "topic": "The Roman Catholic Church in Medieval Europe",
+    "region": "italy",
+    "era": "City-States & Medieval Italy (500–1400)"
+  },
+  {
+    "topic": "The Aztec Sacrifice Rituals — Religion and Power",
+    "region": "aztec-empire",
+    "era": "Triple Alliance & Expansion (1428–1519)"
+  },
+  {
+    "topic": "Ancient Mesopotamia — Cradle of Civilisation",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Code of Hammurabi",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Indus Valley Civilisation",
+    "region": "india",
+    "era": "Indus Valley Civilisation (3300–1300 BCE)"
+  },
+  {
+    "topic": "The Caste System in India — Origins and Impact",
+    "region": "india",
+    "era": "Vedic Period & Early Kingdoms (1500–322 BCE)"
+  },
+  {
+    "topic": "Ashoka — Buddhism and the Maurya Empire",
+    "region": "india",
+    "era": "Maurya & Gupta Empires (322 BCE–550 CE)"
+  },
+  {
+    "topic": "The Gupta Empire — India's Golden Age",
+    "region": "india",
+    "era": "Maurya & Gupta Empires (322 BCE–550 CE)"
+  },
+  {
+    "topic": "The Confucian Philosophy and Chinese Society",
+    "region": "china",
+    "era": "Ancient China & Early Dynasties (before 221 BCE)"
+  },
+  {
+    "topic": "The Tang Dynasty — China's Cultural Flourishing",
+    "region": "china",
+    "era": "Tang & Song Dynasties (618–1279)"
+  },
+  {
+    "topic": "Zheng He's Maritime Voyages",
+    "region": "china",
+    "era": "Ming Dynasty (1368–1644)"
+  },
+  {
+    "topic": "The Korean War — Division of the Peninsula",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Palestinian-Israeli Conflict — Origins",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Gulf War (1990–1991)",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The Arab Spring (2010–2012)",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "Climate Change as a Historical Issue",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "Globalisation — Winners and Losers",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The History of the Internet",
+    "region": "united-states",
+    "era": "Modern United States (1991–present)"
+  },
+  {
+    "topic": "The Suffragette Movement — Emmeline Pankhurst",
+    "region": "united-kingdom",
+    "era": "Edwardian & WWI (1901–1918)"
+  },
+  {
+    "topic": "The Great Fire of London (1666)",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The British Raj and Indian Resistance",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Khmer Rouge and the Cambodian Genocide",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The History of Democracy — From Athens to Today",
+    "region": "global",
+    "era": "Classical Empires (500 BCE–500 CE)"
+  },
+  {
+    "topic": "Propaganda in the 20th Century",
+    "region": "global",
+    "era": "World War II (1939–1945)"
+  },
+  {
+    "topic": "The History of Human Rights",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Space Race — Sputnik and the Moon",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The History of Medicine — From Plague to Vaccines",
+    "region": "global",
+    "era": "Industrial Revolution (1760–1914)"
+  },
+  {
+    "topic": "The History of Printing — Gutenberg's Press",
+    "region": "germany",
+    "era": "Reformation (1517–1648)"
+  },
+  {
+    "topic": "The Canadian Confederation (1867)",
+    "region": "canada",
+    "era": "Confederation & Expansion (1867–1914)"
+  },
+  {
+    "topic": "The Residential Schools in Canada",
+    "region": "canada",
+    "era": "Modern Canada (1968–present)"
+  },
+  {
+    "topic": "French Canada and Quebec Nationalism",
+    "region": "canada",
+    "era": "Modern Canada (1968–present)"
+  },
+  {
+    "topic": "The History of Australia — Colonisation and Aboriginals",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "The History of New Zealand and the Māori",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "The History of Brazil — Colonisation to Republic",
+    "region": "global",
+    "era": "Atlantic Revolutions (1750–1830)"
+  },
+  {
+    "topic": "Simón Bolívar and South American Independence",
+    "region": "global",
+    "era": "Atlantic Revolutions (1750–1830)"
+  },
+  {
+    "topic": "The Argentine Dirty War",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "The History of Piracy — Golden Age of Pirates",
+    "region": "global",
+    "era": "Age of Exploration (1400–1600)"
+  },
+  {
+    "topic": "The History of Money and Trade",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The History of Writing — From Cuneiform to Alphabet",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Early Human Migration Out of Africa",
+    "region": "global",
+    "era": "Prehistoric / Early Human Migration"
+  },
+  {
+    "topic": "The Agricultural Revolution — First Farmers",
+    "region": "global",
+    "era": "Prehistoric / Early Human Migration"
+  },
+  {
+    "topic": "Stonehenge — Prehistoric Britain",
+    "region": "united-kingdom",
+    "era": "Roman Britain (43–410 CE)"
+  },
+  {
+    "topic": "The Bronze Age — Tools and Trade",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Iron Age — Celtic Peoples of Europe",
+    "region": "united-kingdom",
+    "era": "Roman Britain (43–410 CE)"
+  },
+  {
+    "topic": "Babylon — City of Wonders",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Hanging Gardens of Babylon",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Hammurabi and the First Law Code",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Babylonian Empire Under Nebuchadnezzar II",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Tower of Babel — History and Legend",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Babylonian Captivity of the Jews",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Sumerian Civilisation — The World's First Cities",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Invention of Writing — Cuneiform in Sumer",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Epic of Gilgamesh — World's Oldest Story",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Akkadian Empire and Sargon of Akkad",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Assyrian Empire — Terror and Administration",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Mesopotamia — Rivers, Irrigation and Civilisation",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Ziggurat — Temples of Ancient Mesopotamia",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Persian Empire — Cyrus and Darius",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Fall of Babylon to Persia (539 BCE)",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Zoroastrianism — Ancient Persian Religion",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "The Minoan Civilisation on Crete",
+    "region": "ancient-greece",
+    "era": "Minoan & Mycenaean (2700–1100 BCE)"
+  },
+  {
+    "topic": "Mycenaean Greece — Warriors and Palaces",
+    "region": "ancient-greece",
+    "era": "Minoan & Mycenaean (2700–1100 BCE)"
+  },
+  {
+    "topic": "The Greek Dark Ages — Collapse and Recovery",
+    "region": "ancient-greece",
+    "era": "Greek Dark Ages (1100–800 BCE)"
+  },
+  {
+    "topic": "The Birth of the Greek City-State (Polis)",
+    "region": "ancient-greece",
+    "era": "Archaic Period (800–480 BCE)"
+  },
+  {
+    "topic": "Greek Colonisation of the Mediterranean",
+    "region": "ancient-greece",
+    "era": "Archaic Period (800–480 BCE)"
+  },
+  {
+    "topic": "Solon's Reforms and Early Athenian Democracy",
+    "region": "ancient-greece",
+    "era": "Archaic Period (800–480 BCE)"
+  },
+  {
+    "topic": "Cleisthenes — Father of Athenian Democracy",
+    "region": "ancient-greece",
+    "era": "Archaic Period (800–480 BCE)"
+  },
+  {
+    "topic": "The Battle of Marathon (490 BCE)",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Battle of Salamis — Naval Victory over Persia",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Leonidas and the 300 Spartans at Thermopylae",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Pericles and the Golden Age of Athens",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Parthenon — Symbol of Athenian Power",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Greek Theatre — Tragedy and Comedy",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Greek Religion — Gods of Olympus",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Oracle at Delphi",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Hippocrates — Father of Medicine",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Herodotus — Father of History",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Thucydides and the History of the Peloponnesian War",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "The Trial and Death of Socrates",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Plato's Republic — The Ideal State",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Aristotle — Tutor of Alexander the Great",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Philip II of Macedon — Unifying Greece",
+    "region": "ancient-greece",
+    "era": "Classical Period (480–323 BCE)"
+  },
+  {
+    "topic": "Alexander the Great — Conquest of Persia",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "Alexander the Great — Conquest of Egypt and Persia",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "The Death of Alexander and Division of his Empire",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "The Library of Alexandria",
+    "region": "egypt",
+    "era": "Late Period & Ptolemaic Egypt (664–30 BCE)"
+  },
+  {
+    "topic": "Archimedes — Greek Mathematics and Invention",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "Euclid and the Foundations of Geometry",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "The Hellenistic World — Greek Culture Spreads East",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "Roman Conquest of Greece (146 BCE)",
+    "region": "ancient-greece",
+    "era": "Hellenistic Period (323–146 BCE)"
+  },
+  {
+    "topic": "The Greek War of Independence (1821–1829)",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "Modern Greece — From Ottoman Rule to Nation-State",
+    "region": "balkans",
+    "era": "Modern Balkans (2001–present)"
+  },
+  {
+    "topic": "The Greek Junta — Military Dictatorship (1967–1974)",
+    "region": "balkans",
+    "era": "Modern Balkans (2001–present)"
+  },
+  {
+    "topic": "The Cyprus Conflict",
+    "region": "balkans",
+    "era": "Modern Balkans (2001–present)"
+  },
+  {
+    "topic": "The Greek Economic Crisis (2010)",
+    "region": "balkans",
+    "era": "Modern Balkans (2001–present)"
+  },
+  {
+    "topic": "The Origins of the Ottoman State in Anatolia",
+    "region": "ottoman-empire",
+    "era": "Rise of the Ottoman State (1299–1453)"
+  },
+  {
+    "topic": "Osman I — Founder of the Ottoman Dynasty",
+    "region": "ottoman-empire",
+    "era": "Rise of the Ottoman State (1299–1453)"
+  },
+  {
+    "topic": "Mehmed II — The Conqueror of Constantinople",
+    "region": "ottoman-empire",
+    "era": "Rise of the Ottoman State (1299–1453)"
+  },
+  {
+    "topic": "The Siege and Fall of Constantinople (1453)",
+    "region": "ottoman-empire",
+    "era": "Rise of the Ottoman State (1299–1453)"
+  },
+  {
+    "topic": "Hagia Sophia — From Church to Mosque",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "Suleiman the Magnificent — Lawgiver and Conqueror",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Ottoman Siege of Vienna (1529)",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Battle of Lepanto (1571) — Ottoman Naval Defeat",
+    "region": "ottoman-empire",
+    "era": "Expansion & Zenith (1566–1699)"
+  },
+  {
+    "topic": "The Ottoman System of Government — Devshirme and the Janissaries",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Janissaries — Elite Ottoman Soldiers",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Ottoman Harem — Power Behind the Throne",
+    "region": "ottoman-empire",
+    "era": "Expansion & Zenith (1566–1699)"
+  },
+  {
+    "topic": "The Ottoman Empire and the Balkans",
+    "region": "ottoman-empire",
+    "era": "Expansion & Zenith (1566–1699)"
+  },
+  {
+    "topic": "The Ottoman Empire and the Arab World",
+    "region": "ottoman-empire",
+    "era": "Expansion & Zenith (1566–1699)"
+  },
+  {
+    "topic": "The Tanzimat Reforms — Ottoman Modernisation",
+    "region": "ottoman-empire",
+    "era": "Tanzimat Reforms (1839–1876)"
+  },
+  {
+    "topic": "The Sick Man of Europe — Ottoman Decline",
+    "region": "ottoman-empire",
+    "era": "Ottoman Decline (1699–1839)"
+  },
+  {
+    "topic": "The Second Siege of Vienna (1683)",
+    "region": "ottoman-empire",
+    "era": "Expansion & Zenith (1566–1699)"
+  },
+  {
+    "topic": "The Young Turks Movement",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Ottoman Empire in World War I",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Gallipoli Campaign (1915)",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Armenian Genocide — Causes and Consequences",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Arab Revolt Against the Ottomans",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "Lawrence of Arabia and the Middle East",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Sykes-Picot Agreement — Dividing the Middle East",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "The Dissolution of the Ottoman Empire",
+    "region": "ottoman-empire",
+    "era": "Late Ottoman & WWI (1876–1922)"
+  },
+  {
+    "topic": "Mustafa Kemal Atatürk — Father of Modern Turkey",
+    "region": "turkey",
+    "era": "Turkish War of Independence (1919–1923)"
+  },
+  {
+    "topic": "The Turkish War of Independence (1919–1923)",
+    "region": "turkey",
+    "era": "Turkish War of Independence (1919–1923)"
+  },
+  {
+    "topic": "The Treaty of Lausanne (1923)",
+    "region": "turkey",
+    "era": "Turkish War of Independence (1919–1923)"
+  },
+  {
+    "topic": "The Greek-Turkish Population Exchange (1923)",
+    "region": "turkey",
+    "era": "Early Republic & Kemalism (1923–1950)"
+  },
+  {
+    "topic": "Atatürk's Secular Reforms — Language, Law and Dress",
+    "region": "turkey",
+    "era": "Early Republic & Kemalism (1923–1950)"
+  },
+  {
+    "topic": "The Turkish Alphabet Reform (1928)",
+    "region": "turkey",
+    "era": "Early Republic & Kemalism (1923–1950)"
+  },
+  {
+    "topic": "Turkey in NATO — Cold War Geopolitics",
+    "region": "turkey",
+    "era": "Multi-party Period (1950–1980)"
+  },
+  {
+    "topic": "The 1960 Turkish Military Coup",
+    "region": "turkey",
+    "era": "Multi-party Period (1950–1980)"
+  },
+  {
+    "topic": "The Kurdish Question in Turkey",
+    "region": "turkey",
+    "era": "Modern Turkey (1980–present)"
+  },
+  {
+    "topic": "Modern Turkey — Between East and West",
+    "region": "turkey",
+    "era": "Modern Turkey (1980–present)"
+  },
+  {
+    "topic": "Turkey and the European Union — A Long Negotiation",
+    "region": "turkey",
+    "era": "Modern Turkey (1980–present)"
+  },
+  {
+    "topic": "Istanbul — A City Between Two Continents",
+    "region": "turkey",
+    "era": "Modern Turkey (1980–present)"
+  },
+  {
+    "topic": "Topkapi Palace — Heart of the Ottoman Empire",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "The Silk Road Through Anatolia",
+    "region": "ottoman-empire",
+    "era": "Classical Age (1453–1566)"
+  },
+  {
+    "topic": "Byzantine Constantinople — Before the Ottomans",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Byzantine Empire — Christianity's Fortress",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "Justinian I and the Byzantine Golden Age",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Hagia Sophia — Architecture and Religion",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Crusaders and the Sack of Constantinople (1204)",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Byzantine Empire's Decline",
+    "region": "balkans",
+    "era": "Byzantine Period (395–1453)"
+  },
+  {
+    "topic": "The Phoenicians — Traders and Alphabet Inventors",
+    "region": "global",
+    "era": "Ancient World (3000–500 BCE)"
+  },
+  {
+    "topic": "Carthage and the Punic Wars",
+    "region": "ancient-rome",
+    "era": "Roman Republic (509–27 BCE)"
+  },
+  {
+    "topic": "Hannibal — Crossing the Alps",
+    "region": "ancient-rome",
+    "era": "Roman Republic (509–27 BCE)"
+  },
+  {
+    "topic": "The Parthian Empire — Rome's Eastern Rival",
+    "region": "global",
+    "era": "Classical Empires (500 BCE–500 CE)"
+  },
+  {
+    "topic": "The Sassanid Persian Empire",
+    "region": "global",
+    "era": "Classical Empires (500 BCE–500 CE)"
+  },
+  {
+    "topic": "The Spread of Islam — 7th and 8th Centuries",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Umayyad and Abbasid Caliphates",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "Saladin and the Third Crusade",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Children's Crusade",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Mongol Invasion of Europe",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "Kublai Khan and the Yuan Dynasty",
+    "region": "china",
+    "era": "Yuan Dynasty / Mongol Rule (1271–1368)"
+  },
+  {
+    "topic": "Marco Polo — Traveller to the East",
+    "region": "silk-road",
+    "era": "Mongol Pax & Peak Trade (1200–1350)"
+  },
+  {
+    "topic": "Ibn Battuta — Greatest Medieval Traveller",
+    "region": "global",
+    "era": "Medieval Crossroads (500–1400)"
+  },
+  {
+    "topic": "The Hundred Years War — Joan of Arc and English Claims",
+    "region": "france",
+    "era": "Medieval France (987–1453)"
+  },
+  {
+    "topic": "The Peasants' Revolt (1381) in England",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "The Wars of the Roses",
+    "region": "united-kingdom",
+    "era": "Norman Conquest & Medieval (1066–1485)"
+  },
+  {
+    "topic": "Henry VII — First Tudor King",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "Thomas Cromwell and the English Reformation",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "Shakespeare and Elizabethan Culture",
+    "region": "united-kingdom",
+    "era": "Tudor England (1485–1603)"
+  },
+  {
+    "topic": "The Gunpowder Plot (1605)",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The Plague of London (1665)",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "Isaac Newton — Gravity and the Laws of Motion",
+    "region": "united-kingdom",
+    "era": "Stuart & Civil War (1603–1714)"
+  },
+  {
+    "topic": "The Act of Union — Great Britain (1707)",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "James Watt and the Steam Engine",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "The Luddite Movement — Workers vs Machines",
+    "region": "united-kingdom",
+    "era": "Georgian Britain & Empire (1714–1837)"
+  },
+  {
+    "topic": "The Chartist Movement — Workers' Rights",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "Florence Nightingale and Modern Nursing",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Crystal Palace Exhibition (1851)",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Crimean War",
+    "region": "united-kingdom",
+    "era": "Victorian Era (1837–1901)"
+  },
+  {
+    "topic": "The Indian Partition — Violence and Migration",
+    "region": "india",
+    "era": "Independence & Partition (1947)"
+  },
+  {
+    "topic": "Jawaharlal Nehru and India's First Decades",
+    "region": "india",
+    "era": "Independence & Partition (1947)"
+  },
+  {
+    "topic": "The Caste System — Ambedkar and Untouchability",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Bengal Famine (1943)",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Sepoy Mutiny (1857)",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "The Salt March — Gandhi's Civil Disobedience",
+    "region": "india",
+    "era": "British Raj (1858–1947)"
+  },
+  {
+    "topic": "India's Green Revolution",
+    "region": "india",
+    "era": "Modern India (1947–present)"
+  },
+  {
+    "topic": "The Boxer Rebellion in China",
+    "region": "china",
+    "era": "Qing Dynasty (1644–1912)"
+  },
+  {
+    "topic": "Sun Yat-sen and the Chinese Republic",
+    "region": "china",
+    "era": "Republic of China (1912–1949)"
+  },
+  {
+    "topic": "The Long March — Mao's Communist Movement",
+    "region": "china",
+    "era": "Republic of China (1912–1949)"
+  },
+  {
+    "topic": "The Nanjing Massacre (1937)",
+    "region": "china",
+    "era": "Republic of China (1912–1949)"
+  },
+  {
+    "topic": "The Chinese Civil War — Mao vs Chiang Kai-shek",
+    "region": "china",
+    "era": "Republic of China (1912–1949)"
+  },
+  {
+    "topic": "Deng Xiaoping and China's Economic Opening",
+    "region": "china",
+    "era": "Reform Era (1978–present)"
+  },
+  {
+    "topic": "The Russo-Japanese War (1904–1905)",
+    "region": "japan",
+    "era": "Meiji Restoration & Modernisation (1868–1912)"
+  },
+  {
+    "topic": "The Japanese Empire and Colonisation of Korea",
+    "region": "japan",
+    "era": "Taisho & Early Showa (1912–1941)"
+  },
+  {
+    "topic": "The Rape of Nanjing and Japanese War Crimes",
+    "region": "japan",
+    "era": "Pacific War & WWII (1941–1945)"
+  },
+  {
+    "topic": "Japan's Post-war Economic Miracle",
+    "region": "japan",
+    "era": "Post-war Japan (1945–present)"
+  },
+  {
+    "topic": "The Korean War — Division at the 38th Parallel",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Partition of Korea",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "North Korea — The Hermit Kingdom",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Vietnam War — Ho Chi Minh and the Viet Cong",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The My Lai Massacre",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Cambodian Genocide under the Khmer Rouge",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The History of Afghanistan",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Soviet Invasion of Afghanistan",
+    "region": "russia",
+    "era": "Cold War USSR (1953–1991)"
+  },
+  {
+    "topic": "The Iran-Iraq War (1980–1988)",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "Saddam Hussein and Ba'athist Iraq",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The Gulf War — Liberation of Kuwait",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The Iraq War (2003)",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "The History of the Arab-Israeli Conflict",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Yom Kippur War (1973)",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Oslo Accords and the Peace Process",
+    "region": "global",
+    "era": "Globalisation (1991–present)"
+  },
+  {
+    "topic": "Nelson Mandela — 27 Years in Prison",
+    "region": "south-africa",
+    "era": "Apartheid Era (1948–1994)"
+  },
+  {
+    "topic": "The Sharpeville Massacre (1960)",
+    "region": "south-africa",
+    "era": "Apartheid Era (1948–1994)"
+  },
+  {
+    "topic": "The ANC — African National Congress",
+    "region": "south-africa",
+    "era": "Apartheid Era (1948–1994)"
+  },
+  {
+    "topic": "Desmond Tutu and the Truth and Reconciliation Commission",
+    "region": "south-africa",
+    "era": "Post-Apartheid South Africa (1994–present)"
+  },
+  {
+    "topic": "The Congo — Belgian Colonialism and Atrocities",
+    "region": "global",
+    "era": "Age of Imperialism (1800–1914)"
+  },
+  {
+    "topic": "The Mau Mau Uprising in Kenya",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "The Algerian War of Independence",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "Kwame Nkrumah and Ghanaian Independence",
+    "region": "west-africa",
+    "era": "Independence Movements (1945–1975)"
+  },
+  {
+    "topic": "The Biafra War — Nigerian Civil War (1967–1970)",
+    "region": "west-africa",
+    "era": "Modern West Africa (1975–present)"
+  },
+  {
+    "topic": "Ethiopian Empire and Haile Selassie",
+    "region": "west-africa",
+    "era": "European Colonisation (1880–1960)"
+  },
+  {
+    "topic": "The History of Slavery in West Africa",
+    "region": "west-africa",
+    "era": "Transatlantic Slave Trade (1500–1867)"
+  },
+  {
+    "topic": "The Slave Forts of Ghana",
+    "region": "west-africa",
+    "era": "Transatlantic Slave Trade (1500–1867)"
+  },
+  {
+    "topic": "The Zulu Kingdom and the Anglo-Zulu War",
+    "region": "south-africa",
+    "era": "British Cape Colony & Great Trek (1806–1870)"
+  },
+  {
+    "topic": "The Great Trek — Boers Moving North",
+    "region": "south-africa",
+    "era": "British Cape Colony & Great Trek (1806–1870)"
+  },
+  {
+    "topic": "The Capetian Dynasty — Medieval Kings of France",
+    "region": "france",
+    "era": "Medieval France (987–1453)"
+  },
+  {
+    "topic": "Philip II Augustus — Expanding Royal France",
+    "region": "france",
+    "era": "Medieval France (987–1453)"
+  },
+  {
+    "topic": "The Cathars and the Albigensian Crusade",
+    "region": "france",
+    "era": "Medieval France (987–1453)"
+  },
+  {
+    "topic": "Cardinal Richelieu — Power Behind the Throne",
+    "region": "france",
+    "era": "Ancien Régime (1598–1789)"
+  },
+  {
+    "topic": "The Huguenots — French Protestants and the Wars of Religion",
+    "region": "france",
+    "era": "Renaissance & Religious Wars (1453–1598)"
+  },
+  {
+    "topic": "The St. Bartholomew's Day Massacre (1572)",
+    "region": "france",
+    "era": "Renaissance & Religious Wars (1453–1598)"
+  },
+  {
+    "topic": "The Edict of Nantes (1598) — Religious Tolerance",
+    "region": "france",
+    "era": "Ancien Régime (1598–1789)"
+  },
+  {
+    "topic": "Marie Antoinette — Queen of Excess and Tragedy",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "The National Assembly and the Birth of the Republic",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "Robespierre and the Committee of Public Safety",
+    "region": "france",
+    "era": "Révolution française (1789–1799)"
+  },
+  {
+    "topic": "The Napoleonic Code — Law for Modern Europe",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "The Battle of Austerlitz — Napoleon's Greatest Victory",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "Napoleon and the Continental System",
+    "region": "france",
+    "era": "Consulat & Empire napoléonien (1799–1815)"
+  },
+  {
+    "topic": "Victor Hugo and 19th-Century France",
+    "region": "france",
+    "era": "Deuxième République & Second Empire (1848–1870)"
+  },
+  {
+    "topic": "The Paris World Exhibitions — France and Modernity",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "France in World War I — The Western Front",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "The Battle of Verdun (1916)",
+    "region": "france",
+    "era": "Troisième République (1870–1940)"
+  },
+  {
+    "topic": "May 1968 — Student Revolt in Paris",
+    "region": "france",
+    "era": "Cinquième République (1958–present)"
+  },
+  {
+    "topic": "De Gaulle's Fifth Republic",
+    "region": "france",
+    "era": "Cinquième République (1958–present)"
+  },
+  {
+    "topic": "France and Decolonisation — Algeria and Indochina",
+    "region": "france",
+    "era": "Quatrième République (1944–1958)"
+  },
+  {
+    "topic": "Gutenberg's Printing Press and the Information Revolution",
+    "region": "germany",
+    "era": "Reformation (1517–1648)"
+  },
+  {
+    "topic": "The Peace of Westphalia (1648)",
+    "region": "germany",
+    "era": "Thirty Years' War (1618–1648)"
+  },
+  {
+    "topic": "Frederick the Great of Prussia",
+    "region": "germany",
+    "era": "Prussia & German States (1648–1871)"
+  },
+  {
+    "topic": "The Seven Years' War — First World War?",
+    "region": "global",
+    "era": "Early Modern (1500–1800)"
+  },
+  {
+    "topic": "The Revolutions of 1848 in Germany",
+    "region": "germany",
+    "era": "Prussia & German States (1648–1871)"
+  },
+  {
+    "topic": "The Franco-Prussian War and German Unification",
+    "region": "germany",
+    "era": "German Empire / Kaiserreich (1871–1918)"
+  },
+  {
+    "topic": "Kaiser Wilhelm II and the Road to WWI",
+    "region": "germany",
+    "era": "German Empire / Kaiserreich (1871–1918)"
+  },
+  {
+    "topic": "The German Home Front in WWI",
+    "region": "germany",
+    "era": "German Empire / Kaiserreich (1871–1918)"
+  },
+  {
+    "topic": "Hyperinflation in Weimar Germany (1923)",
+    "region": "germany",
+    "era": "Weimar Republic (1918–1933)"
+  },
+  {
+    "topic": "The Beer Hall Putsch — Hitler's Failed Coup (1923)",
+    "region": "germany",
+    "era": "Weimar Republic (1918–1933)"
+  },
+  {
+    "topic": "Mein Kampf — Hitler's Ideology",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The Night of Long Knives (1934)",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The Wannsee Conference — Planning the Holocaust",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The White Rose — German Resistance to Hitler",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "The Valkyrie Plot — Assassination Attempt on Hitler",
+    "region": "germany",
+    "era": "Third Reich & WWII (1933–1945)"
+  },
+  {
+    "topic": "Post-war Division — West and East Germany",
+    "region": "germany",
+    "era": "Divided Germany / Cold War (1945–1990)"
+  },
+  {
+    "topic": "The Berlin Airlift (1948–1949)",
+    "region": "germany",
+    "era": "Divided Germany / Cold War (1945–1990)"
+  },
+  {
+    "topic": "The Building of the Berlin Wall (1961)",
+    "region": "germany",
+    "era": "Divided Germany / Cold War (1945–1990)"
+  },
+  {
+    "topic": "Konrad Adenauer and Post-war West Germany",
+    "region": "germany",
+    "era": "Divided Germany / Cold War (1945–1990)"
+  },
+  {
+    "topic": "German Reunification (1990)",
+    "region": "germany",
+    "era": "Reunification & Modern Germany (1990–present)"
+  },
+  {
+    "topic": "Ivan the Terrible — First Tsar of Russia",
+    "region": "russia",
+    "era": "Tsardom of Russia (1547–1721)"
+  },
+  {
+    "topic": "Peter the Great — Modernising Russia",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "Catherine the Great — Enlightened Empress",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "The Decembrist Revolt (1825)",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "The Emancipation of the Serfs (1861)",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "Rasputin and the Fall of the Romanovs",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "Tsar Nicholas II and the Last Romanovs",
+    "region": "russia",
+    "era": "Russian Empire (1721–1917)"
+  },
+  {
+    "topic": "The February Revolution (1917)",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "Trotsky and the Red Army",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "The Russian Civil War — Reds vs Whites",
+    "region": "russia",
+    "era": "Revolution & Civil War (1917–1922)"
+  },
+  {
+    "topic": "Stalin's Five-Year Plans — Industrialisation by Force",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "The Holodomor — Famine in Ukraine",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "The Great Purge — Stalin's Terror",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "Operation Barbarossa — Germany Invades the USSR",
+    "region": "russia",
+    "era": "Soviet Union — Stalin Era (1924–1953)"
+  },
+  {
+    "topic": "Khrushchev and the Thaw — De-Stalinisation",
+    "region": "russia",
+    "era": "Cold War USSR (1953–1991)"
+  },
+  {
+    "topic": "Sputnik — The Space Race Begins",
+    "region": "russia",
+    "era": "Cold War USSR (1953–1991)"
+  },
+  {
+    "topic": "Mikhail Gorbachev — Glasnost and Perestroika",
+    "region": "russia",
+    "era": "Cold War USSR (1953–1991)"
+  },
+  {
+    "topic": "The 1991 Coup Attempt Against Gorbachev",
+    "region": "russia",
+    "era": "Post-Soviet Russia (1991–present)"
+  },
+  {
+    "topic": "Boris Yeltsin and Post-Soviet Russia",
+    "region": "russia",
+    "era": "Post-Soviet Russia (1991–present)"
+  },
+  {
+    "topic": "Vladimir Putin and the Return of Russian Power",
+    "region": "russia",
+    "era": "Post-Soviet Russia (1991–present)"
+  },
+  {
+    "topic": "Chechnya — Wars and Separatism",
+    "region": "russia",
+    "era": "Post-Soviet Russia (1991–present)"
+  },
+  {
+    "topic": "The Eighty Years' War — Origins and Causes",
+    "region": "netherlands",
+    "era": "Opstand & Tachtigjarige Oorlog (1568–1648)"
+  },
+  {
+    "topic": "The Union of Utrecht (1579)",
+    "region": "netherlands",
+    "era": "Opstand & Tachtigjarige Oorlog (1568–1648)"
+  },
+  {
+    "topic": "Johan van Oldenbarnevelt — Dutch Statesman",
+    "region": "netherlands",
+    "era": "Republiek der Zeven Verenigde Nederlanden (1588–1795)"
+  },
+  {
+    "topic": "The Tulip Mania (1637) — First Speculative Bubble",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "Jan de Witt and Dutch Republican Government",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "The Year of Disaster (Rampjaar 1672)",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "Dutch Slave Trade — The WIC and the Atlantic",
+    "region": "netherlands",
+    "era": "VOC & Koloniale Expansie (1602–1799)"
+  },
+  {
+    "topic": "Suriname — Dutch Colonial History",
+    "region": "netherlands",
+    "era": "VOC & Koloniale Expansie (1602–1799)"
+  },
+  {
+    "topic": "The Dutch in South Africa — Cape Colony",
+    "region": "south-africa",
+    "era": "Dutch Cape Colony (1652–1806)"
+  },
+  {
+    "topic": "Dutch Art — Vermeer, Hals, and the Golden Age",
+    "region": "netherlands",
+    "era": "Gouden Eeuw (1600–1672)"
+  },
+  {
+    "topic": "The Dutch and the Spice Trade",
+    "region": "netherlands",
+    "era": "VOC & Koloniale Expansie (1602–1799)"
+  },
+  {
+    "topic": "William III of Orange and the Glorious Revolution",
+    "region": "netherlands",
+    "era": "Republiek der Zeven Verenigde Nederlanden (1588–1795)"
+  },
+  {
+    "topic": "The Netherlands Under French Rule — King Louis Napoleon",
+    "region": "netherlands",
+    "era": "Bataafse Republiek & Napoleontische tijd (1795–1813)"
+  },
+  {
+    "topic": "The Belgian Revolution (1830) — Split from the Netherlands",
+    "region": "netherlands",
+    "era": "Koninkrijk der Nederlanden (1813–1914)"
+  },
+  {
+    "topic": "The Dutch Railway System — 19th-Century Modernisation",
+    "region": "netherlands",
+    "era": "Koninkrijk der Nederlanden (1813–1914)"
+  },
+  {
+    "topic": "Dutch Neutrality in World War I",
+    "region": "netherlands",
+    "era": "Eerste Wereldoorlog & Interbellum (1914–1940)"
+  },
+  {
+    "topic": "The NSB — Dutch Fascism in the 1930s",
+    "region": "netherlands",
+    "era": "Eerste Wereldoorlog & Interbellum (1914–1940)"
+  },
+  {
+    "topic": "Operation Market Garden — Battle of Arnhem",
+    "region": "netherlands",
+    "era": "Tweede Wereldoorlog & Bezetting (1940–1945)"
+  },
+  {
+    "topic": "Jewish Life in the Netherlands Before the War",
+    "region": "netherlands",
+    "era": "Eerste Wereldoorlog & Interbellum (1914–1940)"
+  },
+  {
+    "topic": "Decolonisation of Indonesia — Dutch-Indonesian War",
+    "region": "netherlands",
+    "era": "Wederopbouw & Verzuiling (1945–1975)"
+  },
+  {
+    "topic": "The Moluccans in the Netherlands — Colonial Legacy",
+    "region": "netherlands",
+    "era": "Wederopbouw & Verzuiling (1945–1975)"
+  },
+  {
+    "topic": "The Poldermodel — Dutch Consensus Politics",
+    "region": "netherlands",
+    "era": "Modern Nederland (1975–heden)"
+  },
+  {
+    "topic": "Immigration and Multiculturalism in the Netherlands",
+    "region": "netherlands",
+    "era": "Modern Nederland (1975–heden)"
+  },
+  {
+    "topic": "Pim Fortuyn and Dutch Populism",
+    "region": "netherlands",
+    "era": "Modern Nederland (1975–heden)"
+  },
+  {
+    "topic": "The Maya Civilisation — Cities and Calendar",
+    "region": "mexico",
+    "era": "Pre-Columbian Mesoamerica (before 1521)"
+  },
+  {
+    "topic": "The Olmec — Mother Culture of Mesoamerica",
+    "region": "mexico",
+    "era": "Pre-Columbian Mesoamerica (before 1521)"
+  },
+  {
+    "topic": "Teotihuacán — City of the Gods",
+    "region": "mexico",
+    "era": "Pre-Columbian Mesoamerica (before 1521)"
+  },
+  {
+    "topic": "The Maya Collapse — Why Did the Cities Fall?",
+    "region": "mexico",
+    "era": "Pre-Columbian Mesoamerica (before 1521)"
+  },
+  {
+    "topic": "Simón Bolívar — Liberator of South America",
+    "region": "global",
+    "era": "Atlantic Revolutions (1750–1830)"
+  },
+  {
+    "topic": "The Argentine Republic — History and Peronism",
+    "region": "global",
+    "era": "Decolonisation (1945–1975)"
+  },
+  {
+    "topic": "Che Guevara and the Cuban Revolution",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "Fidel Castro and Communist Cuba",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Chilean Coup (1973) — Pinochet vs Allende",
+    "region": "global",
+    "era": "Cold War (1947–1991)"
+  },
+  {
+    "topic": "The Falklands War (1982)",
+    "region": "united-kingdom",
+    "era": "Thatcher Era & Modern Britain (1979–present)"
+  },
+  {
+    "topic": "The History of Canada's Indigenous Peoples",
+    "region": "canada",
+    "era": "Indigenous Peoples (pre-contact)"
+  },
+  {
+    "topic": "New France — French Colonisation of Canada",
+    "region": "canada",
+    "era": "New France (1534–1763)"
+  },
+  {
+    "topic": "The Battle of the Plains of Abraham (1759)",
+    "region": "canada",
+    "era": "British North America (1763–1867)"
+  },
+  {
+    "topic": "Canada in World War I — Vimy Ridge",
+    "region": "canada",
+    "era": "WWI & Interwar (1914–1939)"
+  },
+  {
+    "topic": "Canada in World War II — D-Day and Beyond",
+    "region": "canada",
+    "era": "WWII & Post-war Canada (1939–1968)"
+  },
+  {
+    "topic": "The Viking Longship — Technology and Exploration",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "Viking Mythology — Norse Gods and Sagas",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "The Vikings in Britain",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "Bjorn Ironside and the Viking Raids on France",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "The Viking Settlement of Iceland and Greenland",
+    "region": "scandinavia",
+    "era": "Viking Age (793–1066)"
+  },
+  {
+    "topic": "Harald Bluetooth and the Unification of Denmark",
+    "region": "scandinavia",
+    "era": "Christianisation & Medieval Kingdoms (1000–1397)"
+  },
+  {
+    "topic": "The Kalmar Union — Scandinavia United",
+    "region": "scandinavia",
+    "era": "Kalmar Union (1397–1523)"
+  },
+  {
+    "topic": "The Swedish Empire — 17th-Century Great Power",
+    "region": "scandinavia",
+    "era": "Early Modern Kingdoms (1523–1814)"
+  },
+  {
+    "topic": "Gustavus Adolphus and Swedish Military Power",
+    "region": "scandinavia",
+    "era": "Early Modern Kingdoms (1523–1814)"
+  },
+  {
+    "topic": "Norway Under Danish and Swedish Rule",
+    "region": "scandinavia",
+    "era": "Napoleonic Wars & Dissolution of Danish-Norwegian Union (1814)"
+  },
+  {
+    "topic": "The Scandinavian Welfare State — Origins and Development",
+    "region": "scandinavia",
+    "era": "Nordic Welfare States (1945–present)"
+  },
+  {
+    "topic": "Norway Under German Occupation (WWII)",
+    "region": "scandinavia",
+    "era": "Nordic Welfare States (1945–present)"
+  },
+  {
+    "topic": "Denmark's Rescue of its Jewish Population in WWII",
+    "region": "scandinavia",
+    "era": "Nordic Welfare States (1945–present)"
+  },
+  {
+    "topic": "Isabella and Ferdinand — Catholic Monarchs of Spain",
+    "region": "spain",
+    "era": "Reconquista (718–1492)"
+  },
+  {
+    "topic": "The Fall of Granada (1492) — End of the Reconquista",
+    "region": "spain",
+    "era": "Reconquista (718–1492)"
+  },
+  {
+    "topic": "The Expulsion of the Jews from Spain (1492)",
+    "region": "spain",
+    "era": "Reconquista (718–1492)"
+  },
+  {
+    "topic": "The Spanish Empire — Gold, Silver and the New World",
+    "region": "spain",
+    "era": "Spanish Empire & Colonisation (1492–1700)"
+  },
+  {
+    "topic": "The Spanish Netherlands — Conflict and Trade",
+    "region": "spain",
+    "era": "Spanish Empire & Colonisation (1492–1700)"
+  },
+  {
+    "topic": "Philip II of Spain — Empire and the Counter-Reformation",
+    "region": "spain",
+    "era": "Spanish Empire & Colonisation (1492–1700)"
+  },
+  {
+    "topic": "The Counter-Reformation and the Jesuits",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "The Council of Trent — Catholic Response to Luther",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "Dante's Divine Comedy — Medieval Italian Literature",
+    "region": "italy",
+    "era": "City-States & Medieval Italy (500–1400)"
+  },
+  {
+    "topic": "Machiavelli and The Prince — Power Without Morality",
+    "region": "italy",
+    "era": "Italian Renaissance (1400–1600)"
+  },
+  {
+    "topic": "Venice — Republic of Trade and Art",
+    "region": "italy",
+    "era": "City-States & Medieval Italy (500–1400)"
+  },
+  {
+    "topic": "The Vatican — Papal Power in History",
+    "region": "italy",
+    "era": "City-States & Medieval Italy (500–1400)"
+  },
+  {
+    "topic": "Mussolini's March on Rome (1922)",
+    "region": "italy",
+    "era": "Fascism & WWII (1922–1945)"
+  },
+  {
+    "topic": "Italy in World War II — Changing Sides",
+    "region": "italy",
+    "era": "Fascism & WWII (1922–1945)"
+  },
+  {
+    "topic": "Post-war Italy — Christian Democracy and the Mafia",
+    "region": "italy",
+    "era": "Post-war Republic (1945–present)"
+  },
+  {
+    "topic": "The Ottoman Conquest of the Balkans",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "The Serbian Revolution (1804–1817)",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "The Bulgarian National Revival",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "The Russo-Turkish Wars",
+    "region": "balkans",
+    "era": "Ottoman Balkans (1453–1878)"
+  },
+  {
+    "topic": "The Assassination of Franz Ferdinand in Sarajevo",
+    "region": "balkans",
+    "era": "Balkan Wars & WWI (1912–1918)"
+  },
+  {
+    "topic": "Tito's Yugoslavia — Non-aligned Communism",
+    "region": "balkans",
+    "era": "Communist Yugoslavia (1945–1991)"
+  },
+  {
+    "topic": "The Srebrenica Massacre (1995)",
+    "region": "balkans",
+    "era": "Yugoslav Wars & Dissolution (1991–2001)"
+  },
+  {
+    "topic": "The Kosovo War and NATO Intervention",
+    "region": "balkans",
+    "era": "Yugoslav Wars & Dissolution (1991–2001)"
+  }
+]

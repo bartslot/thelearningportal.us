@@ -1,0 +1,918 @@
+{
+  "regions": [
+    {
+      "value": "global",
+      "label": "Global / Cross-continental",
+      "locale_weight": [],
+      "eras": [
+        "Prehistoric / Early Human Migration",
+        "Ancient World (3000–500 BCE)",
+        "Axial Age (800–200 BCE)",
+        "Classical Empires (500 BCE–500 CE)",
+        "Medieval Crossroads (500–1400)",
+        "Age of Exploration (1400–1600)",
+        "Early Modern (1500–1800)",
+        "Atlantic Revolutions (1750–1830)",
+        "Industrial Revolution (1760–1914)",
+        "Age of Imperialism (1800–1914)",
+        "World War I (1914–1918)",
+        "Interwar Period (1918–1939)",
+        "World War II (1939–1945)",
+        "Cold War (1947–1991)",
+        "Decolonisation (1945–1975)",
+        "Globalisation (1991–present)"
+      ]
+    },
+    {
+      "value": "united-states",
+      "label": "United States",
+      "locale_weight": [
+        "en-US"
+      ],
+      "eras": [
+        "Indigenous Peoples (pre-1492)",
+        "Colonial America (1607–1763)",
+        "American Revolution (1775–1783)",
+        "Early Republic (1783–1828)",
+        "Antebellum & Slavery (1820–1860)",
+        "Civil War (1861–1865)",
+        "Reconstruction (1865–1877)",
+        "Gilded Age (1877–1900)",
+        "Progressive Era (1900–1920)",
+        "World War I & Roaring Twenties (1914–1929)",
+        "Great Depression (1929–1939)",
+        "World War II (1939–1945)",
+        "Civil Rights Movement (1945–1968)",
+        "Cold War America (1947–1991)",
+        "Modern United States (1991–present)"
+      ]
+    },
+    {
+      "value": "us-south",
+      "label": "US South",
+      "locale_weight": [
+        "en-US"
+      ],
+      "eras": [
+        "Colonial South (1607–1763)",
+        "Antebellum & Plantation Economy (1800–1860)",
+        "Civil War (1861–1865)",
+        "Reconstruction (1865–1877)",
+        "Jim Crow Era (1877–1965)",
+        "Civil Rights Movement (1955–1968)",
+        "Modern South (1968–present)"
+      ]
+    },
+    {
+      "value": "united-kingdom",
+      "label": "United Kingdom",
+      "locale_weight": [
+        "en-GB"
+      ],
+      "eras": [
+        "Roman Britain (43–410 CE)",
+        "Anglo-Saxon & Viking Age (410–1066)",
+        "Norman Conquest & Medieval (1066–1485)",
+        "Tudor England (1485–1603)",
+        "Stuart & Civil War (1603–1714)",
+        "Georgian Britain & Empire (1714–1837)",
+        "Victorian Era (1837–1901)",
+        "Edwardian & WWI (1901–1918)",
+        "Interwar Britain (1918–1939)",
+        "World War II (1939–1945)",
+        "Post-war & Welfare State (1945–1979)",
+        "Thatcher Era & Modern Britain (1979–present)"
+      ]
+    },
+    {
+      "value": "france",
+      "label": "France",
+      "locale_weight": [
+        "fr",
+        "fr-FR",
+        "fr-BE",
+        "fr-CH"
+      ],
+      "eras": [
+        "Gaul & Roman Period (before 486)",
+        "Frankish Kingdom & Carolingians (486–987)",
+        "Medieval France (987–1453)",
+        "Renaissance & Religious Wars (1453–1598)",
+        "Ancien Régime (1598–1789)",
+        "Révolution française (1789–1799)",
+        "Consulat & Empire napoléonien (1799–1815)",
+        "Restauration & Monarchie de Juillet (1815–1848)",
+        "Deuxième République & Second Empire (1848–1870)",
+        "Troisième République (1870–1940)",
+        "Vichy & Occupation (1940–1944)",
+        "Quatrième République (1944–1958)",
+        "Cinquième République (1958–present)"
+      ]
+    },
+    {
+      "value": "netherlands",
+      "label": "Netherlands",
+      "locale_weight": [
+        "nl",
+        "nl-NL",
+        "nl-BE"
+      ],
+      "eras": [
+        "Prehistorie & Romeinse tijd (voor 500)",
+        "Middeleeuwen (500–1500)",
+        "Opstand & Tachtigjarige Oorlog (1568–1648)",
+        "Republiek der Zeven Verenigde Nederlanden (1588–1795)",
+        "Gouden Eeuw (1600–1672)",
+        "VOC & Koloniale Expansie (1602–1799)",
+        "Bataafse Republiek & Napoleontische tijd (1795–1813)",
+        "Koninkrijk der Nederlanden (1813–1914)",
+        "Eerste Wereldoorlog & Interbellum (1914–1940)",
+        "Tweede Wereldoorlog & Bezetting (1940–1945)",
+        "Wederopbouw & Verzuiling (1945–1975)",
+        "Modern Nederland (1975–heden)"
+      ]
+    },
+    {
+      "value": "germany",
+      "label": "Germany",
+      "locale_weight": [
+        "de",
+        "de-DE",
+        "de-AT",
+        "de-CH"
+      ],
+      "eras": [
+        "Germanic Tribes & Migration Period (before 800)",
+        "Holy Roman Empire (800–1806)",
+        "Reformation (1517–1648)",
+        "Thirty Years' War (1618–1648)",
+        "Prussia & German States (1648–1871)",
+        "German Empire / Kaiserreich (1871–1918)",
+        "Weimar Republic (1918–1933)",
+        "Third Reich & WWII (1933–1945)",
+        "Divided Germany / Cold War (1945–1990)",
+        "Reunification & Modern Germany (1990–present)"
+      ]
+    },
+    {
+      "value": "ancient-greece",
+      "label": "Ancient Greece",
+      "locale_weight": [
+        "el"
+      ],
+      "eras": [
+        "Minoan & Mycenaean (2700–1100 BCE)",
+        "Greek Dark Ages (1100–800 BCE)",
+        "Archaic Period (800–480 BCE)",
+        "Classical Period (480–323 BCE)",
+        "Hellenistic Period (323–146 BCE)"
+      ]
+    },
+    {
+      "value": "ancient-rome",
+      "label": "Ancient Rome",
+      "locale_weight": [
+        "it"
+      ],
+      "eras": [
+        "Roman Kingdom (753–509 BCE)",
+        "Roman Republic (509–27 BCE)",
+        "Roman Empire (27 BCE–476 CE)",
+        "Fall of the Western Roman Empire (376–476 CE)"
+      ]
+    },
+    {
+      "value": "italy",
+      "label": "Italy",
+      "locale_weight": [
+        "it"
+      ],
+      "eras": [
+        "City-States & Medieval Italy (500–1400)",
+        "Italian Renaissance (1400–1600)",
+        "Foreign Domination (1494–1796)",
+        "Risorgimento & Unification (1815–1871)",
+        "Liberal Italy (1871–1922)",
+        "Fascism & WWII (1922–1945)",
+        "Post-war Republic (1945–present)"
+      ]
+    },
+    {
+      "value": "spain",
+      "label": "Spain",
+      "locale_weight": [
+        "es-ES"
+      ],
+      "eras": [
+        "Al-Andalus (711–1492)",
+        "Reconquista (718–1492)",
+        "Spanish Empire & Colonisation (1492–1700)",
+        "Bourbon Spain & Enlightenment (1700–1808)",
+        "Napoleonic Invasion & Independence Wars (1808–1833)",
+        "Liberal & Carlist Spain (1833–1931)",
+        "Second Republic & Civil War (1931–1939)",
+        "Francoist Spain (1939–1975)",
+        "Democratic Transition & Modern Spain (1975–present)"
+      ]
+    },
+    {
+      "value": "russia",
+      "label": "Russia / Soviet Union",
+      "locale_weight": [
+        "ru"
+      ],
+      "eras": [
+        "Kievan Rus (880–1240)",
+        "Mongol Rule & Rise of Muscovy (1240–1547)",
+        "Tsardom of Russia (1547–1721)",
+        "Russian Empire (1721–1917)",
+        "Revolution & Civil War (1917–1922)",
+        "Soviet Union — Stalin Era (1924–1953)",
+        "Cold War USSR (1953–1991)",
+        "Post-Soviet Russia (1991–present)"
+      ]
+    },
+    {
+      "value": "china",
+      "label": "China",
+      "locale_weight": [
+        "zh",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "eras": [
+        "Ancient China & Early Dynasties (before 221 BCE)",
+        "Qin & Han Dynasties (221 BCE–220 CE)",
+        "Three Kingdoms & Division (220–581)",
+        "Tang & Song Dynasties (618–1279)",
+        "Yuan Dynasty / Mongol Rule (1271–1368)",
+        "Ming Dynasty (1368–1644)",
+        "Qing Dynasty (1644–1912)",
+        "Republic of China (1912–1949)",
+        "People's Republic of China (1949–present)",
+        "Cultural Revolution (1966–1976)",
+        "Reform Era (1978–present)"
+      ]
+    },
+    {
+      "value": "japan",
+      "label": "Japan",
+      "locale_weight": [
+        "ja"
+      ],
+      "eras": [
+        "Ancient Japan & Yamato Period (before 710)",
+        "Nara & Heian Period (710–1185)",
+        "Kamakura Shogunate (1185–1333)",
+        "Muromachi & Sengoku Period (1336–1600)",
+        "Edo / Tokugawa Period (1603–1868)",
+        "Meiji Restoration & Modernisation (1868–1912)",
+        "Taisho & Early Showa (1912–1941)",
+        "Pacific War & WWII (1941–1945)",
+        "Post-war Japan (1945–present)"
+      ]
+    },
+    {
+      "value": "india",
+      "label": "India",
+      "locale_weight": [
+        "hi",
+        "en-IN"
+      ],
+      "eras": [
+        "Indus Valley Civilisation (3300–1300 BCE)",
+        "Vedic Period & Early Kingdoms (1500–322 BCE)",
+        "Maurya & Gupta Empires (322 BCE–550 CE)",
+        "Medieval Kingdoms & Delhi Sultanate (550–1526)",
+        "Mughal Empire (1526–1857)",
+        "British Raj (1858–1947)",
+        "Independence & Partition (1947)",
+        "Modern India (1947–present)"
+      ]
+    },
+    {
+      "value": "ottoman-empire",
+      "label": "Ottoman Empire",
+      "locale_weight": [
+        "tr"
+      ],
+      "eras": [
+        "Rise of the Ottoman State (1299–1453)",
+        "Classical Age (1453–1566)",
+        "Expansion & Zenith (1566–1699)",
+        "Ottoman Decline (1699–1839)",
+        "Tanzimat Reforms (1839–1876)",
+        "Late Ottoman & WWI (1876–1922)"
+      ]
+    },
+    {
+      "value": "turkey",
+      "label": "Turkey (Modern)",
+      "locale_weight": [
+        "tr"
+      ],
+      "eras": [
+        "Turkish War of Independence (1919–1923)",
+        "Early Republic & Kemalism (1923–1950)",
+        "Multi-party Period (1950–1980)",
+        "Modern Turkey (1980–present)"
+      ]
+    },
+    {
+      "value": "egypt",
+      "label": "Egypt",
+      "locale_weight": [
+        "ar-EG"
+      ],
+      "eras": [
+        "Ancient Egypt — Old Kingdom (2686–2181 BCE)",
+        "Ancient Egypt — Middle Kingdom (2055–1650 BCE)",
+        "Ancient Egypt — New Kingdom (1550–1070 BCE)",
+        "Late Period & Ptolemaic Egypt (664–30 BCE)",
+        "Roman & Byzantine Egypt (30 BCE–642 CE)",
+        "Islamic Egypt (642–1517)",
+        "Ottoman Egypt (1517–1798)",
+        "Muhammad Ali Dynasty & Khedivate (1805–1914)",
+        "British Occupation & Modern Egypt (1882–present)"
+      ]
+    },
+    {
+      "value": "west-africa",
+      "label": "West Africa",
+      "locale_weight": [],
+      "eras": [
+        "Ghana Empire (300–1200 CE)",
+        "Mali Empire (1235–1600)",
+        "Songhai Empire (1464–1591)",
+        "Transatlantic Slave Trade (1500–1867)",
+        "European Colonisation (1880–1960)",
+        "Independence Movements (1945–1975)",
+        "Modern West Africa (1975–present)"
+      ]
+    },
+    {
+      "value": "south-africa",
+      "label": "South Africa",
+      "locale_weight": [
+        "en-ZA",
+        "af"
+      ],
+      "eras": [
+        "Indigenous Peoples & Early History (before 1652)",
+        "Dutch Cape Colony (1652–1806)",
+        "British Cape Colony & Great Trek (1806–1870)",
+        "Mineral Revolution & Anglo-Boer Wars (1870–1910)",
+        "Union of South Africa & Segregation (1910–1948)",
+        "Apartheid Era (1948–1994)",
+        "Post-Apartheid South Africa (1994–present)"
+      ]
+    },
+    {
+      "value": "aztec-empire",
+      "label": "Aztec Empire",
+      "locale_weight": [
+        "es-MX"
+      ],
+      "eras": [
+        "Founding & Early Period (1300–1428)",
+        "Triple Alliance & Expansion (1428–1519)",
+        "Spanish Conquest (1519–1521)"
+      ]
+    },
+    {
+      "value": "inca-empire",
+      "label": "Inca Empire",
+      "locale_weight": [
+        "es-PE",
+        "es-BO"
+      ],
+      "eras": [
+        "Early Inca State (1200–1438)",
+        "Imperial Expansion (1438–1533)",
+        "Spanish Conquest (1532–1572)"
+      ]
+    },
+    {
+      "value": "mexico",
+      "label": "Mexico",
+      "locale_weight": [
+        "es-MX"
+      ],
+      "eras": [
+        "Pre-Columbian Mesoamerica (before 1521)",
+        "New Spain / Colonial Period (1521–1821)",
+        "Mexican War of Independence (1810–1821)",
+        "Early Republic & Reform War (1821–1876)",
+        "Porfiriato (1876–1910)",
+        "Mexican Revolution (1910–1920)",
+        "Modern Mexico (1920–present)"
+      ]
+    },
+    {
+      "value": "canada",
+      "label": "Canada",
+      "locale_weight": [
+        "en-CA",
+        "fr-CA"
+      ],
+      "eras": [
+        "Indigenous Peoples (pre-contact)",
+        "New France (1534–1763)",
+        "British North America (1763–1867)",
+        "Confederation & Expansion (1867–1914)",
+        "WWI & Interwar (1914–1939)",
+        "WWII & Post-war Canada (1939–1968)",
+        "Modern Canada (1968–present)"
+      ]
+    },
+    {
+      "value": "balkans",
+      "label": "Balkans",
+      "locale_weight": [],
+      "eras": [
+        "Byzantine Period (395–1453)",
+        "Ottoman Balkans (1453–1878)",
+        "Balkan Wars & WWI (1912–1918)",
+        "Yugoslavia — Formation (1918–1941)",
+        "WWII & Occupation (1941–1945)",
+        "Communist Yugoslavia (1945–1991)",
+        "Yugoslav Wars & Dissolution (1991–2001)",
+        "Modern Balkans (2001–present)"
+      ]
+    },
+    {
+      "value": "scandinavia",
+      "label": "Scandinavia",
+      "locale_weight": [
+        "sv",
+        "da",
+        "no",
+        "nb",
+        "nn"
+      ],
+      "eras": [
+        "Viking Age (793–1066)",
+        "Christianisation & Medieval Kingdoms (1000–1397)",
+        "Kalmar Union (1397–1523)",
+        "Early Modern Kingdoms (1523–1814)",
+        "Napoleonic Wars & Dissolution of Danish-Norwegian Union (1814)",
+        "Industrialisation & Nationalism (1814–1914)",
+        "WWI & WWII (1914–1945)",
+        "Nordic Welfare States (1945–present)"
+      ]
+    },
+    {
+      "value": "silk-road",
+      "label": "Silk Road",
+      "locale_weight": [],
+      "eras": [
+        "Han Dynasty Trade Networks (130 BCE–220 CE)",
+        "Tang-era Silk Road (618–907)",
+        "Mongol Pax & Peak Trade (1200–1350)",
+        "Decline & Maritime Shift (1400–1600)"
+      ]
+    },
+    {
+      "value": "atlantic-slave-trade",
+      "label": "Atlantic Slave Trade",
+      "locale_weight": [
+        "en-US",
+        "pt-BR",
+        "en-GB"
+      ],
+      "eras": [
+        "Early Transatlantic Slave Trade (1500–1600)",
+        "Peak of the Trade (1600–1800)",
+        "Abolition Movements (1787–1888)"
+      ]
+    }
+  ],
+  "grade_systems": {
+    "nl": {
+      "label": "Groep",
+      "type": "tiered",
+      "tiers": [
+        {
+          "key": "basisonderwijs",
+          "label": "Basisonderwijs",
+          "options": [
+            {
+              "value": "Groep 5",
+              "label": "Groep 5",
+              "age_hint": 8
+            },
+            {
+              "value": "Groep 6",
+              "label": "Groep 6",
+              "age_hint": 9
+            },
+            {
+              "value": "Groep 7",
+              "label": "Groep 7",
+              "age_hint": 10
+            },
+            {
+              "value": "Groep 8",
+              "label": "Groep 8",
+              "age_hint": 11
+            }
+          ]
+        },
+        {
+          "key": "middelbare",
+          "label": "Middelbare school",
+          "tracks": [
+            {
+              "key": "VMBO",
+              "label": "VMBO",
+              "max_jaar": 4
+            },
+            {
+              "key": "HAVO",
+              "label": "HAVO",
+              "max_jaar": 5
+            },
+            {
+              "key": "VWO",
+              "label": "VWO",
+              "max_jaar": 6
+            }
+          ]
+        }
+      ]
+    },
+    "en-US": {
+      "label": "Grade",
+      "type": "tiered",
+      "tiers": [
+        {
+          "key": "elementary",
+          "label": "Elementary",
+          "options": [
+            {
+              "value": "Kindergarten",
+              "label": "K",
+              "age_hint": 5
+            },
+            {
+              "value": "1st grade",
+              "label": "1",
+              "age_hint": 6
+            },
+            {
+              "value": "2nd grade",
+              "label": "2",
+              "age_hint": 7
+            },
+            {
+              "value": "3rd grade",
+              "label": "3",
+              "age_hint": 8
+            },
+            {
+              "value": "4th grade",
+              "label": "4",
+              "age_hint": 9
+            },
+            {
+              "value": "5th grade",
+              "label": "5",
+              "age_hint": 10
+            }
+          ]
+        },
+        {
+          "key": "middle",
+          "label": "Middle",
+          "options": [
+            {
+              "value": "6th grade",
+              "label": "6",
+              "age_hint": 11
+            },
+            {
+              "value": "7th grade",
+              "label": "7",
+              "age_hint": 12
+            },
+            {
+              "value": "8th grade",
+              "label": "8",
+              "age_hint": 13
+            }
+          ]
+        },
+        {
+          "key": "high",
+          "label": "High",
+          "options": [
+            {
+              "value": "9th grade",
+              "label": "9",
+              "age_hint": 14
+            },
+            {
+              "value": "10th grade",
+              "label": "10",
+              "age_hint": 15
+            },
+            {
+              "value": "11th grade",
+              "label": "11",
+              "age_hint": 16
+            },
+            {
+              "value": "12th grade",
+              "label": "12",
+              "age_hint": 17
+            }
+          ],
+          "tracks": [
+            {
+              "key": "General",
+              "label": "General"
+            },
+            {
+              "key": "Honors",
+              "label": "Honors"
+            },
+            {
+              "key": "AP",
+              "label": "AP"
+            }
+          ]
+        }
+      ]
+    },
+    "en-GB": {
+      "label": "Year",
+      "options": [
+        {
+          "value": "Year 1",
+          "label": "Year 1 — KS1",
+          "age_hint": 5
+        },
+        {
+          "value": "Year 2",
+          "label": "Year 2 — KS1",
+          "age_hint": 6
+        },
+        {
+          "value": "Year 3",
+          "label": "Year 3 — KS2",
+          "age_hint": 7
+        },
+        {
+          "value": "Year 4",
+          "label": "Year 4 — KS2",
+          "age_hint": 8
+        },
+        {
+          "value": "Year 5",
+          "label": "Year 5 — KS2",
+          "age_hint": 9
+        },
+        {
+          "value": "Year 6",
+          "label": "Year 6 — KS2",
+          "age_hint": 10
+        },
+        {
+          "value": "Year 7",
+          "label": "Year 7 — KS3",
+          "age_hint": 11
+        },
+        {
+          "value": "Year 8",
+          "label": "Year 8 — KS3",
+          "age_hint": 12
+        },
+        {
+          "value": "Year 9",
+          "label": "Year 9 — KS3",
+          "age_hint": 13
+        },
+        {
+          "value": "Year 10",
+          "label": "Year 10 — KS4",
+          "age_hint": 14
+        },
+        {
+          "value": "Year 11",
+          "label": "Year 11 — KS4",
+          "age_hint": 15
+        },
+        {
+          "value": "Year 12",
+          "label": "Year 12 — KS5 / Sixth Form",
+          "age_hint": 16
+        },
+        {
+          "value": "Year 13",
+          "label": "Year 13 — KS5 / Sixth Form",
+          "age_hint": 17
+        }
+      ]
+    },
+    "fr": {
+      "label": "Classe",
+      "options": [
+        {
+          "value": "CP",
+          "label": "CP — Cours Préparatoire",
+          "age_hint": 6
+        },
+        {
+          "value": "CE1",
+          "label": "CE1",
+          "age_hint": 7
+        },
+        {
+          "value": "CE2",
+          "label": "CE2",
+          "age_hint": 8
+        },
+        {
+          "value": "CM1",
+          "label": "CM1",
+          "age_hint": 9
+        },
+        {
+          "value": "CM2",
+          "label": "CM2",
+          "age_hint": 10
+        },
+        {
+          "value": "6ème",
+          "label": "6ème — Collège",
+          "age_hint": 11
+        },
+        {
+          "value": "5ème",
+          "label": "5ème — Collège",
+          "age_hint": 12
+        },
+        {
+          "value": "4ème",
+          "label": "4ème — Collège",
+          "age_hint": 13
+        },
+        {
+          "value": "3ème",
+          "label": "3ème — Collège",
+          "age_hint": 14
+        },
+        {
+          "value": "Seconde",
+          "label": "Seconde — Lycée",
+          "age_hint": 15
+        },
+        {
+          "value": "Première",
+          "label": "Première — Lycée",
+          "age_hint": 16
+        },
+        {
+          "value": "Terminale",
+          "label": "Terminale — Lycée",
+          "age_hint": 17
+        }
+      ]
+    },
+    "de": {
+      "label": "Klasse",
+      "options": [
+        {
+          "value": "Klasse 1",
+          "label": "Klasse 1 — Grundschule",
+          "age_hint": 6
+        },
+        {
+          "value": "Klasse 2",
+          "label": "Klasse 2 — Grundschule",
+          "age_hint": 7
+        },
+        {
+          "value": "Klasse 3",
+          "label": "Klasse 3 — Grundschule",
+          "age_hint": 8
+        },
+        {
+          "value": "Klasse 4",
+          "label": "Klasse 4 — Grundschule",
+          "age_hint": 9
+        },
+        {
+          "value": "Klasse 5",
+          "label": "Klasse 5",
+          "age_hint": 10
+        },
+        {
+          "value": "Klasse 6",
+          "label": "Klasse 6",
+          "age_hint": 11
+        },
+        {
+          "value": "Klasse 7",
+          "label": "Klasse 7",
+          "age_hint": 12
+        },
+        {
+          "value": "Klasse 8",
+          "label": "Klasse 8",
+          "age_hint": 13
+        },
+        {
+          "value": "Klasse 9",
+          "label": "Klasse 9",
+          "age_hint": 14
+        },
+        {
+          "value": "Klasse 10",
+          "label": "Klasse 10",
+          "age_hint": 15
+        },
+        {
+          "value": "Klasse 11",
+          "label": "Klasse 11 / Q1",
+          "age_hint": 16
+        },
+        {
+          "value": "Klasse 12",
+          "label": "Klasse 12 / Q2",
+          "age_hint": 17
+        },
+        {
+          "value": "Klasse 13",
+          "label": "Klasse 13 / Abitur",
+          "age_hint": 18
+        }
+      ]
+    },
+    "es": {
+      "label": "Curso",
+      "options": [
+        {
+          "value": "1º Primaria",
+          "label": "1º Educación Primaria",
+          "age_hint": 6
+        },
+        {
+          "value": "2º Primaria",
+          "label": "2º Educación Primaria",
+          "age_hint": 7
+        },
+        {
+          "value": "3º Primaria",
+          "label": "3º Educación Primaria",
+          "age_hint": 8
+        },
+        {
+          "value": "4º Primaria",
+          "label": "4º Educación Primaria",
+          "age_hint": 9
+        },
+        {
+          "value": "5º Primaria",
+          "label": "5º Educación Primaria",
+          "age_hint": 10
+        },
+        {
+          "value": "6º Primaria",
+          "label": "6º Educación Primaria",
+          "age_hint": 11
+        },
+        {
+          "value": "1º ESO",
+          "label": "1º ESO",
+          "age_hint": 12
+        },
+        {
+          "value": "2º ESO",
+          "label": "2º ESO",
+          "age_hint": 13
+        },
+        {
+          "value": "3º ESO",
+          "label": "3º ESO",
+          "age_hint": 14
+        },
+        {
+          "value": "4º ESO",
+          "label": "4º ESO",
+          "age_hint": 15
+        },
+        {
+          "value": "1º Bachillerato",
+          "label": "1º Bachillerato",
+          "age_hint": 16
+        },
+        {
+          "value": "2º Bachillerato",
+          "label": "2º Bachillerato",
+          "age_hint": 17
+        }
+      ]
+    }
+  }
+}
