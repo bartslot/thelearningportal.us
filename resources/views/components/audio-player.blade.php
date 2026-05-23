@@ -16,6 +16,7 @@
 
 @if($src)
 <div
+    wire:ignore
     x-data="wavePlayer('{{ $src }}', @js($transcript), @js($wordTimings))"
     x-init="init(); return () => destroy()"
     class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 space-y-2"
