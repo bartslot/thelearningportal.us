@@ -158,7 +158,7 @@
                         });
                         this.ws.on('audioprocess', (t) => {
                             const d = this.ws?.getDuration?.() ?? 0;
-                            this.time = this.fmt(d - t);
+                            if (d > 0) this.time = this.fmt(d - t);
                         });
                         this.ws.on('play', () => {
                             this.playing = true;
@@ -441,7 +441,7 @@
                 },
 
                 fmt(s) {
-                    if (!s || isNaN(s)) return '0:00';
+                    if (!s || isNaN(s) || s < 0) return '0:00';
                     const m   = Math.floor(s / 60);
                     const sec = Math.floor(s % 60);
                     return `${m}:${sec.toString().padStart(2, '0')}`;
