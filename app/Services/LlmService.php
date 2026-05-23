@@ -122,8 +122,9 @@ PROMPT;
 
         $userPrompt = "Source facts about {$topic}:\n\n{$facts}\n\nGenerate the lesson JSON now.";
 
-        // Local Ollama first (free, no latency cost) → Anthropic as cloud fallback
-        $result = $this->tryOllama($systemPrompt, $userPrompt)
+        // LM Studio → Ollama → Anthropic fallback chain
+        $result = $this->tryLmStudio($systemPrompt, $userPrompt)
+            ?? $this->tryOllama($systemPrompt, $userPrompt)
             ?? $this->tryAnthropic($systemPrompt, $userPrompt);
 
         if ($result !== null) {
@@ -139,6 +140,39 @@ PROMPT;
     }
 
     // ── Providers ────────────────────────────────────────────────────────────
+
+    private function tryLmStudio(string $systemPrompt, string $userPrompt): ?array
+    {
+        $url   = rtrim((string) config('services.lmstudio.url', 'http://localhost:1234/v1'), '/') . '/chat/completions';
+        $model = (string) config('services.lmstudio.model', 'google/gemma-4-e4b');
+
+        try {
+            $response = Http::timeout(120)
+                ->withToken('lm-studio')
+                ->post($url, [
+                    'model'           => $model,
+                    'temperature'     => 0.4,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages'        => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user',   'content' => $userPrompt],
+                    ],
+                ]);
+
+            if ($response->successful()) {
+                $text = $response->json('choices.0.message.content');
+                if (is_string($text) && trim($text) !== '') {
+                    return $this->parseJsonResponse($text);
+                }
+            }
+
+            Log::warning('LlmService: LM Studio error', ['status' => $response->status()]);
+        } catch (\Throwable $e) {
+            Log::warning('LlmService: LM Studio call failed — ' . $e->getMessage());
+        }
+
+        return null;
+    }
 
     private function tryAnthropic(string $systemPrompt, string $userPrompt): ?array
     {

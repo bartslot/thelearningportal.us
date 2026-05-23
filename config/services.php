@@ -43,7 +43,22 @@ return [
     ],
 
     'comfyui' => [
-        'url' => env('COMFYUI_URL', 'http://localhost:8188'),
+        'url'           => env('COMFYUI_URL', 'http://localhost:8188'),
+        'dir'           => env('COMFYUI_DIR', ($_SERVER['HOME'] ?? '') . '/ComfyUI'),
+        'python'        => env('COMFYUI_PYTHON', 'python'),
+        'checkpoint'    => env('COMFYUI_CHECKPOINT', 'flux1-schnell-Q5_K_S.gguf'),
+        'clip1'         => env('COMFYUI_CLIP1', 'clip_l.safetensors'),
+        'clip2'         => env('COMFYUI_CLIP2', 't5xxl_fp8_e4m3fn.safetensors'),
+        'vae'           => env('COMFYUI_VAE', 'ae.safetensors'),
+        'sampler'       => env('COMFYUI_SAMPLER', 'euler'),
+        'scheduler'     => env('COMFYUI_SCHEDULER', 'simple'),
+        'steps'         => (int) env('COMFYUI_STEPS', 4),
+        'cfg'           => (float) env('COMFYUI_CFG', 1.0),
+        'scene_width'   => (int) env('COMFYUI_SCENE_WIDTH', 1024),
+        'scene_height'  => (int) env('COMFYUI_SCENE_HEIGHT', 512),
+        'skybox_width'  => (int) env('COMFYUI_SKYBOX_WIDTH', 2048),
+        'skybox_height' => (int) env('COMFYUI_SKYBOX_HEIGHT', 1024),
+        'timeout'       => (int) env('COMFYUI_TIMEOUT', 180),
     ],
 
     // ── Production AI APIs ────────────────────────────────────────────────────
@@ -52,6 +67,7 @@ return [
         'api_key'      => env('OPENAI_API_KEY'),
         'organization' => env('OPENAI_ORGANIZATION'),
         'model'        => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'json_format'  => env('OPENAI_JSON_FORMAT', 'json_object'), // set empty to skip response_format (LM Studio)
         'image_model'       => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
         'image_size'        => env('OPENAI_IMAGE_SIZE', '1536x1024'),
         'image_format'      => env('OPENAI_IMAGE_FORMAT', 'webp'),       // png|jpeg|webp
@@ -94,17 +110,48 @@ return [
 
     'falai' => [
         'api_key'         => env('FAL_AI_KEY'),
-        // OFF by default until the storage-upload flow is in: clarity-upscaler
-        // rejects data: URIs (422 "Failed to load the image"). Flip to true after
-        // FAL_AI_KEY is set AND the upload path is in place.
+        // Image generation (scene + skybox)
+        'image_model'     => env('FAL_IMAGE_MODEL', 'fal-ai/flux/schnell'),
+        'scene_width'     => (int) env('FAL_SCENE_WIDTH', 1024),
+        'scene_height'    => (int) env('FAL_SCENE_HEIGHT', 512),
+        'skybox_width'    => (int) env('FAL_SKYBOX_WIDTH', 1024),
+        'skybox_height'   => (int) env('FAL_SKYBOX_HEIGHT', 512),
+        'steps'           => (int) env('FAL_STEPS', 4),
+        'timeout'         => (int) env('FAL_TIMEOUT', 90),
+        // Upscaling (clarity-upscaler) — OFF by default, uses local Upscayl instead
         'upscale_enabled' => filter_var(env('FAL_UPSCALE_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'upscale_model'   => env('FAL_UPSCALE_MODEL', 'fal-ai/clarity-upscaler'),
         'upscale_factor'  => (int) env('FAL_UPSCALE_FACTOR', 2),
-        // Hard cap. fal.run can hold the connection open while the model queues
-        // server-side; we'd rather give up and serve the un-upscaled bytes than
-        // hang a queue worker indefinitely.
-        'timeout'         => (int) env('FAL_UPSCALE_TIMEOUT', 60),
+        'enhance_model'   => env('FAL_ENHANCE_MODEL', 'fal-ai/clarity-upscaler'),
+        'enhance_factor'  => (int) env('FAL_ENHANCE_FACTOR', 4),
         'connect_timeout' => (int) env('FAL_UPSCALE_CONNECT_TIMEOUT', 10),
+    ],
+
+    // ── LM Studio (local OpenAI-compatible LLM) ───────────────────────────────
+    'lmstudio' => [
+        'url'   => env('LM_STUDIO_URL', 'http://localhost:1234/v1'),
+        'model' => env('LM_STUDIO_MODEL', 'google/gemma-4-e4b'),
+    ],
+
+    // ── Automatic1111 (local Stable Diffusion image generation) ──────────────
+    'a1111' => [
+        'url'           => env('A1111_URL', 'http://localhost:7860'),
+        'sampler'       => env('A1111_SAMPLER', 'Euler a'),
+        'steps'         => (int) env('A1111_STEPS', 20),
+        'cfg'           => (float) env('A1111_CFG', 7.0),
+        'scene_width'   => (int) env('A1111_SCENE_WIDTH', 1024),
+        'scene_height'  => (int) env('A1111_SCENE_HEIGHT', 512),
+        'skybox_width'  => (int) env('A1111_SKYBOX_WIDTH', 2048),
+        'skybox_height' => (int) env('A1111_SKYBOX_HEIGHT', 1024),
+        'timeout'       => (int) env('A1111_TIMEOUT', 120),
+    ],
+
+    // ── Upscayl local CLI (replaces fal.ai upscaling in dev) ─────────────────
+    'upscayl' => [
+        'enabled'    => filter_var(env('UPSCAYL_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'bin'        => env('UPSCAYL_BIN', '/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin'),
+        'model_path' => env('UPSCAYL_MODEL_PATH', '/Applications/Upscayl.app/Contents/Resources/models'),
+        'model'      => env('UPSCAYL_MODEL', 'upscayl-standard-4x'),
     ],
 
     // ── Vercel serverless functions (avatar studio / audio manifest) ──────────

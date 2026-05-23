@@ -24,6 +24,13 @@ except ImportError:
     sys.exit(1)
 
 
+def normalize_wrapped_path(value: str) -> str:
+    """Strip accidental matching quote wrappers, e.g. '/tmp/a.mp3'."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Azure TTS with blend shapes")
     parser.add_argument("--ssml",       required=True, help="Path to SSML input file")
@@ -32,6 +39,9 @@ def main() -> None:
     parser.add_argument("--audio-out",  required=True, help="Output path for MP3 audio")
     parser.add_argument("--shapes-out", required=True, help="Output path for blendshapes.json")
     args = parser.parse_args()
+
+    args.audio_out = normalize_wrapped_path(args.audio_out)
+    args.shapes_out = normalize_wrapped_path(args.shapes_out)
 
     # Read SSML
     if not os.path.exists(args.ssml):

@@ -12,11 +12,36 @@ use RuntimeException;
 
 class OpenAiImageService
 {
-    /** Pixel-channel value below which we treat a pixel as "black bar" filler. */
-    private const BLACK_BAR_THRESHOLD = 12;
+    /** Pixel-channel value below which we treat a pixel as "black bar" filler.
+     *  Raised to 28 to catch the dark-grey gradient bands OpenAI sometimes generates
+     *  at the letterbox boundary (not just pure #000000). */
+    private const BLACK_BAR_THRESHOLD = 28;
 
     /** Fraction of a row that must be near-black before we trim it. */
-    private const BLACK_BAR_ROW_RATIO = 0.98;
+    private const BLACK_BAR_ROW_RATIO = 0.95;
+
+    /**
+     * Generate an image from a fully pre-built prompt (after historical validation).
+     * Use this when the caller has already assembled the prompt via ImageStyleTemplate.
+     */
+    public function generateFromPrompt(
+        string $prompt,
+        string $destination,
+        bool   $isGame = false,
+    ): string {
+        if ($isGame) {
+            $prompt .= '. ' . ImageStyleTemplate::GAME_HINT;
+        }
+
+        $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
+        $bytes = $this->trimBlackBars($bytes);
+        $bytes = $this->cropTo2x1($bytes);
+        $bytes = $this->upscaleWithUpscayl($bytes);
+
+        Storage::disk('public')->put($destination, $bytes);
+
+        return $destination;
+    }
 
     public function generate(
         string $seedPrompt,
@@ -33,7 +58,7 @@ class OpenAiImageService
         $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
         $bytes = $this->trimBlackBars($bytes);
         $bytes = $this->cropTo2x1($bytes);
-        $bytes = $this->upscaleWithFalai($bytes);
+        $bytes = $this->upscaleWithUpscayl($bytes);
 
         Storage::disk('public')->put($destination, $bytes);
 
@@ -41,119 +66,123 @@ class OpenAiImageService
     }
 
     /**
-     * Post-process the panorama with a fal.ai upscaler (Real-ESRGAN-class). Doubles
-     * the effective resolution so the texture wrapped on the sphere holds detail
-     * even when the teacher orbits close. Failures fall through gracefully — the
-     * original bytes are returned and the lesson still works.
+     * Enhance an already-stored skybox using local Upscayl (Real-ESRGAN).
+     * Called by EnhanceSkyboxImage job — takes raw image bytes and returns
+     * enhanced bytes ready to overwrite the stored file.
      */
-    private function upscaleWithFalai(string $bytes): string
+    public function enhance(string $bytes): string
     {
-        if (! (bool) config('services.falai.upscale_enabled', false)) {
-            return $bytes;
+        $result = $this->upscaleWithUpscayl($bytes, scale: 4);
+        if ($result === $bytes) {
+            throw new \RuntimeException('Upscayl enhance failed — upscayl-bin returned original bytes.');
         }
-        $key = (string) config('services.falai.api_key', '');
-        if ($key === '') {
-            return $bytes;
-        }
-
-        $model         = (string) config('services.falai.upscale_model', 'fal-ai/clarity-upscaler');
-        $scale         = (int)    config('services.falai.upscale_factor', 2);
-        $timeout       = (int)    config('services.falai.timeout', 60);
-        $connectTimeout = (int)   config('services.falai.connect_timeout', 10);
-
-        try {
-            // clarity-upscaler rejects data: URIs (422 "Failed to load the image"),
-            // so upload to fal storage first and pass the returned public URL.
-            $uploadedUrl = $this->uploadToFalStorage($bytes, $key, $connectTimeout, $timeout);
-            if ($uploadedUrl === null) {
-                return $bytes;
-            }
-
-            $res = Http::withHeaders(['Authorization' => 'Key ' . $key])
-                ->timeout($timeout)
-                ->connectTimeout($connectTimeout)
-                ->acceptJson()
-                ->post("https://fal.run/{$model}", [
-                    'image_url'     => $uploadedUrl,
-                    'scale_factor'  => $scale,
-                    'output_format' => 'webp',
-                ]);
-
-            if (! $res->successful()) {
-                Log::warning('[fal.ai] upscale ' . $res->status() . ': ' . substr($res->body(), 0, 200));
-                return $bytes;
-            }
-
-            $url = $res->json('image.url')
-                ?? $res->json('images.0.url')
-                ?? $res->json('output.url')
-                ?? null;
-            if (! is_string($url) || $url === '') {
-                Log::warning('[fal.ai] upscale response missing image url', ['body' => substr($res->body(), 0, 200)]);
-                return $bytes;
-            }
-
-            $dl = Http::timeout(60)->get($url);
-            if (! $dl->successful()) {
-                Log::warning('[fal.ai] failed to download upscaled image: ' . $dl->status());
-                return $bytes;
-            }
-
-            // fal.ai may return png or webp depending on the model — normalise to webp
-            // at our configured quality so storage stays consistent.
-            $normalized = $this->reencodeWebp($dl->body());
-            return $normalized !== '' ? $normalized : $bytes;
-        } catch (\Throwable $e) {
-            Log::warning('[fal.ai] upscale exception: ' . $e->getMessage());
-            return $bytes;
-        }
+        return $result;
     }
 
     /**
-     * Upload bytes to fal.ai's storage and return a public URL we can hand to
-     * any fal.run model. Two-step flow: initiate (returns presigned PUT URL +
-     * resulting file URL), then PUT the bytes.
+     * Pick the best Upscayl model for the given style + scene hint text.
+     *
+     * | Style / content                | Model               | Reason                         |
+     * |--------------------------------|---------------------|--------------------------------|
+     * | comic, animation, sketched     | digital-art-4x      | tuned for line-art / flat color|
+     * | painted                        | high-fidelity-4x    | preserves painterly texture    |
+     * | nature keywords in prompt      | high-fidelity-4x    | organic detail (grass, water)  |
+     * | building/architecture keywords | ultrasharp-4x       | crisp edges, stone, brick      |
+     * | everything else                | ultrasharp-4x       | safe default for photos/film   |
      */
-    private function uploadToFalStorage(string $bytes, string $key, int $connectTimeout, int $timeout): ?string
+    public static function selectUpscaylModel(string $style, string $hint = ''): string
     {
+        if (in_array($style, ['comic', 'animation', 'sketched'], true)) {
+            return 'digital-art-4x';
+        }
+
+        if ($style === 'painted') {
+            return 'high-fidelity-4x';
+        }
+
+        $hint = mb_strtolower($hint);
+
+        $natureKeywords = ['forest', 'ocean', 'sea', 'river', 'lake', 'field', 'jungle',
+            'mountain', 'meadow', 'valley', 'grass', 'tree', 'wilderness', 'countryside',
+            'desert', 'savanna', 'marsh', 'swamp', 'cliff', 'beach', 'coast'];
+        foreach ($natureKeywords as $kw) {
+            if (str_contains($hint, $kw)) {
+                return 'high-fidelity-4x';
+            }
+        }
+
+        $buildingKeywords = ['city', 'palace', 'temple', 'forum', 'castle', 'colosseum',
+            'street', 'building', 'arch', 'column', 'senate', 'market', 'square',
+            'acropolis', 'amphitheater', 'basilica', 'aqueduct', 'tower', 'wall',
+            'monument', 'cathedral', 'citadel', 'fortress', 'ruins'];
+        foreach ($buildingKeywords as $kw) {
+            if (str_contains($hint, $kw)) {
+                return 'ultrasharp-4x';
+            }
+        }
+
+        return 'ultrasharp-4x';
+    }
+
+    /**
+     * Public entry-point for the UpscayleSceneImage job — runs Upscayl with the
+     * given model and returns enhanced bytes (or original on failure).
+     */
+    public function upscaleLocal(string $bytes, string $modelName): string
+    {
+        return $this->upscaleWithUpscayl($bytes, scale: 2, modelName: $modelName);
+    }
+
+    /**
+     * Upscale via local Upscayl CLI (Real-ESRGAN). Falls through gracefully —
+     * returns original bytes on any failure so the lesson still works.
+     */
+    private function upscaleWithUpscayl(string $bytes, int $scale = 2, string $modelName = ''): string
+    {
+        if (! (bool) config('services.upscayl.enabled', true)) {
+            return $bytes;
+        }
+
+        $bin        = (string) config('services.upscayl.bin', '/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin');
+        $modelPath  = (string) config('services.upscayl.model_path', '/Applications/Upscayl.app/Contents/Resources/models');
+        $modelName  = $modelName !== '' ? $modelName : (string) config('services.upscayl.model', 'upscayl-standard-4x');
+
+        if (! is_executable($bin)) {
+            Log::warning('[upscayl] binary not found or not executable: ' . $bin);
+            return $bytes;
+        }
+
         try {
-            $initiate = Http::withHeaders(['Authorization' => 'Key ' . $key])
-                ->timeout($timeout)
-                ->connectTimeout($connectTimeout)
-                ->acceptJson()
-                ->asJson()
-                ->post('https://rest.alpha.fal.ai/storage/upload/initiate', [
-                    'content_type' => 'image/webp',
-                    'file_name'    => 'skybox.webp',
-                ]);
+            $tmpIn  = tempnam(sys_get_temp_dir(), 'upscayl_in_') . '.webp';
+            $tmpOut = tempnam(sys_get_temp_dir(), 'upscayl_out_') . '.webp';
 
-            if (! $initiate->successful()) {
-                Log::warning('[fal.ai] storage initiate ' . $initiate->status() . ': ' . substr($initiate->body(), 0, 200));
-                return null;
+            file_put_contents($tmpIn, $bytes);
+
+            $cmd = sprintf(
+                '%s -i %s -o %s -m %s -n %s -z 4 -s %d -f webp 2>&1',
+                escapeshellarg($bin),
+                escapeshellarg($tmpIn),
+                escapeshellarg($tmpOut),
+                escapeshellarg($modelPath),
+                escapeshellarg($modelName),
+                $scale,
+            );
+
+            exec($cmd, $output, $exitCode);
+
+            if ($exitCode !== 0 || ! file_exists($tmpOut) || filesize($tmpOut) === 0) {
+                Log::warning('[upscayl] failed (exit ' . $exitCode . '): ' . implode(' ', $output));
+                return $bytes;
             }
 
-            $uploadUrl = $initiate->json('upload_url');
-            $fileUrl   = $initiate->json('file_url');
-            if (! is_string($uploadUrl) || ! is_string($fileUrl)) {
-                Log::warning('[fal.ai] storage initiate missing url(s)', ['body' => substr($initiate->body(), 0, 300)]);
-                return null;
-            }
-
-            $put = Http::withHeaders(['Content-Type' => 'image/webp'])
-                ->timeout($timeout)
-                ->connectTimeout($connectTimeout)
-                ->withBody($bytes, 'image/webp')
-                ->put($uploadUrl);
-
-            if (! $put->successful()) {
-                Log::warning('[fal.ai] storage PUT ' . $put->status() . ': ' . substr($put->body(), 0, 200));
-                return null;
-            }
-
-            return $fileUrl;
+            $upscaled = file_get_contents($tmpOut);
+            return ($upscaled !== false && $upscaled !== '') ? $upscaled : $bytes;
         } catch (\Throwable $e) {
-            Log::warning('[fal.ai] storage upload exception: ' . $e->getMessage());
-            return null;
+            Log::warning('[upscayl] exception: ' . $e->getMessage());
+            return $bytes;
+        } finally {
+            isset($tmpIn)  && file_exists($tmpIn)  && unlink($tmpIn);
+            isset($tmpOut) && file_exists($tmpOut) && unlink($tmpOut);
         }
     }
 
@@ -223,6 +252,17 @@ class OpenAiImageService
      * left/right) of the returned image. The model is asked to letterbox to 2:1; this
      * trims whatever bars actually came back.
      */
+    /**
+     * Remove black bars and crop to 2:1 — usable by any job that downloads an
+     * AI-generated panorama (OpenAI or fal.ai).
+     */
+    public function cleanPanorama(string $bytes): string
+    {
+        $bytes = $this->trimBlackBars($bytes);
+        $bytes = $this->cropTo2x1($bytes);
+        return $bytes;
+    }
+
     private function trimBlackBars(string $bytes): string
     {
         if (! function_exists('imagecreatefromstring')) {

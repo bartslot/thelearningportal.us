@@ -9,21 +9,33 @@ use App\Models\StrategyGame;
 
 final class LessonOutlinePrompt
 {
-    public static function system(): string
+    public static function system(bool $hasGame = false): string
     {
+        $kindEnum   = $hasGame ? '"narration" | "game"' : '"narration"';
+        $gameNote   = $hasGame
+            ? ''
+            : "\n- Do NOT include any scenes with kind=\"game\". Only narration scenes are allowed.";
+
         return <<<SYS
 You are a K-12 curriculum writer producing structured lesson outlines.
-Return ONLY a JSON object with this exact shape:
+Return ONLY a JSON object with this exact shape — no markdown, no prose, no extra keys:
+
 {
   "title": string,
   "scene_briefs": [
     {
       "order": integer (1-indexed),
-      "kind": "narration" | "game",
+      "kind": {$kindEnum},
+      "phase": "intro" | "development" | "climax" | "resolution",
+      "scenePurpose": string (one sentence — what should the student understand after this scene),
       "year": string | null,
       "location": string | null,
-      "beat": string (one-sentence summary of what happens in this scene),
-      "image_prompt_seed": string | null,
+      "viewerPosition": string | null (e.g. "standing in the market square", "on a ship deck"),
+      "historicalFacts": string[] (2-4 specific facts to ground the narration — from source only),
+      "visualEvidence": string[] (4-8 period-accurate visual details for the scene image),
+      "avoidList": string[] (2-5 anachronisms or objects to explicitly exclude from the image),
+      "beat": string (one sentence — what happens in this scene narratively),
+      "image_prompt_seed": string (short descriptive phrase for image generation),
       "game_segment_index": integer | null
     }
   ]
@@ -32,7 +44,10 @@ Return ONLY a JSON object with this exact shape:
 Rules:
 - Only use facts from the provided source text. If uncertain, omit — never invent.
 - Match the requested grade-level vocabulary and tone.
-- Place game scenes at pedagogically sensible points.
+- historicalFacts must be verifiable from the source text — no fabrication.
+- visualEvidence must be period-accurate: no anachronisms.
+- avoidList must include obvious anachronisms for the period (modern vehicles, electricity, etc.).{$gameNote}
+- Place game scenes at pedagogically sensible points (after a narration has introduced new content).
 SYS;
     }
 

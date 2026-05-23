@@ -9,28 +9,39 @@ final class ImageStyleTemplate
     public const SAFETY_GUARDRAIL = 'no children, no real living people, no readable text in image';
 
     /**
-     * Equirectangular panorama spec — drives gpt-image-1 toward something usable as a
-     * VR skybox texture on an inverted sphere. The model can't natively output 2:1, but
-     * we tell it the composition rules so the chosen landscape framing still wraps.
+     * Flat 2D image hint — used for the initial Slideshow image.
+     * Wide establishing shot with depth; objects kept at mid-to-far distance.
      */
-    public const PANORAMIC_HINT = '360 degree panoramic scene, equirectangular projection, '
-        . 'immersive VR panorama, framed inside a 2:1 ultra-wide aspect ratio. '
-        . 'Render the scene in a wide 2:1 letterbox: the panorama fills the middle '
-        . 'horizontal band edge-to-edge, with solid pure black bars above and below '
-        . 'so the overall canvas remains the requested square or 3:2 frame. '
-        . 'Horizon line level and centered vertically within the panorama band. '
-        . 'Seamless continuity between the left and right edges, '
-        . 'no subjects or hard edges crossing the seam, '
-        . 'no fisheye or lens distortion, no cropped foreground objects, '
-        . 'environmental establishing shot only, no close-up subjects, no people visible, '
-        . 'consistent ambient lighting from all directions, '
-        . 'sky visible above the horizon band, ground visible below, '
-        . 'ultra detailed';
+    public const FLAT_HINT = 'wide establishing shot, cinematic landscape framing, '
+        . 'subjects and objects at mid-ground to far distance, '
+        . 'nothing in extreme foreground filling the frame, '
+        . 'sense of depth and space, open vista';
+
+    /**
+     * Technical equirectangular panorama spec — appended to every skybox prompt.
+     * Fixed suffix, never modified.
+     */
+    public const SKYBOX_TECHNICAL_SUFFIX = 'Technical skybox requirements: '
+        . 'equirectangular panorama, 360-degree horizontal view, 180-degree vertical view, '
+        . '2:1 aspect ratio, seamless left-right edge continuity, level horizon at center, '
+        . 'no fisheye distortion, no cropped foreground objects, '
+        . 'no close objects at the panorama seam, consistent lighting in all directions, '
+        . 'realistic scale, suitable for use as a spherical VR skybox';
+
+    /**
+     * Universal negative prompt — appended to every image prompt (flat and skybox).
+     */
+    public const NEGATIVE_PROMPT = 'Avoid: people, faces, modern objects, modern buildings, '
+        . 'cars, bicycles, motorcycles, electric lamps, power lines, antennas, asphalt, '
+        . 'plastic, glass skyscrapers, modern road signs, readable text, logos, '
+        . 'fantasy elements, sci-fi elements, inaccurate monuments, '
+        . 'distorted perspective, duplicated architecture, warped buildings, '
+        . 'broken horizon, fisheye lens, black borders, frame, watermark';
 
     public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
 
     private const STYLES = [
-        'realistic' => 'photographic, period-accurate, natural light, shallow DOF, people in period clothing',
+        'realistic' => 'photographic, period-accurate, natural light, shallow DOF',
         'sketched'  => 'pencil ink sketch, hatching, period dress, sepia tones',
         'painted'   => 'oil painting, romantic era, visible brushstrokes, dramatic light',
         'cinematic' => 'film still, anamorphic, dusk lighting, color graded',
@@ -38,18 +49,115 @@ final class ImageStyleTemplate
         'animation' => 'stylized 3D animation, soft lighting, expressive characters',
     ];
 
+    /**
+     * Standard flat 2D image — Slideshow view.
+     * Uses the raw seed prompt without historical validation.
+     */
     public static function build(string $seedPrompt, string $style, bool $isGame = false): string
     {
         $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
-        $parts       = [
+        $parts = array_filter([
             trim($seedPrompt),
             $styleClause,
-            self::PANORAMIC_HINT,
+            self::FLAT_HINT,
             $isGame ? self::GAME_HINT : null,
             self::SAFETY_GUARDRAIL,
-        ];
+            self::NEGATIVE_PROMPT,
+        ]);
 
-        return implode('. ', array_filter($parts));
+        return implode('. ', $parts);
+    }
+
+    /**
+     * Build a flat image prompt from a validated historical scene.
+     * Uses only confirmed-accurate visuals from the validation step.
+     *
+     * @param array{
+     *   recommendedScene: string,
+     *   accurateVisuals: string[],
+     *   anachronismsToAvoid: string[],
+     *   historicalPeriod: string,
+     *   location: string
+     * } $validation
+     */
+    public static function buildFromValidated(array $validation, string $style, bool $isGame = false): string
+    {
+        $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
+
+        $scene     = $validation['recommendedScene'] ?? '';
+        $visuals   = implode(', ', $validation['accurateVisuals'] ?? []);
+        $avoidList = array_merge(
+            $validation['anachronismsToAvoid'] ?? [],
+            ['people', 'faces', 'readable text'],
+        );
+        $avoidStr  = 'avoid: ' . implode(', ', array_unique($avoidList));
+
+        $parts = array_filter([
+            $scene,
+            $visuals ?: null,
+            $styleClause,
+            self::FLAT_HINT,
+            $isGame ? self::GAME_HINT : null,
+            self::SAFETY_GUARDRAIL,
+            $avoidStr,
+            self::NEGATIVE_PROMPT,
+        ]);
+
+        return implode('. ', $parts);
+    }
+
+    /**
+     * Equirectangular panorama — used by GenerateSkyboxImage.
+     * Appends the technical skybox suffix and negative prompt.
+     */
+    public static function buildSkybox(string $seedPrompt, string $style): string
+    {
+        $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
+        $parts = array_filter([
+            trim($seedPrompt),
+            $styleClause,
+            self::SAFETY_GUARDRAIL,
+            self::SKYBOX_TECHNICAL_SUFFIX,
+            self::NEGATIVE_PROMPT,
+        ]);
+
+        return implode('. ', $parts);
+    }
+
+    /**
+     * Build a skybox prompt from validated historical scene data.
+     *
+     * @param array{
+     *   recommendedScene: string,
+     *   accurateVisuals: string[],
+     *   anachronismsToAvoid: string[],
+     *   historicalPeriod: string,
+     *   location: string
+     * } $validation
+     */
+    public static function buildSkyboxFromValidated(array $validation, string $style): string
+    {
+        $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
+
+        $scene     = $validation['recommendedScene'] ?? '';
+        $visuals   = implode(', ', $validation['accurateVisuals'] ?? []);
+        $avoidList = array_merge(
+            $validation['anachronismsToAvoid'] ?? [],
+            ['people', 'faces', 'readable text'],
+        );
+        $avoidStr  = 'avoid: ' . implode(', ', array_unique($avoidList));
+
+        $parts = array_filter([
+            $scene,
+            $visuals ?: null,
+            $styleClause,
+            self::SAFETY_GUARDRAIL,
+            $avoidStr,
+            self::SKYBOX_TECHNICAL_SUFFIX,
+            self::NEGATIVE_PROMPT,
+        ]);
+
+        return implode('. ', $parts);
     }
 
     /** @return string[] */

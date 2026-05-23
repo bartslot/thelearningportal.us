@@ -3,7 +3,7 @@
     'selectedId' => null,
 ])
 
-<div class="flex gap-3 overflow-x-auto pb-2">
+<div class="flex gap-3 pb-2">
     @foreach ($avatars as $avatar)
         <button type="button"
                 wire:click="$set('avatar_id', {{ $avatar->id }})"

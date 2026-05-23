@@ -4,7 +4,7 @@
     'editable'        => true,
 ])
 
-<div {{ $attributes->merge(['class' => 'fixed bottom-0 inset-x-0 z-30 bg-base-300/85 backdrop-blur border-t border-slate-700/40']) }}>
+<div {{ $attributes->merge(['class' => 'fixed bottom-0 inset-x-0 z-30 hover:bg-base-300/85 hover:backdrop-blur hover:border-t hover:border-slate-700/40']) }}>
     <div class="max-w-screen-2xl mx-auto px-4 py-3">
 
         {{-- Video track — fixed-size thumbs, scrolls horizontally if it overflows --}}
@@ -18,7 +18,7 @@
 
             @if ($editable)
                 <button type="button" wire:click="addScene"
-                        class="shrink-0 w-32 h-[72px] rounded-lg border-2 border-slate-600 hover:border-amber-400 transition-all flex items-center justify-center text-slate-400 hover:text-amber-300"
+                        class="shrink-0 w-32 h-[72px] rounded-lg border-2 border-white/20 hover:border-amber-400 transition-all flex items-center justify-center text-white/20 hover:text-amber-300"
                         title="Add scene">
                     +
                 </button>

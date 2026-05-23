@@ -687,7 +687,7 @@ git commit -m "feat(scene): wizard bridge — Livewire ↔ LessonScene"
     {{-- Fullscreen canvas wrapper --}}
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root">
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none"></div>
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
 

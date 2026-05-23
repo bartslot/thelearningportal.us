@@ -42,8 +42,9 @@ class OpenAiLlmService
             ],
             'temperature' => 0.7,
         ];
-        if ($jsonMode) {
-            $payload['response_format'] = ['type' => 'json_object'];
+        $jsonFormat = (string) config('services.openai.json_format', 'json_object');
+        if ($jsonMode && $jsonFormat !== '') {
+            $payload['response_format'] = ['type' => $jsonFormat];
         }
 
         $base    = $this->baseUrl ?? config('services.openai.base_url');

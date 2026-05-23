@@ -33,15 +33,34 @@ class AzureTtsServiceTest extends TestCase
         Storage::fake('local');
 
         $service = new class extends AzureTtsService {
+            private function extractArg(string $cmd, string $flag): ?string
+            {
+                $pattern = '/(?:^|\s)' . preg_quote($flag, '/') . '\s+(\'[^\']*\'|\S+)/';
+                if (preg_match($pattern, $cmd, $match) !== 1) {
+                    return null;
+                }
+
+                $value = $match[1];
+
+                // runPython() receives shell-escaped args from escapeshellarg(),
+                // so strip only wrapping quotes before using as filesystem paths.
+                if (strlen($value) >= 2 && $value[0] === "'" && substr($value, -1) === "'") {
+                    $value = substr($value, 1, -1);
+                }
+
+                return $value;
+            }
+
             protected function runPython(string $cmd): array
             {
                 // Parse the actual output paths from the command and create fake files
-                preg_match('/--audio-out\s+(\S+)/', $cmd, $audioMatch);
-                preg_match('/--shapes-out\s+(\S+)/', $cmd, $shapesMatch);
-                if (isset($audioMatch[1])) {
-                    @mkdir(dirname($audioMatch[1]), 0755, true);
-                    file_put_contents($audioMatch[1], 'fake-mp3-data');
-                    file_put_contents($shapesMatch[1], '{"fps":60,"duration":1.0,"frames":[]}');
+                $audioPath = $this->extractArg($cmd, '--audio-out');
+                $shapesPath = $this->extractArg($cmd, '--shapes-out');
+
+                if (is_string($audioPath) && is_string($shapesPath)) {
+                    @mkdir(dirname($audioPath), 0755, true);
+                    file_put_contents($audioPath, 'fake-mp3-data');
+                    file_put_contents($shapesPath, '{"fps":60,"duration":1.0,"frames":[]}');
                 }
                 return [['OK: 0 frames'], 0];
             }

@@ -1,16 +1,17 @@
 @props(['scene' => null])
 
 @php
-    $blur          = (float)  ($scene->skybox_blur      ?? 0.5);
-    $opacity       = (float)  ($scene->skybox_opacity   ?? 1.0);
-    $bgColor       = (string) ($scene->background_color ?? '#000000');
-    $view          = (string) ($scene->scene_view       ?? 'skybox');
-    $worldStatus   = (string) ($scene->world_labs_status ?? '');
-    $worldYOffset  = (float)  ($scene->world_y_offset   ?? 0);
-    $worldScale    = (float)  ($scene->world_scale      ?? 1);
-    $worldCharScale= (float)  ($scene->world_char_scale ?? 0.53);
-    $isGenerating  = $scene->status === 'generating';
-    $isBusy        = $isGenerating;
+    $blur           = (float)  ($scene->skybox_blur      ?? 0.5);
+    $opacity        = (float)  ($scene->skybox_opacity   ?? 1.0);
+    $bgColor        = (string) ($scene->background_color ?? '#000000');
+    $view           = (string) ($scene->scene_view       ?? 'skybox');
+    $worldStatus    = (string) ($scene->world_labs_status ?? '');
+    $worldYOffset   = (float)  ($scene->world_y_offset   ?? 0);
+    $worldScale     = (float)  ($scene->world_scale      ?? 1);
+    $worldCharScale = (float)  ($scene->world_char_scale ?? 0.53);
+    $isGenerating   = $scene->status === 'generating';
+    $isUpscaling    = ($scene->upscale_status ?? null) === 'upscaling';
+    $isBusy         = $isGenerating;
     $hasSkyboxImage = ! empty($scene->skybox_image_path);
 @endphp
 
@@ -48,6 +49,14 @@
         emitBg()      { window.dispatchEvent(new CustomEvent('lesson:skybox:bgcolor', { detail: { color:   String(this.bgColor) } })); },
         emitCharY()   { window.dispatchEvent(new CustomEvent('lesson:world:character-y', { detail: { offset: Number(this.charYOffset) } })); },
      }">
+
+    {{-- ── Upscaling progress banner (local env only) ────────────────────── --}}
+    @if ($isUpscaling)
+        <div class="flex items-center gap-2 rounded-lg bg-violet-950/60 border border-violet-700/50 px-3 py-2 text-xs text-violet-300">
+            <x-icons.spinner class="w-3.5 h-3.5 animate-spin shrink-0 text-violet-400" />
+            <span>Upscaling with Upscayl… shader will update when done.</span>
+        </div>
+    @endif
 
     {{-- ── Scene view tabs ─────────────────────────────────────────────────── --}}
     <div>
@@ -112,8 +121,16 @@
 
         {{-- 2:1 preview --}}
         @if ($hasSkyboxImage)
-            <img src="{{ asset('storage/' . $scene->skybox_image_path) }}?v={{ $scene->updated_at?->timestamp }}"
-                 class="w-full rounded object-cover" style="aspect-ratio:2/1" />
+            <div class="relative">
+                <img src="{{ asset('storage/' . $scene->skybox_image_path) }}?v={{ $scene->updated_at?->timestamp }}"
+                     class="w-full rounded object-cover @if($isUpscaling) opacity-60 @endif" style="aspect-ratio:2/1" />
+                @if ($isUpscaling)
+                    <div class="absolute inset-0 flex items-center justify-center gap-1.5 rounded">
+                        <x-icons.spinner class="w-4 h-4 animate-spin text-violet-300" />
+                        <span class="text-[10px] text-violet-300 font-medium">Upscaling…</span>
+                    </div>
+                @endif
+            </div>
         @else
             <div class="w-full rounded bg-slate-800 border border-dashed border-slate-600 flex items-center justify-center" style="aspect-ratio:2/1">
                 @if ($isGenerating)

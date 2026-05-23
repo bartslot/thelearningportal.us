@@ -45,8 +45,9 @@ class BuildLessonOutline implements ShouldQueue
 
             $sourceText = (string) ($lesson->source?->extracted_text ?? '');
 
+            $hasGame = $lesson->strategyGame !== null;
             $outline = $llm->json(
-                system: LessonOutlinePrompt::system(),
+                system: LessonOutlinePrompt::system($hasGame),
                 user:   LessonOutlinePrompt::user($lesson, $sourceText),
             );
 
