@@ -202,11 +202,7 @@
                     }
 
                     const syncFromNative = () => {
-                        if (!this.ws) {
-                            return;
-                        }
-
-                        const rawDuration = Number(nativeAudio.duration || this.ws.getDuration() || 0);
+                        const rawDuration = Number(nativeAudio.duration || this.ws?.getDuration?.() || 0);
                         const current = Number(nativeAudio.currentTime || 0);
                         const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
                         this.maxObservedTime = Math.max(this.maxObservedTime, safeCurrent);
@@ -227,10 +223,12 @@
                                     ? this.wordIndexAtTime(safeCurrent)
                                     : this.wordIndexAtProgress(progress);
                             }
-                            if (typeof this.ws.setTime === 'function') {
-                                this.ws.setTime(safeCurrent);
-                            } else {
-                                this.ws.seekTo(progress);
+                            if (this.ws) {
+                                if (typeof this.ws.setTime === 'function') {
+                                    this.ws.setTime(safeCurrent);
+                                } else {
+                                    this.ws.seekTo(progress);
+                                }
                             }
                             this.time = this.fmt(Math.max(0, effectiveDuration - safeCurrent));
                             this.ready = true;
