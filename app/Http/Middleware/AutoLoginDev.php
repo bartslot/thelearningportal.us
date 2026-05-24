@@ -10,8 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Dev-only: auto-logs in the admin@admin.com account so the login flow can be skipped.
+ * Dev-only: auto-logs in a seeded account so the login flow can be skipped.
  * Enabled only when APP_AUTO_LOGIN=true in .env.
+ * Set APP_USER_ROLE=teacher|admin|student to pick the account (default: admin).
  */
 class AutoLoginDev
 {
@@ -22,7 +23,14 @@ class AutoLoginDev
         }
 
         if (! Auth::check()) {
-            $user = User::where('email', 'admin@admin.com')->first();
+            $role = env('APP_USER_ROLE', 'admin');
+
+            $user = match ($role) {
+                'teacher' => User::where('email', 'teacher@example.com')->first(),
+                'student' => User::where('email', 'student@example.com')->first(),
+                default   => User::where('role', 'admin')->first(),
+            };
+
             if ($user) {
                 Auth::login($user, remember: true);
             }
