@@ -14,6 +14,7 @@ use App\Services\Support\GradeBandStyleRecommender;
 use App\Services\Support\HistoryTaxonomy;
 use App\Services\Support\HistoryTopics;
 use App\Services\Support\ImageStyleTemplate;
+use App\Services\Support\ToneRecommender;
 use App\Services\WikipediaService;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
@@ -91,6 +92,7 @@ class Step1Settings extends Component
             $this->lesson_code = strtoupper(Str::random(6));
             $this->image_style = GradeBandStyleRecommender::recommend($this->grade_level)[0];
             $this->avatar_id   = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
+            $this->tone        = 'storytelling';
         }
     }
 
@@ -111,6 +113,15 @@ class Step1Settings extends Component
     public function updatedAudienceAge(): void
     {
         $this->syncGradeLevel();
+    }
+
+    public function updatedTopic(): void
+    {
+        if (trim($this->topic) === '') {
+            $this->region          = null;
+            $this->era             = null;
+            $this->show_region_era = false;
+        }
     }
 
     public function updatedRegion(): void
@@ -190,6 +201,11 @@ class Step1Settings extends Component
         if ($era && ! $this->era) {
             $this->era = $era;
         }
+
+        // Auto-open the region/era panel when values are present
+        if ($this->region || $this->era) {
+            $this->show_region_era = true;
+        }
     }
 
     #[Computed]
@@ -246,6 +262,21 @@ class Step1Settings extends Component
     public function recommendedStyles(): array
     {
         return GradeBandStyleRecommender::recommend($this->grade_level);
+    }
+
+    #[Computed]
+    public function tones(): array
+    {
+        return ToneRecommender::tones();
+    }
+
+    #[Computed]
+    public function recommendedTones(): array
+    {
+        // Always use the resolved age (audience_age) so local grade systems
+        // (e.g. "Groep 7" → age 11) give correct recommendations instead of
+        // treating the raw grade number as an age.
+        return ToneRecommender::recommend('Age ' . $this->audience_age);
     }
 
     protected function rules(): array
@@ -340,8 +371,9 @@ class Step1Settings extends Component
         }
 
         if (in_array($this->source_mode, ['wikipedia', 'both'], true)) {
-            $wiki = app(WikipediaService::class)->fetchFacts($lesson->topic) ?? '';
-            $combinedText = trim($combinedText . "\n\n" . $wiki);
+            // Wikipedia fetch is deferred to BuildLessonOutline job to avoid blocking
+            // the web request (can take 10-20s with fallback search stages).
+            // Just mark the kind so the job knows to fetch it.
             $kind ??= 'wikipedia';
         }
 

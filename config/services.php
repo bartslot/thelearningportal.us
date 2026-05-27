@@ -75,6 +75,7 @@ return [
         'image_stitch'      => filter_var(env('OPENAI_IMAGE_STITCH', true), FILTER_VALIDATE_BOOLEAN), // 2-image stitched panorama
         'base_url'     => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'timeout'      => (int) env('OPENAI_TIMEOUT', 60),
+        'max_tokens'   => (int) env('OPENAI_MAX_TOKENS', 2048),
         'tts_model'    => env('OPENAI_TTS_MODEL', 'tts-1'),
         'tts_voice'    => env('OPENAI_TTS_VOICE', 'alloy'),
     ],

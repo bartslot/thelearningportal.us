@@ -38,6 +38,7 @@
                                         '{{ addslashes($s['era']) }}'
                                     )"
                                     x-on:mousedown.prevent
+                                    x-on:click="open = false"
                                     class="flex flex-col items-start gap-0.5 py-2">
                                 <span class="text-sm text-white">{{ $s['topic'] }}</span>
                                 @if ($s['region'] || $s['era'])
@@ -56,53 +57,49 @@
         </div>
 
         {{-- Region & era enrichment --}}
-        <div x-data="{ open: @js($show_region_era) }">
-
-            <button type="button"
-                    x-show="!open"
-                    x-on:click="open = true"
-                    class="btn btn-ghost btn-xs text-slate-400 hover:text-white pl-0 gap-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                Add region &amp; era
-            </button>
-
-            <div x-show="open"
-                 x-transition:enter="transition ease-out duration-150"
-                 x-transition:enter-start="opacity-0 -translate-y-1"
-                 x-transition:enter-end="opacity-100 translate-y-0"
-                 class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2"
-                 style="display:none">
-
-                <div class="form-control">
-                    <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Region</span>
-                    <x-ui.combobox
-                        :options="$this->regionOptions"
-                        wire-model="region"
-                        placeholder="e.g. France, US South, Ottoman Empire…"
-                    />
-                </div>
-
-                <div class="form-control">
-                    <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Era</span>
-                    @if ($region)
-                        <x-ui.combobox
-                            :options="$this->eraOptions"
-                            wire-model="era"
-                            placeholder="Select or type an era…"
-                        />
-                    @else
-                        <input type="text" disabled
-                               placeholder="Pick a region first"
-                               class="input input-bordered bg-slate-900 w-full opacity-40 cursor-not-allowed" />
-                    @endif
-                </div>
-
+        <div>
+            @if (!$show_region_era)
                 <button type="button"
-                        x-on:click="open = false"
-                        class="btn btn-ghost btn-xs text-slate-500 hover:text-slate-300 col-span-full w-fit pl-0">
-                    ✕ Hide
+                        wire:click="$set('show_region_era', true)"
+                        class="btn btn-ghost btn-xs text-slate-400 hover:text-white pl-0 gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add region &amp; era
                 </button>
-            </div>
+            @else
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                    <div class="form-control">
+                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Region</span>
+                        <x-ui.combobox
+                            :options="$this->regionOptions"
+                            wire-model="region"
+                            :initial-value="$region ?? ''"
+                            placeholder="e.g. France, US South, Ottoman Empire…"
+                        />
+                    </div>
+
+                    <div class="form-control">
+                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Era</span>
+                        @if ($region)
+                            <x-ui.combobox
+                                :options="$this->eraOptions"
+                                wire-model="era"
+                                :initial-value="$era ?? ''"
+                                placeholder="Select or type an era…"
+                            />
+                        @else
+                            <input type="text" disabled
+                                   placeholder="Pick a region first"
+                                   class="input input-bordered bg-slate-900 w-full opacity-40 cursor-not-allowed" />
+                        @endif
+                    </div>
+
+                    <button type="button"
+                            wire:click="$set('show_region_era', false)"
+                            class="btn btn-ghost btn-xs text-slate-500 hover:text-slate-300 col-span-full w-fit pl-0">
+                        ✕ Hide
+                    </button>
+                </div>
+            @endif
         </div>
     </div>
 
@@ -114,220 +111,226 @@
             <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2">
                 Target audience
             </span>
-
-            {{-- Top-level toggle: Age vs local system --}}
-            <div class="flex gap-2 flex-wrap items-center mb-3">
-                <div class="join shrink-0">
-                    <button type="button"
-                            wire:click="setAudienceSystem('age')"
-                            @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'age', 'btn-outline' => $audience_system !== 'age'])>
-                        Age
-                    </button>
-                    @if ($this->gradeSystem)
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 content-start">
+                {{-- Top-level toggle: Age vs local system --}}
+                <div class="flex gap-2 flex-wrap mb-3">
+                    <div class="join shrink-0 mt-1">
                         <button type="button"
-                                wire:click="setAudienceSystem('local')"
-                                @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'local', 'btn-outline' => $audience_system !== 'local'])>
-                            {{ $this->gradeSystem['label'] }}
+                                wire:click="setAudienceSystem('age')"
+                                @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'age', 'btn-outline' => $audience_system !== 'age'])>
+                            Age
                         </button>
+                        @if ($this->gradeSystem)
+                            <button type="button"
+                                    wire:click="setAudienceSystem('local')"
+                                    @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'local', 'btn-outline' => $audience_system !== 'local'])>
+                                {{ $this->gradeSystem['label'] }}
+                            </button>
+                        @endif
+                        
+                    </div>
+                    
+
+
+                    @if ($audience_system === 'age')
+                        <div class="flex items-center gap-2">
+                            <input type="number"
+                                wire:model.live.debounce.300ms="audience_age"
+                                min="{{ \App\Livewire\Wizard\Step1Settings::AGE_MIN }}"
+                                max="{{ \App\Livewire\Wizard\Step1Settings::AGE_MAX }}"
+                                class="input input-bordered bg-slate-900 w-20 text-center" />
+                            <span class="text-slate-400 text-sm">years old</span>
+                        </div>
+                        @else
+                        <p class="text-xs text-slate-500 mt-2">
+                            Not your system? Switch to <button type="button" wire:click="setAudienceSystem('age')" class="underline hover:text-slate-300">Age</button> instead.
+                        </p>
                     @endif
                 </div>
+                
 
-                @if ($audience_system === 'age')
-                    <div class="flex items-center gap-2">
-                        <input type="number"
-                               wire:model.live.debounce.300ms="audience_age"
-                               min="{{ \App\Livewire\Wizard\Step1Settings::AGE_MIN }}"
-                               max="{{ \App\Livewire\Wizard\Step1Settings::AGE_MAX }}"
-                               class="input input-bordered bg-slate-900 w-20 text-center" />
-                        <span class="text-slate-400 text-sm">years old</span>
-                    </div>
-                @endif
-            </div>
+                {{-- Local grade picker — tiered (NL) or simple dropdown --}}
+                @if ($audience_system === 'local' && $this->gradeSystem)
 
-            {{-- Local grade picker — tiered (NL) or simple dropdown --}}
-            @if ($audience_system === 'local' && $this->gradeSystem)
-
-                @if (($this->gradeSystem['type'] ?? 'simple') === 'tiered')
-                    {{-- ── Tiered picker (NL: Basisonderwijs/Middelbare, US: Elementary/Middle/High) ── --}}
-                    <div
-                        x-data="{
-                            system:     {{ Js::from($this->gradeSystem) }},
-                            initial:    '{{ $local_grade }}',
-                            activeTier: '',
-                            grade:      '',
-                            track:      '',
-                            jaar:       1,
-                            get currentTier() {
-                                return this.system.tiers.find(t => t.key === this.activeTier) ?? this.system.tiers[0];
-                            },
-                            get tierHasOptions() { return !!(this.currentTier.options?.length); },
-                            get tierHasTracks()  { return !!(this.currentTier.tracks?.length); },
-                            get tierHasYear()    {
-                                const t = this.currentTier.tracks?.find(t => t.key === this.track);
-                                return !!(t?.max_jaar);
-                            },
-                            get maxJaar() {
-                                const t = this.currentTier.tracks?.find(t => t.key === this.track);
-                                return t?.max_jaar ?? 6;
-                            },
-                            get jaarOptions() {
-                                return Array.from({length: this.maxJaar}, (_, i) => i + 1);
-                            },
-                            get value() {
-                                // NL middelbare: tier has only tracks (no options) → track + Jaar
-                                if (!this.tierHasOptions && this.tierHasTracks && this.track) {
-                                    return this.track + ' Jaar ' + this.jaar;
-                                }
-                                // US high: grade + optional non-General track
-                                if (this.tierHasOptions && this.tierHasTracks && this.grade) {
-                                    return (this.track && this.track !== 'General')
-                                        ? this.grade + ' (' + this.track + ')'
-                                        : this.grade;
-                                }
-                                // Simple: just grade option
-                                return this.grade;
-                            },
-                            setTier(key) {
-                                this.activeTier = key;
-                                this.grade = '';
-                                this.track = '';
-                                this.jaar  = 1;
-                                // Default track for tiers that have tracks
-                                const tier = this.system.tiers.find(t => t.key === key);
-                                if (tier?.tracks?.length) {
-                                    this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
-                                }
-                            },
-                            pickGrade(val, tierKey) {
-                                this.grade = val;
-                                // Ensure track defaults for tiers that have tracks
-                                const tier = this.system.tiers.find(t => t.key === tierKey);
-                                if (tier?.tracks?.length && !this.track) {
-                                    this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
-                                }
-                            },
-                            init() {
-                                this.activeTier = this.system.tiers[0].key;
-                                const v = this.initial;
-                                if (v) {
-                                    // NL middelbare pattern: e.g. &quot;HAVO Jaar 3&quot;
-                                    if (v.includes(' Jaar ')) {
-                                        const parts = v.split(' Jaar ');
-                                        const tier = this.system.tiers.find(t => t.tracks?.some(tr => tr.key === parts[0]));
-                                        if (tier) { this.activeTier = tier.key; this.track = parts[0]; this.jaar = parseInt(parts[1]) || 1; }
+                    @if (($this->gradeSystem['type'] ?? 'simple') === 'tiered')
+                        {{-- ── Tiered picker (NL: Basisonderwijs/Middelbare, US: Elementary/Middle/High) ── --}}
+                        <div
+                            wire:ignore
+                            x-data="{
+                                system:     {{ Js::from($this->gradeSystem) }},
+                                initial:    '{{ $local_grade }}',
+                                activeTier: '',
+                                grade:      '',
+                                track:      '',
+                                jaar:       1,
+                                get currentTier() {
+                                    return this.system.tiers.find(t => t.key === this.activeTier) ?? this.system.tiers[0];
+                                },
+                                get tierHasOptions() { return !!(this.currentTier.options?.length); },
+                                get tierHasTracks()  { return !!(this.currentTier.tracks?.length); },
+                                get tierHasYear()    {
+                                    const t = this.currentTier.tracks?.find(t => t.key === this.track);
+                                    return !!(t?.max_jaar);
+                                },
+                                get maxJaar() {
+                                    const t = this.currentTier.tracks?.find(t => t.key === this.track);
+                                    return t?.max_jaar ?? 6;
+                                },
+                                get jaarOptions() {
+                                    return Array.from({length: this.maxJaar}, (_, i) => i + 1);
+                                },
+                                get value() {
+                                    // NL middelbare: tier has only tracks (no options) → track + Jaar
+                                    if (!this.tierHasOptions && this.tierHasTracks && this.track) {
+                                        return this.track + ' Jaar ' + this.jaar;
                                     }
-                                    // US high with track: e.g. &quot;9th grade (Honors)&quot;
-                                    else if (v.includes(' (') && v.endsWith(')')) {
-                                        const m = v.match(/^(.+) \((.+)\)$/);
-                                        if (m) {
-                                            const tier = this.system.tiers.find(t => t.options?.some(o => o.value === m[1]));
-                                            if (tier) { this.activeTier = tier.key; this.grade = m[1]; this.track = m[2]; }
+                                    // US high: grade + optional non-General track
+                                    if (this.tierHasOptions && this.tierHasTracks && this.grade) {
+                                        return (this.track && this.track !== 'General')
+                                            ? this.grade + ' (' + this.track + ')'
+                                            : this.grade;
+                                    }
+                                    // Simple: just grade option
+                                    return this.grade;
+                                },
+                                setTier(key) {
+                                    this.activeTier = key;
+                                    this.grade = '';
+                                    this.track = '';
+                                    this.jaar  = 1;
+                                    // Default track for tiers that have tracks
+                                    const tier = this.system.tiers.find(t => t.key === key);
+                                    if (tier?.tracks?.length) {
+                                        this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
+                                    }
+                                },
+                                pickGrade(val, tierKey) {
+                                    this.grade = val;
+                                    // Ensure track defaults for tiers that have tracks
+                                    const tier = this.system.tiers.find(t => t.key === tierKey);
+                                    if (tier?.tracks?.length && !this.track) {
+                                        this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
+                                    }
+                                },
+                                init() {
+                                    this.activeTier = this.system.tiers[0].key;
+                                    const v = this.initial;
+                                    if (v) {
+                                        // NL middelbare pattern: e.g. &quot;HAVO Jaar 3&quot;
+                                        if (v.includes(' Jaar ')) {
+                                            const parts = v.split(' Jaar ');
+                                            const tier = this.system.tiers.find(t => t.tracks?.some(tr => tr.key === parts[0]));
+                                            if (tier) { this.activeTier = tier.key; this.track = parts[0]; this.jaar = parseInt(parts[1]) || 1; }
                                         }
-                                    }
-                                    // Simple option (Groep 7, 5th grade, etc.)
-                                    else {
-                                        const tier = this.system.tiers.find(t => t.options?.some(o => o.value === v));
-                                        if (tier) {
-                                            this.activeTier = tier.key;
-                                            this.grade = v;
-                                            if (tier.tracks?.length) {
-                                                this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
+                                        // US high with track: e.g. &quot;9th grade (Honors)&quot;
+                                        else if (v.includes(' (') && v.endsWith(')')) {
+                                            const m = v.match(/^(.+) \((.+)\)$/);
+                                            if (m) {
+                                                const tier = this.system.tiers.find(t => t.options?.some(o => o.value === m[1]));
+                                                if (tier) { this.activeTier = tier.key; this.grade = m[1]; this.track = m[2]; }
+                                            }
+                                        }
+                                        // Simple option (Groep 7, 5th grade, etc.)
+                                        else {
+                                            const tier = this.system.tiers.find(t => t.options?.some(o => o.value === v));
+                                            if (tier) {
+                                                this.activeTier = tier.key;
+                                                this.grade = v;
+                                                if (tier.tracks?.length) {
+                                                    this.track = tier.tracks.find(t => t.key === 'General')?.key ?? tier.tracks[0].key;
+                                                }
                                             }
                                         }
                                     }
+                                    this.$watch('value', val => { if (val) $wire.set('local_grade', val); });
                                 }
-                                this.$watch('value', val => { if (val) $wire.set('local_grade', val); });
-                            }
-                        }"
-                        x-init="init()"
-                        class="space-y-3"
-                    >
-                        {{-- School level buttons --}}
-                        <div class="join">
+                            }"
+                            x-init="init()"
+                            class="space-y-3"
+                        >
+                            {{-- School level buttons --}}
+                            <div class="join">
+                                @foreach ($this->gradeSystem['tiers'] as $tierDef)
+                                    <button type="button"
+                                            x-on:click="setTier('{{ $tierDef['key'] }}')"
+                                            :class="activeTier === '{{ $tierDef['key'] }}' ? 'btn-primary' : 'btn-outline'"
+                                            class="btn btn-sm join-item">
+                                        {{ $tierDef['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Grade option buttons (tiers that have an options array) --}}
                             @foreach ($this->gradeSystem['tiers'] as $tierDef)
-                                <button type="button"
-                                        x-on:click="setTier('{{ $tierDef['key'] }}')"
-                                        :class="activeTier === '{{ $tierDef['key'] }}' ? 'btn-primary' : 'btn-outline'"
-                                        class="btn btn-sm join-item">
-                                    {{ $tierDef['label'] }}
-                                </button>
+                                @if (!empty($tierDef['options']))
+                                    <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="flex flex-wrap gap-2">
+                                        @foreach ($tierDef['options'] as $opt)
+                                            <button type="button"
+                                                    x-on:click="pickGrade('{{ $opt['value'] }}', '{{ $tierDef['key'] }}')"
+                                                    :class="grade === '{{ $opt['value'] }}' && activeTier === '{{ $tierDef['key'] }}' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400'"
+                                                    class="px-4 py-2 rounded-lg text-sm border-2 transition-all">
+                                                {{ $opt['label'] }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                @endif
                             @endforeach
-                        </div>
 
-                        {{-- Grade option buttons (tiers that have an options array) --}}
-                        @foreach ($this->gradeSystem['tiers'] as $tierDef)
-                            @if (!empty($tierDef['options']))
-                                <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="flex flex-wrap gap-2">
-                                    @foreach ($tierDef['options'] as $opt)
-                                        <button type="button"
-                                                x-on:click="pickGrade('{{ $opt['value'] }}', '{{ $tierDef['key'] }}')"
-                                                :class="grade === '{{ $opt['value'] }}' && activeTier === '{{ $tierDef['key'] }}' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400'"
-                                                class="px-4 py-2 rounded-lg text-sm border-2 transition-all">
-                                            {{ $opt['label'] }}
-                                        </button>
-                                    @endforeach
-                                </div>
-                            @endif
-                        @endforeach
+                            {{-- Track buttons for tiers that have tracks but NO options (NL Middelbare) --}}
+                            @foreach ($this->gradeSystem['tiers'] as $tierDef)
+                                @if (empty($tierDef['options']) && !empty($tierDef['tracks']))
+                                    <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="space-y-3">
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach ($tierDef['tracks'] as $t)
+                                                <button type="button"
+                                                        x-on:click="track = '{{ $t['key'] }}'; jaar = 1"
+                                                        :class="track === '{{ $t['key'] }}' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400'"
+                                                        class="px-4 py-2 rounded-lg text-sm border-2 transition-all">
+                                                    {{ $t['label'] }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <div x-show="track" class="flex items-center gap-3">
+                                            <span class="text-xs uppercase tracking-wider text-slate-400">Jaar</span>
+                                            <select x-model="jaar" class="select select-bordered select-sm bg-slate-900">
+                                                <template x-for="j in jaarOptions" :key="j">
+                                                    <option :value="j" x-text="'Jaar ' + j"></option>
+                                                </template>
+                                            </select>
+                                        </div>
+                                    </div>
+                                @endif
+                            @endforeach
 
-                        {{-- Track buttons for tiers that have tracks but NO options (NL Middelbare) --}}
-                        @foreach ($this->gradeSystem['tiers'] as $tierDef)
-                            @if (empty($tierDef['options']) && !empty($tierDef['tracks']))
-                                <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="space-y-3">
-                                    <div class="flex flex-wrap gap-2">
+                            {{-- Track buttons for tiers that have BOTH options AND tracks (US High) --}}
+                            @foreach ($this->gradeSystem['tiers'] as $tierDef)
+                                @if (!empty($tierDef['options']) && !empty($tierDef['tracks']))
+                                    <div x-show="activeTier === '{{ $tierDef['key'] }}' && grade" class="flex flex-wrap gap-2 pt-1">
                                         @foreach ($tierDef['tracks'] as $t)
                                             <button type="button"
-                                                    x-on:click="track = '{{ $t['key'] }}'; jaar = 1"
+                                                    x-on:click="track = '{{ $t['key'] }}'"
                                                     :class="track === '{{ $t['key'] }}' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400'"
-                                                    class="px-4 py-2 rounded-lg text-sm border-2 transition-all">
+                                                    class="px-3 py-1.5 rounded-lg text-xs border-2 transition-all">
                                                 {{ $t['label'] }}
                                             </button>
                                         @endforeach
                                     </div>
-                                    <div x-show="track" class="flex items-center gap-3">
-                                        <span class="text-xs uppercase tracking-wider text-slate-400">Jaar</span>
-                                        <select x-model="jaar" class="select select-bordered select-sm bg-slate-900">
-                                            <template x-for="j in jaarOptions" :key="j">
-                                                <option :value="j" x-text="'Jaar ' + j"></option>
-                                            </template>
-                                        </select>
-                                    </div>
-                                </div>
-                            @endif
-                        @endforeach
+                                @endif
+                            @endforeach
+                        </div>
 
-                        {{-- Track buttons for tiers that have BOTH options AND tracks (US High) --}}
-                        @foreach ($this->gradeSystem['tiers'] as $tierDef)
-                            @if (!empty($tierDef['options']) && !empty($tierDef['tracks']))
-                                <div x-show="activeTier === '{{ $tierDef['key'] }}' && grade" class="flex flex-wrap gap-2 pt-1">
-                                    @foreach ($tierDef['tracks'] as $t)
-                                        <button type="button"
-                                                x-on:click="track = '{{ $t['key'] }}'"
-                                                :class="track === '{{ $t['key'] }}' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400'"
-                                                class="px-3 py-1.5 rounded-lg text-xs border-2 transition-all">
-                                            {{ $t['label'] }}
-                                        </button>
-                                    @endforeach
-                                </div>
-                            @endif
-                        @endforeach
-                    </div>
-
-                @else
-                    {{-- ── Simple dropdown (UK Year, FR Classe, etc.) ── --}}
-                    <select wire:model.live="local_grade"
-                            class="select select-bordered bg-slate-900 w-full max-w-xs">
-                        <option value="">— select —</option>
-                        @foreach ($this->gradeSystem['options'] as $opt)
-                            <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
-                        @endforeach
-                    </select>
+                    @else
+                        {{-- ── Simple dropdown (UK Year, FR Classe, etc.) ── --}}
+                        <select wire:model.live="local_grade"
+                                class="select select-bordered bg-slate-900 w-full max-w-xs">
+                            <option value="">— select —</option>
+                            @foreach ($this->gradeSystem['options'] as $opt)
+                                <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
+                            @endforeach
+                        </select>
+                    @endif
                 @endif
-
-                <p class="text-xs text-slate-500 mt-2">
-                    Not your system? Switch to <button type="button" wire:click="setAudienceSystem('age')" class="underline hover:text-slate-300">Age</button> instead.
-                </p>
-            @endif
+            </div>
         </div>
     </div>
 
@@ -341,16 +344,82 @@
         <div class="collapse-title flex items-center justify-between pr-10">
             <span class="font-medium text-white text-sm">Tone &amp; details</span>
             <span class="text-slate-400 text-xs">
-                {{ $tone ?: ($details ? 'Details added' : 'Optional') }}
+                @php
+                    $toneLabel = $tone && isset($this->tones[$tone])
+                        ? $this->tones[$tone]['emoji'] . ' ' . $this->tones[$tone]['label']
+                        : ($details ? 'Details added' : 'Optional');
+                @endphp
+                {{ $toneLabel }}
             </span>
         </div>
-        <div class="collapse-content space-y-3">
-            <label class="form-control" for="lw-tone">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Tone (optional)</span>
-                <input id="lw-tone" type="text" wire:model="tone"
-                       placeholder="e.g. dramatic, Socratic, humorous…"
-                       class="input input-bordered bg-slate-900 mt-1" />
-            </label>
+        <div class="collapse-content space-y-4">
+
+            {{-- Tone pill picker --}}
+            <div>
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2 block">Tone</span>
+                <div class="flex flex-wrap gap-2">
+                    @foreach ($this->tones as $key => $t)
+                        @php $isRec = in_array($key, $this->recommendedTones); @endphp
+                        <div class="relative group">
+                            <button
+                                type="button"
+                                wire:click="$set('tone', '{{ $tone === $key ? '' : $key }}')"
+                                @class([
+                                    'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-all duration-150 cursor-pointer',
+                                    'bg-amber-400 text-black font-bold border-2 border-amber-400'   => $tone === $key,
+                                    'bg-slate-800 border-2 border-amber-400 text-amber-400 font-semibold' => $tone !== $key && $isRec,
+                                    'bg-slate-800 border border-slate-600 text-slate-400'            => $tone !== $key && !$isRec,
+                                ])
+                            >
+                                <span>{{ $t['emoji'] }}</span>
+                                <span>{{ $t['label'] }}</span>
+                                @if ($isRec)
+                                    <span class="text-xs">⭐</span>
+                                @endif
+                            </button>
+
+                            {{-- Hover tooltip --}}
+                            <div class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2
+                                        hidden group-hover:block z-50 w-52
+                                        bg-slate-800 border border-slate-600 rounded-lg shadow-xl
+                                        px-3 py-2 text-xs text-slate-300 leading-relaxed">
+                                <span class="font-semibold text-white block mb-0.5">{{ $t['emoji'] }} {{ $t['label'] }}</span>
+                                {{ $t['description'] }}
+                                {{-- Arrow --}}
+                                <span class="absolute top-full left-1/2 -translate-x-1/2
+                                             border-4 border-transparent border-t-slate-600"></span>
+                            </div>
+                        </div>
+                    @endforeach
+
+                    {{-- No preference --}}
+                    <div class="relative group">
+                        <button
+                            type="button"
+                            wire:click="$set('tone', '')"
+                            @class([
+                                'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-all duration-150 cursor-pointer',
+                                'bg-amber-400 text-black font-bold border-2 border-amber-400'   => $tone === '',
+                                'bg-slate-800 border border-slate-600 text-slate-400'            => $tone !== '',
+                            ])
+                        >
+                            <span>— No preference</span>
+                        </button>
+                        <div class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2
+                                    hidden group-hover:block z-50 w-52
+                                    bg-slate-800 border border-slate-600 rounded-lg shadow-xl
+                                    px-3 py-2 text-xs text-slate-300 leading-relaxed">
+                            <span class="font-semibold text-white block mb-0.5">No preference</span>
+                            Let the AI pick the best tone for the topic and age group automatically.
+                            <span class="absolute top-full left-1/2 -translate-x-1/2
+                                         border-4 border-transparent border-t-slate-600"></span>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-xs text-amber-500 mt-2">⭐ Recommended for Age {{ $audience_age }}</p>
+            </div>
+
+            {{-- Teacher details --}}
             <label class="form-control" for="lw-details">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Teacher details (optional)</span>
                 <textarea id="lw-details" wire:model="details" rows="3"
@@ -508,8 +577,13 @@
         <button type="button" wire:click="saveDraft"
                 class="btn btn-outline">Save as draft</button>
         <button type="button" wire:click="generate"
+                wire:loading.attr="disabled" wire:target="generate"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">
-            Generate lesson →
+            <span wire:loading.remove wire:target="generate">Generate lesson →</span>
+            <span wire:loading wire:target="generate" class="flex items-center gap-2">
+                <span class="w-4 h-4 border-2 border-slate-950/40 border-t-slate-950 rounded-full animate-spin"></span>
+                Saving…
+            </span>
         </button>
     </div>
 

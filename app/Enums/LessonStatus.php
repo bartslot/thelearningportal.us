@@ -14,6 +14,7 @@ enum LessonStatus: string
 
     case Draft             = 'draft';
     case SourceReady       = 'source_ready';
+    case FetchingSources   = 'fetching_sources';
     case Outlining         = 'outlining';
     case ScenesGenerating  = 'scenes_generating';
     case ScenesReady       = 'scenes_ready';
@@ -30,6 +31,7 @@ enum LessonStatus: string
             self::Published         => 'Published',
             self::Draft             => 'Draft',
             self::SourceReady       => 'Source ready',
+            self::FetchingSources   => 'Fetching sources…',
             self::Outlining         => 'Outlining...',
             self::ScenesGenerating  => 'Generating scenes...',
             self::ScenesReady       => 'Scenes ready',
@@ -48,6 +50,7 @@ enum LessonStatus: string
             self::Published         => 'indigo',
             self::Draft             => 'gray',
             self::SourceReady       => 'cyan',
+            self::FetchingSources   => 'cyan',
             self::Outlining         => 'blue',
             self::ScenesGenerating  => 'blue',
             self::ScenesReady       => 'green',

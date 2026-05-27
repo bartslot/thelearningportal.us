@@ -25,10 +25,16 @@ class GenerateWorldLabsScene implements ShouldQueue
 
     public function handle(): void
     {
+        // Skip gracefully when WorldLabs is disabled or not configured
+        if (! config('services.worldlabs.enabled', false)) {
+            Scene::find($this->sceneId)?->update(['world_labs_status' => 'skipped']);
+            return;
+        }
+
         $apiKey = (string) config('services.worldlabs.api_key', '');
         if ($apiKey === '') {
-            Scene::find($this->sceneId)?->update(['world_labs_status' => 'failed']);
-            \Illuminate\Support\Facades\Log::error('[WorldLabs] WORLD_LABS_API_KEY not configured — scene ' . $this->sceneId);
+            Scene::find($this->sceneId)?->update(['world_labs_status' => 'skipped']);
+            \Illuminate\Support\Facades\Log::warning('[WorldLabs] WORLD_LABS_API_KEY not configured — skipping scene ' . $this->sceneId);
             return;
         }
 
@@ -66,6 +72,13 @@ class GenerateWorldLabsScene implements ShouldQueue
                 ...$paths,
             ]);
         } catch (Throwable $e) {
+            $msg = $e->getMessage();
+            // 402 = out of credits, 500 = fal/WorldLabs service error — skip, don't crash pipeline
+            if (str_contains($msg, '402') || str_contains($msg, 'Insufficient credits') || str_contains($msg, '500 Internal Server Error') || str_contains($msg, 'fal storage upload failed')) {
+                \Illuminate\Support\Facades\Log::warning('[WorldLabs] skipping scene ' . $this->sceneId . ': ' . $msg);
+                $scene->update(['world_labs_status' => 'skipped']);
+                return; // don't re-queue
+            }
             $scene->update(['world_labs_status' => 'failed']);
             throw $e;
         }

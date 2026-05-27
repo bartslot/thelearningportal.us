@@ -7,8 +7,10 @@ namespace App\Jobs;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\Scene;
+use App\Models\LessonSource;
 use App\Services\LessonOutlinePrompt;
 use App\Services\OpenAiLlmService;
+use App\Services\WikipediaService;
 use Illuminate\Bus\Batch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,14 +37,34 @@ class BuildLessonOutline implements ShouldQueue
     public function handle(OpenAiLlmService $llm): void
     {
         $lesson = Lesson::with('source', 'strategyGame')->findOrFail($this->lessonId);
-        $lesson->update(['status' => LessonStatus::Outlining]);
 
         try {
+            // ── Step 1: Fetch Wikipedia (deferred from web request for speed) ──
+            $source = $lesson->source;
+            if ($source && in_array($source->kind, ['wikipedia', 'both'], true)
+                && (string) $source->extracted_text === '') {
+
+                $lesson->update(['status' => LessonStatus::FetchingSources]);
+
+                $wiki = app(WikipediaService::class)->fetchFacts($lesson->topic) ?? '';
+
+                $combined = $wiki;
+                // For 'both' mode the document text was already extracted and stored
+                if ($source->kind === 'both') {
+                    $combined = trim($source->extracted_text . "\n\n" . $wiki);
+                }
+
+                $source->update(['extracted_text' => $combined, 'wikipedia_topic' => $lesson->topic]);
+            }
+
+            $lesson->update(['status' => LessonStatus::Outlining]);
+
             // Defensive: previous attempts (manual retry, queue retry, user clicked Generate twice)
             // may have left Scene rows around. The (lesson_id, order) unique index would then trip
             // on re-insert. Wipe and rebuild from scratch.
             $lesson->scenes()->delete();
 
+            $lesson->refresh();
             $sourceText = (string) ($lesson->source?->extracted_text ?? '');
 
             $hasGame = $lesson->strategyGame !== null;

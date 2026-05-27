@@ -1,0 +1,15 @@
+# ── Add these to your Laravel .env ────────────────────────────────────────────
+# History Corpus — Supabase connection
+# Project: history-corpus | Ref: ophofmkxmehmeojvsijc | Region: us-east-2
+
+CORPUS_DB_HOST=db.ophofmkxmehmeojvsijc.supabase.co
+CORPUS_DB_PORT=5432
+CORPUS_DB_DATABASE=postgres
+CORPUS_DB_USERNAME=postgres
+CORPUS_DB_PASSWORD=<supabase-db-password>
+CORPUS_DB_SSLMODE=require
+
+# Embedding backend (ollama = free local, openai = paid)
+CORPUS_EMBED_BACKEND=ollama
+CORPUS_EMBED_MODEL=nomic-embed-text
+# OLLAMA_URL already set in your main .env

@@ -3,6 +3,7 @@
     'wireModel'   => null, // Livewire property name to sync
     'placeholder' => 'Search…',
     'inputClass'  => '',
+    'initialValue' => '',  // pre-selected value (for server-rendered state)
 ])
 
 <div
@@ -49,6 +50,7 @@
 >
     {{-- Hidden input Livewire binds to --}}
     <input type="hidden" x-ref="hidden"
+           value="{{ $initialValue }}"
            @if($wireModel) wire:model.live="{{ $wireModel }}" @endif />
 
     {{-- Visible search input --}}
