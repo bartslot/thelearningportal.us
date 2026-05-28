@@ -435,27 +435,48 @@
         <div class="collapse-title flex items-center justify-between pr-10">
             <span class="font-medium text-white text-sm">Source</span>
             <span class="text-slate-400 text-xs">
-                @php $sourceLabels = ['wikipedia' => 'Wikipedia only', 'upload' => 'My document', 'both' => 'Both combined']; @endphp
-                {{ $sourceLabels[$source_mode] ?? 'Wikipedia only' }}
+                @if ($source_mode === 'internet')
+                    Internet <span class="text-slate-600">(worldhistory.org / wikipedia)</span>
+                @else
+                    Local source
+                @endif
             </span>
         </div>
         <div class="collapse-content space-y-3">
             <div class="flex flex-wrap gap-3 pt-1">
-                @foreach (['wikipedia' => 'Wikipedia only', 'upload' => 'My document only', 'both' => 'Both combined'] as $val => $label)
-                    <button type="button"
-                            wire:click="$set('source_mode', '{{ $val }}')"
-                            @class([
-                                'px-4 py-2 rounded-lg text-sm border-2 transition-all',
-                                'border-amber-400 bg-amber-500/10 text-white' => $source_mode === $val,
-                                'border-slate-600 text-slate-300 hover:border-slate-400' => $source_mode !== $val,
-                            ])>{{ $label }}</button>
-                @endforeach
+                <button type="button"
+                        wire:click="$set('source_mode', 'internet')"
+                        @class([
+                            'px-4 py-2 rounded-lg text-sm border-2 transition-all',
+                            'border-amber-400 bg-amber-500/10 text-white' => $source_mode === 'internet',
+                            'border-slate-600 text-slate-300 hover:border-slate-400' => $source_mode !== 'internet',
+                        ])>
+                    Internet
+                    <span class="text-xs opacity-60 ml-1">worldhistory.org / wikipedia</span>
+                </button>
+                <button type="button"
+                        wire:click="$set('source_mode', 'local')"
+                        @class([
+                            'px-4 py-2 rounded-lg text-sm border-2 transition-all',
+                            'border-amber-400 bg-amber-500/10 text-white' => $source_mode === 'local',
+                            'border-slate-600 text-slate-300 hover:border-slate-400' => $source_mode !== 'local',
+                        ])>
+                    Local source
+                    <span class="text-xs opacity-60 ml-1">link or PDF</span>
+                </button>
             </div>
-            @if ($source_mode !== 'wikipedia')
-                <input id="lw-source-upload" type="file"
-                       wire:model="sourceUpload" accept=".pdf,.docx"
-                       class="file-input file-input-bordered w-full bg-slate-900" />
-                @error('sourceUpload') <span class="text-rose-400 text-xs">{{ $message }}</span> @enderror
+
+            @if ($source_mode === 'local')
+                <div class="space-y-2">
+                    <input type="url" wire:model.live="source_url"
+                           placeholder="https://drive.google.com/… (optional)"
+                           class="input input-bordered bg-slate-900 w-full text-sm" />
+                    <p class="text-xs text-slate-500">Or upload a document:</p>
+                    <input id="lw-source-upload" type="file"
+                           wire:model="sourceUpload" accept=".pdf,.docx"
+                           class="file-input file-input-bordered w-full bg-slate-900" />
+                    @error('sourceUpload') <span class="text-rose-400 text-xs">{{ $message }}</span> @enderror
+                </div>
             @endif
         </div>
     </div>
@@ -490,33 +511,36 @@
     </div>
 
     {{-- Game --}}
-    <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
-        <input type="checkbox" />
-        <div class="collapse-title flex items-center justify-between pr-10">
+    <div class="bg-base-300 rounded-2xl overflow-hidden"
+         x-data="{ open: @js((bool) $include_game) }"
+         x-on:livewire-update.window="open = $wire.include_game">
+        {{-- Header row: title + toggle --}}
+        <div class="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
+             x-on:click="if($wire.include_game){ open = !open }">
             <span class="font-medium text-white text-sm">Game</span>
-            <span class="text-slate-400 text-xs">
-                @if ($include_game && $game_type)
-                    {{ ['quiz' => 'Quiz', 'strategy' => 'Strategy', 'debate' => 'Debate'][$game_type] }}
-                @elseif ($include_game)
-                    On — pick a type
-                @else
-                    No game
-                @endif
-            </span>
-        </div>
-        <div class="collapse-content space-y-4 pt-2">
-
-            <label class="label cursor-pointer justify-start gap-3">
-                <span class="label-text">Include a game in this lesson</span>
+            <div class="flex items-center gap-3">
+                <span class="text-slate-400 text-xs">
+                    @if ($include_game && $game_type)
+                        {{ ['quiz' => 'Quiz', 'strategy' => 'Strategy game', 'debate' => 'Debate'][$game_type] ?? $game_type }}
+                    @elseif (! $include_game)
+                        Off
+                    @endif
+                </span>
+                {{-- Toggle stops propagation so clicking it doesn't also toggle open --}}
                 <input type="checkbox" wire:model.live="include_game"
-                       class="toggle toggle-primary" />
-            </label>
+                       x-on:click.stop
+                       x-on:change="open = $event.target.checked"
+                       class="toggle toggle-primary toggle-sm" />
+            </div>
+        </div>
+        {{-- Accordion body --}}
+        <div x-show="open" x-collapse class="px-4 pb-4 space-y-4 border-t border-white/10 pt-3">
 
             @if ($include_game)
                 <div class="space-y-2">
                     <p class="text-xs uppercase tracking-wider text-slate-400">Game type</p>
                     <div class="flex flex-wrap gap-3">
-                        @foreach (['quiz' => 'Quiz', 'strategy' => 'Strategy and critical thinking', 'debate' => 'Debate'] as $val => $label)
+                        @foreach (['quiz' => 'Quiz', 'strategy' => 'Strategy game', 'debate' => 'Debate'] as $val => $label)
                             <button type="button"
                                     wire:click="$set('game_type', '{{ $val }}')"
                                     @class([
@@ -529,41 +553,42 @@
                 </div>
 
                 @if ($game_type === 'quiz')
-                    <div class="space-y-4 border-t border-white/10 pt-4">
-                        <div class="space-y-2">
-                            <p class="text-xs uppercase tracking-wider text-slate-400">Number of questions</p>
-                            <input type="number" wire:model.live="quiz_question_count"
-                                   min="1" max="20"
-                                   class="input input-bordered bg-slate-900 w-24 text-center" />
-                            <p class="text-xs text-slate-500">Questions are always multiple choice.</p>
-                        </div>
-                        <div class="space-y-2">
-                            <p class="text-xs uppercase tracking-wider text-slate-400">When to ask</p>
-                            <div class="flex flex-wrap gap-3">
-                                @foreach (['during' => 'During lesson', 'after' => 'After lesson', 'both' => 'Both'] as $val => $label)
-                                    <button type="button"
-                                            wire:click="$set('quiz_timing', '{{ $val }}')"
-                                            @class([
-                                                'px-4 py-2 rounded-lg text-sm border-2 transition-all',
-                                                'border-amber-400 bg-amber-500/10 text-white' => $quiz_timing === $val,
-                                                'border-slate-600 text-slate-300 hover:border-slate-400' => $quiz_timing !== $val,
-                                            ])>{{ $label }}</button>
-                                @endforeach
+                    <div class="border-t border-white/10 pt-4">
+                        <div class="flex gap-6">
+                            {{-- 1/3: number of questions --}}
+                            <div class="w-1/3 space-y-2 shrink-0">
+                                <p class="text-xs uppercase tracking-wider text-slate-400">Number of questions</p>
+                                <input type="number" wire:model.live="quiz_question_count"
+                                       min="1" max="10"
+                                       class="input input-bordered bg-slate-900 w-24 text-center" />
+                                <p class="text-xs text-slate-500">Always multiple choice.</p>
+                            </div>
+                            {{-- 2/3: when to ask --}}
+                            <div class="flex-1 space-y-2">
+                                <p class="text-xs uppercase tracking-wider text-slate-400">When to ask</p>
+                                <div class="grid grid-cols-3 gap-2">
+                                    @foreach (['during' => 'During lesson', 'after' => 'After lesson', 'both' => 'Both'] as $val => $label)
+                                        <button type="button"
+                                                wire:click="$set('quiz_timing', '{{ $val }}')"
+                                                @class([
+                                                    'px-3 py-2 rounded-lg text-sm border-2 transition-all text-center',
+                                                    'border-amber-400 bg-amber-500/10 text-white' => $quiz_timing === $val,
+                                                    'border-slate-600 text-slate-300 hover:border-slate-400' => $quiz_timing !== $val,
+                                                ])>{{ $label }}</button>
+                                    @endforeach
+                                </div>
                             </div>
                         </div>
                     </div>
                 @endif
 
                 @if ($game_type === 'strategy')
-                    <div class="space-y-2 border-t border-white/10 pt-4">
-                        <p class="text-xs uppercase tracking-wider text-slate-400">Strategy game</p>
-                        <select wire:model.live="strategy_game"
-                                class="select select-bordered bg-slate-900 w-full">
-                            <option value="">— select a game —</option>
-                            @foreach ($this->games as $game)
-                                <option value="{{ $game->id }}">{{ $game->title }}</option>
-                            @endforeach
-                        </select>
+                    <div class="border-t border-white/10 pt-4">
+                        <x-wizard.game-picker
+                            :games="$this->games"
+                            :selected-id="$strategy_game_id"
+                            :team-count="$team_count"
+                            :split-count="$game_split_count" />
                     </div>
                 @endif
             @endif

@@ -15,6 +15,7 @@ use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
 use App\Models\Lesson;
 use App\Models\Scene;
+use App\Models\StrategyGame;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -24,15 +25,20 @@ class Step3SceneConfigurator extends Component
     private const EDITABLE_FIELDS = [
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
+        'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
         'skybox_blur', 'skybox_opacity', 'background_color', 'scene_view',
         'world_y_offset', 'world_scale', 'world_char_scale',
     ];
 
     public Lesson $lesson;
-    public ?int   $selectedSceneId = null;
+
+    public ?int $selectedSceneId = null;
+
     /** @var array<string,mixed>|null */
-    public ?array $selectedScene   = null;
-    public bool   $inspectorOpen   = true;
+    public ?array $selectedScene = null;
+
+    public bool $inspectorOpen = true;
+
     public ?string $prevSelectedStatus = null;
 
     public function mount(Lesson $lesson): void
@@ -70,8 +76,15 @@ class Step3SceneConfigurator extends Component
         }
 
         $ctrl = AvatarAnimationController::where('avatar_id', $avatar->id)->first();
-        $ids  = collect($ctrl?->controller ?? [])->flatten()->all();
+        $ids = collect($ctrl?->controller ?? [])->flatten()->all();
+
         return AnimationClip::whereIn('id', $ids)->orderBy('category')->orderBy('sort_order')->get();
+    }
+
+    #[Computed]
+    public function games()
+    {
+        return StrategyGame::active()->orderBy('title')->get();
     }
 
     public function selectScene(int $id): void
@@ -83,10 +96,10 @@ class Step3SceneConfigurator extends Component
     {
         $scene = $this->lesson->scenes()->findOrFail($id);
         $this->selectedSceneId = $id;
-        $this->selectedScene   = $this->snapshot($scene);
+        $this->selectedScene = $this->snapshot($scene);
 
-        $ts       = $scene->updated_at?->timestamp ?? '';
-        $view     = $scene->scene_view ?? 'skybox';
+        $ts = $scene->updated_at?->timestamp ?? '';
+        $view = $scene->scene_view ?? 'skybox';
         // Skybox view uses the equirectangular panorama if available; fall back to flat image.
         // Slideshow view always uses the flat image.
         $imagePath = ($view === 'skybox' && ! empty($scene->skybox_image_path))
@@ -94,30 +107,35 @@ class Step3SceneConfigurator extends Component
             : $scene->image_path;
 
         $this->dispatch('scene:load', payload: [
-            'sceneId'           => $scene->id,
-            'imageUrl'          => $imagePath ? asset('storage/' . $imagePath) . '?v=' . $ts : null,
-            'hasSkyboxImage'    => ! empty($scene->skybox_image_path),
-            'audioUrl'          => $scene->audio_path ? asset('storage/' . $scene->audio_path) : null,
-            'animationClipId'   => $scene->animation_clip_id,
-            'animationClipUrl'  => $this->animationGlbUrlFor($scene),
-            'year'              => $scene->year,
-            'location'          => $scene->location,
-            'kind'              => $scene->kind,
-            'duration'          => $scene->duration_seconds,
-            'skyboxBlur'        => (float) ($scene->skybox_blur    ?? 0.5),
-            'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
-            'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
-            'sceneView'         => (string) ($scene->scene_view ?? 'skybox'),
-            'worldPanoUrl'      => $scene->world_pano_path ? asset('storage/' . $scene->world_pano_path) : null,
-            'worldSpzUrl'       => $scene->world_spz_path  ? asset('storage/' . $scene->world_spz_path)  : null,
-            'worldGlbUrl'       => $scene->world_glb_path  ? asset('storage/' . $scene->world_glb_path)  : null,
-            'worldLabsStatus'   => (string) ($scene->world_labs_status ?? ''),
-            'worldYOffset'      => (float)  ($scene->world_y_offset    ?? 0),
-            'worldScale'        => (float)  ($scene->world_scale       ?? 1),
-            'worldCharScale'    => (float)  ($scene->world_char_scale  ?? 0.53),
-            'worldSemantics'    => [
+            'sceneId' => $scene->id,
+            'imageUrl' => $imagePath ? asset('storage/'.$imagePath).'?v='.$ts : null,
+            'hasSkyboxImage' => ! empty($scene->skybox_image_path),
+            'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
+            'animationClipId' => $scene->animation_clip_id,
+            'animationClipUrl' => $this->animationGlbUrlFor($scene),
+            'year' => $scene->year,
+            'location' => $scene->location,
+            'kind' => $scene->kind,
+            'gameType' => $scene->game_type,
+            'quizQuestionCount' => $scene->quiz_question_count,
+            'quizTiming' => $scene->quiz_timing,
+            'strategyGameId' => $scene->strategy_game_id,
+            'teamCount' => $scene->team_count,
+            'duration' => $scene->duration_seconds,
+            'skyboxBlur' => (float) ($scene->skybox_blur ?? 0.5),
+            'skyboxOpacity' => (float) ($scene->skybox_opacity ?? 1.0),
+            'backgroundColor' => (string) ($scene->background_color ?? '#000000'),
+            'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
+            'worldPanoUrl' => $scene->world_pano_path ? asset('storage/'.$scene->world_pano_path) : null,
+            'worldSpzUrl' => $scene->world_spz_path ? asset('storage/'.$scene->world_spz_path) : null,
+            'worldGlbUrl' => $scene->world_glb_path ? asset('storage/'.$scene->world_glb_path) : null,
+            'worldLabsStatus' => (string) ($scene->world_labs_status ?? ''),
+            'worldYOffset' => (float) ($scene->world_y_offset ?? 0),
+            'worldScale' => (float) ($scene->world_scale ?? 1),
+            'worldCharScale' => (float) ($scene->world_char_scale ?? 0.53),
+            'worldSemantics' => [
                 'groundPlaneOffset' => (float) (($scene->world_semantics ?? [])['ground_plane_offset'] ?? 0),
-                'flipY'             => (bool)  (($scene->world_semantics ?? [])['flip_y']              ?? true),
+                'flipY' => (bool) (($scene->world_semantics ?? [])['flip_y'] ?? true),
                 'metricScaleFactor' => (float) (($scene->world_semantics ?? [])['metric_scale_factor'] ?? 1),
             ],
         ]);
@@ -139,6 +157,7 @@ class Step3SceneConfigurator extends Component
             ->whereNotNull('glb_path')
             ->orderBy('sort_order')
             ->value('glb_path');
+
         return $idlePath ? asset($idlePath) : null;
     }
 
@@ -152,7 +171,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $this->dispatch('scene:play', payload: [
-            'audioUrl'  => asset('storage/' . $s->audio_path),
+            'audioUrl' => asset('storage/'.$s->audio_path),
             'alignment' => $s->audio_alignment ?? [],
         ]);
     }
@@ -164,11 +183,12 @@ class Step3SceneConfigurator extends Component
         foreach (self::EDITABLE_FIELDS as $f) {
             $snap[$f] = $scene->{$f};
         }
-        $snap['image_path']         = $scene->image_path;
-        $snap['skybox_image_path']  = $scene->skybox_image_path;
-        $snap['audio_path']         = $scene->audio_path;
-        $snap['status']             = $scene->status;
+        $snap['image_path'] = $scene->image_path;
+        $snap['skybox_image_path'] = $scene->skybox_image_path;
+        $snap['audio_path'] = $scene->audio_path;
+        $snap['status'] = $scene->status;
         $snap['game_segment_index'] = $scene->game_segment_index;
+
         return $snap;
     }
 
@@ -181,16 +201,18 @@ class Step3SceneConfigurator extends Component
         $scene = Scene::where('lesson_id', $this->lesson->id)
             ->findOrFail($this->selectedSceneId);
 
-        $payload     = collect($this->selectedScene)->only(self::EDITABLE_FIELDS)->all();
-        if (array_key_exists('animation_clip_id', $payload) && $payload['animation_clip_id'] === '') {
-            $payload['animation_clip_id'] = null;
+        $payload = collect($this->selectedScene)->only(self::EDITABLE_FIELDS)->all();
+        foreach (['animation_clip_id', 'strategy_game_id'] as $nullableId) {
+            if (array_key_exists($nullableId, $payload) && $payload[$nullableId] === '') {
+                $payload[$nullableId] = null;
+            }
         }
         $scriptDirty = ($scene->script_segment ?? '') !== ($payload['script_segment'] ?? '');
 
         // Detect changes that should re-paint the 3D stage so the canvas updates.
         $stageDirty = (int) ($payload['animation_clip_id'] ?? 0) !== (int) ($scene->animation_clip_id ?? 0)
-            || ($payload['year']      ?? null) !== ($scene->year      ?? null)
-            || ($payload['location']  ?? null) !== ($scene->location  ?? null)
+            || ($payload['year'] ?? null) !== ($scene->year ?? null)
+            || ($payload['location'] ?? null) !== ($scene->location ?? null)
             || ($payload['scene_view'] ?? null) !== ($scene->scene_view ?? null);
 
         $scene->update($payload);
@@ -226,6 +248,8 @@ class Step3SceneConfigurator extends Component
                     ->update(['order' => $idx + 1]);
             }
         });
+
+        $this->syncGameSceneIndexes();
     }
 
     public function generateSkyboxImage(int $sceneId): void
@@ -234,6 +258,7 @@ class Step3SceneConfigurator extends Component
 
         if (! $scene->image_path) {
             $this->dispatch('toast', message: 'Generate the flat image first.', type: 'warning');
+
             return;
         }
 
@@ -249,8 +274,9 @@ class Step3SceneConfigurator extends Component
     {
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
-        if (! $scene->image_path) {
+        if (! $scene->skybox_image_path) {
             $this->dispatch('toast', message: 'Generate the skybox image first before enhancing.', type: 'warning');
+
             return;
         }
 
@@ -269,10 +295,10 @@ class Step3SceneConfigurator extends Component
 
         match ($asset) {
             'script' => GenerateSceneScript::dispatch($scene->id),
-            'image'  => GenerateSceneImage::dispatch($scene->id),
-            'audio'  => GenerateSceneAudio::dispatch($scene->id),
-            'world'  => $this->generateWorld($scene->id),
-            default  => null,
+            'image' => GenerateSceneImage::dispatch($scene->id),
+            'audio' => GenerateSceneAudio::dispatch($scene->id),
+            'world' => $this->generateWorld($scene->id),
+            default => null,
         };
     }
 
@@ -282,6 +308,7 @@ class Step3SceneConfigurator extends Component
 
         if (! $scene->image_path) {
             $this->dispatch('toast', message: 'Generate the skybox image first before creating a WorldLabs world.', type: 'warning');
+
             return;
         }
 
@@ -294,22 +321,50 @@ class Step3SceneConfigurator extends Component
         }
     }
 
-    public function addScene(): void
+    public function addScene(string $kind = 'narration', ?string $gameType = null): void
     {
+        $kind = $kind === 'game' ? 'game' : 'narration';
+        $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
-        $scene = Scene::create([
-            'lesson_id'   => $this->lesson->id,
-            'order'       => $next,
-            'kind'        => 'narration',
+
+        $payload = [
+            'lesson_id' => $this->lesson->id,
+            'order' => $next,
+            'kind' => $kind,
             'image_style' => $this->lesson->image_style,
-            'status'      => 'pending',
-        ]);
+            'status' => 'pending',
+        ];
+
+        if ($kind === 'game') {
+            $gameCount = $this->lesson->scenes()->where('kind', 'game')->count();
+            $gameType ??= $this->lesson->game_type ?: 'quiz';
+
+            $payload += [
+                'game_type' => $gameType,
+                'game_segment_index' => $gameCount + 1,
+                'duration_seconds' => $gameType === 'strategy' ? 600 : 180,
+                'quiz_question_count' => $gameType === 'quiz' ? (int) ($this->lesson->quiz_question_count ?? 4) : null,
+                'quiz_timing' => $gameType === 'quiz' ? ($this->lesson->quiz_timing ?? 'after') : null,
+                'strategy_game_id' => $gameType === 'strategy' ? $this->defaultStrategyGameId() : null,
+                'team_count' => $gameType === 'strategy' ? (int) ($this->lesson->team_count ?? 2) : null,
+            ];
+
+            $this->lesson->fill([
+                'include_game' => true,
+                'game_type' => $this->lesson->game_type ?: $gameType,
+                'game_split_count' => $gameCount + 1,
+            ])->save();
+            $this->lesson->refresh();
+        }
+
+        $scene = Scene::create($payload);
+
         $this->selectSceneInternal($scene->id);
     }
 
     public function deleteScene(int $sceneId): void
     {
-        $scene   = $this->lesson->scenes()->findOrFail($sceneId);
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
         $wasGame = $scene->kind === 'game';
         $scene->delete();
 
@@ -324,11 +379,7 @@ class Step3SceneConfigurator extends Component
         });
 
         if ($wasGame) {
-            $games = $remaining->where('kind', 'game')->values();
-            foreach ($games as $idx => $g) {
-                $g->update(['game_segment_index' => $idx + 1]);
-            }
-            $this->lesson->update(['game_split_count' => max(1, $games->count())]);
+            $this->syncGameSceneIndexes();
         }
 
         if ($this->selectedSceneId === $sceneId) {
@@ -337,24 +388,74 @@ class Step3SceneConfigurator extends Component
                 $this->selectSceneInternal($first->id);
             } else {
                 $this->selectedSceneId = null;
-                $this->selectedScene   = null;
+                $this->selectedScene = null;
             }
         }
     }
 
+    public function setSceneGameType(int $sceneId, string $gameType): void
+    {
+        if (! in_array($gameType, ['quiz', 'strategy', 'debate'], true)) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+        if ($scene->kind !== 'game') {
+            return;
+        }
+
+        $scene->update([
+            'game_type' => $gameType,
+            'duration_seconds' => $gameType === 'strategy'
+                ? ($scene->duration_seconds ?: 600)
+                : ($scene->duration_seconds ?: 180),
+            'quiz_question_count' => $gameType === 'quiz' ? (int) ($scene->quiz_question_count ?? $this->lesson->quiz_question_count ?? 4) : null,
+            'quiz_timing' => $gameType === 'quiz' ? ($scene->quiz_timing ?? $this->lesson->quiz_timing ?? 'after') : null,
+            'strategy_game_id' => $gameType === 'strategy' ? ($scene->strategy_game_id ?? $this->defaultStrategyGameId()) : null,
+            'team_count' => $gameType === 'strategy' ? (int) ($scene->team_count ?? $this->lesson->team_count ?? 2) : null,
+        ]);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+    }
+
+    private function syncGameSceneIndexes(): void
+    {
+        $games = $this->lesson->scenes()->where('kind', 'game')->ordered()->get();
+        foreach ($games as $idx => $game) {
+            $game->update(['game_segment_index' => $idx + 1]);
+        }
+
+        $this->lesson->update([
+            'include_game' => $games->isNotEmpty(),
+            'game_split_count' => max(1, $games->count()),
+        ]);
+        $this->lesson->refresh();
+    }
+
+    private function defaultStrategyGameId(): ?int
+    {
+        return $this->lesson->strategy_game_id
+            ?? StrategyGame::matchForLesson($this->lesson)?->id
+            ?? StrategyGame::active()->orderBy('title')->value('id');
+    }
+
     public function saveWorldSettings(float $yOffset, float $scale, float $charScale): void
     {
-        if (! $this->selectedSceneId) return;
+        if (! $this->selectedSceneId) {
+            return;
+        }
         Scene::where('lesson_id', $this->lesson->id)
             ->findOrFail($this->selectedSceneId)
             ->update([
-                'world_y_offset'   => $yOffset,
-                'world_scale'      => $scale,
+                'world_y_offset' => $yOffset,
+                'world_scale' => $scale,
                 'world_char_scale' => $charScale,
             ]);
         if ($this->selectedScene) {
-            $this->selectedScene['world_y_offset']   = $yOffset;
-            $this->selectedScene['world_scale']      = $scale;
+            $this->selectedScene['world_y_offset'] = $yOffset;
+            $this->selectedScene['world_scale'] = $scale;
             $this->selectedScene['world_char_scale'] = $charScale;
         }
     }
@@ -388,21 +489,25 @@ class Step3SceneConfigurator extends Component
     /** Called on every poll tick — pushes updated world status to the canvas. */
     public function pollWorldStatus(): void
     {
-        if (! $this->selectedSceneId) return;
+        if (! $this->selectedSceneId) {
+            return;
+        }
 
         $scene = $this->lesson->scenes()->find($this->selectedSceneId);
-        if (! $scene || $scene->scene_view !== 'world') return;
+        if (! $scene || $scene->scene_view !== 'world') {
+            return;
+        }
 
         $semantics = $scene->world_semantics ?? [];
         $this->dispatch('scene:worldstatus', payload: [
-            'sceneId'            => $scene->id,
-            'worldLabsStatus'    => (string) ($scene->world_labs_status ?? ''),
-            'worldPanoUrl'       => $scene->world_pano_path ? asset('storage/' . $scene->world_pano_path) : null,
-            'worldSpzUrl'        => $scene->world_spz_path ? asset('storage/' . $scene->world_spz_path) : null,
-            'worldGlbUrl'        => $scene->world_glb_path ? asset('storage/' . $scene->world_glb_path) : null,
-            'worldSemantics'     => [
+            'sceneId' => $scene->id,
+            'worldLabsStatus' => (string) ($scene->world_labs_status ?? ''),
+            'worldPanoUrl' => $scene->world_pano_path ? asset('storage/'.$scene->world_pano_path) : null,
+            'worldSpzUrl' => $scene->world_spz_path ? asset('storage/'.$scene->world_spz_path) : null,
+            'worldGlbUrl' => $scene->world_glb_path ? asset('storage/'.$scene->world_glb_path) : null,
+            'worldSemantics' => [
                 'groundPlaneOffset' => (float) ($semantics['ground_plane_offset'] ?? 0),
-                'flipY'             => (bool)  ($semantics['flip_y']              ?? true),
+                'flipY' => (bool) ($semantics['flip_y'] ?? true),
                 'metricScaleFactor' => (float) ($semantics['metric_scale_factor'] ?? 1),
             ],
         ]);
@@ -411,10 +516,14 @@ class Step3SceneConfigurator extends Component
     /** Re-fire scene:load whenever the selected scene's status changes. */
     private function pollSceneReady(): void
     {
-        if (! $this->selectedSceneId) return;
+        if (! $this->selectedSceneId) {
+            return;
+        }
 
         $scene = $this->lesson->scenes()->find($this->selectedSceneId);
-        if (! $scene) return;
+        if (! $scene) {
+            return;
+        }
 
         $currentStatus = (string) $scene->status;
 
@@ -429,6 +538,7 @@ class Step3SceneConfigurator extends Component
     {
         $this->pollWorldStatus();
         $this->pollSceneReady();
+
         return view('livewire.wizard.step3-scene-configurator');
     }
 }

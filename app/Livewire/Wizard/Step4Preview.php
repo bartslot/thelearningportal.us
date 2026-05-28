@@ -65,6 +65,7 @@ class Step4Preview extends Component
             'year'              => $scene->year,
             'location'          => $scene->location,
             'kind'              => $scene->kind,
+            'gameType'          => $scene->game_type,
             'duration'          => $scene->duration_seconds,
             'skyboxBlur'        => (float) ($scene->skybox_blur    ?? 0.5),
             'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),

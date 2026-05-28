@@ -17,11 +17,40 @@
             @endforeach
 
             @if ($editable)
-                <button type="button" wire:click="addScene"
-                        class="shrink-0 w-32 h-[72px] rounded-lg border-2 border-white/20 hover:border-amber-400 transition-all flex items-center justify-center text-white/20 hover:text-amber-300"
-                        title="Add scene">
-                    +
-                </button>
+                <div class="dropdown dropdown-top shrink-0" data-no-drag>
+                    <button type="button"
+                            tabindex="0"
+                            class="h-[72px] w-32 rounded-lg border-2 border-white/20 text-white/40 transition-all hover:border-amber-400 hover:text-amber-300"
+                            title="Add scene">
+                        <span class="block text-2xl leading-none">+</span>
+                        <span class="mt-1 block text-[9px] font-semibold uppercase tracking-widest">Add</span>
+                    </button>
+                    <ul tabindex="0"
+                        class="menu dropdown-content z-50 mb-2 w-56 rounded-box border border-slate-700 bg-base-200 p-2 shadow-2xl">
+                        <li class="menu-title px-2 text-[10px] uppercase tracking-widest text-slate-500">Scene element</li>
+                        <li>
+                            <button type="button" wire:click="addScene('narration')">
+                                Extend Story
+                            </button>
+                        </li>
+                        <li class="menu-title px-2 pt-2 text-[10px] uppercase tracking-widest text-slate-500">Game</li>
+                        <li>
+                            <button type="button" wire:click="addScene('game', 'quiz')">
+                                Quiz
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" wire:click="addScene('game', 'strategy')">
+                                Strategy Game
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" wire:click="addScene('game', 'debate')">
+                                Debate
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             @endif
         </div>
 

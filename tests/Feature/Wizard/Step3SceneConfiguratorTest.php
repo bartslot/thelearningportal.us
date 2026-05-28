@@ -10,6 +10,7 @@ use App\Jobs\GenerateSceneImage;
 use App\Livewire\Wizard\Step3SceneConfigurator;
 use App\Models\Lesson;
 use App\Models\Scene;
+use App\Models\StrategyGame;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -101,6 +102,42 @@ class Step3SceneConfiguratorTest extends TestCase
 
         $this->assertSame(3, $this->lesson->scenes()->count());
         $this->assertSame('narration', Scene::orderBy('order', 'desc')->first()->kind);
+    }
+
+    public function test_adds_game_scene_with_selected_game_type_defaults(): void
+    {
+        $game = StrategyGame::create([
+            'slug' => 'strategy',
+            'title' => 'Strategy',
+            'description' => 'x',
+            'subject' => 'History',
+            'topic_keywords' => [],
+            'instructions' => 'i',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addScene', 'game', 'strategy');
+
+        $scene = Scene::orderBy('order', 'desc')->first();
+        $this->assertSame('game', $scene->kind);
+        $this->assertSame('strategy', $scene->game_type);
+        $this->assertSame($game->id, $scene->strategy_game_id);
+        $this->assertSame(600, $scene->duration_seconds);
+        $this->assertTrue($this->lesson->fresh()->include_game);
+    }
+
+    public function test_changes_game_scene_type_and_resets_type_specific_settings(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('setSceneGameType', $this->s2->id, 'quiz');
+
+        $scene = $this->s2->fresh();
+        $this->assertSame('quiz', $scene->game_type);
+        $this->assertSame(4, $scene->quiz_question_count);
+        $this->assertSame('after', $scene->quiz_timing);
+        $this->assertNull($scene->strategy_game_id);
     }
 
     public function test_deletes_a_scene_and_reindexes_game_segments(): void

@@ -53,16 +53,23 @@ SYS;
 
     public static function user(Lesson $lesson, string $sourceText): string
     {
-        $game        = $lesson->strategyGame;
-        $teamCount   = $lesson->team_count ?? 0;
-        $splitCount  = (int) ($lesson->game_split_count ?? 1);
+        $game       = $lesson->strategyGame;
+        $gameType   = $lesson->game_type ?? 'quiz';
+        $teamCount  = $lesson->team_count ?? 0;
+        $splitCount = (int) ($lesson->game_split_count ?? 1);
         $duration    = $lesson->duration_seconds
             ? (int) round($lesson->duration_seconds / 60)
             : 10;
 
         $gameClause = '';
-        if ($game instanceof StrategyGame && $splitCount > 0) {
+        if ($gameType === 'strategy' && $game instanceof StrategyGame && $splitCount > 0) {
             $gameClause = self::buildGameClause($game->title, $teamCount, $splitCount);
+        } elseif ($gameType === 'quiz') {
+            $count = (int) ($lesson->quiz_question_count ?? 4);
+            $timing = $lesson->quiz_timing ?? 'after';
+            $gameClause = "Quiz game: insert one game scene as a {$count}-question checkpoint ({$timing}).";
+        } elseif ($gameType === 'debate') {
+            $gameClause = 'Debate game: insert one game scene where students defend opposing interpretations using evidence from the lesson.';
         }
 
         return <<<USR

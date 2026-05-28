@@ -11,6 +11,7 @@ class Scene extends Model
 {
     protected $fillable = [
         'lesson_id', 'order', 'kind',
+        'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
         'year', 'location', 'script_segment',
         'image_prompt', 'image_path', 'skybox_image_path', 'image_style',
         'skybox_blur', 'skybox_opacity', 'background_color', 'scene_view',
@@ -31,6 +32,9 @@ class Scene extends Model
             'audio_alignment'    => 'array',
             'duration_seconds'   => 'integer',
             'game_segment_index' => 'integer',
+            'quiz_question_count' => 'integer',
+            'strategy_game_id'    => 'integer',
+            'team_count'          => 'integer',
             'skybox_blur'        => 'float',
             'skybox_opacity'     => 'float',
             'world_semantics'    => 'array',
@@ -48,6 +52,11 @@ class Scene extends Model
     public function animationClip(): BelongsTo
     {
         return $this->belongsTo(AnimationClip::class);
+    }
+
+    public function strategyGame(): BelongsTo
+    {
+        return $this->belongsTo(StrategyGame::class);
     }
 
     public function scopeOrdered($query)

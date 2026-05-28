@@ -15,8 +15,7 @@
         ])>
     @if ($scene->kind === 'game')
         <div class="w-full h-full bg-teal-700/30 border border-teal-600/30 flex flex-col items-center justify-center text-white">
-            <span class="text-2xl">🎲</span>
-            <span class="text-[10px] font-bold tracking-widest mt-1">GAME</span>
+            <span class="text-[10px] font-bold tracking-widest mt-1">{{ strtoupper($scene->game_type ?? 'game') }}</span>
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>
         </div>
     @else

@@ -15,7 +15,6 @@ use App\Services\Support\HistoryTaxonomy;
 use App\Services\Support\HistoryTopics;
 use App\Services\Support\ImageStyleTemplate;
 use App\Services\Support\ToneRecommender;
-use App\Services\WikipediaService;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -27,63 +26,94 @@ class Step1Settings extends Component
 
     public ?Lesson $lesson = null;
 
-    public string $topic            = 'French Revolution';
-    public string $subject          = 'history';
-    public string  $grade_level      = 'Age 12';
-    public string  $audience_system = 'age';     // 'age' | 'local'
-    public string  $local_grade     = '';        // locale-specific value, e.g. "Groep 7"
-    public int     $audience_age    = 12;
+    public string $topic = 'French Revolution';
+
+    public string $subject = 'history';
+
+    public string $grade_level = 'Age 12';
+
+    public string $audience_system = 'age';     // 'age' | 'local'
+
+    public string $local_grade = '';        // locale-specific value, e.g. "Groep 7"
+
+    public int $audience_age = 12;
+
     // Legacy — kept to hydrate old lessons stored with grade strings
-    public string  $audience_mode   = 'age';
-    public string  $grade_choice    = '';
-    public string $tone             = '';
-    public string $details          = '';
-    public string $source_mode      = 'wikipedia';
-    public        $sourceUpload     = null;
-    public string $image_style      = 'realistic';
-    public ?int   $avatar_id        = null;
-    public ?string $region              = null;
-    public ?string $era                 = null;
-    public bool    $show_region_era     = false;
-    public bool    $include_game        = false;
-    public ?string $game_type           = null;   // quiz | strategy | debate
-    public int     $quiz_question_count = 4;
-    public ?string $quiz_timing         = null;   // during | after | both
-    public ?string $strategy_game       = null;
+    public string $audience_mode = 'age';
+
+    public string $grade_choice = '';
+
+    public string $tone = '';
+
+    public string $details = '';
+
+    public string $source_mode = 'internet';
+
+    public string $source_url = '';
+
+    public $sourceUpload = null;
+
+    public string $image_style = 'realistic';
+
+    public ?int $avatar_id = null;
+
+    public ?string $region = null;
+
+    public ?string $era = null;
+
+    public bool $show_region_era = false;
+
+    public bool $include_game = false;
+
+    public ?string $game_type = null;   // quiz | strategy | debate
+
+    public int $quiz_question_count = 4;
+
+    public ?string $quiz_timing = null;   // during | after | both
+
+    public ?string $strategy_game = null;
+
     // Legacy columns — kept for DB compat, not rendered
-    public ?int   $strategy_game_id = null;
-    public ?int   $team_count       = null;
-    public int    $game_split_count = 1;
-    public string $lesson_code      = '';
-    public ?int   $duration_minutes = null;
-    public ?int   $duration_seconds = null;
-    public        $portrait         = null;
+    public ?int $strategy_game_id = null;
+
+    public ?int $team_count = null;
+
+    public int $game_split_count = 1;
+
+    public string $lesson_code = '';
+
+    public ?int $duration_minutes = null;
+
+    public ?int $duration_seconds = null;
+
+    public $portrait = null;
 
     public function mount(?Lesson $lesson = null): void
     {
         if ($lesson?->exists) {
-            $this->lesson           = $lesson;
-            $this->topic            = $lesson->topic ?? '';
-            $this->subject          = $lesson->subject ?? 'history';
-            $this->grade_level      = $lesson->grade_level ?? 'Age 12';
+            $this->lesson = $lesson;
+            $this->topic = $lesson->topic ?? '';
+            $this->subject = $lesson->subject ?? 'history';
+            $this->grade_level = $lesson->grade_level ?? 'Age 12';
             $this->hydrateAudienceFromGradeLevel($this->grade_level);
-            $this->tone             = $lesson->tone ?? '';
-            $this->details          = $lesson->details ?? '';
-            $this->source_mode      = $lesson->source_mode ?? 'wikipedia';
-            $this->image_style      = $lesson->image_style ?? 'realistic';
-            $this->avatar_id           = $lesson->avatar_id;
-            $this->region              = $lesson->region;
-            $this->era                 = $lesson->era;
-            $this->show_region_era     = $lesson->region !== null || $lesson->era !== null;
-            $this->include_game        = (bool) ($lesson->include_game ?? false);
-            $this->game_type           = $lesson->game_type;
+            $this->tone = $lesson->tone ?? '';
+            $this->details = $lesson->details ?? '';
+            $this->source_mode = $lesson->source_mode ?? 'internet';
+            $this->source_url = $lesson->source?->source_url ?? '';
+            $this->image_style = $lesson->image_style ?? 'realistic';
+            $this->avatar_id = $lesson->avatar_id;
+            $this->region = $lesson->region;
+            $this->era = $lesson->era;
+            $this->show_region_era = $lesson->region !== null || $lesson->era !== null;
+            $this->include_game = (bool) ($lesson->include_game ?? false);
+            $this->game_type = $lesson->game_type;
             $this->quiz_question_count = (int) ($lesson->quiz_question_count ?? 4);
-            $this->quiz_timing         = $lesson->quiz_timing;
-            $this->strategy_game       = $lesson->strategy_game ? (string) $lesson->strategy_game : null;
-            $this->strategy_game_id    = $lesson->strategy_game_id;
-            $this->team_count          = $lesson->team_count;
-            $this->game_split_count    = (int) ($lesson->game_split_count ?? 1);
-            $this->lesson_code      = $lesson->lesson_code ?? '';
+            $this->quiz_timing = $lesson->quiz_timing;
+            $this->strategy_game = $lesson->strategy_game ? (string) $lesson->strategy_game : null;
+            $this->strategy_game_id = $lesson->strategy_game_id;
+            $this->team_count = $lesson->team_count;
+            $this->game_split_count = (int) ($lesson->game_split_count ?? 1);
+            $this->lesson_code = $lesson->lesson_code ?? '';
             if ($lesson->duration_seconds !== null) {
                 $this->duration_minutes = (int) floor($lesson->duration_seconds / 60);
                 $this->duration_seconds = $lesson->duration_seconds % 60;
@@ -91,12 +121,13 @@ class Step1Settings extends Component
         } else {
             $this->lesson_code = strtoupper(Str::random(6));
             $this->image_style = GradeBandStyleRecommender::recommend($this->grade_level)[0];
-            $this->avatar_id   = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
-            $this->tone        = 'storytelling';
+            $this->avatar_id = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
+            $this->tone = 'storytelling';
         }
     }
 
     public const AGE_MIN = 4;
+
     public const AGE_MAX = 18;
 
     public function setAudienceSystem(string $system): void
@@ -118,8 +149,8 @@ class Step1Settings extends Component
     public function updatedTopic(): void
     {
         if (trim($this->topic) === '') {
-            $this->region          = null;
-            $this->era             = null;
+            $this->region = null;
+            $this->era = null;
             $this->show_region_era = false;
         }
     }
@@ -131,19 +162,26 @@ class Step1Settings extends Component
 
     public function updatedIncludeGame(): void
     {
-        if (! $this->include_game) {
-            $this->game_type           = null;
+        if ($this->include_game) {
+            $this->game_type = 'quiz';
+            $this->quiz_timing = 'after';
+        } else {
+            $this->game_type = null;
             $this->quiz_question_count = 4;
-            $this->quiz_timing         = null;
-            $this->strategy_game       = null;
+            $this->quiz_timing = null;
+            $this->strategy_game = null;
+            $this->strategy_game_id = null;
+            $this->team_count = null;
+            $this->game_split_count = 1;
         }
     }
 
     public function updatedGameType(): void
     {
         $this->quiz_question_count = 4;
-        $this->quiz_timing         = null;
-        $this->strategy_game       = null;
+        $this->quiz_timing = 'after';
+        $this->strategy_game = null;
+        $this->strategy_game_id = null;
     }
 
     private function syncGradeLevel(): void
@@ -151,8 +189,8 @@ class Step1Settings extends Component
         if ($this->audience_system === 'local' && $this->local_grade !== '') {
             $this->grade_level = $this->local_grade;
         } else {
-            $age               = max(self::AGE_MIN, min(self::AGE_MAX, $this->audience_age));
-            $this->grade_level = 'Age ' . $age;
+            $age = max(self::AGE_MIN, min(self::AGE_MAX, $this->audience_age));
+            $this->grade_level = 'Age '.$age;
         }
     }
 
@@ -161,7 +199,8 @@ class Step1Settings extends Component
         // Age string from new system
         if (preg_match('/^Age\s*(\d+)$/i', $level, $m)) {
             $this->audience_system = 'age';
-            $this->audience_age    = max(self::AGE_MIN, min(self::AGE_MAX, (int) $m[1]));
+            $this->audience_age = max(self::AGE_MIN, min(self::AGE_MAX, (int) $m[1]));
+
             return;
         }
 
@@ -173,14 +212,15 @@ class Step1Settings extends Component
         ];
         if (isset($legacyMap[$level])) {
             $this->audience_system = 'age';
-            $this->audience_age    = $legacyMap[$level];
-            $this->grade_level     = 'Age ' . $legacyMap[$level];
+            $this->audience_age = $legacyMap[$level];
+            $this->grade_level = 'Age '.$legacyMap[$level];
+
             return;
         }
 
         // Locale-specific value — store as local_grade
         $this->audience_system = 'local';
-        $this->local_grade     = $level;
+        $this->local_grade = $level;
     }
 
     #[Computed]
@@ -196,7 +236,7 @@ class Step1Settings extends Component
         // Only pre-fill region/era if not already set by the teacher
         if ($region && ! $this->region) {
             $this->region = $region;
-            $this->era    = null;
+            $this->era = null;
         }
         if ($era && ! $this->era) {
             $this->era = $era;
@@ -218,6 +258,7 @@ class Step1Settings extends Component
     public function regionOptions(): array
     {
         $locale = app()->getLocale();
+
         return array_map(
             fn ($r) => ['value' => $r['value'], 'label' => $r['label']],
             HistoryTaxonomy::regionsFor($locale),
@@ -230,6 +271,7 @@ class Step1Settings extends Component
         if (! $this->region) {
             return [];
         }
+
         return array_map(
             fn ($e) => ['value' => $e, 'label' => $e],
             HistoryTaxonomy::erasFor($this->region),
@@ -252,7 +294,7 @@ class Step1Settings extends Component
     public function styleOptions(): array
     {
         return array_map(fn (string $k) => [
-            'key'   => $k,
+            'key' => $k,
             'label' => ucfirst($k),
             'thumb' => asset("assets/style-{$k}.webp"),
         ], ImageStyleTemplate::styles());
@@ -276,17 +318,18 @@ class Step1Settings extends Component
         // Always use the resolved age (audience_age) so local grade systems
         // (e.g. "Groep 7" → age 11) give correct recommendations instead of
         // treating the raw grade number as an age.
-        return ToneRecommender::recommend('Age ' . $this->audience_age);
+        return ToneRecommender::recommend('Age '.$this->audience_age);
     }
 
     protected function rules(): array
     {
-        return (new StoreWizardSettingsRequest())->rules();
+        return (new StoreWizardSettingsRequest)->rules();
     }
 
     public function saveDraft(): Lesson
     {
         $this->validate();
+
         return $this->persist(LessonStatus::Draft);
     }
 
@@ -309,31 +352,34 @@ class Step1Settings extends Component
 
     private function persist(LessonStatus $status): Lesson
     {
-        $lesson = $this->lesson ?? new Lesson();
+        $lesson = $this->lesson ?? new Lesson;
 
         $lesson->fill([
-            'teacher_id'       => auth()->id(),
-            'topic'            => trim($this->topic),
-            'subject'          => 'history',
-            'region'           => $this->region ?: null,
-            'era'              => $this->era ?: null,
-            'grade_level'      => $this->grade_level,
-            'tone'             => trim($this->tone) ?: null,
-            'details'          => trim($this->details) ?: null,
-            'source_mode'      => $this->source_mode,
-            'image_style'      => $this->image_style,
-            'avatar_id'           => $this->avatar_id,
-            'include_game'        => $this->include_game,
-            'game_type'           => $this->include_game ? $this->game_type : null,
+            'teacher_id' => auth()->id(),
+            'topic' => trim($this->topic),
+            'subject' => 'history',
+            'region' => $this->region ?: null,
+            'era' => $this->era ?: null,
+            'grade_level' => $this->grade_level,
+            'tone' => trim($this->tone) ?: null,
+            'details' => trim($this->details) ?: null,
+            'source_mode' => $this->source_mode,
+            'image_style' => $this->image_style,
+            'avatar_id' => $this->avatar_id,
+            'include_game' => $this->include_game,
+            'game_type' => $this->include_game ? $this->game_type : null,
             'quiz_question_count' => $this->include_game && $this->game_type === 'quiz' ? $this->quiz_question_count : null,
-            'quiz_timing'         => $this->include_game && $this->game_type === 'quiz' ? $this->quiz_timing : null,
-            'strategy_game'       => $this->include_game && $this->game_type === 'strategy' ? $this->strategy_game : null,
-            'lesson_code'         => strtoupper($this->lesson_code),
+            'quiz_timing' => $this->include_game && $this->game_type === 'quiz' ? $this->quiz_timing : null,
+            'strategy_game' => $this->include_game && $this->game_type === 'strategy' ? $this->strategy_game : null,
+            'strategy_game_id' => $this->include_game && $this->game_type === 'strategy' ? $this->strategy_game_id : null,
+            'team_count' => $this->include_game && $this->game_type === 'strategy' ? $this->team_count : null,
+            'game_split_count' => $this->include_game && $this->game_type === 'strategy' ? $this->game_split_count : 1,
+            'lesson_code' => strtoupper($this->lesson_code),
             'duration_seconds' => $this->duration_minutes !== null
                 ? ($this->duration_minutes * 60) + ($this->duration_seconds ?? 0)
                 : null,
-            'status'           => $status,
-            'wizard_step'      => 1,
+            'status' => $status,
+            'wizard_step' => 1,
         ]);
         $lesson->save();
 
@@ -345,6 +391,7 @@ class Step1Settings extends Component
         $this->buildSource($lesson);
 
         $this->lesson = $lesson;
+
         return $lesson;
     }
 
@@ -353,41 +400,41 @@ class Step1Settings extends Component
         $source = \App\Models\LessonSource::firstOrNew(['lesson_id' => $lesson->id]);
 
         $combinedText = '';
-        $kind         = null;
-        $filePath     = null;
-        $original     = null;
+        $kind = null;
+        $filePath = null;
+        $original = null;
 
-        if (in_array($this->source_mode, ['upload', 'both'], true) && $this->sourceUpload) {
+        if ($this->source_mode === 'local' && $this->sourceUpload) {
             $extension = strtolower($this->sourceUpload->getClientOriginalExtension());
-            $kindUp    = $extension === 'docx' ? 'docx' : 'pdf';
+            $kindUp = $extension === 'docx' ? 'docx' : 'pdf';
 
             $filePath = $this->sourceUpload->storeAs("lessons/{$lesson->id}", "source.{$extension}", 'public');
             $original = $this->sourceUpload->getClientOriginalName();
 
-            $absolute     = \Illuminate\Support\Facades\Storage::disk('public')->path($filePath);
+            $absolute = \Illuminate\Support\Facades\Storage::disk('public')->path($filePath);
             $combinedText = app(DocumentExtractor::class)->extractFromPath($absolute);
 
-            $kind = $this->source_mode === 'both' ? 'both' : $kindUp;
+            $kind = $kindUp;
         }
 
-        if (in_array($this->source_mode, ['wikipedia', 'both'], true)) {
-            // Wikipedia fetch is deferred to BuildLessonOutline job to avoid blocking
-            // the web request (can take 10-20s with fallback search stages).
-            // Just mark the kind so the job knows to fetch it.
-            $kind ??= 'wikipedia';
+        if ($this->source_mode === 'internet') {
+            // Actual fetch is deferred to BuildLessonOutline job (can take 10-20s).
+            // Just mark the kind so the job knows to fetch worldhistory.org → wikipedia.
+            $kind ??= 'internet';
         }
 
         if ($kind === null) {
-            return; // No source data captured — skip persisting an invalid row.
+            return;
         }
 
         $source->fill([
-            'lesson_id'         => $lesson->id,
-            'kind'              => $kind,
+            'lesson_id' => $lesson->id,
+            'kind' => $kind,
             'original_filename' => $original,
-            'file_path'         => $filePath,
-            'extracted_text'    => $combinedText,
-            'wikipedia_topic'   => in_array($this->source_mode, ['wikipedia', 'both'], true) ? $lesson->topic : null,
+            'file_path' => $filePath,
+            'extracted_text' => $combinedText,
+            'source_url' => $this->source_mode === 'local' ? trim($this->source_url) : null,
+            'wikipedia_topic' => $this->source_mode === 'internet' ? $lesson->topic : null,
         ])->save();
     }
 
