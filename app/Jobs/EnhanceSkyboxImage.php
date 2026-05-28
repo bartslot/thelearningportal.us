@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -18,7 +19,8 @@ class EnhanceSkyboxImage implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries   = 2;
+    public int $tries = 2;
+
     public int $timeout = 180;
 
     public function __construct(public readonly int $sceneId) {}
@@ -42,10 +44,20 @@ class EnhanceSkyboxImage implements ShouldQueue
         try {
             $original = Storage::disk('public')->get($path);
             if (! is_string($original) || $original === '') {
-                throw new \RuntimeException('Skybox image not found on disk: ' . $path);
+                throw new \RuntimeException('Skybox image not found on disk: '.$path);
             }
 
             $enhanced = $image->enhance($original);
+
+            if ($enhanced === $original) {
+                Log::warning('[EnhanceSkyboxImage] upscayl returned original bytes; keeping existing skybox.', [
+                    'sceneId' => $this->sceneId,
+                    'path' => $path,
+                ]);
+                $scene->update(['status' => 'ready', 'upscale_status' => 'failed', 'error_message' => null]);
+
+                return;
+            }
 
             Storage::disk('public')->put($path, $enhanced);
 
@@ -54,7 +66,7 @@ class EnhanceSkyboxImage implements ShouldQueue
             $scene->update(['status' => 'ready', 'upscale_status' => 'done']);
         } catch (Throwable $e) {
             $scene->update(['status' => 'failed', 'upscale_status' => 'failed', 'error_message' => $e->getMessage()]);
-            throw $e;
+            report($e);
         }
     }
 }

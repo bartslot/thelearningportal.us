@@ -13,39 +13,41 @@ final class ImageStyleTemplate
      * Wide establishing shot with depth; objects kept at mid-to-far distance.
      */
     public const FLAT_HINT = 'wide establishing shot, cinematic landscape framing, '
-        . 'subjects and objects at mid-ground to far distance, '
-        . 'nothing in extreme foreground filling the frame, '
-        . 'sense of depth and space, open vista';
+        .'subjects and objects at mid-ground to far distance, '
+        .'nothing in extreme foreground filling the frame, '
+        .'sense of depth and space, open vista';
 
     /**
      * Technical equirectangular panorama spec — appended to every skybox prompt.
      * Fixed suffix, never modified.
      */
     public const SKYBOX_TECHNICAL_SUFFIX = 'Technical skybox requirements: '
-        . 'equirectangular panorama, 360-degree horizontal view, 180-degree vertical view, '
-        . '2:1 aspect ratio, seamless left-right edge continuity, level horizon at center, '
-        . 'no fisheye distortion, no cropped foreground objects, '
-        . 'no close objects at the panorama seam, consistent lighting in all directions, '
-        . 'realistic scale, suitable for use as a spherical VR skybox';
+        .'true equirectangular latitude-longitude panorama (not perspective, not fisheye, not cubemap cross), '
+        .'360-degree horizontal view, 180-degree vertical view, '
+        .'strict 2:1 aspect ratio, seamless left-right edge continuity, level horizon at center, '
+        .'camera at scene center with coherent geometry in all directions, no seam break artifacts, '
+        .'no fisheye distortion, no cropped foreground objects, '
+        .'no close objects at the panorama seam, consistent lighting in all directions, '
+        .'realistic scale, suitable for use as a spherical VR skybox';
 
     /**
      * Universal negative prompt — appended to every image prompt (flat and skybox).
      */
     public const NEGATIVE_PROMPT = 'Avoid: people, faces, modern objects, modern buildings, '
-        . 'cars, bicycles, motorcycles, electric lamps, power lines, antennas, asphalt, '
-        . 'plastic, glass skyscrapers, modern road signs, readable text, logos, '
-        . 'fantasy elements, sci-fi elements, inaccurate monuments, '
-        . 'distorted perspective, duplicated architecture, warped buildings, '
-        . 'broken horizon, fisheye lens, black borders, frame, watermark';
+        .'cars, bicycles, motorcycles, electric lamps, power lines, antennas, asphalt, '
+        .'plastic, glass skyscrapers, modern road signs, readable text, logos, '
+        .'fantasy elements, sci-fi elements, inaccurate monuments, '
+        .'distorted perspective, duplicated architecture, warped buildings, '
+        .'broken horizon, fisheye lens, black borders, frame, watermark';
 
     public const GAME_HINT = 'battle/scene illustration, dim mid-tones suitable for overlaid UI, no clutter';
 
     private const STYLES = [
         'realistic' => 'photographic, period-accurate, natural light, shallow DOF',
-        'sketched'  => 'pencil ink sketch, hatching, period dress, sepia tones',
-        'painted'   => 'oil painting, romantic era, visible brushstrokes, dramatic light',
+        'sketched' => 'pencil ink sketch, hatching, period dress, sepia tones',
+        'painted' => 'oil painting, romantic era, visible brushstrokes, dramatic light',
         'cinematic' => 'film still, anamorphic, dusk lighting, color graded',
-        'comic'     => 'bold ink outlines, flat color panels, halftone shading',
+        'comic' => 'bold ink outlines, flat color panels, halftone shading',
         'animation' => 'stylized 3D animation, soft lighting, expressive characters',
     ];
 
@@ -84,13 +86,13 @@ final class ImageStyleTemplate
     {
         $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
 
-        $scene     = $validation['recommendedScene'] ?? '';
-        $visuals   = implode(', ', $validation['accurateVisuals'] ?? []);
+        $scene = $validation['recommendedScene'] ?? '';
+        $visuals = implode(', ', $validation['accurateVisuals'] ?? []);
         $avoidList = array_merge(
             $validation['anachronismsToAvoid'] ?? [],
             ['people', 'faces', 'readable text'],
         );
-        $avoidStr  = 'avoid: ' . implode(', ', array_unique($avoidList));
+        $avoidStr = 'avoid: '.implode(', ', array_unique($avoidList));
 
         $parts = array_filter([
             $scene,
@@ -139,13 +141,13 @@ final class ImageStyleTemplate
     {
         $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
 
-        $scene     = $validation['recommendedScene'] ?? '';
-        $visuals   = implode(', ', $validation['accurateVisuals'] ?? []);
+        $scene = $validation['recommendedScene'] ?? '';
+        $visuals = implode(', ', $validation['accurateVisuals'] ?? []);
         $avoidList = array_merge(
             $validation['anachronismsToAvoid'] ?? [],
             ['people', 'faces', 'readable text'],
         );
-        $avoidStr  = 'avoid: ' . implode(', ', array_unique($avoidList));
+        $avoidStr = 'avoid: '.implode(', ', array_unique($avoidList));
 
         $parts = array_filter([
             $scene,

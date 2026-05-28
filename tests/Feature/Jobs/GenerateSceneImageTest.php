@@ -9,7 +9,9 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\OpenAiImageService;
+use App\Services\OpenAiLlmService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class GenerateSceneImageTest extends TestCase
@@ -18,67 +20,86 @@ class GenerateSceneImageTest extends TestCase
 
     public function test_generates_an_image_and_stores_path_on_scene(): void
     {
+        Storage::fake('public');
+
         $teacher = User::factory()->create();
-        $lesson  = Lesson::create([
-            'teacher_id'  => $teacher->id,
-            'topic'       => 'X', 'subject' => 'history', 'grade_level' => '9th',
+        $lesson = Lesson::create([
+            'teacher_id' => $teacher->id,
+            'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
             'image_style' => 'cinematic',
         ]);
         $scene = Scene::create([
-            'lesson_id'    => $lesson->id,
-            'order'        => 1,
-            'kind'         => 'narration',
+            'lesson_id' => $lesson->id,
+            'order' => 1,
+            'kind' => 'narration',
             'image_prompt' => 'Paris dusk',
-            'image_style'  => 'cinematic',
-            'status'       => 'generating',
+            'image_style' => 'cinematic',
+            'status' => 'generating',
         ]);
 
-        $this->mock(OpenAiImageService::class, fn ($mock) =>
-            $mock->shouldReceive('generate')
-                ->withArgs(function ($seed, $style, $dest, $isGame = false) use ($lesson, $scene) {
-                    return $seed === 'Paris dusk'
-                        && $style === 'cinematic'
-                        && $isGame === false
-                        && str_starts_with($dest, "lessons/{$lesson->id}/scenes/{$scene->id}/");
-                })
-                ->andReturn("lessons/{$lesson->id}/scenes/{$scene->id}/skybox.png")
+        $this->mock(OpenAiLlmService::class, fn ($mock) => $mock->shouldReceive('json')->andThrow(new \RuntimeException('validation unavailable'))
         );
 
-        (new GenerateSceneImage($scene->id))->handle(app(OpenAiImageService::class));
+        $this->mock(OpenAiImageService::class, fn ($mock) => $mock->shouldReceive('generatePanoramaBytesFromPrompt')
+            ->withArgs(function (string $prompt, bool $isGame = false, ?string $size = null): bool {
+                return $prompt !== ''
+                    && $isGame === false
+                    && is_string($size);
+            })
+            ->andReturn('IMGDATA')
+        );
+
+        (new GenerateSceneImage($scene->id))->handle(
+            app(OpenAiImageService::class),
+            app(OpenAiLlmService::class),
+        );
 
         $this->assertSame(
             "lessons/{$lesson->id}/scenes/{$scene->id}/skybox.png",
             $scene->fresh()->image_path,
         );
+        Storage::disk('public')->assertExists("lessons/{$lesson->id}/scenes/{$scene->id}/skybox.png");
     }
 
-    public function test_passes_is_game_true_for_game_scenes(): void
+    public function test_game_scenes_include_game_visual_hint_in_prompt(): void
     {
+        Storage::fake('public');
+
         $teacher = User::factory()->create();
-        $lesson  = Lesson::create([
+        $lesson = Lesson::create([
             'teacher_id' => $teacher->id, 'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
         ]);
         $scene = Scene::create([
-            'lesson_id'    => $lesson->id,
-            'order'        => 1,
-            'kind'         => 'game',
+            'lesson_id' => $lesson->id,
+            'order' => 1,
+            'kind' => 'game',
             'image_prompt' => 'Battle',
-            'image_style'  => 'painted',
-            'status'       => 'generating',
+            'image_style' => 'painted',
+            'status' => 'generating',
         ]);
 
-        $captured = ['isGame' => null];
+        $this->mock(OpenAiLlmService::class, fn ($mock) => $mock->shouldReceive('json')->andThrow(new \RuntimeException('validation unavailable'))
+        );
+
+        $captured = ['prompt' => null, 'isGame' => null];
         $this->mock(OpenAiImageService::class, function ($mock) use (&$captured) {
-            $mock->shouldReceive('generate')
-                ->withArgs(function ($_s, $_st, $_d, $isGame = false) use (&$captured) {
+            $mock->shouldReceive('generatePanoramaBytesFromPrompt')
+                ->withArgs(function (string $prompt, bool $isGame = false, ?string $_size = null) use (&$captured): bool {
+                    $captured['prompt'] = $prompt;
                     $captured['isGame'] = $isGame;
+
                     return true;
                 })
-                ->andReturn('path.png');
+                ->andReturn('IMGDATA');
         });
 
-        (new GenerateSceneImage($scene->id))->handle(app(OpenAiImageService::class));
+        (new GenerateSceneImage($scene->id))->handle(
+            app(OpenAiImageService::class),
+            app(OpenAiLlmService::class),
+        );
 
-        $this->assertTrue($captured['isGame']);
+        $this->assertFalse($captured['isGame']);
+        $this->assertIsString($captured['prompt']);
+        $this->assertStringContainsString('battle/scene illustration', (string) $captured['prompt']);
     }
 }

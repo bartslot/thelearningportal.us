@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Jobs\Concerns\MarksSceneReady;
-use App\Jobs\UpscayleSceneImage;
 use App\Models\Scene;
-use App\Services\FalAiImageService;
 use App\Services\HistoricalImageValidationPrompt;
 use App\Services\OpenAiImageService;
 use App\Services\OpenAiLlmService;
@@ -24,9 +22,10 @@ use Throwable;
 
 class GenerateSceneImage implements ShouldQueue
 {
-    use Dispatchable, Batchable, InteractsWithQueue, Queueable, SerializesModels, MarksSceneReady;
+    use Batchable, Dispatchable, InteractsWithQueue, MarksSceneReady, Queueable, SerializesModels;
 
-    public int $tries   = 3;
+    public int $tries = 3;
+
     public int $timeout = 120;
 
     public function __construct(public readonly int $sceneId) {}
@@ -36,23 +35,21 @@ class GenerateSceneImage implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiImageService $image, OpenAiLlmService $llm, FalAiImageService $fal): void
+    public function handle(OpenAiImageService $image, OpenAiLlmService $llm): void
     {
         $scene = Scene::with('lesson.source')->findOrFail($this->sceneId);
 
         try {
-            $style       = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
+            $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
             $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox.png";
 
             $prompt = $this->buildPrompt($scene, $style, $llm);
 
-            $bytes = $fal->txt2img(
+            $bytes = $image->generatePanoramaBytesFromPrompt(
                 prompt: $prompt,
-                width:  (int) config('services.falai.scene_width', 1024),
-                height: (int) config('services.falai.scene_height', 512),
-                steps:  (int) config('services.falai.steps', 4),
+                size: (string) config('services.openai.scene_size', config('services.openai.image_size', '1536x1024')),
             );
-            $bytes = $image->cleanPanorama($bytes);
+
             Storage::disk('public')->put($destination, $bytes);
 
             $path = $destination;
@@ -61,10 +58,10 @@ class GenerateSceneImage implements ShouldQueue
             $this->maybeMarkReady($scene->fresh());
 
             UpscayleSceneImage::dispatchIfLocal(
-                scene:     $scene,
+                scene: $scene,
                 imagePath: $path,
-                style:     $style,
-                hint:      (string) ($scene->image_prompt ?? $scene->location ?? $scene->lesson->topic ?? ''),
+                style: $style,
+                hint: (string) ($scene->image_prompt ?? $scene->location ?? $scene->lesson->topic ?? ''),
             );
 
             if ((bool) config('services.worldlabs.enabled', false)) {
@@ -83,7 +80,7 @@ class GenerateSceneImage implements ShouldQueue
         if ($scene->image_prompt) {
             $proposedVisuals = [$scene->image_prompt];
         } else {
-            $brief           = $scene->lesson->outline['scene_briefs'][$scene->order - 1] ?? [];
+            $brief = $scene->lesson->outline['scene_briefs'][$scene->order - 1] ?? [];
             $proposedVisuals = array_merge(
                 $brief['visualEvidence'] ?? [],
                 array_filter([$brief['image_prompt_seed'] ?? null]),
@@ -92,6 +89,7 @@ class GenerateSceneImage implements ShouldQueue
             if (empty($proposedVisuals)) {
                 // No brief data — fall back gracefully without a validation call.
                 $seed = $scene->location ?? $scene->lesson->topic;
+
                 return ImageStyleTemplate::build($seed, $style, $scene->kind === 'game');
             }
         }
@@ -100,15 +98,16 @@ class GenerateSceneImage implements ShouldQueue
         try {
             $validation = $llm->json(
                 system: HistoricalImageValidationPrompt::system(),
-                user:   HistoricalImageValidationPrompt::user($scene, $proposedVisuals),
+                user: HistoricalImageValidationPrompt::user($scene, $proposedVisuals),
             );
         } catch (Throwable $e) {
             // Validation failure is non-fatal — fall back to unvalidated prompt.
-            Log::warning('[GenerateSceneImage] validation failed, using fallback: ' . $e->getMessage());
+            Log::warning('[GenerateSceneImage] validation failed, using fallback: '.$e->getMessage());
             $seed = $scene->image_prompt
                 ?? ($scene->lesson->outline['scene_briefs'][$scene->order - 1]['image_prompt_seed'] ?? null)
                 ?? $scene->location
                 ?? $scene->lesson->topic;
+
             return ImageStyleTemplate::build($seed, $style, $scene->kind === 'game');
         }
 

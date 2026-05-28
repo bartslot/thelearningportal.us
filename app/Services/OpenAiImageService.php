@@ -27,15 +27,10 @@ class OpenAiImageService
     public function generateFromPrompt(
         string $prompt,
         string $destination,
-        bool   $isGame = false,
+        bool $isGame = false,
+        ?string $size = null,
     ): string {
-        if ($isGame) {
-            $prompt .= '. ' . ImageStyleTemplate::GAME_HINT;
-        }
-
-        $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
-        $bytes = $this->trimBlackBars($bytes);
-        $bytes = $this->cropTo2x1($bytes);
+        $bytes = $this->generatePanoramaBytesFromPrompt($prompt, $isGame, $size);
         $bytes = $this->upscaleWithUpscayl($bytes);
 
         Storage::disk('public')->put($destination, $bytes);
@@ -47,22 +42,31 @@ class OpenAiImageService
         string $seedPrompt,
         string $style,
         string $destination,
-        bool   $isGame = false,
+        bool $isGame = false,
+        ?string $size = null,
     ): string {
         $prompt = ImageStyleTemplate::build($seedPrompt, $style, $isGame);
-
-        // Single API call — we ask for letterbox black bars so the panorama itself
-        // is the desired 2:1 band inside whatever frame gpt-image-1 supports
-        // (1024 square or 1536×1024). The post-processor then trims the bars and
-        // (optionally) center-crops to a clean 2:1.
-        $bytes = $this->requestOne($prompt, (string) config('services.openai.image_size', '1536x1024'));
-        $bytes = $this->trimBlackBars($bytes);
-        $bytes = $this->cropTo2x1($bytes);
+        $bytes = $this->generatePanoramaBytesFromPrompt($prompt, false, $size);
         $bytes = $this->upscaleWithUpscayl($bytes);
 
         Storage::disk('public')->put($destination, $bytes);
 
         return $destination;
+    }
+
+    /**
+     * Generate a panorama image and return raw bytes without storing.
+     * This is used by jobs that write and upscale in later pipeline stages.
+     */
+    public function generatePanoramaBytesFromPrompt(string $prompt, bool $isGame = false, ?string $size = null): string
+    {
+        if ($isGame) {
+            $prompt .= '. '.ImageStyleTemplate::GAME_HINT;
+        }
+
+        $bytes = $this->requestOne($prompt, $size ?: $this->defaultOpenAiImageSize());
+
+        return $this->cleanPanorama($bytes);
     }
 
     /**
@@ -72,32 +76,26 @@ class OpenAiImageService
      */
     public function enhance(string $bytes): string
     {
-        $result = $this->upscaleWithUpscayl($bytes, scale: 4);
-        if ($result === $bytes) {
-            throw new \RuntimeException('Upscayl enhance failed — upscayl-bin returned original bytes.');
-        }
-        return $result;
+        return $this->upscaleWithUpscayl($bytes, scale: 4);
     }
 
     /**
      * Pick the best Upscayl model for the given style + scene hint text.
      *
-     * | Style / content                | Model               | Reason                         |
-     * |--------------------------------|---------------------|--------------------------------|
-     * | comic, animation, sketched     | digital-art-4x      | tuned for line-art / flat color|
-     * | painted                        | high-fidelity-4x    | preserves painterly texture    |
-     * | nature keywords in prompt      | high-fidelity-4x    | organic detail (grass, water)  |
-     * | building/architecture keywords | ultrasharp-4x       | crisp edges, stone, brick      |
-     * | everything else                | ultrasharp-4x       | safe default for photos/film   |
+     * | Style / content                | Model                    |
+     * |--------------------------------|--------------------------|
+     * | comic, animation, sketched     | realesrgan-x4plus-anime |
+     * | painted / nature / architecture| realesrgan-x4plus       |
+     * | everything else                | realesrgan-x4plus       |
      */
     public static function selectUpscaylModel(string $style, string $hint = ''): string
     {
         if (in_array($style, ['comic', 'animation', 'sketched'], true)) {
-            return 'digital-art-4x';
+            return 'realesrgan-x4plus-anime';
         }
 
         if ($style === 'painted') {
-            return 'high-fidelity-4x';
+            return 'realesrgan-x4plus';
         }
 
         $hint = mb_strtolower($hint);
@@ -107,7 +105,7 @@ class OpenAiImageService
             'desert', 'savanna', 'marsh', 'swamp', 'cliff', 'beach', 'coast'];
         foreach ($natureKeywords as $kw) {
             if (str_contains($hint, $kw)) {
-                return 'high-fidelity-4x';
+                return 'realesrgan-x4plus';
             }
         }
 
@@ -117,11 +115,11 @@ class OpenAiImageService
             'monument', 'cathedral', 'citadel', 'fortress', 'ruins'];
         foreach ($buildingKeywords as $kw) {
             if (str_contains($hint, $kw)) {
-                return 'ultrasharp-4x';
+                return 'realesrgan-x4plus';
             }
         }
 
-        return 'ultrasharp-4x';
+        return 'realesrgan-x4plus';
     }
 
     /**
@@ -143,18 +141,19 @@ class OpenAiImageService
             return $bytes;
         }
 
-        $bin        = (string) config('services.upscayl.bin', '/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin');
-        $modelPath  = (string) config('services.upscayl.model_path', '/Applications/Upscayl.app/Contents/Resources/models');
-        $modelName  = $modelName !== '' ? $modelName : (string) config('services.upscayl.model', 'upscayl-standard-4x');
+        $bin = (string) config('services.upscayl.bin', '/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin');
+        $modelPath = (string) config('services.upscayl.model_path', '/Applications/Upscayl.app/Contents/Resources/models');
+        $modelName = $modelName !== '' ? $modelName : (string) config('services.upscayl.model', 'realesrgan-x4plus');
 
         if (! is_executable($bin)) {
-            Log::warning('[upscayl] binary not found or not executable: ' . $bin);
+            Log::warning('[upscayl] binary not found or not executable: '.$bin);
+
             return $bytes;
         }
 
         try {
-            $tmpIn  = tempnam(sys_get_temp_dir(), 'upscayl_in_') . '.webp';
-            $tmpOut = tempnam(sys_get_temp_dir(), 'upscayl_out_') . '.webp';
+            $tmpIn = tempnam(sys_get_temp_dir(), 'upscayl_in_').'.webp';
+            $tmpOut = tempnam(sys_get_temp_dir(), 'upscayl_out_').'.webp';
 
             file_put_contents($tmpIn, $bytes);
 
@@ -171,17 +170,34 @@ class OpenAiImageService
             exec($cmd, $output, $exitCode);
 
             if ($exitCode !== 0 || ! file_exists($tmpOut) || filesize($tmpOut) === 0) {
-                Log::warning('[upscayl] failed (exit ' . $exitCode . '): ' . implode(' ', $output));
+                Log::warning('[upscayl] failed (exit '.$exitCode.'): '.implode(' ', $output));
+
                 return $bytes;
             }
 
             $upscaled = file_get_contents($tmpOut);
-            return ($upscaled !== false && $upscaled !== '') ? $upscaled : $bytes;
+            if ($upscaled === false || $upscaled === '') {
+                return $bytes;
+            }
+
+            // Some upscayl-bin failures still exit 0 and leave the output unchanged.
+            // Treat byte-identical output as a soft failure to avoid false positives.
+            if (hash('sha256', $upscaled) === hash('sha256', $bytes)) {
+                Log::warning('[upscayl] produced byte-identical output; treating as no-op', [
+                    'model' => $modelName,
+                    'scale' => $scale,
+                ]);
+
+                return $bytes;
+            }
+
+            return $upscaled;
         } catch (\Throwable $e) {
-            Log::warning('[upscayl] exception: ' . $e->getMessage());
+            Log::warning('[upscayl] exception: '.$e->getMessage());
+
             return $bytes;
         } finally {
-            isset($tmpIn)  && file_exists($tmpIn)  && unlink($tmpIn);
+            isset($tmpIn) && file_exists($tmpIn) && unlink($tmpIn);
             isset($tmpOut) && file_exists($tmpOut) && unlink($tmpOut);
         }
     }
@@ -197,6 +213,7 @@ class OpenAiImageService
         }
         $out = $this->encodeWebp($img);
         imagedestroy($img);
+
         return $out;
     }
 
@@ -206,22 +223,22 @@ class OpenAiImageService
     private function requestOne(string $prompt, string $size): string
     {
         $base = (string) config('services.openai.base_url');
-        $key  = (string) config('services.openai.api_key');
+        $key = (string) config('services.openai.api_key');
 
         try {
             $response = Http::withToken($key)
                 ->timeout((int) config('services.openai.timeout', 60))
                 ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
-                ->post(rtrim($base, '/') . '/images/generations', [
-                    'model'              => config('services.openai.image_model'),
-                    'prompt'             => $prompt,
-                    'size'               => $size,
-                    'output_format'      => (string) config('services.openai.image_format', 'webp'),
+                ->post(rtrim($base, '/').'/images/generations', [
+                    'model' => config('services.openai.image_model'),
+                    'prompt' => $prompt,
+                    'size' => $size,
+                    'output_format' => (string) config('services.openai.image_format', 'webp'),
                     'output_compression' => (int) config('services.openai.image_compression', 50),
-                    'n'                  => 1,
+                    'n' => 1,
                 ]);
         } catch (\Throwable $e) {
-            throw new RuntimeException('Image API request failed: ' . $e->getMessage(), previous: $e);
+            throw new RuntimeException('Image API request failed: '.$e->getMessage(), previous: $e);
         }
 
         if (! $response->successful()) {
@@ -241,6 +258,7 @@ class OpenAiImageService
             if (! $binary->successful()) {
                 throw new RuntimeException("Failed to download generated image: {$binary->status()}");
             }
+
             return $binary->body();
         }
 
@@ -260,6 +278,7 @@ class OpenAiImageService
     {
         $bytes = $this->trimBlackBars($bytes);
         $bytes = $this->cropTo2x1($bytes);
+
         return $bytes;
     }
 
@@ -277,33 +296,43 @@ class OpenAiImageService
         $w = imagesx($img);
         $h = imagesy($img);
 
-        $top    = 0;
+        $top = 0;
         $bottom = $h - 1;
-        $left   = 0;
-        $right  = $w - 1;
+        $left = 0;
+        $right = $w - 1;
 
-        while ($top    < $bottom && $this->isBlackRow($img,    $top,    $w))    $top++;
-        while ($bottom > $top    && $this->isBlackRow($img,    $bottom, $w))    $bottom--;
-        while ($left   < $right  && $this->isBlackColumn($img, $left,   $h))    $left++;
-        while ($right  > $left   && $this->isBlackColumn($img, $right,  $h))    $right--;
+        while ($top < $bottom && $this->isBlackRow($img, $top, $w)) {
+            $top++;
+        }
+        while ($bottom > $top && $this->isBlackRow($img, $bottom, $w)) {
+            $bottom--;
+        }
+        while ($left < $right && $this->isBlackColumn($img, $left, $h)) {
+            $left++;
+        }
+        while ($right > $left && $this->isBlackColumn($img, $right, $h)) {
+            $right--;
+        }
 
-        $newW = $right  - $left + 1;
-        $newH = $bottom - $top  + 1;
+        $newW = $right - $left + 1;
+        $newH = $bottom - $top + 1;
 
         // No meaningful trim → leave the bytes alone.
         if ($newW >= $w && $newH >= $h) {
             imagedestroy($img);
+
             return $bytes;
         }
         if ($newW <= 0 || $newH <= 0) {
             imagedestroy($img);
+
             return $bytes;
         }
 
         $cropped = imagecrop($img, [
-            'x'      => $left,
-            'y'      => $top,
-            'width'  => $newW,
+            'x' => $left,
+            'y' => $top,
+            'width' => $newW,
             'height' => $newH,
         ]);
         imagedestroy($img);
@@ -314,39 +343,47 @@ class OpenAiImageService
 
         $out = $this->encodeWebp($cropped);
         imagedestroy($cropped);
+
         return $out !== '' ? $out : $bytes;
     }
 
     private function isBlackRow(\GdImage $img, int $y, int $w): bool
     {
-        $step      = max(1, (int) ($w / 64));      // sample ~64 columns
-        $samples   = 0;
-        $blackCnt  = 0;
+        $step = max(1, (int) ($w / 64));      // sample ~64 columns
+        $samples = 0;
+        $blackCnt = 0;
         for ($x = 0; $x < $w; $x += $step) {
             $samples++;
-            if ($this->isBlackPixel($img, $x, $y)) $blackCnt++;
+            if ($this->isBlackPixel($img, $x, $y)) {
+                $blackCnt++;
+            }
         }
+
         return $samples > 0 && ($blackCnt / $samples) >= self::BLACK_BAR_ROW_RATIO;
     }
 
     private function isBlackColumn(\GdImage $img, int $x, int $h): bool
     {
-        $step      = max(1, (int) ($h / 64));
-        $samples   = 0;
-        $blackCnt  = 0;
+        $step = max(1, (int) ($h / 64));
+        $samples = 0;
+        $blackCnt = 0;
         for ($y = 0; $y < $h; $y += $step) {
             $samples++;
-            if ($this->isBlackPixel($img, $x, $y)) $blackCnt++;
+            if ($this->isBlackPixel($img, $x, $y)) {
+                $blackCnt++;
+            }
         }
+
         return $samples > 0 && ($blackCnt / $samples) >= self::BLACK_BAR_ROW_RATIO;
     }
 
     private function isBlackPixel(\GdImage $img, int $x, int $y): bool
     {
         $rgb = imagecolorat($img, $x, $y);
-        $r   = ($rgb >> 16) & 0xFF;
-        $g   = ($rgb >> 8)  & 0xFF;
-        $b   =  $rgb        & 0xFF;
+        $r = ($rgb >> 16) & 0xFF;
+        $g = ($rgb >> 8) & 0xFF;
+        $b = $rgb & 0xFF;
+
         return max($r, $g, $b) <= self::BLACK_BAR_THRESHOLD;
     }
 
@@ -363,18 +400,47 @@ class OpenAiImageService
 
         $w = imagesx($img);
         $h = imagesy($img);
-        $targetH = (int) round($w / 2);
 
-        if ($h <= $targetH) {
+        if ($w <= 1 || $h <= 1) {
             imagedestroy($img);
+
+            return $bytes;
+        }
+
+        $cropX = 0;
+        $cropY = 0;
+        $cropW = $w;
+        $cropH = $h;
+
+        // True equirectangular skyboxes for three.js must be exactly 2:1.
+        // We center-crop the dominant axis to enforce that ratio.
+        if ($w >= ($h * 2)) {
+            $targetW = $h * 2;
+            $cropX = (int) floor(($w - $targetW) / 2);
+            $cropW = $targetW;
+        } else {
+            $targetH = (int) floor($w / 2);
+            $cropY = (int) floor(($h - $targetH) / 2);
+            $cropH = $targetH;
+        }
+
+        if ($cropW === $w && $cropH === $h) {
+            imagedestroy($img);
+
+            return $bytes;
+        }
+
+        if ($cropW <= 1 || $cropH <= 1) {
+            imagedestroy($img);
+
             return $bytes;
         }
 
         $cropped = imagecrop($img, [
-            'x'      => 0,
-            'y'      => (int) round(($h - $targetH) / 2),
-            'width'  => $w,
-            'height' => $targetH,
+            'x' => $cropX,
+            'y' => $cropY,
+            'width' => $cropW,
+            'height' => $cropH,
         ]);
         imagedestroy($img);
 
@@ -384,6 +450,7 @@ class OpenAiImageService
 
         $out = $this->encodeWebp($cropped);
         imagedestroy($cropped);
+
         return $out !== '' ? $out : $bytes;
     }
 
@@ -392,6 +459,12 @@ class OpenAiImageService
         $quality = (int) config('services.openai.image_compression', 50);
         ob_start();
         imagewebp($img, null, $quality);
+
         return (string) ob_get_clean();
+    }
+
+    private function defaultOpenAiImageSize(): string
+    {
+        return (string) config('services.openai.image_size', '1536x1024');
     }
 }
