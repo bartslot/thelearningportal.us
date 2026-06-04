@@ -32,7 +32,7 @@ class LoginController extends Controller
                 $request->session()->regenerate();
 
                 return match (true) {
-                    $user->isTeacher(), $user->role === 'admin' => redirect()->route('teacher.dashboard'),
+                    $user->isTeacher(), $user->role === 'admin' => redirect()->route('teacher.timemap'),
                     default                                      => redirect()->intended('/'),
                 };
             }
@@ -44,7 +44,7 @@ class LoginController extends Controller
             $user = Auth::user();
 
             return match (true) {
-                $user->isTeacher(), $user->role === 'admin' => redirect()->route('teacher.dashboard'),
+                $user->isTeacher(), $user->role === 'admin' => redirect()->route('teacher.timemap'),
                 default                                      => redirect()->intended('/'),
             };
         }

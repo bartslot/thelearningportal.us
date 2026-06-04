@@ -48,6 +48,8 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         return view('teacher.dashboard', compact('lessons'));
     })->name('dashboard');
 
+    Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
+
     Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
     Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
