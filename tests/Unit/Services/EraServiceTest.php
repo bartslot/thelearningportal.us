@@ -40,6 +40,12 @@ class EraServiceTest extends TestCase
         $this->assertSame(2010, $this->era->nearestStop(1990, $stops));
     }
 
+    public function test_nearest_stop_rejects_empty_stops(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->era->nearestStop(-100, []);
+    }
+
     public function test_bce_sorts_before_ce(): void
     {
         $years = [500, -44, 1, -1500];

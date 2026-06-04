@@ -34,16 +34,20 @@ return new class extends Migration
 
         foreach ($checks as $check) {
             // Postgres renders enum() checks as `... = ANY ((ARRAY[...])::text[])`; older
-            // ones may use `IN (...)`. Match both; leave numeric/range checks untouched.
-            $isEnumStyle = str_contains($check->def, 'ANY (')
-                || preg_match('/\bIN \(/i', $check->def) === 1;
+            // ones may use `IN (...)`. Require a string literal in the body so numeric/range
+            // checks like `CHECK (grade IN (1,2,3))` are never matched.
+            $hasStringLiteral = str_contains($check->def, "'");
+            $isEnumStyle = $hasStringLiteral
+                && (str_contains($check->def, 'ANY (') || preg_match('/\bIN \(/i', $check->def) === 1);
 
             if ($isEnumStyle) {
-                DB::statement(sprintf(
-                    'ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s',
-                    $check->table_name,
-                    $check->conname
-                ));
+                // Build the DDL with %I so identifiers from pg_catalog are safely quoted.
+                $sql = DB::selectOne(
+                    "SELECT format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I', ?::text, ?::text) AS sql",
+                    [$check->table_name, $check->conname]
+                )->sql;
+
+                DB::statement($sql);
             }
         }
     }

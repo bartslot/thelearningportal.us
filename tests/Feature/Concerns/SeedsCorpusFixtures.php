@@ -10,6 +10,12 @@ trait SeedsCorpusFixtures
 {
     protected function setUpCorpusFixtures(): void
     {
+        // Hard stop: this trait DROPs corpus tables. It must never run anywhere but the
+        // local test database, or it could destroy the irreplaceable production corpus.
+        if (app()->environment() !== 'testing') {
+            throw new \RuntimeException('SeedsCorpusFixtures must only run in the testing environment.');
+        }
+
         $corpus = DB::connection('pgsql_corpus');
         $corpus->statement('CREATE EXTENSION IF NOT EXISTS postgis');
 

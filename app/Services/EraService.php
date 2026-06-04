@@ -23,6 +23,10 @@ class EraService
 
     public function nearestStop(int $year, array $stops): int
     {
+        if ($stops === []) {
+            throw new \InvalidArgumentException('nearestStop requires at least one stop.');
+        }
+
         $best = null;
         $bestDist = PHP_INT_MAX;
         foreach ($stops as $stop) {
