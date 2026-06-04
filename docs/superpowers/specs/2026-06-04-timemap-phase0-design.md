@@ -49,7 +49,7 @@ articles for that place + era in a left column. Direct answer to the playtest cr
 | Borders | **Import polygons into PostGIS `boundaries`**; render from it; click via `ST_Contains` + year bracket (J-6 quality, pulled into Phase 0 since PostGIS is already enabled). |
 | Test harness | Playwright (E2E/WebGL) + PHPUnit (feature/unit) + Vitest (JS math). No Dusk. |
 | Era coverage | The corpus's own range (≈ −9000 → present); slider seeded with the ancient-spine anchor stops for the demo. |
-| Test DB | **Open — recommend local Postgres+PostGIS** in `.env.testing` (see §6.3). |
+| Test DB | **Local Postgres+PostGIS** (Docker) wired to `.env.testing` — fast, offline, freely wipeable, zero risk to the live corpus (see §6.3). |
 
 ## 4. Architecture
 
@@ -153,10 +153,10 @@ valid `extra.region` matching a real corpus region.
 2. **`app` schema + second connection (BLOCKER for migrating).** Must add `pgsql_corpus`,
    make `search_path` env-driven, `CREATE SCHEMA app`, then migrate. **Until then, run no
    migrations** — the default connection currently points at the corpus's database.
-3. **Test DB — OPEN.** Recommend a **local Postgres+PostGIS** in `.env.testing` (seed fixture
-   articles + boundaries, full `RefreshDatabase`, offline, zero risk to live corpus).
-   Alternative: the `xpxjmzvvyyznokfxiqkh` test project (needs its pooler creds; remote =
-   slower per test; must have PostGIS enabled).
+3. **Test DB — local Postgres+PostGIS (Docker).** A `docker-compose` Postgres+PostGIS service
+   wired to `.env.testing`; tests seed fixture articles + boundaries and run full
+   `RefreshDatabase` against it — offline, fast, zero risk to the live corpus. The plan adds
+   the compose file + `.env.testing` + a documented `composer test` path.
 4. **Org move is independent.** Moving ophof Westcloud → The Learning Portal org keeps the
    project ref `ophofmkxmehmeojvsijc`, so the pooler connection is unchanged. Do it in the
    dashboard whenever; it doesn't block this build.
