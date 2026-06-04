@@ -1,214 +1,187 @@
-# Time-Map Phase 0 — Design Spec (J-1 → J-4)
+# Time-Map Phase 0 — Design Spec (J-1 → J-4, revised)
 
 **Date:** 2026-06-04
 **Slice:** Epic J, Phase 0 (the scrubbable history Time-Map — proof build)
-**Backlog tickets covered:** J-1, J-2, J-3, J-4 (folds C1 region-select + D1 era-timeline)
-**Status:** approved design → ready for implementation plan
+**Backlog tickets covered:** J-1, J-2, J-3, J-4 (folds C1, D1; pulls J-6 PostGIS click forward)
+**Status:** revised after discovering the populated corpus → ready for user review
+
+> **Revision note.** The first draft assumed thin `history-topics.json` data, a hand-curated
+> `stories` table, and vendored static GeoJSON. Connecting to Supabase revealed the ophof
+> project (`ophofmkxmehmeojvsijc`) already holds a **populated history corpus with PostGIS**:
+> 3,512 `history_articles`, 27,642 `history_facts`, 11,096 `entities`, 79,762
+> `gazetteer_places`, plus empty-but-ready `boundaries` / `historical_maps` / `texts`
+> tables. This spec is rebuilt around that reality.
 
 ---
 
 ## 1. Goal
 
-Ship the product's exploratory **hero surface**: a MapLibre map where the teacher
-scrubs a year slider, watches historical borders populate, clicks a civilisation, and
-sees the pre-generated stories for that place + era in a left column. This is the
-direct answer to the playtest critique *"it's a static website — there's no real
-interaction."* Phase 0 proves the loop with discrete-era GeoJSON snapshots; later phases
-(out of scope) swap in continuous OHM tiles (J-5) and PostGIS spatial click (J-6).
+Ship the product's exploratory **hero surface**: a MapLibre map where the teacher scrubs a
+year slider, watches historical borders populate, clicks a region, and sees real corpus
+articles for that place + era in a left column. Direct answer to the playtest critique
+*"it's a static website — there's no real interaction."*
 
 ## 2. Scope
 
 **In:**
-- MapLibre GL JS map shell inside a Livewire view, Alpine-driven state (J-1).
-- Year slider over discrete seeded era years + cross-fading border polygons + a
-  "≈ X years ago / ~N generations" readout (J-2, folds D1).
-- Click a region polygon → left story column listing stories whose `polity_id` matches
-  and whose era brackets the current year; click a story → open its lesson (J-3, folds C1).
-- A `stories` table + seeder bridging `history-topics.json` (ancient spine) to
-  `polity_id` + numeric eras (J-4).
-- Supabase Postgres as the app DB; Playwright + PHPUnit + Vitest verification.
+- MapLibre GL JS map shell in a Livewire view, Alpine state, `window.__portal` test hook (J-1).
+- Year slider over the corpus's era range + PostGIS border polygons that appear/disappear by
+  `valid_from/valid_to` + a "≈ X years ago / ~N generations" readout (J-2, folds D1).
+- Click the map → PostGIS `ST_Contains` + year-bracket → region → left column of real
+  `history_articles` for that region + era; article links to its lesson/source (J-3, folds C1, J-6).
+- An idempotent importer that loads border polygons into the existing PostGIS `boundaries`
+  table, tagged with a polity_id, validity range, and macro-region (J-4 reframed).
 
 **Out (later tickets):**
-- OpenHistoricalMap continuous vector tiles + OHM time slider (J-5).
-- PostGIS spatial-temporal `ST_Contains` click → polity (J-6).
-- Old-map overlays / literature panels (J-7, J-8).
-- Border accuracy beyond the vendored discrete snapshots; non-ancient eras
-  (US/UK/modern topics stay unmapped this slice).
-- Live generation of lesson content from a click (that is K-7, and is explicitly *not*
-  on the click path — the map only reads pre-existing stories).
+- Polity-level content precision (Phase-0 content is region+era granular — see §6.5).
+- OHM continuous vector tiles + OHM time slider (J-5).
+- Old-map overlays (J-7, the empty `historical_maps` table) and literature panel
+  (J-8, the empty `texts` table).
+- Writing/altering any corpus table; live generation on the click path (that is K-7).
 
-## 3. Decisions locked (from brainstorm)
+## 3. Decisions locked
 
 | Decision | Choice |
 |---|---|
-| Test harness | **Reuse Playwright (E2E/WebGL) + PHPUnit (feature/unit) + Vitest (JS math)** — no Dusk install. Meets the same Smoke checks the backlog describes. |
-| Era coverage | **Ancient-spine anchors:** −3500, −2500, −1500, −500, 1, 500, 1000 CE + modern. |
-| Story source | **New lean `stories` table** (separate from the heavy `Lesson` model); links to a lesson via nullable `lesson_code`. |
-| Database | **Supabase Postgres now** (project ref `ophofmkxmehmeojvsijc`), via the Laravel `pgsql` connection + a separate test DB. |
-| Slug→polity bridge | **Curated `timemap-spine.json`** (~8 civilisations), hand-authored, deterministic, testable. |
-| Landing | Time-Map becomes the **default authenticated landing** (`teacher.timemap`); dashboard stays reachable from nav. |
+| Supabase access | App connects via the **session pooler** `aws-1-us-east-2.pooler.supabase.com:5432`, user `postgres.ophofmkxmehmeojvsijc`, db `postgres` (direct `db.<ref>.supabase.co` host is IPv6-only/dead). `.env` already fixed + verified. |
+| App table location | **Dedicated `app` Postgres schema** in ophof. Laravel migrates there; corpus stays isolated in `public`. |
+| Story source | **Read the real `history_articles`** (region + `era_start/era_end`). No `stories` table, no `history-topics.json` seed. |
+| Borders | **Import polygons into PostGIS `boundaries`**; render from it; click via `ST_Contains` + year bracket (J-6 quality, pulled into Phase 0 since PostGIS is already enabled). |
+| Test harness | Playwright (E2E/WebGL) + PHPUnit (feature/unit) + Vitest (JS math). No Dusk. |
+| Era coverage | The corpus's own range (≈ −9000 → present); slider seeded with the ancient-spine anchor stops for the demo. |
+| Test DB | **Open — recommend local Postgres+PostGIS** in `.env.testing` (see §6.3). |
 
 ## 4. Architecture
 
-### 4.1 Data layer (Supabase Postgres)
+### 4.1 Two connections — corpus safety is structural, not careful-handling
 
-New migration `create_stories_table`:
+`config/database.php` gains a second connection so a stray `migrate:fresh` can never touch
+the corpus:
 
-```
-stories
-  id              bigint pk
-  slug            string unique
-  title           string
-  polity_id       string        # matches a GeoJSON polygon NAME, e.g. "Rome", "Egypt"
-  region          string        # original topic slug, e.g. "ancient-greece"
-  era_start       integer       # BCE negative, e.g. -480
-  era_end         integer       # e.g. -323
-  era_label       string        # human label, e.g. "Classical Period (480–323 BCE)"
-  summary         text  null
-  lesson_code     string null   # links to lessons.lesson_code -> /lesson/{lessonCode}
-  source_attribution string null
-  is_publishable  boolean default true
-  timestamps
-  index (polity_id)
-  index (era_start, era_end)
-```
+- **`pgsql`** (default, read-write): `search_path = app`. All Laravel migrations + app tables
+  (users, lessons, modules, etc.) live here. `migrate:fresh` / `db:wipe` only see the `app`
+  schema, so they cannot drop corpus tables. `search_path` becomes env-driven
+  (`DB_SEARCH_PATH=app`).
+- **`pgsql_corpus`** (same credentials): `search_path = public`. Used by corpus models.
+  **Never migrated.** Corpus content tables (`history_articles`, `facts`, `entities`,
+  `gazetteer_places`) are treated strictly read-only; the **only** sanctioned write is the
+  boundary importer (§4.3) populating the currently-empty `boundaries` table.
 
-No PostGIS this phase. The click lookup is a plain WHERE join on `polity_id` +
-era-bracket. `lesson_code` is nullable so map content can exist before a full lesson does.
+Setup step (one-off, idempotent, run explicitly — *not* a destructive migration):
+`CREATE SCHEMA IF NOT EXISTS app;` then `php artisan migrate` (writes to `app`).
 
-### 4.2 Era/polity bridge
+### 4.2 Read-only corpus models (on `pgsql_corpus`)
 
-`resources/data/timemap-spine.json` — curated array, one entry per spine civilisation:
+- `App\Models\Corpus\Article` → `public.history_articles`
+  (`title, summary, full_text, region, era_start, era_end, source_url, source_license`).
+  `protected $connection = 'pgsql_corpus'`; guarded against writes.
+- `App\Models\Corpus\Boundary` → `public.boundaries`
+  (`polity_id, name, valid_from, valid_to, geom, color, source, license, extra jsonb`).
 
-```json
-{
-  "polity_id": "Egypt",
-  "region": "egypt",
-  "era_start": -2686,
-  "era_end": -1070,
-  "era_label": "Ancient Egypt (Old–New Kingdom)",
-  "geojson_year": -1500
-}
-```
+### 4.3 Border import (J-4 reframed)
 
-Headline civilisations (≥1 story each, covering every seeded year):
-Sumer/Mesopotamia, Egypt, Indus Valley, Shang China, Ancient Greece, Rome
-(+ extend to fill any seeded-year gaps). `polity_id` values **must** match polygon
-`NAME` properties in the vendored GeoJSON for that year.
+`php artisan timemap:import-boundaries` — idempotent:
+1. Reads `historical-basemaps` world GeoJSON (CC-BY-SA, attributed) for the seeded
+   ancient-spine years.
+2. For each polygon, upserts a `public.boundaries` row: `polity_id` (from feature NAME,
+   slugified), `name`, `valid_from`/`valid_to` (the snapshot's era window),
+   `geom = ST_GeomFromGeoJSON(...)`, `source`/`license` = historical-basemaps attribution,
+   and a **macro-region tag** in `extra->>'region'` (one of the 7 corpus regions:
+   Mediterranean, East Asia, Americas, South Asia, Northern Europe, Middle East, Africa).
+3. The polity→macro-region tag is a small curated map (`resources/data/region-map.json`,
+   ~dozens of entries) — the only hand-authored bridge left.
+
+A guard test / `timemap:verify` asserts every imported boundary carries a `geom` and a
+valid `extra.region` matching a real corpus region.
+
+### 4.4 Era math
 
 `App\Services\EraService` (pure PHP, PHPUnit-tested), authoritative:
-- `yearsAgo(int $year): int` — `currentYear − year` (BCE negative ⇒ adds).
-- `generations(int $year, int $yearsPerGen = 25): int`.
-- `nearestEraYear(int $year, array $seededYears): int`.
+`yearsAgo(int $year)`, `generations(int $year, int $per = 25)`,
+`nearestEraYear(int $year, array $stops)`. BCE negative. A thin Vitest-tested JS mirror
+(`resources/js/timemap/era.js`) drives the live slider readout; both tested so they can't drift.
 
-A thin JS mirror (`resources/js/timemap/era.js`, Vitest-tested) computes the same
-years-ago/generations for the live slider readout without a server round-trip. Both are
-tested so they can't drift silently.
+### 4.5 Frontend (MapLibre + Alpine + Livewire)
 
-### 4.3 Border data
-
-Vendor `historical-basemaps` world GeoJSON (CC-BY-SA, attributed) under
-`public/geo/world_{year}.geojson` for the seeded years (negative years as
-`world_bc{n}.geojson` per upstream naming, normalised on copy). Simplify if a file is
-large. Each polygon feature exposes a `NAME` we treat as `polity_id`. Files are static
-assets fetched by the front-end for the current nearest year. A `docs/` note records the
-upstream commit + licence + attribution string.
-
-### 4.4 Frontend (MapLibre + Alpine + Livewire)
-
-- `npm i maplibre-gl`; new Vite entry `resources/js/timemap/index.js` added to
-  `vite.config.js` input.
+- `npm i maplibre-gl`; new Vite entry `resources/js/timemap/index.js` in `vite.config.js`.
 - Livewire `App\Livewire\TimeMap` + `resources/views/livewire/time-map.blade.php`.
-- Route `Route::get('/teacher/timemap', TimeMap::class)->name('teacher.timemap')`; set as
-  the post-login landing / primary nav target. Dashboard link preserved.
-- Alpine store `timemap`: `{ year, selectedPolity, zoom }`. On every change, mirror to
-  `window.__portal = { ready, year, selectedPolity }` for Playwright.
-- Base style: MapLibre **demotiles** (no API key, ships with the lib) so there is zero
-  external tile dependency for the proof.
-- Historical GeoJSON added as a `fill` + `line` layer for the current nearest year; on
-  year change, swap the GeoJSON source and cross-fade via `fill-opacity` transition.
-- Year slider (Alpine `range` input) bound to the store; readout
-  "≈ 3,000 years ago · ~120 generations" from the JS era mirror.
-- Polygon click → Alpine sets `selectedPolity` → Livewire action
-  `storiesFor(string $polityId, int $year)` returns stories where
-  `polity_id = ? AND era_start <= year <= era_end AND is_publishable`. Rendered in the
-  left column (DOM/HTML over the canvas, not WebGL text — assertable & localizable).
-  Empty state when none. Story row links `/lesson/{lesson_code}` when present, else a
-  disabled "lesson coming soon" state.
-- CC-BY-SA attribution shown via a small MapLibre attribution/credit control.
+- Route `Route::get('/teacher/timemap', TimeMap::class)->name('teacher.timemap')`, set as the
+  default authenticated landing; dashboard stays one nav click away.
+- Base style: MapLibre **demotiles** (no API key, no external tile dependency).
+- Border layer: a thin JSON endpoint / Livewire payload returns
+  `ST_AsGeoJSON` of boundaries valid at the current year
+  (`valid_from <= year <= valid_to`); rendered as `fill` + `line`, cross-faded on year change.
+- Alpine store `timemap { year, selectedRegion, zoom }`, mirrored to
+  `window.__portal = { ready, year, selectedRegion }`.
+- Year slider + readout from `era.js`.
+- Map click → `(lng,lat)` → Livewire `storiesAt(lng, lat, year)`:
+  `ST_Contains(geom, ST_SetSRID(ST_Point(lng,lat),4326))` AND year-bracket → boundary →
+  `extra.region` → `Article::on('pgsql_corpus')->where('region', $region)`
+  `->where('era_start','<=',$year)->where('era_end','>=',$year)` → left column (DOM/HTML over
+  canvas — assertable, localizable). Empty state when none. Article row links its
+  `source_url` (and later a generated lesson).
+- Attribution control shows the boundary source licence + historical-basemaps credit.
 
-### 4.5 Verification
+### 4.6 Verification
 
-**PHPUnit (feature/unit, against the Postgres test DB):**
-- `EraServiceTest` — years-ago for −1500 ≈ currentYear + 1500; generations computed;
-  `nearestEraYear` resolver picks the correct seeded year for in-between inputs;
-  BCE sorts before CE.
-- `TimeMapStoriesTest` — `Livewire::test(TimeMap::class)->call('storiesFor','Rome',-50)`
-  returns era-bracketed matches only; empty state for a year outside any era.
-- `TimeMapSeedTest` — after seeding, every seeded year resolves to ≥1 story for its
-  headline polity, and that story's era brackets the year.
+**PHPUnit (feature/unit, against the test DB):**
+- `EraServiceTest` — years-ago/generations/nearest-stop; BCE before CE.
+- `BoundaryImportTest` — importer upserts geom + `extra.region`; idempotent (re-run = no dupes).
+- `StoriesAtTest` — `Livewire::test(TimeMap::class)->call('storiesAt', lng, lat, year)`
+  returns only region+era-bracketed articles; empty state outside any boundary.
 
-**Playwright (E2E / WebGL, headless with software GL):**
-- `timemap-shell` — canvas present, `window.__portal.ready === true`, **no SEVERE
-  console errors**, screenshot saved.
-- `timemap-slider` — drag slider → GeoJSON source changes → readout updates.
-- `timemap-click-stories` — click a region at a year → left column lists matching
-  stories; click a story → navigates to the lesson route.
+**Playwright (E2E / WebGL, headless software GL):**
+- `timemap-shell` — canvas, `window.__portal.ready`, no SEVERE console errors, screenshot.
+- `timemap-slider` — drag → border set changes → readout updates.
+- `timemap-click-stories` — click inside a boundary at a year → left column lists articles.
 
-**Vitest:** `era.test.js` — JS years-ago/generations match the PHP service for sample years.
+**Vitest:** `era.test.js` — JS math agrees with the PHP service.
 
 ## 5. Components & boundaries
 
-| Unit | Responsibility | Depends on |
+| Unit | Responsibility | Connection / dep |
 |---|---|---|
-| `EraService` (PHP) | year math, nearest-era resolution | — |
-| `era.js` (JS) | live readout mirror of EraService | — |
-| `StorySeeder` + `timemap-spine.json` | bridge topics → stories | `history-topics.json`, Story model |
-| `Story` model + migration | persistence + `storiesFor` query scope | Postgres |
-| `TimeMap` Livewire | state, `storiesFor` action, view | Story, EraService |
-| `timemap/index.js` | MapLibre init, layers, slider, click, `__portal` | maplibre-gl, Alpine store |
-| vendored GeoJSON | discrete border snapshots | historical-basemaps (CC-BY-SA) |
-
-Each is independently testable: the services by unit tests, the model/Livewire by feature
-tests, the map JS by Playwright + Vitest.
+| `EraService` (PHP) / `era.js` | year math + readout | none |
+| `Article`, `Boundary` (read-only models) | corpus access | `pgsql_corpus` |
+| `timemap:import-boundaries` + `region-map.json` | load polygons → PostGIS, tag region | `pgsql_corpus` write to `public.boundaries` |
+| `TimeMap` Livewire | state, `storiesAt`, border payload, view | both connections |
+| `timemap/index.js` | MapLibre init, layers, slider, click, `__portal` | maplibre-gl, Alpine |
 
 ## 6. Prerequisites & risks
 
-1. **`.env` Postgres connection (BLOCKER for running anything).** As of writing, `.env`
-   is still `DB_CONNECTION=sqlite`. Implementation requires:
-   ```
-   DB_CONNECTION=pgsql
-   DB_HOST=db.ophofmkxmehmeojvsijc.supabase.co   # direct 5432 for migrations
-   DB_PORT=5432
-   DB_DATABASE=postgres
-   DB_USERNAME=postgres
-   DB_PASSWORD=********        # Supabase DB password — user supplies
-   DB_SSLMODE=require
-   ```
-   Plus `.env.testing` pointing at a **separate** Postgres test DB/schema
-   (e.g. `learningportal_test`) so `RefreshDatabase` never touches real data.
-   The Supabase **MCP** is connected (for agent-side SQL/introspection) but does **not**
-   provide the app's runtime Eloquent connection — the password above is still required.
-2. **polity_id ↔ GeoJSON NAME mismatch.** The curated bridge must use exact polygon
-   names from each vendored file, or clicks return nothing. Mitigation: a tiny
-   `php artisan timemap:verify` check (or test) asserting every spine `polity_id` exists
-   in its `geojson_year` file.
-3. **GeoJSON file size.** Some historical-basemaps years are large; simplify on vendor
-   if a file noticeably slows the map. demotiles base avoids any tile-server dependency.
-4. **Landing-page swap** is user-facing — keep the dashboard one nav click away; don't
-   delete the existing dashboard route.
+1. **`.env` — DONE & verified.** Pooler host/user/db/password fixed; connects (`db=postgres`).
+2. **`app` schema + second connection (BLOCKER for migrating).** Must add `pgsql_corpus`,
+   make `search_path` env-driven, `CREATE SCHEMA app`, then migrate. **Until then, run no
+   migrations** — the default connection currently points at the corpus's database.
+3. **Test DB — OPEN.** Recommend a **local Postgres+PostGIS** in `.env.testing` (seed fixture
+   articles + boundaries, full `RefreshDatabase`, offline, zero risk to live corpus).
+   Alternative: the `xpxjmzvvyyznokfxiqkh` test project (needs its pooler creds; remote =
+   slower per test; must have PostGIS enabled).
+4. **Org move is independent.** Moving ophof Westcloud → The Learning Portal org keeps the
+   project ref `ophofmkxmehmeojvsijc`, so the pooler connection is unchanged. Do it in the
+   dashboard whenever; it doesn't block this build.
+5. **Content granularity.** `history_articles.region` is 7 macro-regions, not polities — so
+   Phase-0 click→stories is region+era coarse (clicking anywhere in the Mediterranean polity
+   cluster returns Mediterranean articles for that year). Polity precision is a later ticket
+   via `history_facts`/`entities`/`gazetteer_places`. 973 articles have null region and 2,364
+   null `era_start` — these are simply excluded from the map.
+6. **Boundary licensing.** historical-basemaps is CC-BY-SA — attribution stored per row and
+   shown on the map; upstream commit + licence recorded in `docs/`.
 
 ## 7. Definition of Done (this slice)
 
-- [ ] `stories` table + seeder; ≥1 story per seeded spine year; `timemap:verify` passes.
+- [ ] `app` schema created; `pgsql_corpus` read-only connection added; `migrate` writes only
+      to `app`; corpus `public` tables untouched (verified by row counts before/after).
+- [ ] `timemap:import-boundaries` populates `public.boundaries` with geom + `extra.region`;
+      idempotent; `timemap:verify` passes.
 - [ ] `/teacher/timemap` renders a MapLibre map (demotiles), pans/zooms, no console errors.
-- [ ] Year slider cross-fades borders to the nearest seeded era; readout correct for BCE/CE.
-- [ ] Click region → left column lists era-bracketed stories; story → opens lesson route;
-      empty state when none.
-- [ ] PHPUnit (`EraServiceTest`, `TimeMapStoriesTest`, `TimeMapSeedTest`) green on Postgres.
-- [ ] Playwright (`timemap-shell`, `timemap-slider`, `timemap-click-stories`) green; shell
-      screenshot saved.
+- [ ] Year slider shows/hides boundaries by validity + cross-fades; readout correct for BCE/CE.
+- [ ] Click inside a boundary at year Y → left column lists region+era-bracketed real articles;
+      article links its source; empty state when none.
+- [ ] PHPUnit (`EraServiceTest`, `BoundaryImportTest`, `StoriesAtTest`) green on the test DB.
+- [ ] Playwright (`timemap-shell`, `timemap-slider`, `timemap-click-stories`) green; screenshot saved.
 - [ ] Vitest `era.test.js` green; PHP/JS era math agree.
 - [ ] `./vendor/bin/pint` clean; `npm run build` succeeds with maplibre-gl bundled.
-- [ ] CC-BY-SA attribution visible on the map; upstream licence noted in `docs/`.
-- [ ] No secrets committed; Supabase creds stay in `.env`.
+- [ ] Attribution visible; upstream licence noted in `docs/`.
+- [ ] No secrets committed; Supabase creds stay in `.env`; no corpus rows mutated except
+      `boundaries` via the importer.
