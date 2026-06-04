@@ -1,3 +1,7 @@
+@push('head-scripts')
+    @vite('resources/js/timemap/index.js')
+@endpush
+
 <div class="relative h-[calc(100vh-4rem)] w-full"
      x-data="{ year: @js($year), readout: '' }"
      x-init="$nextTick(() => window.initTimeMap($refs.map, $wire, year))">
@@ -27,7 +31,7 @@
     <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-[36rem] max-w-[90vw] -translate-x-1/2 rounded-box bg-base-100/95 p-4 shadow-xl">
         <input type="range" class="range range-primary" min="-2000" max="1880" step="10"
                x-ref="slider" x-model.number="year"
-               @input.debounce.150ms="readout = await $refs.map._setYear(year)" />
+               @input.debounce.150ms="(async () => { readout = await $refs.map._setYear(year) })()" />
         <div class="mt-2 flex justify-between text-sm">
             <span x-text="year < 0 ? Math.abs(year) + ' BCE' : year + ' CE'"></span>
             <span x-text="readout"></span>
