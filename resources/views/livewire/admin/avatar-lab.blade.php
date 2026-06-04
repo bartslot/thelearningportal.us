@@ -191,7 +191,7 @@
 
             <h2 class="text-lg font-semibold text-slate-100 mb-4">Animation</h2>
 
-            @foreach(['idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
+            @foreach(['introduction' => 'Introduction', 'idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
                 @php $clips = $clipsByCategory->get($cat, collect()) @endphp
 
                 {{-- DaisyUI collapse — checkbox is z-1 and covers the title area,
@@ -200,6 +200,9 @@
                     <input type="checkbox" checked class="min-h-0" />
                     <div class="collapse-title flex items-center justify-between py-3 px-4 min-h-0 text-sm font-semibold text-slate-200">
                         {{ $label }}
+                        @if($cat === 'introduction')
+                            <span class="relative z-10 text-[9px] font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded px-1.5 py-0.5 mr-2">feet on</span>
+                        @endif
                         <label
                             class="relative z-10 cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 mr-6
                                    rounded-lg bg-teal-700/30 border border-teal-600/30 text-teal-300 text-xs
@@ -208,7 +211,7 @@
                             Add +
                             <input
                                 type="file"
-                                wire:model="{{ $cat === 'expression' ? 'expressionFile' : ($cat === 'dance' ? 'danceFile' : 'idleFile') }}"
+                                wire:model="{{ $cat === 'expression' ? 'expressionFile' : ($cat === 'dance' ? 'danceFile' : ($cat === 'introduction' ? 'introductionFile' : 'idleFile')) }}"
                                 accept=".fbx"
                                 class="hidden"
                             />
@@ -413,6 +416,53 @@
                 @if(! $voiceId)
                     <p class="text-xs text-slate-500 mt-2 text-center">Pick a voice above to get started.</p>
                 @endif
+
+                {{-- ── Introduction piece ──────────────────────────── --}}
+                <div class="mt-8 border-t border-slate-700/40 pt-6">
+                    <div class="flex items-center gap-2 mb-1">
+                        <h3 class="text-sm font-semibold text-slate-200">Introduction</h3>
+                        <span class="text-[9px] font-medium text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded px-1.5 py-0.5">Scene Opener</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-3">Avatar walks in from the right, stops at center, then speaks this intro. Use <code class="text-indigo-400">{name}</code> for the avatar's name.</p>
+
+                    <textarea
+                        wire:model="introScript"
+                        rows="4"
+                        class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed mb-3"
+                        placeholder="Hello everyone! My name is {name}. Welcome to today's lesson…"
+                    ></textarea>
+
+                    <div class="flex gap-2">
+                        <button
+                            wire:click="playIntroSequence"
+                            class="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold
+                                   bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/50 transition-colors"
+                            title="Play the walking-in sequence without audio"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                            </svg>
+                            Walk In
+                        </button>
+                        <button
+                            wire:click="speakIntroScript"
+                            wire:loading.attr="disabled"
+                            @disabled($narrationBusy || !$voiceId)
+                            class="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors
+                                   {{ $narrationBusy || !$voiceId ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' : 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30' }}"
+                            title="Generate intro audio and play it after walking in"
+                        >
+                            <span wire:loading wire:target="speakIntroScript">
+                                <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            </span>
+                            <span wire:loading.remove wire:target="speakIntroScript">
+                                <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M0 0L8 4.19615L0 8V0Z" fill="currentColor"/></svg>
+                            </span>
+                            <span wire:loading wire:target="speakIntroScript">Generating…</span>
+                            <span wire:loading.remove wire:target="speakIntroScript">Speak Intro</span>
+                        </button>
+                    </div>
+                </div>
 
             @endif
 
@@ -680,7 +730,7 @@
             @if(! $selectedAvatarId)
                 <p class="text-slate-500 text-sm">Select an avatar to view its controller.</p>
             @else
-                @foreach(['idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
+                @foreach(['introduction' => 'Introduction', 'idle' => 'Idle', 'expression' => 'Expressions', 'dance' => 'Dance'] as $cat => $label)
                     <div class="mb-6 bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
                         <h3 class="text-sm font-semibold text-slate-200 mb-3">{{ $label }}</h3>
 

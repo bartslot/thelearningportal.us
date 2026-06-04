@@ -1,0 +1,39 @@
+# History Corpus Scraper — Python dependencies
+# Tested with Python 3.11, 3.12, 3.13 (miniforge / conda / system)
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# If you hit build errors on Python 3.13, create a 3.11 env first:
+#   conda create -n scraper python=3.11 -y && conda activate scraper
+
+# ── Networking ────────────────────────────────────────────────────────────────
+httpx[http2]>=0.27.0            # Async HTTP client (h2 optional but recommended)
+
+# ── HTML parsing ─────────────────────────────────────────────────────────────
+beautifulsoup4>=4.12.3
+lxml>=5.3.0                     # 5.3+ has Python 3.13 wheels
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]>=2.0.36     # 2.0.36+ tested on Python 3.13
+asyncpg>=0.30.0                 # 0.30.0 = first release with Python 3.13 wheels
+pgvector>=0.3.6                 # pgvector SQLAlchemy bindings
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic>=2.10.0                # 2.10+ ships pydantic-core with Python 3.13 wheels
+
+# ── LLM / AI ─────────────────────────────────────────────────────────────────
+anthropic>=0.40.0               # Claude fallback (only needed if LLM_BACKEND=anthropic)
+
+# ── CLI + utilities ───────────────────────────────────────────────────────────
+click>=8.1.7
+python-dotenv>=1.0.1
+tenacity>=8.3.0                 # Retry / exponential backoff
+tqdm>=4.66.4
+aiofiles>=23.2.1
+rich>=13.9.0                    # Terminal tables and progress
+
+# ── Optional: management API ──────────────────────────────────────────────────
+# Uncomment if you want to expose a REST API for the scraper:
+# fastapi>=0.115.0
+# uvicorn>=0.32.0

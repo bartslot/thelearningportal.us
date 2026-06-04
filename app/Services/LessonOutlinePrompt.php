@@ -42,6 +42,13 @@ Return ONLY a JSON object with this exact shape — no markdown, no prose, no ex
 }
 
 Rules:
+- Produce AT LEAST 3 narration scenes — single-scene outlines are forbidden. Break the story into
+  distinct beats (e.g. setup → rising action → climax → resolution); use the "phase" field to mark them.
+- Aim for roughly one narration scene per 60–90 seconds of target duration; the user message gives an
+  explicit target_narration_scenes — match it within ±1.
+- Each scene's "beat" must advance the story; do not summarize the whole lesson in one scene.
+- If the source text is short, expand by using each historical fact / actor / location as a separate
+  scene rather than collapsing everything together.
 - Only use facts from the provided source text. If uncertain, omit — never invent.
 - Match the requested grade-level vocabulary and tone.
 - historicalFacts must be verifiable from the source text — no fabrication.
@@ -60,6 +67,8 @@ SYS;
         $duration    = $lesson->duration_seconds
             ? (int) round($lesson->duration_seconds / 60)
             : 10;
+        // Target one narration scene per ~75 seconds, with a hard floor of 3.
+        $targetNarrationScenes = max(3, (int) round(($duration * 60) / 75));
 
         $gameClause = '';
         if ($gameType === 'strategy' && $game instanceof StrategyGame && $splitCount > 0) {
@@ -79,6 +88,7 @@ Grade level: {$lesson->grade_level}
 Tone: {$lesson->tone}
 Teacher details: {$lesson->details}
 Target duration: {$duration} minutes
+target_narration_scenes: {$targetNarrationScenes} (must be ≥3; aim within ±1)
 {$gameClause}
 
 Source text:

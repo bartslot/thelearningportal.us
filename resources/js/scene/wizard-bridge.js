@@ -731,18 +731,36 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         timer,
         avatar: {
             setClip: () => { /* now handled by applyScene via animationClipUrl */ },
-            speak: ({ audioUrl, alignment }) => new Promise(resolve => {
-                if (!audioUrl) return resolve()
-                try {
-                    player.speakWithElevenLabsAlignment(audioUrl, shiftAlignment(alignment || []), { zoom: false, delay: 0 })
-                } catch {}
-                // Best-effort: resolve when the player's audio element ends.
-                const tick = () => {
-                    if (!player._audio || player._audio.ended) return resolve()
+            // Tracks the resolver for the currently-running speak() so stop() can short-circuit it.
+            _resolveSpeak: null,
+            speak ({ audioUrl, alignment }) {
+                return new Promise(resolve => {
+                    if (!audioUrl) return resolve()
+                    this._resolveSpeak = resolve
+                    try {
+                        player.resumeAnimation?.()   // unfreeze body if a previous pause froze it
+                        player.speakWithElevenLabsAlignment(audioUrl, shiftAlignment(alignment || []), { zoom: false, delay: 0 })
+                    } catch {}
+                    const tick = () => {
+                        // External stop() already resolved — bail out
+                        if (this._resolveSpeak !== resolve) return
+                        if (!player._audio || player._audio.ended) {
+                            this._resolveSpeak = null
+                            return resolve()
+                        }
+                        setTimeout(tick, 250)
+                    }
                     setTimeout(tick, 250)
+                })
+            },
+            stop () {
+                try { player.stopSpeech?.() } catch {}
+                if (this._resolveSpeak) {
+                    const r = this._resolveSpeak
+                    this._resolveSpeak = null
+                    r()
                 }
-                setTimeout(tick, 250)
-            }),
+            },
         },
     }
 

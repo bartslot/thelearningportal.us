@@ -11,10 +11,10 @@ class AnimationClip extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'category', 'fbx_path', 'sort_order', 'speed', 'expressiveness'];
+    protected $fillable = ['name', 'category', 'gender', 'fbx_path', 'glb_path', 'thumbnail_path', 'sort_order', 'speed', 'expressiveness'];
 
     protected $casts = [
-        'speed'          => 'float',
+        'speed' => 'float',
         'expressiveness' => 'float',
     ];
 

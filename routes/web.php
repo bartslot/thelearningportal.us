@@ -3,16 +3,15 @@
 use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\LessonPlayerController;
+use App\Jobs\GenerateLesson;
 use App\Livewire\Admin\AvatarLab;
 use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\LessonWizard;
-use App\Jobs\GenerateLesson;
 use App\Models\Avatar;
 use App\Models\Lesson;
 use Illuminate\Support\Facades\Route;
 
 // ── Public ───────────────────────────────────────────────────────────────────
-
 
 Route::get('/', function () {
     return view('historyportal');
@@ -42,8 +41,10 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/dashboard', function () {
         $lessons = \App\Models\Lesson::where('teacher_id', auth()->id())
+            ->with(['source', 'firstScene'])
             ->latest()
-            ->paginate(12);
+            ->paginate(24);
+
         return view('teacher.dashboard', compact('lessons'));
     })->name('dashboard');
 
@@ -90,6 +91,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Avatar list
     Route::get('/avatars', function () {
         $avatars = Avatar::withCount('lessons')->orderBy('sort_order')->get();
+
         return view('admin.avatars.index', compact('avatars'));
     })->name('avatars.index');
 
@@ -102,7 +104,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Toggle active status
     Route::patch('/avatars/{avatar}/toggle', function (Avatar $avatar) {
         $avatar->update(['is_active' => ! $avatar->is_active]);
-        return back()->with('success', $avatar->name . ' is now ' . ($avatar->is_active ? 'active' : 'inactive') . '.');
+
+        return back()->with('success', $avatar->name.' is now '.($avatar->is_active ? 'active' : 'inactive').'.');
     })->name('avatars.toggle');
 
 });

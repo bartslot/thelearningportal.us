@@ -51,8 +51,8 @@ class Step1SettingsTest extends TestCase
     {
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->call('setAudienceMode', 'grade')
-            ->set('grade_choice', '5th grade')
+            ->call('setAudienceSystem', 'local')
+            ->set('local_grade', '5th grade')
             ->assertSet('grade_level', '5th grade');
     }
 
@@ -60,7 +60,7 @@ class Step1SettingsTest extends TestCase
     {
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->call('setAudienceMode', 'age')
+            ->call('setAudienceSystem', 'age')
             ->set('audience_age', 8)
             ->assertSet('grade_level', 'Age 8');
     }
@@ -69,10 +69,10 @@ class Step1SettingsTest extends TestCase
     {
         $component = Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->call('setAudienceMode', 'age');
+            ->call('setAudienceSystem', 'age');
 
-        $component->set('audience_age', 99)->assertSet('grade_level', 'Age 16');
-        $component->set('audience_age', 2)->assertSet('grade_level', 'Age 6');
+        $component->set('audience_age', 99)->assertSet('grade_level', 'Age 18');
+        $component->set('audience_age', 2)->assertSet('grade_level', 'Age 4');
     }
 
     public function test_mount_hydrates_age_mode_from_existing_lesson(): void
@@ -85,7 +85,7 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => $lesson])
-            ->assertSet('audience_mode', 'age')
+            ->assertSet('audience_system', 'age')
             ->assertSet('audience_age', 11);
     }
 
@@ -96,7 +96,7 @@ class Step1SettingsTest extends TestCase
             ->set('topic',            'Roman Empire')
             ->set('subject',          'history')
             ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'wikipedia')
+            ->set('source_mode',      'internet')
             ->set('image_style',      'painted')
             ->set('avatar_id',        $this->avatar->id)
             ->set('strategy_game_id', $this->game->id)
@@ -112,7 +112,7 @@ class Step1SettingsTest extends TestCase
         $this->assertSame(1, $lesson->game_split_count);
 
         $this->assertTrue(
-            LessonSource::where('lesson_id', $lesson->id)->where('kind', 'wikipedia')->exists()
+            LessonSource::where('lesson_id', $lesson->id)->where('kind', 'internet')->exists()
         );
     }
 
@@ -128,7 +128,7 @@ class Step1SettingsTest extends TestCase
             ->set('topic',            'Napoleon')
             ->set('subject',          'history')
             ->set('grade_level',      '9th grade')
-            ->set('source_mode',      'upload')
+            ->set('source_mode',      'local')
             ->set('sourceUpload',     $file)
             ->set('image_style',      'cinematic')
             ->set('avatar_id',        $this->avatar->id)
@@ -150,7 +150,7 @@ class Step1SettingsTest extends TestCase
             ->set('topic',            'Roman Empire')
             ->set('subject',          'history')
             ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'wikipedia')
+            ->set('source_mode',      'internet')
             ->set('image_style',      'painted')
             ->set('avatar_id',        $this->avatar->id)
             ->set('game_split_count', 1)
@@ -169,7 +169,7 @@ class Step1SettingsTest extends TestCase
             ->set('topic',            'Roman Empire')
             ->set('subject',          'history')
             ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'wikipedia')
+            ->set('source_mode',      'internet')
             ->set('image_style',      'painted')
             ->set('avatar_id',        $this->avatar->id)
             ->set('game_split_count', 1)
@@ -187,7 +187,7 @@ class Step1SettingsTest extends TestCase
             ->set('topic',            'X')
             ->set('subject',          'history')
             ->set('grade_level',      '9th grade')
-            ->set('source_mode',      'upload')
+            ->set('source_mode',      'local')
             ->set('sourceUpload',     null)
             ->set('image_style',      'painted')
             ->set('avatar_id',        $this->avatar->id)
@@ -204,7 +204,7 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('source_mode', 'upload')
+            ->set('source_mode', 'local')
             ->set('sourceUpload', $tooBig)
             ->call('saveDraft')
             ->assertHasErrors(['sourceUpload']);
@@ -213,7 +213,7 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('source_mode', 'upload')
+            ->set('source_mode', 'local')
             ->set('sourceUpload', $wrong)
             ->call('saveDraft')
             ->assertHasErrors(['sourceUpload']);

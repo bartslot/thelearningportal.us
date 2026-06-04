@@ -59,6 +59,9 @@ export class SceneTimelinePlayer {
   pause() {
     this._isPlaying = false
     this.timer.pause()
+    // Stop the currently-playing speech: audio, visemes, body anim — and resolve
+    // the pending speak() promise so playFrom()'s while-loop can exit immediately.
+    this.avatar?.stop?.()
   }
 
   async seek(timeSeconds) {

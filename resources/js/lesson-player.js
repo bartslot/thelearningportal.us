@@ -1,7 +1,7 @@
 /**
  * lesson-player.js — Game loop engine for /lesson/{code}
  *
- * Phases:  LOADING → INTRO → TEAM_REVEAL → GAME_BRIEF → GAME_ACTIVE → TIME_UP
+ * Phases:  LOADING → TITLE_SCREEN → INTRO → TEAM_REVEAL → GAME_BRIEF → GAME_ACTIVE → TIME_UP
  * Special: INTEL_DROP overlays during GAME_ACTIVE and extends the timer.
  *
  * LLM script tags parsed from lesson.script:
@@ -16,6 +16,7 @@
 
 import Alpine from 'alpinejs'
 import { Avatar3DPlayer } from './avatar-3d.js'
+import QRCode from 'qrcode'
 
 // ── Avatar canvas position presets ───────────────────────────────────────────
 // Each preset is a CSS class set applied to the #avatar-wrap element.
@@ -30,12 +31,15 @@ const AVATAR_POSITIONS = {
 const DEFAULT_POSITION = 'bottom-right'
 
 // ── Ken Burns helper ──────────────────────────────────────────────────────────
+// Ken Burns: scale from 110% → 105% while panning corner-to-corner.
+// Using CSS scale() + translate() so background-size stays 'cover' (no black bars).
+// Each direction pair: start scale/position → end scale/position.
 const KB_DIRECTIONS = [
-  { fromX: 0,    fromY: 0,    toX: 3,    toY: 2    },
-  { fromX: 3,    fromY: 0,    toX: 0,    toY: 2    },
-  { fromX: 0,    fromY: 2,    toX: 3,    toY: 0    },
-  { fromX: 1.5,  fromY: 1,    toX: 0,    toY: 0    },
-  { fromX: 0,    fromY: 1,    toX: 2,    toY: 0    },
+  { fromScale: 1.10, fromX:  2, fromY:  2, toScale: 1.05, toX: -2, toY: -2 }, // top-right → bottom-left
+  { fromScale: 1.10, fromX: -2, fromY:  2, toScale: 1.05, toX:  2, toY: -2 }, // top-left  → bottom-right
+  { fromScale: 1.10, fromX:  2, fromY: -2, toScale: 1.05, toX: -2, toY:  2 }, // bottom-right → top-left
+  { fromScale: 1.10, fromX: -2, fromY: -2, toScale: 1.05, toX:  2, toY:  2 }, // bottom-left  → top-right
+  { fromScale: 1.10, fromX:  0, fromY:  2, toScale: 1.05, toX:  0, toY: -2 }, // top-centre  → bottom-centre
 ]
 
 function pickKbDirection (index) {
@@ -94,11 +98,22 @@ function extractYearAndLocation (lesson) {
   return { year, location }
 }
 
+// ── Module-level Avatar3D instance ───────────────────────────────────────────
+// Three.js objects contain non-configurable properties (modelViewMatrix etc.) that
+// break when stored inside Alpine's reactive Proxy. Keep the instance here, outside
+// Alpine's data object, and access it via closure.
+let _avatarInstance = null
+let _bgInstance     = null   // background-only Avatar3DPlayer (skybox, no character)
+let _bgCanvas       = null   // module-level ref so both Alpine instances share it
+let _sceneQueue     = []   // [{audio_url, script, image_url, alignment}] for scene-based playback
+let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
+
 // ── Alpine component ──────────────────────────────────────────────────────────
 // Alpine is imported directly (no Livewire on this page) — register before start()
 Alpine.data('lessonGame', (lesson) => ({
     // ── State ──────────────────────────────────────────────────────────
-    phase: 'LOADING',           // LOADING | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP
+    phase:  'LOADING',          // LOADING | TITLE_SCREEN | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP
+    lesson: lesson,             // exposed to templates (title screen meta, etc.)
     prevPhase: null,            // phase before INTEL_DROP, to return to
 
     // Location/Year overlay
@@ -120,8 +135,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // Intel drop
     intelDropMessage: '',
 
-    // Internals
-    _avatar:            null,
+    // Internals  (_avatar lives outside Alpine proxy — see _avatarInstance module var)
     _audio:             null,
     _scriptEvents:      [],
     _lastEventIndex:    0,
@@ -139,22 +153,90 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Lifecycle ──────────────────────────────────────────────────────
     async init () {
+      // Guard: Vite HMR re-registers Alpine.data which can trigger a second init()
+      // on the same page load. Skip if already running.
+      if (_initDone) return
+      _initDone = true
+
+      // Normalise all media URLs to the current page origin so localhost vs 127.0.0.1 mismatches don't block audio
+      const fixUrl = (u) => u ? u.replace(/^https?:\/\/[^/]+/, window.location.origin) : u
+      if (lesson.audio_url)    lesson.audio_url    = fixUrl(lesson.audio_url)
+      if (lesson.visemes_url)  lesson.visemes_url  = fixUrl(lesson.visemes_url)
+      if (lesson.cover_image_url) lesson.cover_image_url = fixUrl(lesson.cover_image_url)
+      lesson.scenes?.forEach(s => { s.audio_url = fixUrl(s.audio_url); s.image_url = fixUrl(s.image_url) })
+      lesson.scene_images?.forEach(s => { s.url = fixUrl(s.url) })
+      lesson.slideshow_images?.forEach(s => { s.url = fixUrl(s.url) })
+
       const { year, location } = extractYearAndLocation(lesson)
       this.lessonYear     = year
       this.lessonLocation = location
 
-      this._kbImages = lesson.slideshow_images ?? []
+      // Build image list: cover first, then slideshow images, then scene renders as fallback
+      const coverImg    = lesson.cover_image_url ? [{ url: lesson.cover_image_url }] : []
+      const slideshowImgs = lesson.slideshow_images ?? []
+      const sceneImgs   = (slideshowImgs.length === 0) ? (lesson.scene_images ?? []) : []
+      this._kbImages    = [...coverImg, ...slideshowImgs, ...sceneImgs]
 
       this._buildBackgroundLayer()
       this._buildAvatarWrapper()
 
+      // Start Ken Burns immediately for title screen — faster interval (4-7s) for drama
       if (this._kbImages.length > 0) {
         this._showBgImage(this._kbImages[0], 'A')
-        if (this._kbImages.length > 1) this._startKenBurns()
+        if (this._kbImages.length > 1) {
+          this._bgSlideMin = 6000
+          this._bgSlideMax = 6000
+          this._startKenBurns()
+        }
       }
 
-      await this._initAvatar()
-      await this._loadAudio()
+      // Fire avatar + bg init in background — they should be ready by play time
+      // but do NOT block startLesson on them (GLB load has no timeout and can hang).
+      this._initAvatar()  // fire-and-forget
+      this._initBgScene() // fire-and-forget
+
+      // Only audio metadata is strictly required before lesson can start
+      this._assetsReady = this._loadAudio()
+
+      this.phase = 'TITLE_SCREEN'
+
+      // Render QR code into the canvas element
+      this._renderQr()
+    },
+
+    _renderQr () {
+      const url = `${window.location.origin}/lesson/${lesson.lesson_code}`
+      const opts = (width) => ({ width, margin: 1, color: { dark: '#ffffff', light: '#00000000' } })
+
+      const small = document.getElementById('title-qr-canvas')
+      if (small) QRCode.toCanvas(small, url, opts(160)).catch(() => {})
+
+      const large = document.getElementById('qr-modal-canvas')
+      if (large) QRCode.toCanvas(large, url, opts(320)).catch(() => {})
+    },
+
+    // ── Title screen "Start lesson" button ─────────────────────────────
+    async startLesson () {
+      // Unlock browser audio NOW — must happen synchronously before any await breaks the gesture chain
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext
+        if (AudioCtx) { const ctx = new AudioCtx(); ctx.resume(); ctx.close() }
+      } catch (_) {}
+
+      this.phase = 'LOADING'
+      try {
+        await Promise.race([
+          this._assetsReady,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('_assetsReady timeout after 15s')), 15000))
+        ])
+      } catch (e) {
+        console.warn('lesson-player: assets load error (starting anyway):', e?.message)
+      }
+
+      // 3D bg canvas takes over — stop Ken Burns slideshow and reveal 3D scene
+      clearInterval(this._kbInterval)
+      this._kbInterval = null
+      this._showBgScene()
 
       this.phase = 'INTRO'
       this._playIntro()
@@ -167,7 +249,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Layer A
       const a = document.createElement('div')
-      a.className = 'absolute inset-0 bg-cover bg-center transition-opacity ease-in-out'
+      a.className = 'absolute inset-0 bg-cover bg-center transition-opacity ease-in-out overflow-hidden'
       a.style.transitionDuration = `${this._bgFadeDuration}ms`
       a.style.opacity = '1'
       bg.appendChild(a)
@@ -175,7 +257,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Layer B
       const b = document.createElement('div')
-      b.className = 'absolute inset-0 bg-cover bg-center transition-opacity ease-in-out'
+      b.className = 'absolute inset-0 bg-cover bg-center transition-opacity ease-in-out overflow-hidden'
       b.style.transitionDuration = `${this._bgFadeDuration}ms`
       b.style.opacity = '0'
       bg.appendChild(b)
@@ -188,13 +270,13 @@ Alpine.data('lessonGame', (lesson) => ({
 
       const kbDir = pickKbDirection(this._kbIndex)
       el.style.backgroundImage = `url(${img.url})`
-      el.style.backgroundSize = '115%'
-      el.style.transform = `translate(${kbDir.fromX}%, ${kbDir.fromY}%)`
+      el.style.backgroundSize  = 'cover'
+      el.style.transform = `scale(${kbDir.fromScale}) translate(${kbDir.fromX}%, ${kbDir.fromY}%)`
 
-      // Animate Ken Burns
+      // Animate Ken Burns — scale + pan simultaneously
       requestAnimationFrame(() => {
         el.style.transition = `opacity ${this._bgFadeDuration}ms ease-in-out, transform ${this._bgSlideMax}ms linear`
-        el.style.transform = `translate(${kbDir.toX}%, ${kbDir.toY}%)`
+        el.style.transform  = `scale(${kbDir.toScale}) translate(${kbDir.toX}%, ${kbDir.toY}%)`
       })
     },
 
@@ -223,10 +305,16 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Avatar wrapper & Three.js ──────────────────────────────────────
     _buildAvatarWrapper () {
+      // Guard: if wrapper already exists (double-init from Vite HMR), reuse it
+      const existing = document.getElementById('avatar-wrap')
+      if (existing) { this._avatarWrap = existing; return }
+
       const canvas = document.getElementById('lesson-avatar-canvas')
       if (!canvas) return
 
-      // Replace full-screen canvas with a smaller positioned wrapper+canvas
+      // Replace the full-screen blade canvas with a small positioned wrapper+canvas.
+      // The avatar renders at bottom-right (portrait 9/16) with transparent background
+      // so the 3D background scene shows through.
       const stage = document.getElementById('lesson-stage')
       canvas.remove()
 
@@ -245,22 +333,122 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     async _initAvatar () {
+      // Destroy any existing instance first — prevents dual RAF loops from Vite HMR
+      // or any re-init scenario where two Avatar3DPlayer instances fight over morph targets
+      if (_avatarInstance) {
+        try { _avatarInstance.destroy?.() } catch (_) {}
+        _avatarInstance = null
+        window._av = null
+      }
+
       const canvas = document.getElementById('lesson-avatar-canvas')
       if (!canvas) return
 
-      // Find active avatar GLB — lesson avatar or first available
-      const avatarUrl = lesson.avatar_glb_url ?? '/avatars/avatar.glb'
+      // Skip avatar entirely if no GLB is available
+      const avatarUrl = lesson.avatar_glb_url || null
+      if (!avatarUrl) {
+        console.info('lesson-player: no avatar GLB — skipping 3D avatar')
+        return
+      }
 
       try {
-        this._avatar = new Avatar3DPlayer(canvas, { characterUrl: avatarUrl })
-        // Make scene background transparent so background images show through
-        await this._avatar.init()
-        if (this._avatar._scene) {
-          this._avatar._scene.background = null
-          this._avatar._renderer.setClearAlpha(0)
+        _avatarInstance = new Avatar3DPlayer(canvas, { characterUrl: avatarUrl, alpha: true })
+        window._av = _avatarInstance
+        await _avatarInstance.init()
+
+        // Transparent background — 3D bg scene shows through the avatar canvas
+        if (_avatarInstance._scene) {
+          _avatarInstance._scene.background = null
+          _avatarInstance._renderer.setClearAlpha(0)
         }
+
+        // Lock camera — no orbit so avatar always faces viewer front-on
+        if (_avatarInstance._controls) {
+          _avatarInstance._controls.enabled = false
+        }
+
+        // Auto-load idle animation so avatar stands naturally instead of T-pose
+        const gender      = (lesson.avatar_gender ?? 'male') === 'female' ? 'feminine' : 'masculine'
+        const genderShort = gender === 'feminine' ? 'F' : 'M'
+        const idleUrl     = `/avatars/animation-library/${gender}/glb/idle/${genderShort}_Standing_Idle_001.glb`
+        _avatarInstance.loadBodyAnimation(idleUrl).catch(e =>
+          console.warn('lesson-player: idle animation load failed', e)
+        )
       } catch (e) {
         console.warn('lesson-player: avatar init failed', e)
+      }
+    },
+
+    // ── Background 3D scene (skybox only, no character) ────────────────
+    async _initBgScene () {
+      // Destroy any stale instance (e.g. Vite HMR)
+      if (_bgInstance) {
+        try { _bgInstance.destroy?.() } catch (_) {}
+        _bgInstance = null
+      }
+
+      const stage = document.getElementById('lesson-stage')
+      if (!stage) return
+
+      // Remove old bg canvas if present (re-init guard)
+      document.getElementById('lesson-bg-canvas')?.remove()
+
+      const canvas = document.createElement('canvas')
+      canvas.id        = 'lesson-bg-canvas'
+      // z-[1]: above Ken Burns (z-0), below gradient overlay (z-10) and avatar (z-20)
+      // opacity-0: hidden during title screen — revealed when lesson starts via _showBgScene()
+      canvas.className = 'absolute inset-0 w-full h-full pointer-events-none opacity-0 transition-opacity duration-1000 ease-in-out'
+      canvas.style.zIndex = '1'
+      stage.insertBefore(canvas, stage.firstChild)
+
+      _bgCanvas = canvas   // module-level — set immediately (before any await) so _showBgScene never races
+
+      // Wait a tick so the browser lays out the canvas (clientWidth/Height becomes non-zero).
+      // Use setTimeout (not rAF) — rAF pauses in background/unfocused tabs.
+      await new Promise(r => setTimeout(r, 50))
+
+      try {
+        _bgInstance = new Avatar3DPlayer(canvas, { characterUrl: null })
+        await _bgInstance.init()
+
+        // Disable user orbit — keep controls alive for autoRotate only
+        if (_bgInstance._controls) {
+          _bgInstance._controls.enableZoom   = false
+          _bgInstance._controls.enablePan    = false
+          _bgInstance._controls.enableRotate = false
+          _bgInstance._controls.autoRotate   = true
+          _bgInstance._controls.autoRotateSpeed = 0.12   // very slow pan
+        }
+
+        // Neutral dark bg while no skybox is loaded
+        _bgInstance.setSceneBackground('#0c1a2e')
+
+        // Pre-load first available image as initial skybox — fire-and-forget,
+        // do NOT await here so this never blocks _assetsReady / startLesson
+        const initialBg = lesson.cover_image_url
+          || lesson.slideshow_images?.[0]?.url
+          || lesson.scene_images?.[0]?.url
+          || lesson.scenes?.[0]?.image_url
+        if (initialBg) {
+          _bgInstance.setSkyboxFromUrl(initialBg, 0.35).catch(() => {})
+        }
+      } catch (e) {
+        console.warn('lesson-player: bg scene init failed', e)
+      }
+    },
+
+    // Fade the 3D background scene in (called when lesson starts)
+    _showBgScene () {
+      if (!_bgCanvas) return
+      // Apply immediately (no rAF — rAF pauses in background/unfocused tabs)
+      _bgCanvas.classList.remove('opacity-0')
+      _bgCanvas.style.opacity = '1'
+
+      // Fade out the CSS Ken Burns layers behind the 3D canvas
+      const bgLayer = document.getElementById('background-layer')
+      if (bgLayer) {
+        bgLayer.style.transition = 'opacity 1.2s ease-in-out'
+        bgLayer.style.opacity = '0'
       }
     },
 
@@ -272,49 +460,54 @@ Alpine.data('lessonGame', (lesson) => ({
       const wrap = this._avatarWrap
       if (!wrap) return
 
-      // Remove old position classes and apply new ones
+      // Swap CSS position classes on the small avatar wrapper
       Object.values(AVATAR_POSITIONS).forEach(cls =>
         cls.split(' ').forEach(c => wrap.classList.remove(c))
       )
       AVATAR_POSITIONS[posKey].split(' ').forEach(c => wrap.classList.add(c))
 
-      // After transition, tell avatar to snap eyes to camera
+      // After transition snaps, re-engage gaze/blink
       setTimeout(() => {
-        if (this._avatar) {
-          this._avatar._gazeTimer = 0
-          this._avatar._blinkNext = 200
+        if (_avatarInstance) {
+          _avatarInstance._gazeTimer = 0
+          _avatarInstance._blinkNext = 200
         }
       }, 750)
     },
 
     // ── Audio ──────────────────────────────────────────────────────────
     async _loadAudio () {
-      if (!lesson.audio_url) return
-
-      this._audio = new Audio(lesson.audio_url)
-      this._audio.preload = 'auto'
-
-      if (lesson.visemes_url) {
-        try {
-          const res = await fetch(lesson.visemes_url)
-          const data = await res.json()
-          if (this._avatar) {
-            this._avatar._visemeTimings = data.mouthCues ?? []
-          }
-        } catch (e) {
-          // Visemes optional
-        }
+      // Build scene queue — use lesson-level audio if available, otherwise chain scenes
+      if (lesson.audio_url) {
+        _sceneQueue = [{ audio_url: lesson.audio_url, script: lesson.script, image_url: null }]
+      } else if (lesson.scenes?.length) {
+        _sceneQueue = lesson.scenes
+          .filter(s => s.audio_url)
+          .map(s => ({ audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
       }
 
-      // Parse script events keyed to audio duration
-      this._audio.addEventListener('loadedmetadata', () => {
-        this._scriptEvents = parseScriptTags(lesson.script, this._audio.duration)
+      if (!_sceneQueue.length) return
+
+      // Pre-fetch visemes (only for single-audio lessons with visemes_url)
+      if (lesson.visemes_url) {
+        try {
+          const res  = await fetch(lesson.visemes_url)
+          const data = await res.json()
+          this._pendingVisemes = data.mouthCues ?? []
+        } catch (e) { /* optional */ }
+      }
+
+      // Pre-load metadata of first scene so duration is known
+      this._audio = new Audio(_sceneQueue[0].audio_url)
+      this._audio.preload = 'metadata'
+      this._audio.load() // must call load() explicitly to start fetching
+      await new Promise(resolve => {
+        if (this._audio.readyState >= 1) { resolve(); return } // already loaded
+        this._audio.addEventListener('loadedmetadata', resolve, { once: true })
+        this._audio.addEventListener('error', resolve, { once: true })
+        setTimeout(resolve, 3000) // safety timeout — never block indefinitely
       })
-
-      // Drive script events on timeupdate
-      this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
-
-      this._audio.addEventListener('ended', () => this._onAudioEnded())
+      this._scriptEvents = parseScriptTags(_sceneQueue[0].script, this._audio.duration)
     },
 
     // ── Script event processing ────────────────────────────────────────
@@ -341,12 +534,71 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Phase transitions ──────────────────────────────────────────────
     _playIntro () {
+      this._showBgScene()          // fade in the full-screen 3D background
       this._moveAvatarTo('bottom-right')
-      if (this._audio) {
-        this._audio.play().catch(e => {
-          // Autoplay blocked — show a tap-to-start overlay (future enhancement)
-          console.warn('lesson-player: autoplay blocked', e)
+      if (!_sceneQueue.length) return
+      this._sceneIndex = 0
+      this._playScene(0)
+    },
+
+    _sceneIndex: 0,
+
+    _playScene (index) {
+      const scene = _sceneQueue[index]
+      if (!scene) { this._onAudioEnded(); return }
+
+      // Swap background — update 3D bg scene skybox, or fall back to CSS Ken Burns
+      if (scene.image_url) {
+        if (_bgInstance) {
+          _bgInstance.setSkyboxFromUrl(scene.image_url, 0.3).catch(() => {})
+        } else {
+          this._showBgImage({ url: scene.image_url }, this._bgActive === 'A' ? 'B' : 'A')
+        }
+      }
+
+      if (_avatarInstance) {
+        // Use ElevenLabs alignment for precise phoneme visemes, fall back to amplitude jaw
+        if (scene.alignment?.length) {
+          _avatarInstance.speakWithElevenLabsAlignment(scene.audio_url, scene.alignment, { zoom: false, delay: 0 })
+        } else {
+          _avatarInstance.speakWithVisemes(scene.audio_url, { zoom: false, delay: 0 })
+        }
+
+        // Bridge avatar's internal audio to our event system
+        const bridgeAudio = () => {
+          if (_avatarInstance._audio) {
+            this._audio = _avatarInstance._audio
+            this._lastEventIndex = 0
+            this._scriptEvents = parseScriptTags(scene.script, this._audio.duration || 0)
+            this._audio.addEventListener('timeupdate', () => this._processScriptEvents(), { once: false })
+            this._audio.addEventListener('ended', () => {
+              const next = index + 1
+              if (next < _sceneQueue.length) {
+                this._sceneIndex = next
+                this._playScene(next)
+              } else {
+                this._onAudioEnded()
+              }
+            }, { once: true })
+          } else {
+            setTimeout(bridgeAudio, 50)
+          }
+        }
+        bridgeAudio()
+      } else {
+        // No avatar — plain audio fallback
+        this._audio = new Audio(scene.audio_url)
+        this._lastEventIndex = 0
+        this._audio.addEventListener('loadedmetadata', () => {
+          this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
         })
+        this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
+        this._audio.addEventListener('ended', () => {
+          const next = index + 1
+          if (next < _sceneQueue.length) { this._sceneIndex = next; this._playScene(next) }
+          else this._onAudioEnded()
+        }, { once: true })
+        this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
       }
     },
 

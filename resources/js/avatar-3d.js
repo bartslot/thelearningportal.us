@@ -273,9 +273,11 @@ const SKYBOX_FRAG = /* glsl */`
 export class Avatar3DPlayer {
   constructor (canvasEl, {
     characterUrl = null,
+    alpha = false,
   } = {}) {
     this.canvasEl     = canvasEl
     this.characterUrl = characterUrl
+    this._alpha       = alpha
 
     this._scene    = null
     this._camera   = null
@@ -368,7 +370,7 @@ export class Avatar3DPlayer {
     const w = this.canvasEl.clientWidth  || this.canvasEl.parentElement?.clientWidth  || 400
     const h = this.canvasEl.clientHeight || this.canvasEl.parentElement?.clientHeight || 500
 
-    this._renderer = new THREE.WebGLRenderer({ canvas: this.canvasEl, antialias: true, alpha: false })
+    this._renderer = new THREE.WebGLRenderer({ canvas: this.canvasEl, antialias: true, alpha: this._alpha })
     this._renderer.setSize(w, h, false)   // false = don't override CSS (keeps w-full h-full responsive)
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this._renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -498,6 +500,36 @@ export class Avatar3DPlayer {
       pos:  this._camera.position.clone(),
       look: this._controls ? this._controls.target.clone() : new THREE.Vector3(0, 0.9, 0),
       fov:  this._camera.fov,
+    }
+  }
+
+  /**
+   * Stop the current speech: pause audio, kill viseme tracks, reset mouth shapes,
+   * and freeze the body animation. Safe to call when nothing is speaking.
+   */
+  stopSpeech () {
+    if (this._audio) { this._audio.pause(); this._audio = null }
+    if (this._audioCtx) { try { this._audioCtx.close() } catch (_) {} this._audioCtx = null }
+    this._analyser       = null
+    this._analyserBuf    = null
+    this._elevenTimeline = null
+    this._visemeTimings  = []
+    this._frames         = []
+    this._playing        = false
+    this._clearMouthShapes()
+    // Freeze body animation in place (uses existing mixer.timeScale convention)
+    if (this._animMixer) {
+      this._animMixer.timeScale = 0
+      this._animPlaying = false
+    }
+    window.dispatchEvent(new CustomEvent('avatar3d:speakend'))
+  }
+
+  /** Resume the body animation if it was frozen by stopSpeech(). */
+  resumeAnimation () {
+    if (this._animMixer) {
+      this._animMixer.timeScale = 1
+      this._animPlaying = true
     }
   }
 
@@ -1690,14 +1722,11 @@ export class Avatar3DPlayer {
    *   - Hips quat : bakes a large forward tilt (~47°x) that pitches the whole skeleton
    *   - lower body: without foot IK the leg chain produces floating feet
    */
-  _prepareClip (clip) {
+  _prepareClip (clip, keepLowerBody = false) {
     const DROP_QUAT = new Set([
-      // Root / lower body — Hips encodes ~47° forward tilt; legs need foot IK to ground
-      'Hips',
-      'LeftUpLeg', 'RightUpLeg',
-      'LeftLeg',   'RightLeg',
-      'LeftFoot',  'RightFoot',
-      'LeftToeBase', 'RightToeBase',
+      // Root / lower body — Hips encodes ~47° forward tilt; legs need foot IK to ground.
+      // Omitted when keepLowerBody=true (e.g. walking/introduction animations that need leg motion).
+      ...keepLowerBody ? [] : ['Hips', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'],
       // Base spine — encodes forward lean that is uncompensated without Hips; Spine1/2 kept for breathing
       'Spine',
       // Fingers — Mixamo T-pose finger rotations don't match RPM A-pose bind, causing deformation
@@ -1724,7 +1753,7 @@ export class Avatar3DPlayer {
 
   // ── Body animation (FBX or GLB) ──────────────────────────────────────────
 
-  async loadBodyAnimation (url) {
+  async loadBodyAnimation (url, { keepLowerBody = false } = {}) {
     if (!this._characterRoot) return
 
     if (!this._animMixer) {
@@ -1746,7 +1775,7 @@ export class Avatar3DPlayer {
       })
     }
 
-    this._prepareClip(clip)
+    this._prepareClip(clip, keepLowerBody)
 
     console.log(`[Avatar3D] Body animation loaded: ${url} (${clip.tracks.length} tracks)`)
 
@@ -2178,8 +2207,9 @@ window.addEventListener('avatar3d:loadend', () => {
 
   if (window._pendingAnimUrl) {
     console.log('[Avatar3D] loadend: consuming _pendingAnimUrl', window._pendingAnimUrl)
-    window._avatar3d?.loadBodyAnimation(window._pendingAnimUrl)
-    window._pendingAnimUrl = null
+    window._avatar3d?.loadBodyAnimation(window._pendingAnimUrl, window._pendingAnimOpts ?? {})
+    window._pendingAnimUrl  = null
+    window._pendingAnimOpts = null
   } else {
     console.log('[Avatar3D] loadend: no _pendingAnimUrl queued')
   }
@@ -2196,14 +2226,16 @@ window.addEventListener('avatar3d:previewReady', (ev) => {
 window.addEventListener('preview-clip', (ev) => {
   const url = ev.detail.fbxUrl || ev.detail.glbUrl
   if (!url) return
+  const keepLowerBody = ev.detail.category === 'introduction'
   // If character not loaded yet, queue it — loadend will pick it up
   if (!window._avatar3d?._characterRoot) {
     console.log('[Avatar3D] preview-clip: _characterRoot null, queuing', url)
-    window._pendingAnimUrl = url
+    window._pendingAnimUrl     = url
+    window._pendingAnimOpts    = { keepLowerBody }
     return
   }
   console.log('[Avatar3D] preview-clip: _characterRoot exists, loading immediately', url)
-  window._avatar3d?.loadBodyAnimation(url)
+  window._avatar3d?.loadBodyAnimation(url, { keepLowerBody })
     .catch(err => console.error('[Avatar3D] Failed to load animation:', err))
 })
 
@@ -2477,6 +2509,60 @@ window.skyboxPanel = function () {
     },
   }
 }
+
+// ── Introduction sequence ─────────────────────────────────────────────────────
+// Plays a scripted walk-in cinematic:
+//   Phase 1 — avatar enters from screen right, playing a strafe walk animation (feet enabled)
+//   Phase 2 — avatar stops at center (stop animation)
+//   Phase 3 — avatar turns head to look at camera
+// Triggered via window event: avatar3d:introSequence
+//   detail: { walkUrl, stopUrl, walkDuration? }
+window.addEventListener('avatar3d:introSequence', async (ev) => {
+  const player = window._avatar3d
+  if (!player?._characterRoot) {
+    console.warn('[Avatar3D] introSequence: no character loaded')
+    return
+  }
+
+  const { walkUrl, stopUrl, walkDuration = 2800 } = ev.detail ?? {}
+  if (!walkUrl) { console.warn('[Avatar3D] introSequence: walkUrl required'); return }
+
+  const root = player._characterRoot
+
+  // Phase 1: position avatar off-screen right, play strafe-walk with feet enabled
+  root.position.x = 2.5
+  if (walkUrl) {
+    await player.loadBodyAnimation(walkUrl, { keepLowerBody: true })
+      .catch(err => console.error('[Avatar3D] introSequence walkUrl failed:', err))
+  }
+
+  // Lerp avatar from x=2.5 → 0 over walkDuration ms
+  const startTime = performance.now()
+  const startX    = 2.5
+
+  await new Promise(resolve => {
+    function step () {
+      const elapsed  = performance.now() - startTime
+      const t        = Math.min(elapsed / walkDuration, 1)
+      const eased    = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t  // ease-in-out quad
+      root.position.x = startX * (1 - eased)
+      if (t < 1) requestAnimationFrame(step)
+      else resolve()
+    }
+    requestAnimationFrame(step)
+  })
+
+  // Phase 2: play stop animation (feet enabled — it's a locomotion transition)
+  if (stopUrl) {
+    await player.loadBodyAnimation(stopUrl, { keepLowerBody: true })
+      .catch(err => console.error('[Avatar3D] introSequence stopUrl failed:', err))
+    await new Promise(r => setTimeout(r, 1200))
+  }
+
+  // Phase 3: head turn to camera (re-use existing presenting pose)
+  player.applyPose('presenting')
+  window.dispatchEvent(new CustomEvent('avatar3d:introSequenceDone'))
+})
 
 // ── HMR cleanup ───────────────────────────────────────────────────────────────
 if (import.meta.hot) {

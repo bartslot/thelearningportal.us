@@ -41,6 +41,18 @@ class Step2Generate extends Component
         return $this->lesson->scenes()->where('status', 'ready')->exists();
     }
 
+    /**
+     * Called on every wire:poll tick.
+     * Auto-advance to step 3 the moment the first scene is ready so the teacher
+     * doesn't have to wait for ALL scenes to finish before clicking Continue.
+     */
+    public function checkAndAutoAdvance(): void
+    {
+        if ($this->canContinue) {
+            $this->continueToConfigure();
+        }
+    }
+
     #[Computed]
     public function overallProgress(): int
     {
@@ -50,11 +62,17 @@ class Step2Generate extends Component
         }
 
         $total = $scenes->count() * 3;
-        $done  = 0;
+        $done = 0;
         foreach ($scenes as $s) {
-            if ((string) $s->script_segment !== '') $done++;
-            if ($s->image_path !== null)            $done++;
-            if ($s->audio_path !== null)            $done++;
+            if ((string) $s->script_segment !== '') {
+                $done++;
+            }
+            if ($s->image_path !== null) {
+                $done++;
+            }
+            if ($s->audio_path !== null) {
+                $done++;
+            }
         }
 
         return (int) floor(($done / max(1, $total)) * 100);
@@ -67,9 +85,9 @@ class Step2Generate extends Component
 
         match ($asset) {
             'script' => GenerateSceneScript::dispatch($scene->id),
-            'image'  => GenerateSceneImage::dispatch($scene->id),
-            'audio'  => GenerateSceneAudio::dispatch($scene->id),
-            default  => null,
+            'image' => GenerateSceneImage::dispatch($scene->id),
+            'audio' => GenerateSceneAudio::dispatch($scene->id),
+            default => null,
         };
     }
 
@@ -77,9 +95,9 @@ class Step2Generate extends Component
     {
         $this->lesson->scenes()->delete();
         $this->lesson->update([
-            'status'        => LessonStatus::SourceReady,
+            'status' => LessonStatus::SourceReady,
             'error_message' => null,
-            'outline'       => null,
+            'outline' => null,
         ]);
         BuildLessonOutline::dispatch($this->lesson->id);
     }

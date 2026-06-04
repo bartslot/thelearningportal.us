@@ -30,7 +30,7 @@ $isDone    = in_array($lesson->status, [LessonStatus::Configuring]);
 $isFailed  = $lesson->status === LessonStatus::Failed;
 @endphp
 
-<div class="pt-6 space-y-6" wire:poll.2s>
+<div class="pt-6 space-y-6" wire:poll.2s="checkAndAutoAdvance">
 
     @if ($isFailed)
         <div class="bg-rose-500/10 border border-rose-500/40 rounded-2xl p-6">

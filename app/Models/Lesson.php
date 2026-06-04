@@ -77,18 +77,18 @@ class Lesson extends Model
     protected function casts(): array
     {
         return [
-            'status'                 => LessonStatus::class,
-            'generation_attempts'    => 'integer',
-            'duration_seconds'       => 'integer',
-            'slideshow_images'       => 'array',
-            'intel_drop_enabled'     => 'boolean',
-            'intel_drop_at_minutes'  => 'integer',
-            'outline'                => 'array',
-            'include_game'           => 'boolean',
-            'quiz_question_count'    => 'integer',
-            'team_count'             => 'integer',
-            'game_split_count'       => 'integer',
-            'wizard_step'            => 'integer',
+            'status' => LessonStatus::class,
+            'generation_attempts' => 'integer',
+            'duration_seconds' => 'integer',
+            'slideshow_images' => 'array',
+            'intel_drop_enabled' => 'boolean',
+            'intel_drop_at_minutes' => 'integer',
+            'outline' => 'array',
+            'include_game' => 'boolean',
+            'quiz_question_count' => 'integer',
+            'team_count' => 'integer',
+            'game_split_count' => 'integer',
+            'wizard_step' => 'integer',
         ];
     }
 
@@ -145,7 +145,7 @@ class Lesson extends Model
     public function classrooms(): BelongsToMany
     {
         return $this->belongsToMany(Classroom::class, 'classroom_lessons')
-                    ->withPivot('assigned_at', 'due_at');
+            ->withPivot('assigned_at', 'due_at');
     }
 
     public function studentProgress(): HasMany
@@ -156,6 +156,11 @@ class Lesson extends Model
     public function scenes(): HasMany
     {
         return $this->hasMany(Scene::class)->orderBy('order');
+    }
+
+    public function firstScene(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Scene::class)->oldestOfMany('order');
     }
 
     public function source(): \Illuminate\Database\Eloquent\Relations\HasOne
@@ -203,7 +208,7 @@ class Lesson extends Model
             return null;
         }
 
-        return rtrim($this->mediaBaseUrl(), '/') . '/storage/' . ltrim($path, '/');
+        return rtrim($this->mediaBaseUrl(), '/').'/storage/'.ltrim($path, '/');
     }
 
     private function mediaBaseUrl(): string
@@ -243,6 +248,7 @@ class Lesson extends Model
         if (Storage::disk('local')->exists($path)) {
             $absolutePath = Storage::disk('local')->path($path);
             $mime = @mime_content_type($absolutePath);
+
             return is_string($mime) && $mime !== '' ? $mime : null;
         }
 
@@ -276,6 +282,40 @@ class Lesson extends Model
     public function portraitUrl(): string
     {
         return $this->publicMediaUrl($this->portrait_path) ?? asset('assets/professor.webp');
+    }
+
+    /**
+     * Best available card/cover image for the lesson, in priority order:
+     *   1. worldhistory.org hero image (colorful, editorial quality)
+     *   2. Avatar portrait
+     *   3. Generic placeholder
+     */
+    public function cardImageUrl(): ?string
+    {
+        // 1. First scene's generated image (skybox preferred, then scene image)
+        if ($this->relationLoaded('firstScene') && $this->firstScene) {
+            $scene = $this->firstScene;
+            $url = $this->publicMediaUrl($scene->skybox_image_path)
+                  ?? $this->publicMediaUrl($scene->image_path);
+            if ($url) {
+                return $url;
+            }
+        }
+
+        // 2. Source hero image
+        if ($this->relationLoaded('source') && $this->source?->hero_image_path) {
+            $url = $this->publicMediaUrl($this->source->hero_image_path);
+            if ($url) {
+                return $url;
+            }
+        }
+
+        // 3. Portrait fallback
+        if ($this->portrait_path) {
+            return $this->publicMediaUrl($this->portrait_path);
+        }
+
+        return null;
     }
 
     /**

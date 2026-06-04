@@ -257,6 +257,39 @@
 }
 .lp-grain-heavy::after { opacity: 0.07; }
 
+/* ─── Cinematic poster grain (animated, heavy — for lesson card images) ── */
+@keyframes poster-grain {
+    0%   { background-position:   0%    0%; }
+    10%  { background-position:  13%   -9%; }
+    20%  { background-position:  -7%   17%; }
+    30%  { background-position:  20%    4%; }
+    40%  { background-position:  -5%  -14%; }
+    50%  { background-position:  16%   11%; }
+    60%  { background-position: -18%   -3%; }
+    70%  { background-position:   9%   19%; }
+    80%  { background-position: -14%   -7%; }
+    90%  { background-position:   4%   14%; }
+    100% { background-position:   0%    0%; }
+}
+.lp-grain-poster {
+    position: relative;
+    isolation: isolate;
+}
+.lp-grain-poster::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 180px 180px;
+    opacity: 0.42;
+    mix-blend-mode: overlay;
+    animation: poster-grain 0.7s steps(7) infinite;
+    z-index: 2;
+}
+
 /* ─── Skybox viewport grain (animated film-grain over the 3D canvas) ──── */
 @keyframes skybox-grain {
     0%   { background-position:   0%    0%; }
@@ -274,10 +307,11 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    /* feColorMatrix: RGB → 0 (black), alpha → noise luminance − 0.15 → dark grain specs */
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.3 0.59 0.11 0 -0.15' in='t'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    /* White fractalNoise + overlay blend → visible grain on both light and dark backgrounds */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
     background-repeat: repeat;
     background-size: 256px 256px;
+    mix-blend-mode: overlay;
     opacity: 0;
     animation: skybox-grain 1s steps(10) infinite;
     z-index: 5;

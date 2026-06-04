@@ -11,7 +11,7 @@ class LessonSource extends Model
 {
     protected $fillable = [
         'lesson_id', 'kind', 'original_filename',
-        'file_path', 'extracted_text', 'wikipedia_topic',
+        'file_path', 'extracted_text', 'wikipedia_topic', 'source_url', 'hero_image_path', 'hero_image_url',
     ];
 
     public function lesson(): BelongsTo

@@ -13,10 +13,20 @@ class LessonPlayerController extends Controller
 {
     public function __invoke(Request $request, string $lessonCode): View
     {
+        $playableStatuses = [LessonStatus::Published, LessonStatus::Previewable];
+
         $lesson = Lesson::where('lesson_code', strtoupper($lessonCode))
-            ->where('status', LessonStatus::Published)
-            ->with(['strategyGame', 'avatar'])
+            ->whereIn('status', array_column($playableStatuses, 'value'))
+            ->with(['strategyGame', 'avatar', 'source', 'scenes'])
             ->first();
+
+        // Teachers can also preview their own lessons regardless of status
+        if (! $lesson) {
+            $lesson = Lesson::where('lesson_code', strtoupper($lessonCode))
+                ->where('teacher_id', auth()->id())
+                ->with(['strategyGame', 'avatar', 'source', 'scenes'])
+                ->first();
+        }
 
         if (! $lesson) {
             abort(404, 'Lesson not found or not yet published.');

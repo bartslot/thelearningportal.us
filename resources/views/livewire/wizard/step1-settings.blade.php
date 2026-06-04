@@ -115,11 +115,6 @@
                 {{-- Top-level toggle: Age vs local system --}}
                 <div class="flex gap-2 flex-wrap mb-3">
                     <div class="join shrink-0 mt-1">
-                        <button type="button"
-                                wire:click="setAudienceSystem('age')"
-                                @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'age', 'btn-outline' => $audience_system !== 'age'])>
-                            Age
-                        </button>
                         @if ($this->gradeSystem)
                             <button type="button"
                                     wire:click="setAudienceSystem('local')"
@@ -127,7 +122,11 @@
                                 {{ $this->gradeSystem['label'] }}
                             </button>
                         @endif
-                        
+                        <button type="button"
+                                wire:click="setAudienceSystem('age')"
+                                @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'age', 'btn-outline' => $audience_system !== 'age'])>
+                            Age
+                        </button>
                     </div>
                     
 

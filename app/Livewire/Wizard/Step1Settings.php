@@ -323,7 +323,14 @@ class Step1Settings extends Component
 
     protected function rules(): array
     {
-        return (new StoreWizardSettingsRequest)->rules();
+        $rules = (new StoreWizardSettingsRequest)->rules();
+
+        // sourceUpload is required when source_mode === 'local' (file upload mode)
+        if ($this->source_mode === 'local') {
+            $rules['sourceUpload'] = ['required', 'file', 'mimes:pdf,docx', 'max:10240'];
+        }
+
+        return $rules;
     }
 
     public function saveDraft(): Lesson
