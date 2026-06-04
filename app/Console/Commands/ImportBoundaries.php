@@ -22,11 +22,11 @@ class ImportBoundaries extends Command
     private array $snapshots = [
         -2000 => 'world_bc2000',
         -1500 => 'world_bc1500',
-        -500  => 'world_bc500',
-        200   => 'world_200',
-        500   => 'world_500',
-        1000  => 'world_1000',
-        1880  => 'world_1880',
+        -500 => 'world_bc500',
+        200 => 'world_200',
+        500 => 'world_500',
+        1000 => 'world_1000',
+        1880 => 'world_1880',
     ];
 
     public function handle(): int
@@ -45,6 +45,7 @@ class ImportBoundaries extends Command
             $path = "{$dir}/{$file}.geojson";
             if (! File::exists($path)) {
                 $this->warn("missing snapshot {$file}.geojson — skipping");
+
                 continue;
             }
 

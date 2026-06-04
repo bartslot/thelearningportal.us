@@ -26,7 +26,7 @@ class StoriesAtTest extends TestCase
         // Boundary box around Rome (12..13 lng, 41..42 lat), valid 509 BCE..27 BCE.
         $this->seedBoundary(
             ['polity_id' => 'roman-republic', 'name' => 'Roman Republic',
-             'valid_from' => -509, 'valid_to' => -27, 'extra' => ['region' => 'Mediterranean']],
+                'valid_from' => -509, 'valid_to' => -27, 'extra' => ['region' => 'Mediterranean']],
             12.0, 41.0, 13.0, 42.0
         );
         $this->seedArticle(['title' => 'The Punic Wars', 'region' => 'Mediterranean', 'era_start' => -264, 'era_end' => -146]);
