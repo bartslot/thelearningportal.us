@@ -1,0 +1,12 @@
+services:
+  postgis-test:
+    image: postgis/postgis:16-3.4
+    container_name: lp_postgis_test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: learningportal_test
+    ports:
+      - "54329:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
