@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/playwright',
   outputDir: './tests/playwright/results',
-  timeout: 30_000,
+  timeout: 60_000,
   retries: 0,
   reporter: [['list'], ['html', { outputFolder: 'tests/playwright/report', open: 'never' }]],
 
@@ -20,7 +20,16 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--enable-unsafe-swiftshader',
+            '--use-gl=angle',
+            '--use-angle=swiftshader',
+          ],
+        },
+      },
     },
   ],
 });
