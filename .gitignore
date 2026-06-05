@@ -39,3 +39,6 @@ NUL
 /public/NUL
 
 .claude/worktrees/
+
+# Large generated audio assets — keep out of git (served from storage)
+/public/sound/
