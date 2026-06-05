@@ -18,6 +18,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     attributionControl: { customAttribution: 'Borders © historical-basemaps (CC-BY-SA)' },
   });
 
+  // The container settles to its final height after Alpine/Livewire mount; without this the
+  // map can initialise against a transient height and render short until the next resize.
+  const resizeObserver = new ResizeObserver(() => map.resize());
+  resizeObserver.observe(el);
+
   const setBoundaries = async () => {
     const fc = await wire.boundariesGeoJson();
     const src = map.getSource('boundaries');

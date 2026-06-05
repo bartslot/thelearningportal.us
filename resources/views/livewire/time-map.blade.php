@@ -5,8 +5,9 @@
 <div class="relative h-[calc(100vh-4rem)] w-full"
      x-data="{ year: @js($year), readout: '' }"
      x-init="$nextTick(() => window.initTimeMap($refs.map, $wire, year))">
-    {{-- Map canvas --}}
-    <div x-ref="map" class="absolute inset-0" wire:ignore></div>
+    {{-- Map canvas. Use h-full/w-full (not absolute inset-0): MapLibre's own CSS forces
+         position:relative on the container, which cancels inset-0 and collapses it to 0 height. --}}
+    <div x-ref="map" class="h-full w-full" wire:ignore></div>
 
     {{-- Left story column --}}
     <aside class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">

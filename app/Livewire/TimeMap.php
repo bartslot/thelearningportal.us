@@ -51,7 +51,7 @@ class TimeMap extends Component
             "select polity_id, name, extra->>'region' as region
              from public.boundaries
              where valid_from <= ? and valid_to >= ?
-               and ST_Contains(geom, ST_SetSRID(ST_Point(?, ?), 4326))
+               and ST_Contains(geom::geometry, ST_SetSRID(ST_Point(?, ?), 4326))
              limit 1",
             [$year, $year, $lng, $lat]
         );

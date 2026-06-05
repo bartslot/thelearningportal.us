@@ -34,6 +34,14 @@ test('timemap-shell: canvas mounts, portal ready, no console errors', async ({ p
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
 
+  // Regression: MapLibre forces position:relative on its container, which once cancelled the
+  // Tailwind `absolute inset-0` and collapsed the map to 0 height (blank map). Guard the height.
+  const mapHeight = await page
+    .locator('.maplibregl-map')
+    .first()
+    .evaluate((el) => (el as HTMLElement).clientHeight);
+  expect(mapHeight).toBeGreaterThan(200);
+
   await page.screenshot({ path: 'tests/playwright/results/timemap-shell.png' });
   expect(errors, errors.join('\n')).toHaveLength(0);
 });
