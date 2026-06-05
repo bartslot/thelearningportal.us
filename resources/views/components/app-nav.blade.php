@@ -28,6 +28,11 @@
 
     if ($isTeacher) {
         $items[] = [
+            'label' => 'Time-Map',
+            'route' => 'teacher.timemap',
+            'pattern' => 'teacher.timemap',
+        ];
+        $items[] = [
             'label' => 'Lessons',
             'route' => 'teacher.dashboard',
             'pattern' => 'teacher.dashboard',
