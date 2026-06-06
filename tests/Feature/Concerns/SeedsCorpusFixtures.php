@@ -41,7 +41,7 @@ trait SeedsCorpusFixtures
                 name text,
                 valid_from integer,
                 valid_to integer,
-                geom geometry(Geometry, 4326),
+                geom geography(Geometry, 4326),
                 color text,
                 source text,
                 license text,

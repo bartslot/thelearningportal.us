@@ -11,10 +11,14 @@
 
     {{-- Left story column --}}
     <aside class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">
-        <h2 class="text-lg font-bold">
-            {{ $selectedPolity ?? __('Click a region') }}
+        <h2 class="text-lg font-bold flex items-center gap-2">
+            <span wire:loading.remove wire:target="storiesAt">{{ $selectedPolity ?? __('Click a region') }}</span>
+            <span wire:loading wire:target="storiesAt" class="flex items-center gap-2 text-base-content/70">
+                <span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}
+            </span>
         </h2>
-        <div class="mt-3 space-y-3">
+        {{-- Dim the list while a region's stories load so the click feels acknowledged. --}}
+        <div class="mt-3 space-y-3 transition-opacity" wire:loading.class="opacity-40" wire:target="storiesAt">
             @forelse ($stories as $story)
                 <a href="{{ $story['source_url'] }}" target="_blank" rel="noopener"
                    wire:key="story-{{ $story['id'] }}"

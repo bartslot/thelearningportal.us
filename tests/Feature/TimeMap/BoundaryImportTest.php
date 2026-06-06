@@ -50,7 +50,7 @@ class BoundaryImportTest extends TestCase
         $this->assertSame('historical-basemaps', $b->source);
 
         $hasGeom = DB::connection('pgsql_corpus')->selectOne(
-            'select ST_Contains(geom, ST_SetSRID(ST_Point(12.5,41.5),4326)) hit from public.boundaries where polity_id=?',
+            'select ST_Covers(geom, ST_SetSRID(ST_Point(12.5,41.5),4326)::geography) hit from public.boundaries where polity_id=?',
             ['roman-republic']
         );
         $this->assertTrue((bool) $hasGeom->hit);
