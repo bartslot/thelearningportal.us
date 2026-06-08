@@ -42,54 +42,33 @@ class TimeMap extends Component
     }
 
     /**
-     * A map click: find the polity at (lng,lat) for the year and its region's articles.
-     * Done in a single round-trip — the DB is remote, so each query is ~0.5s of latency.
+     * Load the articles for a clicked region + year. The spatial hit-test (which polity was
+     * clicked) is done client-side from the already-loaded boundary GeoJSON, so this is the
+     * only server round-trip — a single, indexed article fetch against the remote DB.
      */
-    public function storiesAt(float $lng, float $lat, int $year): void
+    public function storiesForRegion(?string $region, ?string $polity, int $year): void
     {
         $this->year = $year;
+        $this->selectedRegion = $region;
+        $this->selectedPolity = $polity;
 
-        $rows = DB::connection('pgsql_corpus')->select(
-            "with hit as (
-                select name, extra->>'region' as region
-                from public.boundaries
-                where valid_from <= ? and valid_to >= ?
-                  and ST_Covers(geom, ST_SetSRID(ST_Point(?, ?), 4326)::geography)
-                limit 1
-            )
-            select hit.name as polity, hit.region as region,
-                   a.id, a.title, a.summary, a.source_url, a.era_start, a.era_end
-            from hit
-            left join public.history_articles a
-              on a.region = hit.region
-             and a.era_start <= ? and a.era_end >= ?
-            order by (a.era_end - a.era_start) asc nulls last
-            limit 20",
-            [$year, $year, $lng, $lat, $year, $year]
-        );
-
-        if ($rows === []) {
-            $this->selectedRegion = null;
-            $this->selectedPolity = null;
+        if ($region === null || $region === '') {
             $this->stories = [];
 
             return;
         }
 
-        $this->selectedPolity = $rows[0]->polity;
-        $this->selectedRegion = $rows[0]->region;
-        $this->stories = collect($rows)
-            ->filter(fn ($r) => $r->id !== null) // LEFT JOIN yields one null row when no articles
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'title' => $r->title,
-                'summary' => $r->summary,
-                'source_url' => $r->source_url,
-                'era_start' => $r->era_start,
-                'era_end' => $r->era_end,
-            ])
-            ->values()
-            ->all();
+        $rows = DB::connection('pgsql_corpus')->select(
+            'select id, title, summary, source_url, era_start, era_end
+             from public.history_articles
+             where region = ?
+               and era_start <= ? and era_end >= ?
+             order by (era_end - era_start) asc
+             limit 20',
+            [$region, $year, $year]
+        );
+
+        $this->stories = array_map(fn ($r) => (array) $r, $rows);
     }
 
     public function render()

@@ -10,7 +10,7 @@ use Livewire\Livewire;
 use Tests\Feature\Concerns\SeedsCorpusFixtures;
 use Tests\TestCase;
 
-class StoriesAtTest extends TestCase
+class StoriesForRegionTest extends TestCase
 {
     use RefreshDatabase;
     use SeedsCorpusFixtures;
@@ -21,33 +21,26 @@ class StoriesAtTest extends TestCase
         $this->setUpCorpusFixtures();
     }
 
-    public function test_click_inside_boundary_returns_region_era_articles(): void
+    public function test_region_returns_only_its_era_bracketed_articles(): void
     {
-        // Boundary box around Rome (12..13 lng, 41..42 lat), valid 509 BCE..27 BCE.
-        $this->seedBoundary(
-            ['polity_id' => 'roman-republic', 'name' => 'Roman Republic',
-                'valid_from' => -509, 'valid_to' => -27, 'extra' => ['region' => 'Mediterranean']],
-            12.0, 41.0, 13.0, 42.0
-        );
+        // The map identifies the clicked polity client-side; the component just fetches articles.
         $this->seedArticle(['title' => 'The Punic Wars', 'region' => 'Mediterranean', 'era_start' => -264, 'era_end' => -146]);
         $this->seedArticle(['title' => 'Cold War', 'region' => 'Mediterranean', 'era_start' => 1947, 'era_end' => 1991]);
+        $this->seedArticle(['title' => 'Han Dynasty', 'region' => 'East Asia', 'era_start' => -206, 'era_end' => 220]);
 
         Livewire::test(TimeMap::class)
-            ->call('storiesAt', 12.5, 41.5, -200)
+            ->call('storiesForRegion', 'Mediterranean', 'Roman Republic', -200)
             ->assertSet('selectedRegion', 'Mediterranean')
+            ->assertSet('selectedPolity', 'Roman Republic')
             ->assertSee('The Punic Wars')
-            ->assertDontSee('Cold War');
+            ->assertDontSee('Cold War')      // right region, wrong era
+            ->assertDontSee('Han Dynasty');  // right era, wrong region
     }
 
-    public function test_click_outside_any_boundary_is_empty(): void
+    public function test_clicking_outside_any_region_clears_the_panel(): void
     {
-        $this->seedBoundary(
-            ['polity_id' => 'roman-republic', 'valid_from' => -509, 'valid_to' => -27],
-            12.0, 41.0, 13.0, 42.0
-        );
-
         Livewire::test(TimeMap::class)
-            ->call('storiesAt', 100.0, 0.0, -200)
+            ->call('storiesForRegion', null, null, -200)
             ->assertSet('selectedRegion', null)
             ->assertSee('No stories here yet');
     }

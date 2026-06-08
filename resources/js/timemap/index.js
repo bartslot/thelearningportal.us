@@ -116,9 +116,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   });
 
   map.on('click', async (e) => {
-    await wire.storiesAt(e.lngLat.lng, e.lngLat.lat, state.year);
-    state.selectedRegion = wire.selectedRegion ?? null;
+    // Identify the clicked polity client-side from the already-loaded boundaries — instant,
+    // no server round-trip — then fetch only that region's articles.
+    const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0];
+    const region = hit ? hit.properties.region : null;
+    const polity = hit ? hit.properties.name : null;
+    state.selectedRegion = region;
     sync();
+    await wire.storiesForRegion(region, polity, state.year);
   });
 
   // Called by the Alpine slider on input.
