@@ -51,10 +51,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   let hoveredId = null;
 
+  // Seeded era snapshots (must match timemap:export-boundaries). Borders for any year come from
+  // the snapshot whose era contains it: the latest snapshot at or before the year.
+  const SNAPSHOTS = [-2000, -1500, -500, 200, 500, 1000, 1880];
+  const snapshotFor = (year) => SNAPSHOTS.filter((s) => s <= year).pop() ?? SNAPSHOTS[0];
+
   const setBoundaries = async () => {
-    const res = await fetch(`/teacher/timemap/boundaries?year=${state.year}`, {
-      headers: { Accept: 'application/json' },
-    });
+    // Static, full-quality GeoJSON served from the app/CDN — no remote DB round-trip on load.
+    const res = await fetch(`/geo/boundaries/${snapshotFor(state.year)}.geojson`);
     const fc = await res.json();
     const src = map.getSource('boundaries');
     if (src) {
