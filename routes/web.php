@@ -50,6 +50,30 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 
+    // Boundary polygons for a year, as a cacheable GeoJSON endpoint (much faster than going
+    // through Livewire). Geometry is simplified + coords trimmed to keep the payload ~40 KB.
+    Route::get('/timemap/boundaries', function (\Illuminate\Http\Request $request) {
+        $year = $request->integer('year', -200);
+
+        $rows = \Illuminate\Support\Facades\DB::connection('pgsql_corpus')->select(
+            "select polity_id, name, extra->>'region' as region,
+                    ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom::geometry, 0.35), 4) as geometry
+             from public.boundaries
+             where valid_from <= ? and valid_to >= ?",
+            [$year, $year]
+        );
+
+        $features = array_map(fn ($r) => [
+            'type' => 'Feature',
+            'properties' => ['polity_id' => $r->polity_id, 'name' => $r->name, 'region' => $r->region],
+            'geometry' => json_decode($r->geometry),
+        ], $rows);
+
+        return response()
+            ->json(['type' => 'FeatureCollection', 'features' => $features])
+            ->header('Cache-Control', 'public, max-age=86400');
+    })->name('timemap.boundaries');
+
     Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
     Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');

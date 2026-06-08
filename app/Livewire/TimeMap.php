@@ -20,27 +20,6 @@ class TimeMap extends Component
 
     public array $stories = [];
 
-    /** Boundaries valid at the current year, as a GeoJSON FeatureCollection for MapLibre. */
-    public function boundariesGeoJson(): array
-    {
-        $rows = DB::connection('pgsql_corpus')->select(
-            "select polity_id, name, extra->>'region' as region,
-                    ST_AsGeoJSON(geom) as geometry
-             from public.boundaries
-             where valid_from <= ? and valid_to >= ?",
-            [$this->year, $this->year]
-        );
-
-        return [
-            'type' => 'FeatureCollection',
-            'features' => array_map(fn ($r) => [
-                'type' => 'Feature',
-                'properties' => ['polity_id' => $r->polity_id, 'name' => $r->name, 'region' => $r->region],
-                'geometry' => json_decode($r->geometry, true),
-            ], $rows),
-        ];
-    }
-
     /**
      * Load the articles for a clicked region + year. The spatial hit-test (which polity was
      * clicked) is done client-side from the already-loaded boundary GeoJSON, so this is the

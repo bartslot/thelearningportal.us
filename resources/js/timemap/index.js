@@ -52,7 +52,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let hoveredId = null;
 
   const setBoundaries = async () => {
-    const fc = await wire.boundariesGeoJson();
+    const res = await fetch(`/teacher/timemap/boundaries?year=${state.year}`, {
+      headers: { Accept: 'application/json' },
+    });
+    const fc = await res.json();
     const src = map.getSource('boundaries');
     if (src) {
       src.setData(fc);
