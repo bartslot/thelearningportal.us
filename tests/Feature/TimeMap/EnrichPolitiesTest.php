@@ -134,4 +134,33 @@ class EnrichPolitiesTest extends TestCase
 
         @unlink(public_path('flags/kingdom-of-belgium.png'));
     }
+
+    public function test_resolve_by_qid_returns_enrichment(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([
+            'www.wikidata.org/wiki/Special:EntityData/Q31.json' => \Illuminate\Support\Facades\Http::response([
+                'entities' => ['Q31' => [
+                    'claims' => [
+                        'P41' => [['mainsnak' => ['datavalue' => ['value' => 'Flag of Belgium.svg']]]],
+                        'P571' => [['mainsnak' => ['datavalue' => ['value' => ['time' => '+1830-01-01T00:00:00Z']]]]],
+                    ],
+                    'labels' => ['en' => ['value' => 'Belgium']],
+                    'sitelinks' => ['enwiki' => ['title' => 'Belgium']],
+                ]],
+            ]),
+            'en.wikipedia.org/api/rest_v1/page/summary/*' => \Illuminate\Support\Facades\Http::response([
+                'extract' => 'Belgium is a country in Western Europe.',
+                'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Belgium']],
+            ]),
+            'www.wikidata.org/w/api.php*' => \Illuminate\Support\Facades\Http::response(['entities' => []]),
+        ]);
+
+        $data = app(\App\Services\WikidataPolityResolver::class)->resolveByQid('Q31');
+
+        $this->assertSame('Q31', $data['wikidata_id']);
+        $this->assertSame('Belgium', $data['label']);
+        $this->assertSame(1830, $data['inception']);
+        $this->assertStringContainsString('Western Europe', $data['summary']);
+        $this->assertSame('Flag of Belgium.svg', $data['flag_commons']);
+    }
 }

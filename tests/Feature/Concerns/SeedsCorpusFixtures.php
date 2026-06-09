@@ -54,6 +54,7 @@ trait SeedsCorpusFixtures
         $corpus->statement('
             CREATE TABLE public.polities (
                 polity_id text primary key,
+                osm_id text,
                 label text,
                 wikidata_id text,
                 flag_path text,
@@ -86,6 +87,7 @@ trait SeedsCorpusFixtures
     {
         DB::connection('pgsql_corpus')->table('public.polities')->insert(array_merge([
             'polity_id' => 'roman-republic',
+            'osm_id' => null,
             'label' => 'Roman Republic',
             'wikidata_id' => 'Q17167',
             'flag_path' => '/flags/roman-republic.png',

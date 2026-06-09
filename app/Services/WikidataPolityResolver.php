@@ -24,24 +24,48 @@ class WikidataPolityResolver
      */
     public function resolve(string $name): array
     {
-        $empty = [
-            'wikidata_id' => null, 'label' => null, 'summary' => null, 'wikipedia_url' => null,
-            'inception' => null, 'dissolution' => null, 'predecessor' => null, 'successor' => null,
-            'sitelinks' => 0, 'flag_commons' => null,
-        ];
-
         $search = $this->client()->get('https://www.wikidata.org/w/api.php', [
             'action' => 'wbsearchentities', 'search' => $name, 'language' => 'en',
             'type' => 'item', 'format' => 'json', 'limit' => 1,
         ])->json('search.0');
 
         if (! $search) {
-            return $empty;
+            return $this->emptyResult();
         }
         $qid = $search['id'];
 
         $entity = $this->client()->get("https://www.wikidata.org/wiki/Special:EntityData/{$qid}.json")
             ->json("entities.{$qid}", []);
+        if ($entity === []) {
+            return $this->emptyResult();
+        }
+
+        return $this->fromEntity($qid, $entity, $search['label'] ?? $name);
+    }
+
+    /**
+     * Enrich directly from a known Wikidata QID (OHM features carry the QID, so no name search).
+     *
+     * @return array<string,mixed> same shape as resolve()
+     */
+    public function resolveByQid(string $qid): array
+    {
+        $entity = $this->client()->get("https://www.wikidata.org/wiki/Special:EntityData/{$qid}.json")
+            ->json("entities.{$qid}", []);
+        if ($entity === []) {
+            return $this->emptyResult();
+        }
+
+        return $this->fromEntity($qid, $entity, $entity['labels']['en']['value'] ?? $qid);
+    }
+
+    /**
+     * Build the enrichment array from a fetched Wikidata entity.
+     *
+     * @return array<string,mixed>
+     */
+    private function fromEntity(string $qid, array $entity, string $label): array
+    {
         $claims = $entity['claims'] ?? [];
 
         $title = $entity['sitelinks']['enwiki']['title'] ?? null;
@@ -59,7 +83,7 @@ class WikidataPolityResolver
 
         return [
             'wikidata_id' => $qid,
-            'label' => $search['label'] ?? $name,
+            'label' => $label,
             'summary' => $summary,
             'wikipedia_url' => $wikipediaUrl,
             'inception' => $this->year($claims, 'P571'),
@@ -68,6 +92,16 @@ class WikidataPolityResolver
             'successor' => $succQid ? ($labels[$succQid] ?? $succQid) : null,
             'sitelinks' => count($entity['sitelinks'] ?? []),
             'flag_commons' => $claims['P41'][0]['mainsnak']['datavalue']['value'] ?? null,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function emptyResult(): array
+    {
+        return [
+            'wikidata_id' => null, 'label' => null, 'summary' => null, 'wikipedia_url' => null,
+            'inception' => null, 'dissolution' => null, 'predecessor' => null, 'successor' => null,
+            'sitelinks' => 0, 'flag_commons' => null,
         ];
     }
 
