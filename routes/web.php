@@ -50,20 +50,30 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 
-    Route::get('/timemap/polity/{polityId}', function (string $polityId) {
-        $p = \Illuminate\Support\Facades\DB::connection('pgsql_corpus')
-            ->table('public.polities')->where('polity_id', $polityId)->first();
+    Route::get('/timemap/polity/{osmId}', function (\Illuminate\Http\Request $request, string $osmId) {
+        $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');
+        $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
+
+        // Lazy-enrich on a miss when the click provides a name.
+        if (! $p && $request->filled('name')) {
+            $data = app(\App\Services\WikidataPolityResolver::class)->resolve($request->string('name')->toString());
+            $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
+                'polity_id' => $osmId, 'label' => $data['label'] ?? $request->string('name')->toString(),
+                'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],
+                'wikipedia_url' => $data['wikipedia_url'], 'inception' => $data['inception'],
+                'dissolution' => $data['dissolution'], 'predecessor' => $data['predecessor'],
+                'successor' => $data['successor'], 'sitelinks' => $data['sitelinks'],
+                'significant' => true, 'updated_at' => now(),
+            ]);
+            $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
+        }
 
         return response()->json([
-            'polity_id' => $polityId,
-            'label' => $p?->label,
-            'summary' => $p?->summary,
-            'flag_path' => $p?->flag_path,
-            'wikipedia_url' => $p?->wikipedia_url,
+            'osm_id' => $osmId, 'label' => $p?->label, 'summary' => $p?->summary,
+            'flag_path' => $p?->flag_path, 'wikipedia_url' => $p?->wikipedia_url,
             'inception' => $p?->inception !== null ? (int) $p->inception : null,
             'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
-            'predecessor' => $p?->predecessor,
-            'successor' => $p?->successor,
+            'predecessor' => $p?->predecessor, 'successor' => $p?->successor,
         ])->header('Cache-Control', 'public, max-age=86400');
     })->name('timemap.polity');
 

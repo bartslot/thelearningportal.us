@@ -12,8 +12,9 @@
     {{-- Polity info panel (TimeMap.org-style) --}}
     <aside x-data="{ tab: 'summary', polity: null, loading: false }"
            x-on:polity-selected.window="
+                if (!$event.detail.id) { polity = null; loading = false; return; }
                 loading = true; polity = null; tab = 'summary';
-                fetch('/teacher/timemap/polity/' + $event.detail.id)
+                fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || ''))
                     .then(r => r.json()).then(d => { polity = d; loading = false; });
            "
            class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">
