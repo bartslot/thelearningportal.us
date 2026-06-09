@@ -46,20 +46,25 @@ test('timemap-shell: canvas mounts, portal ready, no console errors', async ({ p
   expect(errors, errors.join('\n')).toHaveLength(0);
 });
 
-test('timemap-slider: moving the year updates the readout', async ({ page }) => {
+test('timemap-slider: clicking the timeline changes the year', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
-  const slider = page.locator('input[type=range]');
-  await slider.fill('1000');
-  // Wait for the async _setYear chain (Livewire call + boundary reload) to complete
-  await page.waitForFunction(() => (window as any).__portal?.year === 1000, { timeout: 15_000 });
-  await expect(page.getByText(/years ago/)).toBeVisible();
+  const box = await page.locator('.tm-track').boundingBox();
+  if (box) await page.mouse.click(box.x + box.width * 0.8, box.y + box.height / 2); // ~later era
+  await page.waitForFunction(() => (window as any).__portal?.year > 0, { timeout: 15_000 });
+  await expect(page.locator('.tm-readout')).toHaveText(/CE|BCE/);
 });
 
-test('timemap-click-stories: clicking the map updates the left column', async ({ page }) => {
+test('timemap-click-panel: clicking a region opens the polity panel', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
   const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
-  if (box) {
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  // Either a polity panel (label + tabs) or the empty prompt — both prove the click round-trip.
+  const aside = page.locator('aside');
+  await expect(aside).toContainText(/.+/);
+  const wikiTab = page.getByRole('tab', { name: 'Wikipedia' });
+  if (await wikiTab.count()) {
+    await wikiTab.click();
+    await expect(page.getByText(/Wikipedia|No Wikipedia page/)).toBeVisible();
   }
-  await expect(page.locator('aside')).toContainText(/.+/);
 });

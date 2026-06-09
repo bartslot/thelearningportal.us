@@ -14,8 +14,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const map = new maplibregl.Map({
     container: el,
     style: 'https://demotiles.maplibre.org/style.json',
-    center: [20, 30],
-    zoom: 2,
+    center: [15, 50], // Europe
+    zoom: 4,
     attributionControl: { customAttribution: 'Borders © historical-basemaps (CC-BY-SA)' },
   });
 
