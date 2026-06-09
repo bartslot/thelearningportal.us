@@ -46,12 +46,28 @@ test('timemap-shell: canvas mounts, portal ready, no console errors', async ({ p
   expect(errors, errors.join('\n')).toHaveLength(0);
 });
 
-test('timemap-slider: clicking the timeline changes the year', async ({ page }) => {
+test('timemap-year-input: typing a year scrubs the map', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
-  const box = await page.locator('.tm-track').boundingBox();
-  if (box) await page.mouse.click(box.x + box.width * 0.8, box.y + box.height / 2); // ~later era
-  await page.waitForFunction(() => (window as any).__portal?.year > 0, { timeout: 15_000 });
-  await expect(page.locator('.tm-readout')).toHaveText(/CE|BCE/);
+  const input = page.locator('.tm-year-input');
+  await input.fill('1500');
+  // Number input two-way-binds to the map year (debounced reload inside _setYear).
+  await page.waitForFunction(() => (window as any).__portal?.year === 1500, { timeout: 15_000 });
+  await expect(page.locator('.tm-era-suffix')).toHaveText('CE');
+  await expect(page.locator('.tm-readout')).toContainText('years ago');
+});
+
+test('timemap-timeline: dragging the tick timeline changes the year', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  const before = await page.evaluate(() => (window as any).__portal.year);
+  const box = await page.locator('.tm-scroll').boundingBox();
+  if (box) {
+    // Drag the strip leftwards → scrubs to a later year.
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2, { steps: 12 });
+    await page.mouse.up();
+  }
+  await page.waitForFunction((b) => (window as any).__portal.year !== b, before, { timeout: 15_000 });
 });
 
 test('timemap-click-panel: clicking a region opens the polity panel', async ({ page }) => {

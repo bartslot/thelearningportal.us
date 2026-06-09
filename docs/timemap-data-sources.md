@@ -18,7 +18,10 @@
   `DB_SEARCH_PATH=app`) so Laravel migrations can never touch the corpus.
 
 ## Region tagging
-- `resources/data/region-map.json` maps a slugified border polygon `NAME` to one of the 7
-  corpus macro-regions (Mediterranean, East Asia, Americas, South Asia, Northern Europe,
-  Middle East, Africa). Only mapped polities are imported. Expanding this map to match more of
-  the upstream `NAME` values yields more clickable regions.
+- `timemap:import-boundaries` imports **every** polygon in each snapshot (~77–92 per era,
+  ~658 total) and tags each with one of the 7 corpus macro-regions (Mediterranean, East Asia,
+  Americas, South Asia, Northern Europe, Middle East, Africa) by bucketing its **centroid**
+  (lng/lat) — see `ImportBoundaries::regionTaggingSql()`. This replaced an earlier brittle
+  name→region lookup that matched only ~9 of the hundreds of historical polygon names.
+- The centroid buckets are deliberately coarse; refine them in `regionTaggingSql()` if a
+  region is mis-bucketed.

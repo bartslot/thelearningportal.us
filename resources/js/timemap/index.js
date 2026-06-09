@@ -36,7 +36,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     'case',
     ['boolean', ['feature-state', 'selected'], false], '#f5c518',
     ['boolean', ['feature-state', 'hover'], false], '#ecd9a0',
-    ['at', ['%', ['get', 'color_key'], ATLAS_PALETTE.length], ['literal', ATLAS_PALETTE]],
+    // `match` returns colors directly; `['at', ['literal', [...strings]]]` is rejected by
+    // MapLibre's fill-color validator (Expected array<color> but found array<string>).
+    ['match', ['get', 'color_key'], ...ATLAS_PALETTE.flatMap((c, i) => [i, c]), ATLAS_PALETTE[0]],
   ];
   const FILL_OPACITY = [
     'case',
@@ -203,8 +205,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
 window.mountAtlasSlider = function (el, mapEl, initialYear) {
   let timer = null;
+  // Slider spans the full historical range; borders resolve to the nearest seeded snapshot
+  // (snapshotFor) inside _setYear, while the readout shows the exact scrubbed year.
   mountTimeSlider(el, {
-    min: -2000, max: 1880, value: initialYear,
+    min: -4000, max: 2010, value: initialYear,
     onYear: (year) => {
       clearTimeout(timer);
       timer = setTimeout(() => { if (mapEl._setYear) mapEl._setYear(year); }, 150);

@@ -3,6 +3,10 @@
 
 [x-cloak] { display: none !important; }
 
+/* Hide native scrollbar (used by the Time-Map timeline scrubber). */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../**/*.blade.php';
