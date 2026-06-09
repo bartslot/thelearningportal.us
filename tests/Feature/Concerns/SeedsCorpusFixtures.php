@@ -49,6 +49,24 @@ trait SeedsCorpusFixtures
                 created_at timestamptz,
                 updated_at timestamptz
             )');
+
+        $corpus->statement('DROP TABLE IF EXISTS public.polities');
+        $corpus->statement('
+            CREATE TABLE public.polities (
+                polity_id text primary key,
+                label text,
+                wikidata_id text,
+                flag_path text,
+                summary text,
+                wikipedia_url text,
+                inception integer,
+                dissolution integer,
+                predecessor text,
+                successor text,
+                sitelinks integer default 0,
+                significant boolean default true,
+                updated_at timestamptz
+            )');
     }
 
     protected function seedArticle(array $attrs = []): int
@@ -61,6 +79,25 @@ trait SeedsCorpusFixtures
             'era_end' => 100,
             'source_url' => 'https://example.test/a',
             'source_license' => 'CC-BY',
+        ], $attrs));
+    }
+
+    protected function seedPolity(array $attrs = []): void
+    {
+        DB::connection('pgsql_corpus')->table('public.polities')->insert(array_merge([
+            'polity_id' => 'roman-republic',
+            'label' => 'Roman Republic',
+            'wikidata_id' => 'Q17167',
+            'flag_path' => '/flags/roman-republic.png',
+            'summary' => 'The Roman Republic was a state...',
+            'wikipedia_url' => 'https://en.wikipedia.org/wiki/Roman_Republic',
+            'inception' => -509,
+            'dissolution' => -27,
+            'predecessor' => 'Roman Kingdom',
+            'successor' => 'Roman Empire',
+            'sitelinks' => 250,
+            'significant' => true,
+            'updated_at' => now(),
         ], $attrs));
     }
 
