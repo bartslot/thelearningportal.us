@@ -3,43 +3,64 @@
 @endpush
 
 <div class="relative h-[calc(100vh-4rem)] w-full"
-     x-data="{ year: @js($year), readout: '' }"
-     x-init="$nextTick(() => window.initTimeMap($refs.map, $wire, year))">
+     x-data="{}"
+     x-init="$nextTick(() => window.initTimeMap($refs.map, $wire, {{ $year }}))">
     {{-- Map canvas. Use h-full/w-full (not absolute inset-0): MapLibre's own CSS forces
          position:relative on the container, which cancels inset-0 and collapses it to 0 height. --}}
     <div x-ref="map" class="h-full w-full" wire:ignore></div>
 
-    {{-- Left story column --}}
-    <aside class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">
-        <h2 class="text-lg font-bold flex items-center gap-2">
-            <span wire:loading.remove wire:target="storiesForRegion">{{ $selectedPolity ?? __('Click a region') }}</span>
-            <span wire:loading wire:target="storiesForRegion" class="flex items-center gap-2 text-base-content/70">
-                <span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}
-            </span>
-        </h2>
-        {{-- Dim the list while a region's stories load so the click feels acknowledged. --}}
-        <div class="mt-3 space-y-3 transition-opacity" wire:loading.class="opacity-40" wire:target="storiesForRegion">
-            @forelse ($stories as $story)
-                <a href="{{ $story['source_url'] }}" target="_blank" rel="noopener"
-                   wire:key="story-{{ $story['id'] }}"
-                   class="card bg-base-200 p-3 hover:bg-base-300">
-                    <span class="font-semibold">{{ $story['title'] }}</span>
-                    <span class="text-xs opacity-70">{{ $story['era_start'] }}–{{ $story['era_end'] }}</span>
-                </a>
-            @empty
-                <p class="opacity-70">{{ __('No stories here yet') }}</p>
-            @endforelse
-        </div>
+    {{-- Polity info panel (TimeMap.org-style) --}}
+    <aside x-data="{ tab: 'summary', polity: null, loading: false }"
+           x-on:polity-selected.window="
+                loading = true; polity = null; tab = 'summary';
+                fetch('/teacher/timemap/polity/' + $event.detail.id)
+                    .then(r => r.json()).then(d => { polity = d; loading = false; });
+           "
+           class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">
+        <template x-if="!polity && !loading">
+            <p class="opacity-70">{{ __('Click a region') }}</p>
+        </template>
+        <template x-if="loading">
+            <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}</p>
+        </template>
+        <template x-if="polity">
+            <div>
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <template x-if="polity.flag_path"><img :src="polity.flag_path" class="h-5 rounded-sm shadow" alt=""></template>
+                        <h2 class="text-lg font-bold" x-text="polity.label"></h2>
+                    </div>
+                    <button class="btn btn-ghost btn-xs" x-on:click="polity = null">✕</button>
+                </div>
+                <p class="text-xs opacity-70"
+                   x-text="(polity.inception != null ? (polity.inception < 0 ? Math.abs(polity.inception)+' BCE' : polity.inception+' CE') : '?') + ' – ' + (polity.dissolution != null ? (polity.dissolution < 0 ? Math.abs(polity.dissolution)+' BCE' : polity.dissolution+' CE') : '')"></p>
+
+                <div role="tablist" class="tabs tabs-bordered mt-3">
+                    <a role="tab" class="tab" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
+                    <a role="tab" class="tab" :class="tab==='wikipedia' && 'tab-active'" x-on:click="tab='wikipedia'">{{ __('Wikipedia') }}</a>
+                    <a role="tab" class="tab" :class="tab==='overtime' && 'tab-active'" x-on:click="tab='overtime'">{{ __('Over Time') }}</a>
+                </div>
+
+                <div class="mt-3 text-sm">
+                    <p x-show="tab==='summary'" x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
+                    <div x-show="tab==='wikipedia'">
+                        <template x-if="polity.wikipedia_url">
+                            <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary">{{ __('Open on Wikipedia ↗') }}</a>
+                        </template>
+                        <p x-show="!polity.wikipedia_url" class="opacity-70">{{ __('No Wikipedia page linked.') }}</p>
+                    </div>
+                    <div x-show="tab==='overtime'" class="space-y-1">
+                        <p><span class="opacity-70">{{ __('Preceded by') }}:</span> <span x-text="polity.predecessor || '—'"></span></p>
+                        <p><span class="opacity-70">{{ __('Succeeded by') }}:</span> <span x-text="polity.successor || '—'"></span></p>
+                    </div>
+                </div>
+            </div>
+        </template>
     </aside>
 
-    {{-- Time slider + readout --}}
-    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-[36rem] max-w-[90vw] -translate-x-1/2 rounded-box bg-base-100/95 p-4 shadow-xl">
-        <input type="range" class="range range-primary" min="-2000" max="1880" step="10"
-               x-ref="slider" x-model.number="year"
-               @input.debounce.150ms="(async () => { readout = await $refs.map._setYear(year) })()" />
-        <div class="mt-2 flex justify-between text-sm">
-            <span x-text="year < 0 ? Math.abs(year) + ' BCE' : year + ' CE'"></span>
-            <span x-text="readout"></span>
-        </div>
+    {{-- Time slider (oldmapsonline-style) --}}
+    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-[44rem] max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+         x-ref="sliderbox"
+         x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>
 </div>
