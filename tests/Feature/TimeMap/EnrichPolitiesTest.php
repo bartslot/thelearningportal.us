@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\TimeMap;
 
-use App\Models\Corpus\Boundary;
 use App\Services\WikidataPolityResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +50,35 @@ class EnrichPolitiesTest extends TestCase
         $this->assertStringContainsString('Western Europe', $data['summary']);
         $this->assertSame('https://en.wikipedia.org/wiki/Belgium', $data['wikipedia_url']);
         $this->assertSame('Flag of Belgium.svg', $data['flag_commons']);
+    }
+
+    public function test_resolver_resolves_predecessor_successor_to_labels(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'wbsearchentities')) {
+                return Http::response(['search' => [['id' => 'Q31', 'label' => 'Belgium']]]);
+            }
+            if (str_contains($url, 'wbgetentities')) {
+                return Http::response(['entities' => [
+                    'Q29999' => ['labels' => ['en' => ['value' => 'United Kingdom of the Netherlands']]],
+                ]]);
+            }
+            if (str_contains($url, 'EntityData/Q31')) {
+                return Http::response(['entities' => ['Q31' => [
+                    'claims' => ['P155' => [['mainsnak' => ['datavalue' => ['value' => ['id' => 'Q29999']]]]]],
+                    'sitelinks' => [],
+                ]]]);
+            }
+
+            return Http::response([]);
+        });
+
+        $data = app(WikidataPolityResolver::class)->resolve('Kingdom of Belgium');
+
+        // Predecessor comes back as a human label, not the raw QID.
+        $this->assertSame('United Kingdom of the Netherlands', $data['predecessor']);
+        $this->assertNull($data['successor']);
     }
 
     public function test_resolver_returns_nulls_when_unresolved(): void

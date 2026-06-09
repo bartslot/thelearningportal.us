@@ -53,6 +53,10 @@ class WikidataPolityResolver
             $wikipediaUrl = $sum['content_urls']['desktop']['page'] ?? null;
         }
 
+        $predQid = $this->itemQid($claims, 'P155');
+        $succQid = $this->itemQid($claims, 'P156');
+        $labels = $this->labelsFor(array_filter([$predQid, $succQid]));
+
         return [
             'wikidata_id' => $qid,
             'label' => $search['label'] ?? $name,
@@ -60,11 +64,39 @@ class WikidataPolityResolver
             'wikipedia_url' => $wikipediaUrl,
             'inception' => $this->year($claims, 'P571'),
             'dissolution' => $this->year($claims, 'P576'),
-            'predecessor' => $this->itemLabel($claims, 'P155'),
-            'successor' => $this->itemLabel($claims, 'P156'),
+            'predecessor' => $predQid ? ($labels[$predQid] ?? $predQid) : null,
+            'successor' => $succQid ? ($labels[$succQid] ?? $succQid) : null,
             'sitelinks' => count($entity['sitelinks'] ?? []),
             'flag_commons' => $claims['P41'][0]['mainsnak']['datavalue']['value'] ?? null,
         ];
+    }
+
+    /**
+     * Resolve Wikidata item QIDs to their English labels in one batched call.
+     *
+     * @param  string[]  $qids
+     * @return array<string,string> qid => label (missing labels omitted)
+     */
+    public function labelsFor(array $qids): array
+    {
+        $qids = array_values(array_unique(array_filter($qids)));
+        if ($qids === []) {
+            return [];
+        }
+
+        $entities = $this->client()->get('https://www.wikidata.org/w/api.php', [
+            'action' => 'wbgetentities', 'ids' => implode('|', $qids),
+            'props' => 'labels', 'languages' => 'en', 'format' => 'json',
+        ])->json('entities', []);
+
+        $out = [];
+        foreach ($qids as $qid) {
+            if (isset($entities[$qid]['labels']['en']['value'])) {
+                $out[$qid] = $entities[$qid]['labels']['en']['value'];
+            }
+        }
+
+        return $out;
     }
 
     private function year(array $claims, string $prop): ?int
@@ -77,7 +109,7 @@ class WikidataPolityResolver
         return (int) preg_replace('/^([+-]?\d+)-.*/', '$1', $time);
     }
 
-    private function itemLabel(array $claims, string $prop): ?string
+    private function itemQid(array $claims, string $prop): ?string
     {
         return $claims[$prop][0]['mainsnak']['datavalue']['value']['id'] ?? null;
     }
