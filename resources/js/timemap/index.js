@@ -63,10 +63,47 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   ];
   const applyYear = (year) => {
     if (!map.getLayer('boundaries-fill')) return;
-    const labelBase = ['<=', ['to-number', ['get', 'admin_level']], 4];
     map.setFilter('boundaries-fill', dateFilter(year));
     map.setFilter('boundaries-line', dateFilter(year));
-    map.setFilter('boundaries-label', ['all', labelBase, dateFilter(year)]);
+    map.once('idle', refreshLabels); // recompute one label per visible polity for the new era
+  };
+
+  // OHM polities are multi-island MultiPolygons split across tiles; a vector-tile symbol layer
+  // drops a label on EVERY part. Instead we derive ONE label per polity (osm_id) at the centroid
+  // of its largest visible polygon and feed those points to a dedicated GeoJSON label layer.
+  const ringCentroid = (ring) => {
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [x0, y0] = ring[j];
+      const [x1, y1] = ring[i];
+      const f = x0 * y1 - x1 * y0;
+      a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f;
+    }
+    if (a === 0) return { area: 0, c: ring[0] };
+    return { area: Math.abs(a / 2), c: [cx / (3 * a), cy / (3 * a)] };
+  };
+  const refreshLabels = () => {
+    const src = map.getSource('labels');
+    if (!src || !map.getLayer('boundaries-fill')) return;
+    const best = new Map(); // osm_id -> { area, c, name }
+    for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
+      const name = f.properties.name_en || f.properties.name;
+      if (name == null) continue;
+      const id = f.properties.osm_id;
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const poly of polys) {
+        const { area, c } = ringCentroid(poly[0]);
+        const cur = best.get(id);
+        if (!cur || area > cur.area) best.set(id, { area, c, name });
+      }
+    }
+    src.setData({
+      type: 'FeatureCollection',
+      features: [...best.values()].map((b) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: b.c }, properties: { name: b.name },
+      })),
+    });
   };
 
   let hoveredId = null;
@@ -87,16 +124,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       id: 'boundaries-line', type: 'line', source: 'ohm', 'source-layer': 'boundaries',
       paint: { 'line-color': '#9a7b4f', 'line-width': 0.7, 'line-opacity': 0.7 },
     });
+    // One derived label point per polity (see refreshLabels) — never per tile-clipped part.
+    map.addSource('labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({
-      id: 'boundaries-label', type: 'symbol', source: 'ohm', 'source-layer': 'boundaries',
+      id: 'boundaries-label', type: 'symbol', source: 'labels',
       layout: {
-        // OHM names are native-language; prefer the English name for the schools atlas.
-        'text-field': ['coalesce', ['get', 'name_en'], ['get', 'name']],
-        'text-size': 11, 'text-allow-overlap': false, 'text-optional': true,
-        'symbol-placement': 'point',
+        'text-field': ['get', 'name'],
+        'text-size': 12, 'text-allow-overlap': false, 'text-optional': true,
       },
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
+    map.on('moveend', refreshLabels);
 
     applyYear(state.year);
 
