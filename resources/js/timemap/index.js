@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
+import { mountTimeSlider } from './slider.js';
 
 // Mounted by the Blade view via x-init. `wire` is the Livewire component proxy ($wire).
 window.initTimeMap = function initTimeMap(el, wire, initialYear) {
@@ -26,18 +27,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // Some WebGL backends don't paint the GeoJSON fill until its paint is re-applied *after* the
   // worker finishes parsing the features. Re-applying color+opacity forces a full re-evaluation
   // and redraw; we do it on the next idle (parse+render settled) plus a timeout fallback.
-  // Muted by default; the hovered/selected region stands out in brand yellow.
+  // Distinct muted "atlas" palette, chosen per polity via the exported color_key (0..11).
+  const ATLAS_PALETTE = [
+    '#c9b79c', '#a8b9a0', '#cbb3a1', '#b6a8c0', '#c2c0a0', '#a9bcc4',
+    '#d0bfa8', '#b9a99a', '#aebfa6', '#c8b6b0', '#b0b6a0', '#bcae9e',
+  ];
   const FILL_COLOR = [
     'case',
-    ['boolean', ['feature-state', 'selected'], false], '#f5c518', // selected = brand yellow
-    ['boolean', ['feature-state', 'hover'], false], '#fcd34d',     // hover = lighter yellow
-    '#e0cfa0',                                                      // default = muted parchment-tan
+    ['boolean', ['feature-state', 'selected'], false], '#f5c518',
+    ['boolean', ['feature-state', 'hover'], false], '#ecd9a0',
+    ['at', ['%', ['get', 'color_key'], ATLAS_PALETTE.length], ['literal', ATLAS_PALETTE]],
   ];
   const FILL_OPACITY = [
     'case',
-    ['boolean', ['feature-state', 'selected'], false], 0.9,
-    ['boolean', ['feature-state', 'hover'], false], 0.7,
-    0.35,
+    ['boolean', ['feature-state', 'selected'], false], 0.95,
+    ['boolean', ['feature-state', 'hover'], false], 0.85,
+    0.7,
   ];
   const applyFillPaint = () => {
     if (!map.getLayer('boundaries-fill')) return;
@@ -58,6 +63,36 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const SNAPSHOTS = [-2000, -1500, -500, 200, 500, 1000, 1880];
   const snapshotFor = (year) => SNAPSHOTS.filter((s) => s <= year).pop() ?? SNAPSHOTS[0];
 
+  const loadFlags = async (labelsFc) => {
+    const ids = [...new Set(labelsFc.features.map((f) => f.properties.flag_id).filter(Boolean))];
+    await Promise.all(ids.map(async (id) => {
+      if (map.hasImage(`flag-${id}`)) return;
+      try {
+        const img = await map.loadImage(`/flags/${id}.png`);
+        if (!map.hasImage(`flag-${id}`)) map.addImage(`flag-${id}`, img.data);
+      } catch { /* missing flag */ }
+    }));
+  };
+
+  const setLabels = async () => {
+    const fc = await (await fetch(`/geo/labels/${snapshotFor(state.year)}.geojson`)).json();
+    await loadFlags(fc);
+    const src = map.getSource('labels');
+    if (src) { src.setData(fc); return; }
+    map.addSource('labels', { type: 'geojson', data: fc });
+    map.addLayer({
+      id: 'labels-symbol', type: 'symbol', source: 'labels',
+      layout: {
+        'icon-image': ['case', ['==', ['get', 'flag_id'], ''], '', ['concat', 'flag-', ['get', 'flag_id']]],
+        'icon-size': 0.5, 'icon-allow-overlap': false,
+        'text-field': ['concat', ['get', 'label'], '\n', ['get', 'date_label']],
+        'text-size': 11, 'text-offset': [0, 1.4], 'text-anchor': 'top',
+        'text-optional': true, 'text-allow-overlap': false,
+      },
+      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
+    });
+  };
+
   const setBoundaries = async () => {
     // Static, full-quality GeoJSON served from the app/CDN — no remote DB round-trip on load.
     const res = await fetch(`/geo/boundaries/${snapshotFor(state.year)}.geojson`);
@@ -68,6 +103,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       hoveredId = null;
       selectedId = null; // features are replaced; drop any persisted selection
       nudgeFill();
+      await setLabels();
 
       return;
     }
@@ -78,7 +114,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.addLayer({
       id: 'boundaries-fill', type: 'fill', source: 'boundaries',
       paint: {
-        // Colour each region by its macro-region so the historical world reads at a glance.
+        // Colour each region by its color_key so each polity gets a distinct atlas hue.
         'fill-color': FILL_COLOR,
         // Brighten the region under the cursor so it reads as clickable.
         'fill-opacity': FILL_OPACITY,
@@ -91,6 +127,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     });
 
     nudgeFill();
+    await setLabels();
 
     // Pointer cursor + hover highlight over historical regions.
     map.on('mousemove', 'boundaries-fill', (e) => {
@@ -144,11 +181,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setFeatureState({ source: 'boundaries', id: selectedId }, { selected: true });
     }
 
-    const region = hit ? hit.properties.region : null;
-    const polity = hit ? hit.properties.name : null;
-    state.selectedRegion = region;
+    const polityId = hit ? hit.properties.polity_id : null;
+    state.selectedRegion = polityId; // mirror for the test hook (exported props no longer carry `region`)
     sync();
-    await wire.storiesForRegion(region, polity, state.year);
+    window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: polityId } }));
   });
 
   // Called by the Alpine slider on input.
@@ -163,4 +199,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   el._tmMap = map;
 
   return map;
+};
+
+window.mountAtlasSlider = function (el, mapEl, initialYear) {
+  let timer = null;
+  mountTimeSlider(el, {
+    min: -2000, max: 1880, value: initialYear,
+    onYear: (year) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (mapEl._setYear) mapEl._setYear(year); }, 150);
+    },
+  });
 };
