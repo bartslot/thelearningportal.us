@@ -26,18 +26,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // Some WebGL backends don't paint the GeoJSON fill until its paint is re-applied *after* the
   // worker finishes parsing the features. Re-applying color+opacity forces a full re-evaluation
   // and redraw; we do it on the next idle (parse+render settled) plus a timeout fallback.
+  // Muted by default; the hovered/selected region stands out in brand yellow.
   const FILL_COLOR = [
-    'match', ['get', 'region'],
-    'Mediterranean', '#f59e0b',
-    'Middle East', '#ef4444',
-    'East Asia', '#8b5cf6',
-    'South Asia', '#ec4899',
-    'Northern Europe', '#3b82f6',
-    'Africa', '#10b981',
-    'Americas', '#f97316',
-    /* other */ '#9ca3af',
+    'case',
+    ['boolean', ['feature-state', 'selected'], false], '#f5c518', // selected = brand yellow
+    ['boolean', ['feature-state', 'hover'], false], '#fcd34d',     // hover = lighter yellow
+    '#e0cfa0',                                                      // default = muted parchment-tan
   ];
-  const FILL_OPACITY = ['case', ['boolean', ['feature-state', 'hover'], false], 0.92, 0.72];
+  const FILL_OPACITY = [
+    'case',
+    ['boolean', ['feature-state', 'selected'], false], 0.9,
+    ['boolean', ['feature-state', 'hover'], false], 0.7,
+    0.35,
+  ];
   const applyFillPaint = () => {
     if (!map.getLayer('boundaries-fill')) return;
     map.setPaintProperty('boundaries-fill', 'fill-color', FILL_COLOR);
@@ -50,6 +51,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   };
 
   let hoveredId = null;
+  let selectedId = null;
 
   // Seeded era snapshots (must match timemap:export-boundaries). Borders for any year come from
   // the snapshot whose era contains it: the latest snapshot at or before the year.
@@ -64,6 +66,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (src) {
       src.setData(fc);
       hoveredId = null;
+      selectedId = null; // features are replaced; drop any persisted selection
       nudgeFill();
 
       return;
@@ -84,7 +87,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     });
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'boundaries',
-      paint: { 'line-color': '#1e293b', 'line-width': 0.6, 'line-opacity': 0.5 },
+      paint: { 'line-color': '#9a7b4f', 'line-width': 0.7, 'line-opacity': 0.7 },
     });
 
     nudgeFill();
@@ -109,14 +112,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   };
 
   map.on('load', async () => {
-    // Calm the modern demotiles base so the historical regions are the visual focus:
-    // hide labels/graticule, and neutralise the rainbow country fills to a soft grey.
-    for (const id of ['countries-label', 'geolines-label', 'geolines']) {
+    // Rustic, less-modern base in the brand palette: parchment land, light-blue water, soft
+    // sepia coastlines, and no modern country borders / labels / graticule / crimea overlay.
+    for (const id of ['countries-label', 'geolines-label', 'geolines', 'countries-boundary', 'crimea-fill']) {
       try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none'); } catch { /* layer absent */ }
     }
-    try { map.setPaintProperty('countries-fill', 'fill-color', '#e2e6eb'); } catch { /* layer absent */ }
-    try { map.setPaintProperty('countries-fill', 'fill-opacity', 1); } catch { /* layer absent */ }
-    try { map.setPaintProperty('countries-boundary', 'line-color', '#c7ccd4'); } catch { /* layer absent */ }
+    const tweak = (layer, prop, value) => {
+      try { if (map.getLayer(layer)) map.setPaintProperty(layer, prop, value); } catch { /* layer absent */ }
+    };
+    tweak('background', 'background-color', '#d8e9f3'); // water = soft light blue
+    tweak('countries-fill', 'fill-color', '#f3ead6');   // land = parchment cream
+    tweak('countries-fill', 'fill-opacity', 1);
+    tweak('coastline', 'line-color', '#b89b6e');        // soft sepia coast
+    tweak('coastline', 'line-width', 0.8);
     await setBoundaries();
     state.ready = true;
     sync();
@@ -126,6 +134,16 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Identify the clicked polity client-side from the already-loaded boundaries — instant,
     // no server round-trip — then fetch only that region's articles.
     const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0];
+
+    // Persist the highlight on the clicked region (brand yellow).
+    if (selectedId !== null) {
+      map.setFeatureState({ source: 'boundaries', id: selectedId }, { selected: false });
+    }
+    selectedId = hit ? hit.id : null;
+    if (selectedId !== null) {
+      map.setFeatureState({ source: 'boundaries', id: selectedId }, { selected: true });
+    }
+
     const region = hit ? hit.properties.region : null;
     const polity = hit ? hit.properties.name : null;
     state.selectedRegion = region;
