@@ -635,3 +635,18 @@ git commit -m "refactor(ohm): retire historical-basemaps pipeline; docs + playwr
 - **Names stay consistent:** the `boundaries` source-layer + `ohm`/`land` source ids, `resolveByQid`, `applyYear(year)`, `el._setYear`, the `polity-selected` event `{ id, name }`, the `/teacher/timemap/polity/{osmId}?name=` endpoint.
 - **External HTTP is faked in tests**; the real fetch/sync runs are controller-run, networked, and slow.
 - **Tiles are gitignored**, never committed.
+
+---
+
+## Spike findings (Task 1 — VERDICT: GO)
+
+- **Coverage** (sampled z4 Europe tiles, decoded): real, time-accurate.
+  - 235 BCE: Res Publica Romana (time-sliced 238–218 BCE), Qart-ḥadašt (Carthage), Kingdom of Pontus, Parthia, Massylii/Massaesylii (Numidia), Iberian tribes, Greek regions (Attica/Boeotia/Megaris), Egyptian nomes.
+  - 1000 CE: 94 features (Welsh/Catalan/French counties, Castile, Venice).
+  - 1850 CE: 236 features (Baden, Braunschweig, Bremen, Danish Amts, Italian/Spanish regions, British Empire).
+  - Far richer + dated than historical-basemaps. (Gaul not in the limited sample; OHM models sub-regions — verify French coverage when the tiles are mirrored.)
+- **osm_id format = NEGATIVE integer** (e.g. `-2851760`). Key `polities` by the raw tile osm_id (a negative int as text). In `sync-ohm-polities`, derive the same key from Overpass as `-{relation id}` (Overpass ids are positive). The fill-color hash uses `['abs', ['to-number', ['get','osm_id']]]`. **Drop the `r` prefix from the plan; no `r` anywhere.**
+- **Date filter:** BCE decdates are negative; the manual expression `['all', ['<=', start_decdate, year], ['>', end_decdate, year]]` (coalesce undefined end_decdate to +1e6) works for BCE + CE. **No maplibre-gl-dates dependency** — skip the package.
+- **Labels:** features carry native-language `name`; use `['coalesce', ['get','name_en'], ['get','name']]` for the English-school atlas.
+- **Tile size:** z0–5 raw = 80.4 MB / 114 tiles (the ~300 `name_xx` fields dominate). **Decision: cap `FetchOhmTiles` at `--maxzoom=4` (~28 MB) raw, no re-tiling** (simplest; gitignored; navigation-tool low detail is fine at z≤4). Re-tiling to drop `name_xx` is a future optimization if needed.
+- **Overpass:** `https://overpass-api.openhistoricalmap.org/api/interpreter` returns `wikidata`, `name`, `admin_level`, `start_date`, `end_date` for major admin relations. QID-precise enrichment confirmed.
