@@ -41,7 +41,8 @@ class EnrichPolities extends Command
             $flagPath = null;
             if ($data['flag_commons']) {
                 $flagPath = "/flags/{$p->polity_id}.png";
-                $bytes = Http::get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=80')->body();
+                $bytes = Http::withHeaders(['User-Agent' => 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational'])
+                    ->get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=80')->body();
                 File::put($flagsDir.'/'.$p->polity_id.'.png', $bytes);
             }
 

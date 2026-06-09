@@ -4,10 +4,19 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 class WikidataPolityResolver
 {
+    // Wikimedia blocks requests without a descriptive User-Agent (HTTP 403). See their UA policy.
+    private const USER_AGENT = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
+
+    private function client(): PendingRequest
+    {
+        return Http::withHeaders(['User-Agent' => self::USER_AGENT]);
+    }
+
     /**
      * @return array{wikidata_id:?string,label:?string,summary:?string,wikipedia_url:?string,
      *               inception:?int,dissolution:?int,predecessor:?string,successor:?string,
@@ -21,7 +30,7 @@ class WikidataPolityResolver
             'sitelinks' => 0, 'flag_commons' => null,
         ];
 
-        $search = Http::get('https://www.wikidata.org/w/api.php', [
+        $search = $this->client()->get('https://www.wikidata.org/w/api.php', [
             'action' => 'wbsearchentities', 'search' => $name, 'language' => 'en',
             'type' => 'item', 'format' => 'json', 'limit' => 1,
         ])->json('search.0');
@@ -31,7 +40,7 @@ class WikidataPolityResolver
         }
         $qid = $search['id'];
 
-        $entity = Http::get("https://www.wikidata.org/wiki/Special:EntityData/{$qid}.json")
+        $entity = $this->client()->get("https://www.wikidata.org/wiki/Special:EntityData/{$qid}.json")
             ->json("entities.{$qid}", []);
         $claims = $entity['claims'] ?? [];
 
@@ -39,7 +48,7 @@ class WikidataPolityResolver
         $summary = null;
         $wikipediaUrl = null;
         if ($title) {
-            $sum = Http::get('https://en.wikipedia.org/api/rest_v1/page/summary/'.rawurlencode($title))->json();
+            $sum = $this->client()->get('https://en.wikipedia.org/api/rest_v1/page/summary/'.rawurlencode($title))->json();
             $summary = $sum['extract'] ?? null;
             $wikipediaUrl = $sum['content_urls']['desktop']['page'] ?? null;
         }
