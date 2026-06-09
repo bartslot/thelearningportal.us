@@ -50,6 +50,23 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 
+    Route::get('/timemap/polity/{polityId}', function (string $polityId) {
+        $p = \Illuminate\Support\Facades\DB::connection('pgsql_corpus')
+            ->table('public.polities')->where('polity_id', $polityId)->first();
+
+        return response()->json([
+            'polity_id' => $polityId,
+            'label' => $p?->label,
+            'summary' => $p?->summary,
+            'flag_path' => $p?->flag_path,
+            'wikipedia_url' => $p?->wikipedia_url,
+            'inception' => $p?->inception !== null ? (int) $p->inception : null,
+            'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
+            'predecessor' => $p?->predecessor,
+            'successor' => $p?->successor,
+        ])->header('Cache-Control', 'public, max-age=86400');
+    })->name('timemap.polity');
+
     Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
     Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
