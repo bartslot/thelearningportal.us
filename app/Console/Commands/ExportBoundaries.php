@@ -26,36 +26,71 @@ class ExportBoundaries extends Command
 
     public function handle(): int
     {
-        $dir = public_path('geo/boundaries');
-        File::ensureDirectoryExists($dir);
+        $boundariesDir = public_path('geo/boundaries');
+        $labelsDir = public_path('geo/labels');
+        File::ensureDirectoryExists($boundariesDir);
+        File::ensureDirectoryExists($labelsDir);
 
         $corpus = DB::connection('pgsql_corpus');
         $total = 0;
 
         foreach ($this->years as $year) {
-            // Full geometry, 6-decimal coords (~0.1 m — visually lossless, no simplification).
+            // Join polities so we can drop insignificant polygons and carry label/flag/date data.
             $rows = $corpus->select(
-                "select polity_id, name, extra->>'region' as region,
-                        ST_AsGeoJSON(geom::geometry, 6) as geometry
-                 from public.boundaries
-                 where valid_from <= ? and valid_to >= ?",
+                'select b.polity_id,
+                        coalesce(p.label, b.name) as label,
+                        b.valid_from, b.valid_to,
+                        coalesce(p.flag_path, null) as flag_path,
+                        ST_AsGeoJSON(b.geom::geometry, 6) as geometry,
+                        ST_AsGeoJSON(ST_PointOnSurface(b.geom::geometry)) as centroid
+                 from public.boundaries b
+                 left join public.polities p on p.polity_id = b.polity_id
+                 where b.valid_from <= ? and b.valid_to >= ?
+                   and coalesce(p.significant, true) = true',
                 [$year, $year]
             );
 
-            $features = array_map(fn ($r) => [
-                'type' => 'Feature',
-                'properties' => ['polity_id' => $r->polity_id, 'name' => $r->name, 'region' => $r->region],
-                'geometry' => json_decode($r->geometry),
-            ], $rows);
+            $features = [];
+            $labels = [];
+            foreach ($rows as $r) {
+                $features[] = [
+                    'type' => 'Feature',
+                    'properties' => [
+                        'polity_id' => $r->polity_id,
+                        'label' => $r->label,
+                        'year_start' => (int) $r->valid_from,
+                        'year_end' => (int) $r->valid_to,
+                        'color_key' => abs(crc32($r->polity_id)) % 12,
+                    ],
+                    'geometry' => json_decode($r->geometry),
+                ];
+                $labels[] = [
+                    'type' => 'Feature',
+                    'properties' => [
+                        'polity_id' => $r->polity_id,
+                        'label' => $r->label,
+                        'date_label' => $this->dateLabel((int) $r->valid_from, (int) $r->valid_to),
+                        'flag_id' => $r->flag_path ? $r->polity_id : '',
+                    ],
+                    'geometry' => json_decode($r->centroid),
+                ];
+            }
 
-            $path = "{$dir}/{$year}.geojson";
-            File::put($path, json_encode(['type' => 'FeatureCollection', 'features' => $features]));
-            $this->info(sprintf('wrote %d.geojson (%d features, %.0f KB)', $year, count($rows), filesize($path) / 1024));
-            $total += count($rows);
+            File::put("{$boundariesDir}/{$year}.geojson", json_encode(['type' => 'FeatureCollection', 'features' => $features]));
+            File::put("{$labelsDir}/{$year}.geojson", json_encode(['type' => 'FeatureCollection', 'features' => $labels]));
+            $this->info(sprintf('wrote %d: %d polygons + labels', $year, count($features)));
+            $total += count($features);
         }
 
-        $this->info("exported {$total} boundary features to {$dir}");
+        $this->info("exported {$total} significant polygons to {$boundariesDir}");
 
         return self::SUCCESS;
+    }
+
+    private function dateLabel(int $from, int $to): string
+    {
+        $fmt = fn (int $y) => $y < 0 ? abs($y).' BCE' : $y.' CE';
+
+        return $fmt($from).' – '.$fmt($to);
     }
 }
