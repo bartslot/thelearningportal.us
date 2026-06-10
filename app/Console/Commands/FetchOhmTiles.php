@@ -33,29 +33,56 @@ class FetchOhmTiles extends Command
         $got = 0;
         $bytes = 0;
 
+        $skipped = 0;
         foreach ($this->tilesets as $set => $url) {
             for ($z = 0; $z <= $maxZoom; $z++) {
                 [$x0, $y0, $x1, $y1] = $this->tileRange($z);
                 for ($x = $x0; $x <= $x1; $x++) {
                     for ($y = $y0; $y <= $y1; $y++) {
-                        $res = Http::withHeaders(['User-Agent' => self::UA])->get("{$url}/{$z}/{$x}/{$y}.pbf");
-                        if (! $res->ok()) {
-                            continue; // 404 = empty tile, skip
+                        $body = $this->fetchTile("{$url}/{$z}/{$x}/{$y}.pbf", $skipped);
+                        if ($body === null) {
+                            continue; // empty (404) or gave up after retries
                         }
                         $dir = "{$base}/{$set}/{$z}/{$x}";
                         File::ensureDirectoryExists($dir);
-                        File::put("{$dir}/{$y}.pbf", $res->body());
+                        File::put("{$dir}/{$y}.pbf", $body);
                         $got++;
-                        $bytes += strlen($res->body());
+                        $bytes += strlen($body);
+                        usleep(40_000); // ~25 req/s — polite, avoids OHM rate-limiting
                     }
                 }
             }
             $this->info("{$set}: mirrored to z{$maxZoom}");
         }
 
-        $this->info(sprintf('fetched %d tiles, %.1f MB', $got, $bytes / 1048576));
+        $this->info(sprintf('fetched %d tiles, %.1f MB%s', $got, $bytes / 1048576,
+            $skipped > 0 ? " ({$skipped} gave up after retries)" : ''));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Fetch one tile, distinguishing an empty tile (404 → null, normal) from throttling/transient
+     * errors (429/5xx → back off and retry, honouring Retry-After). $skipped counts give-ups.
+     */
+    private function fetchTile(string $url, int &$skipped): ?string
+    {
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $res = Http::withHeaders(['User-Agent' => self::UA])->timeout(30)->get($url);
+            if ($res->ok()) {
+                return $res->body();
+            }
+            if ($res->status() === 404) {
+                return null; // empty ocean/no-data tile
+            }
+            // 429 (rate limit) or 5xx — wait and retry.
+            $wait = max(1, (int) ($res->header('Retry-After') ?: $attempt * 2));
+            sleep(min($wait, 15));
+        }
+
+        $skipped++;
+
+        return null;
     }
 
     /**
