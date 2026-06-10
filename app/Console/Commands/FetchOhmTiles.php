@@ -20,9 +20,6 @@ class FetchOhmTiles extends Command
 
     private const UA = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
 
-    /** Europe-biased coverage box [west, south, east, north]; world at z0-2 for context. */
-    private array $bbox = [-25.0, 30.0, 50.0, 72.0];
-
     /** tileset name => base URL. */
     private array $tilesets = [
         'ohm_admin' => 'https://vtiles.openhistoricalmap.org/maps/ohm_admin',
@@ -61,21 +58,15 @@ class FetchOhmTiles extends Command
         return self::SUCCESS;
     }
 
-    /** Web-mercator tile x/y range covering $this->bbox at zoom $z (world at z<=2). */
+    /**
+     * Whole-world tile x/y range at zoom $z. The map caps zoom at the overview level, so the full
+     * world stays bounded (z0-4 = 341 tiles/tileset); empty ocean tiles 404 and are skipped. This
+     * gives every continent land + borders + markers, not just Europe.
+     */
     private function tileRange(int $z): array
     {
         $n = 2 ** $z;
-        if ($z <= 2) {
-            return [0, 0, $n - 1, $n - 1]; // whole world for context at the lowest zooms
-        }
-        [$w, $s, $e, $north] = $this->bbox;
-        $lon2x = fn (float $lon) => (int) floor(($lon + 180) / 360 * $n);
-        $lat2y = function (float $lat) use ($n) {
-            $r = deg2rad($lat);
 
-            return (int) floor((1 - log(tan($r) + 1 / cos($r)) / M_PI) / 2 * $n);
-        };
-
-        return [max(0, $lon2x($w)), max(0, $lat2y($north)), min($n - 1, $lon2x($e)), min($n - 1, $lat2y($s))];
+        return [0, 0, $n - 1, $n - 1];
     }
 }
