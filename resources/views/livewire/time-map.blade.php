@@ -14,7 +14,7 @@
            x-on:polity-selected.window="
                 if (!$event.detail.id) { polity = null; loading = false; return; }
                 loading = true; polity = null; tab = 'summary';
-                fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || ''))
+                fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
                     .then(r => r.json()).then(d => { polity = d; loading = false; });
            "
            class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">

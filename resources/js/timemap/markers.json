@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "_note": "Curated point markers for regions/peoples OpenHistoricalMap leaves blank in antiquity. Label-only (no borders); clickable to start a lesson. Each carries an explicit Wikidata QID for precise enrichment (name search alone is unreliable). decdate = numeric year, negative for BCE.",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.6, 46.8] },
+      "properties": { "id": "gaul", "name": "Gaul", "qid": "Q38060", "start_decdate": -600, "end_decdate": -51 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [10.0, 51.0] },
+      "properties": { "id": "germania", "name": "Germania", "qid": "Q62646", "start_decdate": -750, "end_decdate": 400 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-1.8, 52.5] },
+      "properties": { "id": "britannia", "name": "Britannia", "qid": "Q849967", "start_decdate": -600, "end_decdate": 400 }
+    }
+  ]
+}

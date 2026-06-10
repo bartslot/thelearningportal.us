@@ -2,6 +2,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
+import supplementalMarkers from './markers.json';
 
 // Mounted by the Blade view via x-init. `wire` is the Livewire component proxy ($wire).
 window.initTimeMap = function initTimeMap(el, wire, initialYear) {
@@ -65,6 +66,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', dateFilter(year));
     map.setFilter('boundaries-line', dateFilter(year));
+    // Supplemental markers (regions OHM leaves blank) filter by the same lifespan rule.
+    map.setFilter('markers-dot', dateFilter(year));
+    map.setFilter('markers-label', dateFilter(year));
     map.once('idle', refreshLabels); // recompute one label per visible polity for the new era
   };
 
@@ -134,6 +138,29 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
+
+    // Supplemental markers for regions/peoples OHM leaves blank (label-only, no borders).
+    // A muted hollow dot + brown label distinguishes them from real (filled) polities.
+    map.addSource('markers', { type: 'geojson', data: supplementalMarkers });
+    map.addLayer({
+      id: 'markers-dot', type: 'circle', source: 'markers',
+      paint: {
+        'circle-radius': 4, 'circle-color': '#cbbfa6',
+        'circle-stroke-color': '#6b5a3e', 'circle-stroke-width': 1.4, 'circle-opacity': 0.85,
+      },
+    });
+    map.addLayer({
+      id: 'markers-label', type: 'symbol', source: 'markers',
+      layout: {
+        'text-field': ['get', 'name'], 'text-size': 12,
+        'text-offset': [0, 0.9], 'text-anchor': 'top',
+        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.08,
+      },
+      paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
+    });
+    map.on('mouseenter', 'markers-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
+
     map.on('moveend', refreshLabels);
 
     applyYear(state.year);
@@ -157,6 +184,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   });
 
   map.on('click', (e) => {
+    // Supplemental markers sit on top and carry an explicit QID — check them first (small hit box).
+    const box = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
+    const marker = map.queryRenderedFeatures(box, { layers: ['markers-dot'] })[0];
+    if (marker) {
+      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; }
+      const p = marker.properties;
+      state.selectedRegion = p.id;
+      sync();
+      window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: p.id, name: p.name, qid: p.qid } }));
+      return;
+    }
+
     // Identify the clicked polity client-side from the rendered (era-filtered) features.
     const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0];
 

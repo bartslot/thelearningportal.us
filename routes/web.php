@@ -54,9 +54,13 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');
         $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
 
-        // Lazy-enrich on a miss when the click provides a name.
-        if (! $p && $request->filled('name')) {
-            $data = app(\App\Services\WikidataPolityResolver::class)->resolve($request->string('name')->toString());
+        // Lazy-enrich on a miss. Supplemental markers pass an explicit `qid` (precise); OHM
+        // features pass a `name` (Wikidata search). Prefer the QID when present.
+        if (! $p && ($request->filled('qid') || $request->filled('name'))) {
+            $resolver = app(\App\Services\WikidataPolityResolver::class);
+            $data = $request->filled('qid')
+                ? $resolver->resolveByQid($request->string('qid')->toString())
+                : $resolver->resolve($request->string('name')->toString());
             $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
                 'polity_id' => $osmId, 'label' => $data['label'] ?? $request->string('name')->toString(),
                 'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],

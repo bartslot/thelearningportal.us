@@ -67,4 +67,24 @@ class PolityEndpointTest extends TestCase
 
         $this->assertNotNull(DB::connection('pgsql_corpus')->table('public.polities')->where('osm_id', '-71')->first());
     }
+
+    public function test_supplemental_marker_lazy_enriches_by_qid(): void
+    {
+        // A marker passes an explicit QID; enrichment must go through resolveByQid (no name search).
+        Http::fake([
+            'www.wikidata.org/wiki/Special:EntityData/Q38060.json' => Http::response(['entities' => ['Q38060' => ['claims' => [], 'labels' => ['en' => ['value' => 'Gaul']], 'sitelinks' => ['enwiki' => ['title' => 'Gaul']]]]]),
+            'en.wikipedia.org/*' => Http::response(['extract' => 'Gaul was a region of Western Europe.', 'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Gaul']]]),
+            'www.wikidata.org/w/api.php*' => Http::response(['entities' => []]),
+        ]);
+
+        $teacher = User::factory()->create(['role' => 'teacher']);
+
+        $this->actingAs($teacher)
+            ->getJson('/teacher/timemap/polity/gaul?name=Gaul&qid=Q38060')
+            ->assertOk()
+            ->assertJsonPath('label', 'Gaul')
+            ->assertJsonPath('summary', 'Gaul was a region of Western Europe.');
+
+        $this->assertNotNull(DB::connection('pgsql_corpus')->table('public.polities')->where('osm_id', 'gaul')->first());
+    }
 }
