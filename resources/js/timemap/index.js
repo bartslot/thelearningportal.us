@@ -29,6 +29,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     },
     center: [15, 50], // Europe
     zoom: 4,
+    // Fixed-overview navigation tool: don't zoom in past the standard level (no detailed tiles
+    // exist there anyway). Zoom-out stays open so other continents/markers come into view.
+    maxZoom: 4,
     attributionControl: { customAttribution: 'Borders © OpenHistoricalMap (CC0)' },
   });
 
