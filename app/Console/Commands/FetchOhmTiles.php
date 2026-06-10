@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Http;
  */
 class FetchOhmTiles extends Command
 {
-    protected $signature = 'timemap:fetch-ohm-tiles {--maxzoom=4}';
+    protected $signature = 'timemap:fetch-ohm-tiles {--maxzoom=4} {--skip-existing : Only fetch tiles missing from disk (backfill/resume)}';
 
     protected $description = 'Mirror OHM admin + land vector tiles to public/ohm-tiles';
 
@@ -29,6 +29,7 @@ class FetchOhmTiles extends Command
     public function handle(): int
     {
         $maxZoom = (int) $this->option('maxzoom');
+        $skipExisting = (bool) $this->option('skip-existing');
         $base = public_path('ohm-tiles');
         $got = 0;
         $bytes = 0;
@@ -38,14 +39,18 @@ class FetchOhmTiles extends Command
             for ($z = 0; $z <= $maxZoom; $z++) {
                 [$x0, $y0, $x1, $y1] = $this->tileRange($z);
                 for ($x = $x0; $x <= $x1; $x++) {
+                    $dir = "{$base}/{$set}/{$z}/{$x}";
                     for ($y = $y0; $y <= $y1; $y++) {
+                        $path = "{$dir}/{$y}.pbf";
+                        if ($skipExisting && File::exists($path)) {
+                            continue; // already mirrored — backfill only the holes
+                        }
                         $body = $this->fetchTile("{$url}/{$z}/{$x}/{$y}.pbf", $skipped);
                         if ($body === null) {
                             continue; // empty (404) or gave up after retries
                         }
-                        $dir = "{$base}/{$set}/{$z}/{$x}";
                         File::ensureDirectoryExists($dir);
-                        File::put("{$dir}/{$y}.pbf", $body);
+                        File::put($path, $body);
                         $got++;
                         $bytes += strlen($body);
                         usleep(40_000); // ~25 req/s — polite, avoids OHM rate-limiting
