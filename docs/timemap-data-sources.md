@@ -8,9 +8,12 @@
 - **Lifespans:** Continuous per-feature lifespans via `start_decdate` / `end_decdate` OHM tags —
   no more discrete era snapshots.
 - **Local mirror:** `php artisan timemap:fetch-ohm-tiles --maxzoom=4` downloads the `ohm_admin`
-  and `osm_land` tilesets into `public/ohm-tiles/{tileset}/{z}/{x}/{y}.pbf`. The directory is
-  gitignored (~66 MB), regenerated on deploy, and never committed. The map serves these files
-  statically; there is no live dependency on the OHM tile server at runtime.
+  and `osm_land` tilesets for the **whole world** (z0–4 — bounded, since the map caps zoom at the
+  overview level) into `public/ohm-tiles/{tileset}/{z}/{x}/{y}.pbf`. The directory is gitignored
+  (~155 MB), regenerated on deploy, and never committed. The map serves these files statically;
+  there is no live dependency on the OHM tile server at runtime. The command paces requests
+  (~25/s) and retries on HTTP 429 to avoid OHM rate-limiting; a small number of tiles may still
+  "give up after retries" — re-run to backfill them.
 - **Enrichment:** `php artisan timemap:sync-ohm-polities` queries the OHM Overpass API for
   European admin boundaries (`admin_level` 1–4), reads each feature's `wikidata` QID, and
   enriches via `WikidataPolityResolver::resolveByQid` into `public.polities`, keyed by
