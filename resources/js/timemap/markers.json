@@ -1,11 +1,25 @@
 {
   "type": "FeatureCollection",
-  "_note": "Curated point markers for regions/peoples OpenHistoricalMap leaves blank in antiquity. Label-only (no borders); clickable to start a lesson. Each carries an explicit Wikidata QID for precise enrichment (name search alone is unreliable). decdate = numeric year, negative for BCE.",
+  "_note": "Curated point markers for regions/peoples OpenHistoricalMap leaves blank. Label-only (no borders); clickable to start a lesson. Two enrichment modes: (a) `qid` = precise Wikidata enrichment via the endpoint; (b) `article_url` (+ optional `summary`, `inception`, `dissolution`) = a curated external article (e.g. worldhistory.org), rendered directly with no server call. decdate = numeric year, negative for BCE.",
   "features": [
     {
       "type": "Feature",
       "geometry": { "type": "Point", "coordinates": [2.6, 46.8] },
       "properties": { "id": "gaul", "name": "Gaul", "qid": "Q38060", "start_decdate": -600, "end_decdate": -51 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [112.45, 34.62] },
+      "properties": {
+        "id": "eastern-han",
+        "name": "Eastern Han",
+        "article_url": "https://www.worldhistory.org/Han_Dynasty/",
+        "summary": "The Eastern (Later) Han dynasty (25–220 CE) restored Han rule from a new capital at Luoyang after the Xin interregnum, presiding over advances in technology and the spread of Buddhism before fragmenting into the Three Kingdoms.",
+        "inception": 25,
+        "dissolution": 220,
+        "start_decdate": 25,
+        "end_decdate": 220
+      }
     },
     {
       "type": "Feature",

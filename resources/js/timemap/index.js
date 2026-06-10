@@ -192,7 +192,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       const p = marker.properties;
       state.selectedRegion = p.id;
       sync();
-      window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: p.id, name: p.name, qid: p.qid } }));
+      window.dispatchEvent(new CustomEvent('polity-selected', {
+        // `qid` → Wikidata enrichment via the endpoint; `articleUrl` → curated external article
+        // (e.g. worldhistory.org), rendered directly with no server call.
+        detail: {
+          id: p.id, name: p.name, qid: p.qid,
+          articleUrl: p.article_url, summary: p.summary,
+          inception: p.inception, dissolution: p.dissolution,
+        },
+      }));
       return;
     }
 

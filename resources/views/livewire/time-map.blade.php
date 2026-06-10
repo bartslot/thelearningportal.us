@@ -13,7 +13,16 @@
     <aside x-data="{ tab: 'summary', polity: null, loading: false }"
            x-on:polity-selected.window="
                 if (!$event.detail.id) { polity = null; loading = false; return; }
-                loading = true; polity = null; tab = 'summary';
+                tab = 'summary';
+                if ($event.detail.articleUrl) {
+                    // Curated external-article marker (e.g. worldhistory.org) — render directly, no server call.
+                    polity = { label: $event.detail.name, summary: $event.detail.summary || null,
+                               wikipedia_url: $event.detail.articleUrl,
+                               inception: $event.detail.inception ?? null, dissolution: $event.detail.dissolution ?? null,
+                               flag_path: null, predecessor: null, successor: null };
+                    loading = false; return;
+                }
+                loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
                     .then(r => r.json()).then(d => { polity = d; loading = false; });
            "
@@ -38,7 +47,7 @@
 
                 <div role="tablist" class="tabs tabs-bordered mt-3">
                     <a role="tab" class="tab" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
-                    <a role="tab" class="tab" :class="tab==='wikipedia' && 'tab-active'" x-on:click="tab='wikipedia'">{{ __('Wikipedia') }}</a>
+                    <a role="tab" class="tab" :class="tab==='wikipedia' && 'tab-active'" x-on:click="tab='wikipedia'">{{ __('Article') }}</a>
                     <a role="tab" class="tab" :class="tab==='overtime' && 'tab-active'" x-on:click="tab='overtime'">{{ __('Over Time') }}</a>
                 </div>
 
@@ -46,9 +55,10 @@
                     <p x-show="tab==='summary'" x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
                     <div x-show="tab==='wikipedia'">
                         <template x-if="polity.wikipedia_url">
-                            <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary">{{ __('Open on Wikipedia ↗') }}</a>
+                            <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary"
+                               x-text="(polity.wikipedia_url.includes('worldhistory.org') ? '{{ __('Open on World History Encyclopedia') }}' : '{{ __('Open on Wikipedia') }}') + ' ↗'"></a>
                         </template>
-                        <p x-show="!polity.wikipedia_url" class="opacity-70">{{ __('No Wikipedia page linked.') }}</p>
+                        <p x-show="!polity.wikipedia_url" class="opacity-70">{{ __('No article linked.') }}</p>
                     </div>
                     <div x-show="tab==='overtime'" class="space-y-1">
                         <p><span class="opacity-70">{{ __('Preceded by') }}:</span> <span x-text="polity.predecessor || '—'"></span></p>
