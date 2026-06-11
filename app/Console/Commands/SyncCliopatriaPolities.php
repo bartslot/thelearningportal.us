@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Http;
  */
 class SyncCliopatriaPolities extends Command
 {
-    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)}';
+    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)} {--resume : Skip QIDs already enriched (have a summary)}';
 
     protected $description = 'Enrich Cliopatria polities (by Wikidata QID) into polities + download flags';
 
@@ -42,12 +42,17 @@ class SyncCliopatriaPolities extends Command
         File::ensureDirectoryExists($flagsDir);
         $corpus = DB::connection('pgsql_corpus');
 
+        $resume = (bool) $this->option('resume');
+        $done = $resume
+            ? $corpus->table('public.polities')->whereNotNull('summary')->pluck('osm_id')->flip()
+            : collect();
+
         $bar = $this->output->createProgressBar(count($list));
         $count = 0;
         foreach ($list as $row) {
             $qid = $row['qid'] ?? null;
             $name = $row['name'] ?? null;
-            if (! $qid) {
+            if (! $qid || ($resume && $done->has($qid))) {
                 $bar->advance();
 
                 continue;
