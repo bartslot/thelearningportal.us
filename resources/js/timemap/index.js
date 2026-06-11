@@ -20,7 +20,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       version: 8,
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
-        land: { type: 'vector', tiles: [`${location.origin}/ohm-tiles/osm_land/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [

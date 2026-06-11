@@ -31,7 +31,7 @@
         : route('teacher.lessons.create', ['step' => $n]);
 @endphp
 
-<div class="fixed top-16 inset-x-0 z-50 flex justify-center">
+<div class="fixed top-16 inset-x-0 z-40 flex justify-center">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 text-xs bg-base-300/50 backdrop-blur border-b rounded-b-3xl border-slate-700/40">
         @foreach ($steps as $n => $label)
             @php
