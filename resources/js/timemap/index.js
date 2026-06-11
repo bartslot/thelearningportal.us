@@ -13,7 +13,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   };
   sync();
 
-  // Local OHM vector-tile mirror (no live dependency); z0-4 overview tiles.
+  // Borders: local Cliopatria vector tiles (Seshat, CC-BY). Land base: OHM osm_land (CC0). z0-4.
   const map = new maplibregl.Map({
     container: el,
     style: {
@@ -21,7 +21,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/ohm-tiles/osm_land/{z}/{x}/{y}.pbf`], maxzoom: 4 },
-        ohm: { type: 'vector', tiles: [`${location.origin}/ohm-tiles/ohm_admin/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'osm_id' } },
+        cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
@@ -33,7 +33,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Fixed-overview navigation tool: don't zoom in past the standard level (no detailed tiles
     // exist there anyway). Zoom-out stays open so other continents/markers come into view.
     maxZoom: 4,
-    attributionControl: { customAttribution: 'Borders © OpenHistoricalMap (CC0)' },
+    attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
   });
 
   // The container settles to its final height after Alpine/Livewire mount; without this the
@@ -47,8 +47,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     'case',
     ['boolean', ['feature-state', 'selected'], false], theme.selected,
     ['boolean', ['feature-state', 'hover'], false], theme.hover,
-    // `match` returns colors directly; hash the (negative) osm_id into the palette.
-    ['match', ['%', ['abs', ['to-number', ['get', 'osm_id']]], ATLAS_PALETTE.length],
+    // `match` returns colors directly; hash the numeric part of the Wikidata QID into the palette.
+    ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], ATLAS_PALETTE.length],
       ...ATLAS_PALETTE.flatMap((c, i) => [i, c]), ATLAS_PALETTE[0]],
   ];
   const FILL_OPACITY = [
@@ -58,24 +58,31 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     theme.fillOpacity.normal,
   ];
 
-  // Continuous time filter: keep features whose lifespan contains the year (BCE = negative).
-  const dateFilter = (year) => ['all',
+  // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
+  // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
+  const polityFilter = (year) => ['all',
+    ['==', ['get', 'Type'], 'POLITY'],
+    ['!=', ['slice', ['get', 'Name'], 0, 1], '('],
+    ['<=', ['to-number', ['get', 'FromYear']], year],
+    ['>=', ['to-number', ['get', 'ToYear']], year],
+  ];
+  // Supplemental markers (markers.json) use their own start/end decimal-year lifespan.
+  const markerFilter = (year) => ['all',
     ['<=', ['coalesce', ['to-number', ['get', 'start_decdate']], -1e6], year],
     ['>', ['coalesce', ['to-number', ['get', 'end_decdate']], 1e6], year],
   ];
   const applyYear = (year) => {
     if (!map.getLayer('boundaries-fill')) return;
-    map.setFilter('boundaries-fill', dateFilter(year));
-    map.setFilter('boundaries-line', dateFilter(year));
-    // Supplemental markers (regions OHM leaves blank) filter by the same lifespan rule.
-    map.setFilter('markers-dot', dateFilter(year));
-    map.setFilter('markers-label', dateFilter(year));
+    map.setFilter('boundaries-fill', polityFilter(year));
+    map.setFilter('boundaries-line', polityFilter(year));
+    map.setFilter('markers-dot', markerFilter(year));
+    map.setFilter('markers-label', markerFilter(year));
     map.once('idle', refreshLabels); // recompute one label per visible polity for the new era
   };
 
-  // OHM polities are multi-island MultiPolygons split across tiles; a vector-tile symbol layer
-  // drops a label on EVERY part. Instead we derive ONE label per polity (osm_id) at the centroid
-  // of its largest visible polygon and feed those points to a dedicated GeoJSON label layer.
+  // Cliopatria polities can be multi-part MultiPolygons split across tiles; a vector-tile symbol
+  // layer drops a label on EVERY part. Instead we derive ONE label per polity (by QID) at the
+  // centroid of its largest visible polygon and feed those points to a dedicated GeoJSON layer.
   const ringCentroid = (ring) => {
     let a = 0, cx = 0, cy = 0;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -87,25 +94,25 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (a === 0) return { area: 0, c: ring[0] };
     return { area: Math.abs(a / 2), c: [cx / (3 * a), cy / (3 * a)] };
   };
-  // Flag icons: a manifest lists which osm_ids have a downloaded flag (so we never 404-probe).
+  // Flag icons: a manifest lists which QIDs have a downloaded flag (so we never 404-probe).
   // Images load lazily for visible polities; a label references a flag only once its image is added.
   const flaggedIds = new Set();
   const triedFlag = new Set();
-  const ensureFlag = (osmId) => {
-    if (triedFlag.has(osmId) || map.hasImage(`flag-${osmId}`)) return Promise.resolve(false);
-    triedFlag.add(osmId);
-    return map.loadImage(`/flags/${osmId}.png`)
-      .then((img) => { if (!map.hasImage(`flag-${osmId}`)) map.addImage(`flag-${osmId}`, img.data); return true; })
+  const ensureFlag = (qid) => {
+    if (triedFlag.has(qid) || map.hasImage(`flag-${qid}`)) return Promise.resolve(false);
+    triedFlag.add(qid);
+    return map.loadImage(`/flags/${qid}.png`)
+      .then((img) => { if (!map.hasImage(`flag-${qid}`)) map.addImage(`flag-${qid}`, img.data); return true; })
       .catch(() => false);
   };
   const refreshLabels = () => {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
-    const best = new Map(); // osm_id -> { area, c, name }
+    const best = new Map(); // qid -> { area, c, name }
     for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
-      const name = f.properties.name_en || f.properties.name;
+      const name = f.properties.Name;
       if (name == null) continue;
-      const id = String(f.properties.osm_id);
+      const id = String(f.properties.Wikidata);
       const g = f.geometry;
       const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
       for (const poly of polys) {
@@ -134,12 +141,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   let hoveredId = null;
   let selectedId = null;
-  const setHover = (id, on) => map.setFeatureState({ source: 'ohm', sourceLayer: 'boundaries', id }, { hover: on });
-  const setSelected = (id, on) => map.setFeatureState({ source: 'ohm', sourceLayer: 'boundaries', id }, { selected: on });
+  const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
+  const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
   map.on('load', () => {
     map.addLayer({
-      id: 'boundaries-fill', type: 'fill', source: 'ohm', 'source-layer': 'boundaries',
+      id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: {
         'fill-color': FILL_COLOR,
         'fill-opacity': FILL_OPACITY,
@@ -147,7 +154,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
     });
     map.addLayer({
-      id: 'boundaries-line', type: 'line', source: 'ohm', 'source-layer': 'boundaries',
+      id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
     });
     // One derived label point per polity (see refreshLabels) — never per tile-clipped part.
@@ -167,7 +174,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
 
-    // Supplemental markers for regions/peoples OHM leaves blank (label-only, no borders).
+    // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
     map.addSource('markers', { type: 'geojson', data: supplementalMarkers });
     map.addLayer({
@@ -239,11 +246,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     selectedId = hit ? hit.id : null;
     if (selectedId !== null) setSelected(selectedId, true);
 
-    const osmId = hit ? hit.properties.osm_id : null;
-    const name = hit ? (hit.properties.name_en || hit.properties.name) : null;
-    state.selectedRegion = osmId;
+    const qid = hit ? hit.properties.Wikidata : null;
+    const name = hit ? hit.properties.Name : null;
+    state.selectedRegion = qid;
     sync();
-    window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: osmId, name } }));
+    // QID drives enrichment (Cliopatria carries it natively); pass it as both id and qid.
+    window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: qid, name, qid } }));
   });
 
   // Called by the Alpine slider on input — continuous, no fetch.
