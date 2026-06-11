@@ -75,7 +75,10 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         }
 
         return response()->json([
-            'osm_id' => $osmId, 'label' => $p?->label, 'summary' => $p?->summary,
+            // Title = the clicked feature's name (matches the map label even if a QID is shared
+            // across differently-named Cliopatria segments); QID still drives summary/flag/dates.
+            'osm_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $p?->label,
+            'summary' => $p?->summary,
             'flag_path' => $p?->flag_path, 'wikipedia_url' => $p?->wikipedia_url,
             'inception' => $p?->inception !== null ? (int) $p->inception : null,
             'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
