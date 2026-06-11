@@ -9,20 +9,6 @@
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [112.45, 34.62] },
-      "properties": {
-        "id": "eastern-han",
-        "name": "Eastern Han",
-        "article_url": "https://www.worldhistory.org/Han_Dynasty/",
-        "summary": "The Eastern (Later) Han dynasty (25–220 CE) restored Han rule from a new capital at Luoyang after the Xin interregnum, presiding over advances in technology and the spread of Buddhism before fragmenting into the Three Kingdoms.",
-        "inception": 25,
-        "dissolution": 220,
-        "start_decdate": 25,
-        "end_decdate": 220
-      }
-    },
-    {
-      "type": "Feature",
       "geometry": { "type": "Point", "coordinates": [10.0, 51.0] },
       "properties": { "id": "germania", "name": "Germania", "qid": "Q62646", "start_decdate": -750, "end_decdate": 400 }
     },

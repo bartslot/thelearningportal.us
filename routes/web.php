@@ -62,7 +62,9 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
                 ? $resolver->resolveByQid($request->string('qid')->toString())
                 : $resolver->resolve($request->string('name')->toString());
             $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
-                'polity_id' => $osmId, 'label' => $data['label'] ?? $request->string('name')->toString(),
+                // Prefer the dataset's clean era-name (Cliopatria Name) over the Wikidata label so the
+                // panel title matches the map label; fall back to the Wikidata label.
+                'polity_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $data['label'],
                 'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],
                 'wikipedia_url' => $data['wikipedia_url'], 'inception' => $data['inception'],
                 'dissolution' => $data['dissolution'], 'predecessor' => $data['predecessor'],
