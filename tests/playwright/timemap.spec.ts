@@ -85,19 +85,19 @@ test('timemap-click-panel: clicking a region opens the polity panel', async ({ p
   }
 });
 
-test('timemap-local-tiles: borders load from the local OHM mirror, not the network', async ({ page }) => {
+test('timemap-local-tiles: borders load from the local Cliopatria tiles, not the network', async ({ page }) => {
   const tileRequests: string[] = [];
   page.on('request', (r) => {
     const u = r.url();
-    if (u.includes('/ohm-tiles/') || u.includes('vtiles.openhistoricalmap.org')) tileRequests.push(u);
+    if (u.includes('/cliopatria-tiles/') || u.includes('vtiles.openhistoricalmap.org')) tileRequests.push(u);
   });
 
   await page.goto('/teacher/timemap');
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
   await page.waitForTimeout(1500); // let initial tiles fetch
 
-  const local = tileRequests.filter((u) => u.includes('/ohm-tiles/ohm_admin/'));
+  const local = tileRequests.filter((u) => u.includes('/cliopatria-tiles/'));
   const remote = tileRequests.filter((u) => u.includes('vtiles.openhistoricalmap.org'));
-  expect(local.length, 'expected local OHM admin tile requests').toBeGreaterThan(0);
+  expect(local.length, 'expected local Cliopatria tile requests').toBeGreaterThan(0);
   expect(remote, 'must not hit the live OHM tile server').toHaveLength(0);
 });
