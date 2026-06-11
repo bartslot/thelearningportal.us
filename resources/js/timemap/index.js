@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
 import supplementalMarkers from './markers.json';
+import theme from './theme.json';
 
 // Mounted by the Blade view via x-init. `wire` is the Livewire component proxy ($wire).
 window.initTimeMap = function initTimeMap(el, wire, initialYear) {
@@ -23,8 +24,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ohm: { type: 'vector', tiles: [`${location.origin}/ohm-tiles/ohm_admin/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'osm_id' } },
       },
       layers: [
-        { id: 'water', type: 'background', paint: { 'background-color': '#d8e9f3' } },
-        { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': '#f3ead6' } },
+        { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
+        { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
       ],
     },
     center: [15, 50], // Europe
@@ -40,24 +41,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const resizeObserver = new ResizeObserver(() => map.resize());
   resizeObserver.observe(el);
 
-  // Distinct muted "atlas" palette, chosen per polity via a stable hash of its osm_id.
-  const ATLAS_PALETTE = [
-    '#c9b79c', '#a8b9a0', '#cbb3a1', '#b6a8c0', '#c2c0a0', '#a9bcc4',
-    '#d0bfa8', '#b9a99a', '#aebfa6', '#c8b6b0', '#b0b6a0', '#bcae9e',
-  ];
+  // Atlas styling comes from theme.json — edit colours/lines there, no JS changes needed.
+  const ATLAS_PALETTE = theme.palette;
   const FILL_COLOR = [
     'case',
-    ['boolean', ['feature-state', 'selected'], false], '#f5c518',
-    ['boolean', ['feature-state', 'hover'], false], '#ecd9a0',
+    ['boolean', ['feature-state', 'selected'], false], theme.selected,
+    ['boolean', ['feature-state', 'hover'], false], theme.hover,
     // `match` returns colors directly; hash the (negative) osm_id into the palette.
-    ['match', ['%', ['abs', ['to-number', ['get', 'osm_id']]], 12],
+    ['match', ['%', ['abs', ['to-number', ['get', 'osm_id']]], ATLAS_PALETTE.length],
       ...ATLAS_PALETTE.flatMap((c, i) => [i, c]), ATLAS_PALETTE[0]],
   ];
   const FILL_OPACITY = [
     'case',
-    ['boolean', ['feature-state', 'selected'], false], 0.95,
-    ['boolean', ['feature-state', 'hover'], false], 0.85,
-    0.7,
+    ['boolean', ['feature-state', 'selected'], false], theme.fillOpacity.selected,
+    ['boolean', ['feature-state', 'hover'], false], theme.fillOpacity.hover,
+    theme.fillOpacity.normal,
   ];
 
   // Continuous time filter: keep features whose lifespan contains the year (BCE = negative).
@@ -150,7 +148,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     });
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'ohm', 'source-layer': 'boundaries',
-      paint: { 'line-color': '#9a7b4f', 'line-width': 0.7, 'line-opacity': 0.7 },
+      paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
     });
     // One derived label point per polity (see refreshLabels) — never per tile-clipped part.
     map.addSource('labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });

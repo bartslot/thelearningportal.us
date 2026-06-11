@@ -1,0 +1,13 @@
+{
+  "_note": "Time-Map atlas styling. Edit these values then `npm run build`. Colours are CSS hex strings. `palette` = the muted territory-fill hues, assigned per polity by a stable hash of its osm_id (any length is fine). `selected`/`hover` = fill colours when a region is clicked / under the cursor. `fillOpacity` = territory fill opacity in each state. `line` = the territory boundary outline. `land`/`water` = the base map.",
+  "land": "#f3ead6",
+  "water": "#d8e9f3",
+  "palette": [
+    "#c9b79c", "#a8b9a0", "#cbb3a1", "#b6a8c0", "#c2c0a0", "#a9bcc4",
+    "#d0bfa8", "#b9a99a", "#aebfa6", "#c8b6b0", "#b0b6a0", "#bcae9e"
+  ],
+  "selected": "#f5c518",
+  "hover": "#ecd9a0",
+  "fillOpacity": { "normal": 0.7, "hover": 0.85, "selected": 0.95 },
+  "line": { "color": "#9a7b4f", "width": 0.7, "opacity": 0.7 }
+}
