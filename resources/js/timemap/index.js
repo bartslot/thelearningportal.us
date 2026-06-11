@@ -89,6 +89,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (a === 0) return { area: 0, c: ring[0] };
     return { area: Math.abs(a / 2), c: [cx / (3 * a), cy / (3 * a)] };
   };
+  // Flag icons: a manifest lists which osm_ids have a downloaded flag (so we never 404-probe).
+  // Images load lazily for visible polities; a label references a flag only once its image is added.
+  const flaggedIds = new Set();
+  const triedFlag = new Set();
+  const ensureFlag = (osmId) => {
+    if (triedFlag.has(osmId) || map.hasImage(`flag-${osmId}`)) return Promise.resolve(false);
+    triedFlag.add(osmId);
+    return map.loadImage(`/flags/${osmId}.png`)
+      .then((img) => { if (!map.hasImage(`flag-${osmId}`)) map.addImage(`flag-${osmId}`, img.data); return true; })
+      .catch(() => false);
+  };
   const refreshLabels = () => {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
@@ -96,7 +107,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
       const name = f.properties.name_en || f.properties.name;
       if (name == null) continue;
-      const id = f.properties.osm_id;
+      const id = String(f.properties.osm_id);
       const g = f.geometry;
       const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
       for (const poly of polys) {
@@ -105,13 +116,23 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         if (!cur || area > cur.area) best.set(id, { area, c, name });
       }
     }
-    src.setData({
+    const apply = () => src.setData({
       type: 'FeatureCollection',
-      features: [...best.values()].map((b) => ({
-        type: 'Feature', geometry: { type: 'Point', coordinates: b.c }, properties: { name: b.name },
+      features: [...best.entries()].map(([id, b]) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: b.c },
+        properties: { name: b.name, flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '' },
       })),
     });
+    apply();
+    // Lazily load flag images for visible flagged polities, then redraw so icons appear above names.
+    const toLoad = [...best.keys()].filter((id) => flaggedIds.has(id) && !map.hasImage(`flag-${id}`) && !triedFlag.has(id));
+    if (toLoad.length) Promise.all(toLoad.map(ensureFlag)).then((res) => { if (res.some(Boolean)) apply(); });
   };
+  // Which polities have a flag (from the sync's manifest); refresh once it arrives.
+  fetch('/flags/manifest.json')
+    .then((r) => (r.ok ? r.json() : []))
+    .then((ids) => { ids.forEach((id) => flaggedIds.add(String(id))); if (map.getLayer('boundaries-fill')) refreshLabels(); })
+    .catch(() => {});
 
   let hoveredId = null;
   let selectedId = null;
@@ -136,8 +157,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.addLayer({
       id: 'boundaries-label', type: 'symbol', source: 'labels',
       layout: {
+        // Flag stacked ON TOP of the territory name (flag ≤16px: 120px source × 0.13).
+        'icon-image': ['get', 'flag'],
+        'icon-size': 0.13,
+        'icon-anchor': 'bottom',
+        'icon-allow-overlap': false, 'icon-optional': true,
         'text-field': ['get', 'name'],
-        'text-size': 12, 'text-allow-overlap': false, 'text-optional': true,
+        'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.35],
+        'text-allow-overlap': false, 'text-optional': true,
       },
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });

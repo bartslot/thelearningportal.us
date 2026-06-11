@@ -45,3 +45,6 @@ NUL
 /public/sound/
 
 /public/flags/
+
+# Generated flag manifest (rebuilt by timemap:sync-ohm-polities)
+/public/flags/manifest.json

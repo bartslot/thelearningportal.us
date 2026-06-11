@@ -74,9 +74,20 @@ class SyncOhmPolities extends Command
             $count++;
         }
 
+        $this->writeFlagManifest($flagsDir);
         $this->info("synced {$count} OHM polities");
 
         return self::SUCCESS;
+    }
+
+    /** Write flags/manifest.json — the osm_ids that have a downloaded flag, so the map can draw
+     *  flag icons without 404-probing every label. */
+    private function writeFlagManifest(string $flagsDir): void
+    {
+        $ids = collect(File::glob($flagsDir.'/*.png'))
+            ->map(fn (string $p) => pathinfo($p, PATHINFO_FILENAME))
+            ->values();
+        File::put($flagsDir.'/manifest.json', $ids->toJson());
     }
 
     private function ensureTable(): void
