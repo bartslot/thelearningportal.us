@@ -44,7 +44,7 @@ class SyncCliopatriaPolities extends Command
 
         $resume = (bool) $this->option('resume');
         $done = $resume
-            ? $corpus->table('public.polities')->whereNotNull('summary')->pluck('osm_id')->flip()
+            ? $corpus->table('public.polities')->whereNotNull('summary')->whereNotNull('osm_id')->pluck('osm_id')->flip()
             : collect();
 
         $bar = $this->output->createProgressBar(count($list));
