@@ -172,19 +172,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
     'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
-      palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.1, selected: '#c98a00', hover: '#d9c089',
-      // Main dark stroke — wide per-feature width range so no two borders match.
-      line: { color: '#2e2114', width: inkWidth(0.5, 3.0), blur: 0.35 },
-      // Stacked passes: soft bleed + two offset rough underlayers (all width-varied) beneath, then
-      // prominent broken dashed accents on top. Offsets desync the strokes so apparent thickness wavers.
+      palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
+      // Delicate main stroke — per-feature width variance, kept thin so dense regions stay readable.
+      line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
+      // One faint bleed + one offset rough underlayer (both width-varied) beneath, then a single
+      // light broken accent on top. Restrained so borders read as pen work, not a black tangle.
       inkLayers: [
-        { color: '#3a2b1d', width: inkWidth(3.0, 6.0), opacity: 0.09, blur: 3.0 },
-        { color: '#43331f', width: inkWidth(1.8, 4.2), opacity: 0.28, blur: 1.2, offset: 0.9 },
-        { color: '#43331f', width: inkWidth(1.2, 3.0), opacity: 0.24, blur: 0.9, offset: -1.0 },
-        { color: '#1f160c', width: 1.2, opacity: 0.7, blur: 0.15, offset: 0.7, dash: [3, 2.5], above: true },
-        { color: '#241a0f', width: 0.8, opacity: 0.5, blur: 0, offset: -0.6, dash: [1.2, 4.5], above: true },
+        { color: '#5a4630', width: inkWidth(1.2, 2.4), opacity: 0.12, blur: 1.4 },
+        { color: '#4a3826', width: inkWidth(0.7, 1.5), opacity: 0.2, blur: 0.6, offset: 0.5 },
+        { color: '#2a1f12', width: 0.6, opacity: 0.4, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
       ],
-      text: { color: '#33271a', halo: '#e6d6ad' }, paper: 0.28, vignette: 'rgba(80,55,30,0.36)',
+      text: { color: '#33271a', halo: '#efe2c4' }, paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
     },
     'night': { palette: NIGHT_PAL, water: '#0f1420', land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
@@ -223,7 +221,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setPaintProperty('land', 'fill-color', s.land);
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
-      map.setPaintProperty('boundaries-fill', 'fill-opacity', s.fillOpacity);
+      // Keep hover/selected clearly visible even when the base fill is very faint (ink styles).
+      map.setPaintProperty('boundaries-fill', 'fill-opacity', ['case',
+        ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, s.fillOpacity),
+        ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, s.fillOpacity + 0.18),
+        s.fillOpacity]);
       map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
       map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
       map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
@@ -250,8 +252,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
             ...(L.dash ? { 'line-dasharray': L.dash } : {}),
           },
         };
-        // `above` strokes sit on top of the main border; the rest bleed beneath it.
-        if (L.above) map.addLayer(layer); else map.addLayer(layer, 'boundaries-line');
+        // `above` strokes sit on top of the main border but BELOW the labels (insert before
+        // boundaries-label) so text is never obscured; the rest bleed beneath the main border.
+        if (L.above) map.addLayer(layer, map.getLayer('boundaries-label') ? 'boundaries-label' : undefined);
+        else map.addLayer(layer, 'boundaries-line');
       });
     }
     applyOverlays(s);
@@ -284,8 +288,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'text-field': ['get', 'name'],
         'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.35],
         'text-allow-overlap': false, 'text-optional': true,
+        'text-padding': 6, // space labels out so dense regions de-clutter
       },
-      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
+      // Strong halo so names stay readable over borders/fills in every style.
+      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
     });
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
