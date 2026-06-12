@@ -77,6 +77,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setFilter('boundaries-line', polityFilter(year));
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
+    if (map.getLayer('ink-under')) map.setFilter('ink-under', polityFilter(year));
     scheduleSettle(); // recompute labels + prefetch articles for the new era (after tiles settle)
   };
 
@@ -158,6 +159,77 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
+  // ---- Map styles: switched live from the palette dropdown (window.__applyMapStyle). ----
+  const ATLAS_PAL = theme.palette;
+  const NIGHT_PAL = ['#39496a', '#4a3b63', '#37614f', '#63503b', '#4c6140', '#63415a', '#3a5570', '#56426a', '#3f6657', '#665445', '#414f6e', '#5c4258'];
+  // Greyscale paper-grain texture (multiply-blended) to break up the flat vector fills.
+  const PAPER_URI = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>";
+  const MAP_STYLES = {
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, inkUnder: null, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, inkUnder: null, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'pen-ink': { palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.12, selected: '#c98a00', hover: '#d9c089', line: { color: '#3a2b1d', width: 1.0, blur: 0.5 }, inkUnder: { color: '#3a2b1d', width: 3.4, opacity: 0.13, blur: 1.5 }, text: { color: '#33271a', halo: '#e6d6ad' }, paper: 0.26, vignette: 'rgba(80,55,30,0.34)' },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, inkUnder: null, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
+  };
+  const applyOverlays = (s) => {
+    const wrap = el.parentElement;
+    if (!wrap) return;
+    let pv = wrap.querySelector('#tm-paper');
+    if (!pv) {
+      pv = document.createElement('div');
+      pv.id = 'tm-paper';
+      pv.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:5;mix-blend-mode:multiply';
+      pv.style.backgroundImage = `url("${PAPER_URI}")`;
+      wrap.appendChild(pv);
+    }
+    pv.style.opacity = String(s.paper);
+    let vg = wrap.querySelector('#tm-vignette');
+    if (!vg) {
+      vg = document.createElement('div');
+      vg.id = 'tm-vignette';
+      vg.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6';
+      wrap.appendChild(vg);
+    }
+    vg.style.background = `radial-gradient(ellipse 78% 78% at center, rgba(0,0,0,0) 52%, ${s.vignette} 100%)`;
+  };
+  const applyMapStyle = (name) => {
+    const key = MAP_STYLES[name] ? name : 'soft-atlas';
+    const s = MAP_STYLES[key];
+    try { localStorage.setItem('tm-style', key); } catch (e) { /* private mode */ }
+    const pal = s.palette;
+    const fill = ['case',
+      ['boolean', ['feature-state', 'selected'], false], s.selected,
+      ['boolean', ['feature-state', 'hover'], false], s.hover,
+      ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
+        ...pal.flatMap((c, i) => [i, c]), pal[0]]];
+    map.setPaintProperty('water', 'background-color', s.water);
+    map.setPaintProperty('land', 'fill-color', s.land);
+    if (map.getLayer('boundaries-fill')) {
+      map.setPaintProperty('boundaries-fill', 'fill-color', fill);
+      map.setPaintProperty('boundaries-fill', 'fill-opacity', s.fillOpacity);
+      map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
+      map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
+      map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
+      map.setLayoutProperty('boundaries-line', 'line-join', 'round');
+      map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
+      map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
+    }
+    if (map.getLayer('markers-label')) {
+      map.setPaintProperty('markers-label', 'text-color', s.text.color);
+      map.setPaintProperty('markers-label', 'text-halo-color', s.text.halo);
+    }
+    // Double "hand-drawn" ink stroke (a wide faint underlayer beneath the crisp border).
+    if (map.getLayer('ink-under')) map.removeLayer('ink-under');
+    if (s.inkUnder && map.getLayer('boundaries-line')) {
+      map.addLayer({
+        id: 'ink-under', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
+        filter: polityFilter(state.year),
+        paint: { 'line-color': s.inkUnder.color, 'line-width': s.inkUnder.width, 'line-opacity': s.inkUnder.opacity, 'line-blur': s.inkUnder.blur },
+      }, 'boundaries-line');
+    }
+    applyOverlays(s);
+  };
+  window.__applyMapStyle = applyMapStyle;
+
   map.on('load', () => {
     map.addLayer({
       id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
@@ -214,6 +286,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Border tiles load asynchronously; re-settle once they're in so labels + prefetch see them.
     map.on('sourcedata', (e) => { if (e.sourceId === 'cliopatria' && e.isSourceLoaded) scheduleSettle(); });
 
+    let savedStyle = null;
+    try { savedStyle = localStorage.getItem('tm-style'); } catch (e) { /* private mode */ }
+    applyMapStyle(savedStyle || 'soft-atlas');
     applyYear(state.year);
 
     // Pointer cursor + hover highlight over historical regions.
