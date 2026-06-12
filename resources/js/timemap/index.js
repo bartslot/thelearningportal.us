@@ -28,7 +28,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
       ],
     },
-    center: [15, 50], // Europe
+    center: [8.23, 46.8], // Switzerland
     zoom: 4,
     // Fixed-overview navigation tool: don't zoom in past the standard level (no detailed tiles
     // exist there anyway). Zoom-out stays open so other continents/markers come into view.

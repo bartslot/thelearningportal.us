@@ -11,7 +11,7 @@ class TimeMap extends Component
     /** Seeded snapshot stops shown on the slider. */
     public array $stops = [-2000, -1500, -500, 200, 500, 1000, 1880];
 
-    public int $year = -200;
+    public int $year = 1600;
 
     public function render()
     {
