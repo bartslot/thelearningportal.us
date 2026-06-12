@@ -124,6 +124,11 @@ class Step1Settings extends Component
             $this->avatar_id = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
             $this->tone = 'storytelling';
         }
+
+        // Prefill the topic from the Time-Map "Create lesson" button (?topic=…).
+        if (! ($lesson?->exists) && is_string($t = request()->query('topic')) && trim($t) !== '') {
+            $this->topic = trim($t);
+        }
     }
 
     public const AGE_MIN = 4;

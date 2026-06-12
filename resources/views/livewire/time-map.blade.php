@@ -49,6 +49,14 @@
                 <p class="text-xs opacity-70"
                    x-text="(polity.inception != null ? (polity.inception < 0 ? Math.abs(polity.inception)+' BCE' : polity.inception+' CE') : '?') + ' – ' + (polity.dissolution != null ? (polity.dissolution < 0 ? Math.abs(polity.dissolution)+' BCE' : polity.dissolution+' CE') : '')"></p>
 
+                {{-- Start a lesson about this territory (prefills the wizard topic). --}}
+                <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label)"
+                   wire:navigate
+                   class="btn btn-warning btn-sm mt-3 w-full gap-2 font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.54 1.118l-3.367-2.447a1 1 0 00-1.175 0l-3.367 2.447c-.784.57-1.838-.196-1.539-1.118l1.286-3.957a1 1 0 00-.363-1.118L2.343 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                    {{ __('Create lesson') }}
+                </a>
+
                 <div role="tablist" class="tabs tabs-bordered mt-3">
                     <a role="tab" class="tab" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
                     <a role="tab" class="tab" :class="tab==='wikipedia' && 'tab-active'" x-on:click="tab='wikipedia'">{{ __('Article') }}</a>
