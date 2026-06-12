@@ -77,7 +77,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setFilter('boundaries-line', polityFilter(year));
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
-    if (map.getLayer('ink-under')) map.setFilter('ink-under', polityFilter(year));
+    for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.setFilter(`ink-${i}`, polityFilter(year)); }
     scheduleSettle(); // recompute labels + prefetch articles for the new era (after tiles settle)
   };
 
@@ -164,11 +164,29 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const NIGHT_PAL = ['#39496a', '#4a3b63', '#37614f', '#63503b', '#4c6140', '#63415a', '#3a5570', '#56426a', '#3f6657', '#665445', '#414f6e', '#5c4258'];
   // Greyscale paper-grain texture (multiply-blended) to break up the flat vector fills.
   const PAPER_URI = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>";
+  // Per-feature line width from a hash of the polity QID → adjacent borders get visibly different
+  // weights (the main source of "hand-drawn" width variance; MapLibre can't vary width along a line).
+  const inkWidth = (min, max) => ['interpolate', ['linear'],
+    ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
-    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, inkUnder: null, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, inkUnder: null, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
-    'pen-ink': { palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.12, selected: '#c98a00', hover: '#d9c089', line: { color: '#3a2b1d', width: 1.0, blur: 0.5 }, inkUnder: { color: '#3a2b1d', width: 3.4, opacity: 0.13, blur: 1.5 }, text: { color: '#33271a', halo: '#e6d6ad' }, paper: 0.26, vignette: 'rgba(80,55,30,0.34)' },
-    'night': { palette: NIGHT_PAL, water: '#0f1420', land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, inkUnder: null, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'pen-ink': {
+      palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.1, selected: '#c98a00', hover: '#d9c089',
+      // Main dark stroke — wide per-feature width range so no two borders match.
+      line: { color: '#2e2114', width: inkWidth(0.5, 3.0), blur: 0.35 },
+      // Stacked passes: soft bleed + two offset rough underlayers (all width-varied) beneath, then
+      // prominent broken dashed accents on top. Offsets desync the strokes so apparent thickness wavers.
+      inkLayers: [
+        { color: '#3a2b1d', width: inkWidth(3.0, 6.0), opacity: 0.09, blur: 3.0 },
+        { color: '#43331f', width: inkWidth(1.8, 4.2), opacity: 0.28, blur: 1.2, offset: 0.9 },
+        { color: '#43331f', width: inkWidth(1.2, 3.0), opacity: 0.24, blur: 0.9, offset: -1.0 },
+        { color: '#1f160c', width: 1.2, opacity: 0.7, blur: 0.15, offset: 0.7, dash: [3, 2.5], above: true },
+        { color: '#241a0f', width: 0.8, opacity: 0.5, blur: 0, offset: -0.6, dash: [1.2, 4.5], above: true },
+      ],
+      text: { color: '#33271a', halo: '#e6d6ad' }, paper: 0.28, vignette: 'rgba(80,55,30,0.36)',
+    },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
@@ -217,14 +235,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
       map.setPaintProperty('markers-label', 'text-halo-color', s.text.halo);
     }
-    // Double "hand-drawn" ink stroke (a wide faint underlayer beneath the crisp border).
-    if (map.getLayer('ink-under')) map.removeLayer('ink-under');
-    if (s.inkUnder && map.getLayer('boundaries-line')) {
-      map.addLayer({
-        id: 'ink-under', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
-        filter: polityFilter(state.year),
-        paint: { 'line-color': s.inkUnder.color, 'line-width': s.inkUnder.width, 'line-opacity': s.inkUnder.opacity, 'line-blur': s.inkUnder.blur },
-      }, 'boundaries-line');
+    // Hand-drawn ink: several stacked strokes (per-feature varying width + bleed + broken dashes)
+    // so borders read as uneven pen work rather than uniform vector lines.
+    for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.removeLayer(`ink-${i}`); }
+    if (map.getLayer('boundaries-line')) {
+      (s.inkLayers || []).forEach((L, i) => {
+        const layer = {
+          id: `ink-${i}`, type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
+          filter: polityFilter(state.year),
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': L.color, 'line-width': L.width, 'line-opacity': L.opacity ?? 1, 'line-blur': L.blur ?? 0,
+            ...(L.offset != null ? { 'line-offset': L.offset } : {}),
+            ...(L.dash ? { 'line-dasharray': L.dash } : {}),
+          },
+        };
+        // `above` strokes sit on top of the main border; the rest bleed beneath it.
+        if (L.above) map.addLayer(layer); else map.addLayer(layer, 'boundaries-line');
+      });
     }
     applyOverlays(s);
   };
