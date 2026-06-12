@@ -93,9 +93,28 @@ class SyncCliopatriaPolities extends Command
         $this->newLine();
 
         $this->writeFlagManifest($flagsDir);
+        $this->writeArticlesSnapshot($corpus);
         $this->info("enriched {$count} Cliopatria polities");
 
         return self::SUCCESS;
+    }
+
+    /** Static article cache (public/timemap/articles.json) keyed by QID — the map prefetches this
+     *  instead of querying the slow corpus pooler at page load. */
+    private function writeArticlesSnapshot(\Illuminate\Database\Connection $corpus): void
+    {
+        $out = [];
+        foreach ($corpus->table('public.polities')->where('osm_id', 'like', 'Q%')->whereNotNull('summary')->get() as $p) {
+            $out[$p->osm_id] = [
+                'osm_id' => $p->osm_id, 'label' => $p->label, 'summary' => $p->summary,
+                'flag_path' => $p->flag_path, 'wikipedia_url' => $p->wikipedia_url,
+                'inception' => $p->inception !== null ? (int) $p->inception : null,
+                'dissolution' => $p->dissolution !== null ? (int) $p->dissolution : null,
+                'predecessor' => $p->predecessor, 'successor' => $p->successor,
+            ];
+        }
+        File::ensureDirectoryExists(public_path('timemap'));
+        File::put(public_path('timemap/articles.json'), json_encode($out));
     }
 
     /** flags/manifest.json — the QIDs that have a downloaded flag, so the map draws icons without 404-probing. */

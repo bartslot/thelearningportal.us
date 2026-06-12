@@ -2,15 +2,18 @@
     @vite('resources/js/timemap/index.js')
 @endpush
 
-<div class="relative h-[calc(100vh-4rem)] w-full"
+<div class="fixed inset-x-0 bottom-0 top-16 z-20"
      x-data="{}"
      x-init="$nextTick(() => window.initTimeMap($refs.map, $wire, {{ $year }}))">
-    {{-- Map canvas. Use h-full/w-full (not absolute inset-0): MapLibre's own CSS forces
-         position:relative on the container, which cancels inset-0 and collapses it to 0 height. --}}
+    {{-- Map canvas fills the full viewport (below the navbar). Use h-full/w-full (not absolute
+         inset-0): MapLibre's own CSS forces position:relative on the container, which cancels
+         inset-0 and collapses it to 0 height. --}}
     <div x-ref="map" class="h-full w-full" wire:ignore></div>
 
-    {{-- Polity info panel (TimeMap.org-style) --}}
+    {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
     <aside x-data="{ tab: 'summary', polity: null, loading: false }"
+           x-show="polity || loading"
+           x-transition.opacity.duration.150ms
            x-on:polity-selected.window="
                 if (!$event.detail.id) { polity = null; loading = false; return; }
                 tab = 'summary';
@@ -22,14 +25,15 @@
                                flag_path: null, predecessor: null, successor: null };
                     loading = false; return;
                 }
+                // Instant from the prefetch cache when available; else fetch (and cache).
+                const cached = (window.__polityCache || {})[$event.detail.id];
+                if (cached) { polity = { ...cached, label: $event.detail.name || cached.label }; loading = false; return; }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; });
+                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; });
            "
-           class="absolute left-0 top-0 z-10 h-full w-80 overflow-y-auto bg-base-100/95 p-4 shadow-xl">
-        <template x-if="!polity && !loading">
-            <p class="opacity-70">{{ __('Click a region') }}</p>
-        </template>
+           class="absolute left-4 top-4 z-20 max-h-[calc(100%-7rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl"
+           style="display:none">
         <template x-if="loading">
             <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}</p>
         </template>
