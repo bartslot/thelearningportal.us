@@ -50,8 +50,8 @@ class WorldHistoryService
             // 1. Try direct slug match + cleaned variants (e.g. drop "and their economy")
             foreach ($this->slugCandidates($topic) as $slug) {
                 $url = self::BASE_URL.'/'.$slug.'/';
-                if ($text = $this->fetchAndCacheByUrl($url)) {
-                    Log::info("WorldHistoryService: matched slug '{$slug}' for '{$topic}'");
+                if (($text = $this->fetchAndCacheByUrl($url)) && $this->isRelevant($topic, $this->lastArticleUrl)) {
+                    Log::info("WorldHistoryService: matched slug '{$slug}' → {$this->lastArticleUrl} for '{$topic}'");
 
                     return $text;
                 }
@@ -59,11 +59,11 @@ class WorldHistoryService
 
             // 2. Try search to find the canonical URL (often Cloudflare-blocked, but try)
             $foundUrl = $this->searchForUrl($topic);
-            if ($foundUrl && $text = $this->fetchAndCacheByUrl($foundUrl)) {
+            if ($foundUrl && ($text = $this->fetchAndCacheByUrl($foundUrl)) && $this->isRelevant($topic, $this->lastArticleUrl)) {
                 return $text;
             }
 
-            Log::info("WorldHistoryService: no article found for '{$topic}'");
+            Log::info("WorldHistoryService: no relevant article found for '{$topic}' — falling back to Wikipedia");
 
             return null;
 
@@ -166,10 +166,39 @@ class WorldHistoryService
      * Example: "Inca empire and their economy" →
      *   ['inca-empire-and-their-economy', 'inca-empire-economy', 'inca-empire', 'incas']
      */
+    private const STOPWORDS = ['the', 'and', 'or', 'of', 'a', 'an', 'in', 'on', 'to', 'for',
+        'with', 'their', 'its', 'his', 'her', 'our', 'your', 'about', 'into'];
+
+    /**
+     * Guard against drifting to an unrelated article (e.g. "Kingdom of France" → the disambiguation
+     * page's first link "Middle Kingdom of Egypt"). Require EVERY meaningful topic word to appear in
+     * the matched article's URL; otherwise we'd rather fall back to Wikipedia, which has the exact page.
+     */
+    private function isRelevant(string $topic, ?string $url): bool
+    {
+        if (! $url) {
+            return false;
+        }
+        $words = array_filter(
+            explode('-', $this->topicToSlug($topic)),
+            fn ($w) => strlen($w) >= 3 && ! in_array($w, self::STOPWORDS, true)
+        );
+        if ($words === []) {
+            return false;
+        }
+        $slug = strtolower((string) parse_url($url, PHP_URL_PATH));
+        foreach ($words as $w) {
+            if (! str_contains($slug, $w)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function slugCandidates(string $topic): array
     {
-        $stopwords = ['the', 'and', 'or', 'of', 'a', 'an', 'in', 'on', 'to', 'for',
-            'with', 'their', 'its', 'his', 'her', 'our', 'your', 'about', 'into'];
+        $stopwords = self::STOPWORDS;
 
         // 1. Full slug
         $full = $this->topicToSlug($topic);
@@ -191,10 +220,9 @@ class WorldHistoryService
                 $candidates[] = implode('-', array_slice($words, 0, 2));
             }
 
-            // 4. Just the first meaningful word — last resort
-            if (count($words) > 1) {
-                $candidates[] = $words[0];
-            }
+            // NOTE: deliberately no single-word fallback. For a multi-word topic it strips the
+            // specific entity (e.g. "Kingdom of France" → "kingdom") and matches an unrelated
+            // article ("kingdom" → "Middle Kingdom of Egypt"), feeding the wrong source to the LLM.
         }
 
         return array_values(array_unique($candidates));
