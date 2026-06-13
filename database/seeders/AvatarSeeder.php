@@ -23,6 +23,9 @@ class AvatarSeeder extends Seeder
         $avatarDir = public_path('avatars');
         $inserted = 0;
 
+        // Only these avatars are offered for lesson creation; the rest are seeded but inactive.
+        $activeIds = [1, 4]; // Napoleon, Joan of Arc
+
         // Scan numbered subfolders 1–99 for avatarinfo.json
         for ($i = 1; $i <= 99; $i++) {
             $jsonPath = "{$avatarDir}/{$i}/avatarinfo.json";
@@ -66,7 +69,7 @@ class AvatarSeeder extends Seeder
                 'voice_speed' => 1.0,
                 'voice_pitch' => 1.0,
                 'voice_settings' => '[]',
-                'is_active' => true,
+                'is_active' => in_array($i, $activeIds, true),
                 'sort_order' => $i,
                 'sprite_status' => 'pending',
                 'presentation_mode' => 'framed',
