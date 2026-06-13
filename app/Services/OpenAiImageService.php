@@ -223,7 +223,7 @@ class OpenAiImageService
     private function requestOne(string $prompt, string $size): string
     {
         $base = (string) config('services.openai.base_url');
-        $key = (string) config('services.openai.api_key');
+        $key = (string) config('services.openai.image_api_key');
 
         try {
             $response = Http::withToken($key)

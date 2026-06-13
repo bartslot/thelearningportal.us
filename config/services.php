@@ -65,6 +65,8 @@ return [
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
+        // Dedicated key for image generation (gpt-image-1 needs a verified org); falls back to the main key.
+        'image_api_key' => env('OPENAI_API_KEY_IMG', env('OPENAI_API_KEY')),
         'organization' => env('OPENAI_ORGANIZATION'),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
         'json_format' => env('OPENAI_JSON_FORMAT', 'json_object'), // set empty to skip response_format (LM Studio)

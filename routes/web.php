@@ -135,7 +135,8 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
             'duration_seconds' => null,
         ]);
 
-        GenerateLesson::dispatch($lesson->id);
+        // Use the OpenAI scene pipeline (same as the wizard), not the legacy local-LLM GenerateLesson.
+        \App\Jobs\BuildLessonOutline::dispatch($lesson->id);
 
         return back()->with('success', 'Lesson generation has been re-queued.');
     })->name('lessons.retry');
