@@ -24,7 +24,7 @@
         'portrait_url'          => $lesson->portraitUrl(),
         'slideshow_images'      => $lesson->slideshowImages(),
         'lesson_code'           => $lesson->lesson_code,
-        'avatar_glb_url'        => $lesson->avatar?->glbUrl() ?? null,
+        'avatar_glb_url'        => config('avatars.use_2d') ? null : ($lesson->avatar?->glbUrl() ?? null),
         'avatar_gender'         => strtolower($lesson->avatar?->gender ?? 'male'),
         'game_duration_seconds' => $lesson->strategyGame ? $lesson->strategyGame->duration_minutes * 60 : 600,
         'game_title'            => $lesson->strategyGame?->title,
@@ -83,6 +83,11 @@
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
+    {{-- 2D avatar: static portrait at bottom-right in place of the 3D avatar. --}}
+    @if (config('avatars.use_2d') && $lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
+        <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
+             class="pointer-events-none absolute bottom-0 right-[3%] z-20 h-[74%] w-auto max-w-[34%] object-contain drop-shadow-2xl">
+    @endif
 
     {{-- ── LAYER 3: UI overlay ──────────────────────────────────────────── --}}
     <div class="absolute inset-0 z-30 pointer-events-none">
