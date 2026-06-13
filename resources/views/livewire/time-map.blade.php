@@ -15,6 +15,7 @@
            x-show="polity || loading"
            x-transition.opacity.duration.150ms
            x-on:polity-selected.window="
+                window.__timemapStopSpeak && window.__timemapStopSpeak();
                 if (!$event.detail.id) { polity = null; loading = false; return; }
                 tab = 'summary';
                 if ($event.detail.articleUrl) {
@@ -23,14 +24,20 @@
                                wikipedia_url: $event.detail.articleUrl,
                                inception: $event.detail.inception ?? null, dissolution: $event.detail.dissolution ?? null,
                                flag_path: null, predecessor: null, successor: null };
-                    loading = false; return;
+                    loading = false;
+                    window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
+                    return;
                 }
                 // Instant from the prefetch cache when available; else fetch (and cache).
                 const cached = (window.__polityCache || {})[$event.detail.id];
-                if (cached) { polity = { ...cached, label: $event.detail.name || cached.label }; loading = false; return; }
+                if (cached) {
+                    polity = { ...cached, label: $event.detail.name || cached.label }; loading = false;
+                    window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
+                    return;
+                }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; });
+                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapSpeak && window.__timemapSpeak($event.detail.id, d.summary); });
            "
            class="absolute left-4 top-4 z-20 max-h-[calc(100%-7rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl"
            style="display:none">
@@ -44,7 +51,7 @@
                         <template x-if="polity.flag_path"><img :src="polity.flag_path" class="h-5 rounded-sm shadow" alt=""></template>
                         <h2 class="text-lg font-bold" x-text="polity.label"></h2>
                     </div>
-                    <button class="btn btn-ghost btn-xs" x-on:click="polity = null">✕</button>
+                    <button class="btn btn-ghost btn-xs" x-on:click="polity = null; window.__timemapStopSpeak && window.__timemapStopSpeak()">✕</button>
                 </div>
                 {{-- Both years scrub the timeline to that era. --}}
                 <p class="text-xs opacity-70">
@@ -100,27 +107,59 @@
          x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>
 
-    {{-- Map-style switcher: a round amber palette button → dropdown that restyles the map live. --}}
+    {{-- Settings: a cog that fans out to a palette (map style) and a sound (read-aloud) toggle. --}}
     <div class="absolute right-4 top-4 z-30"
-         x-data="{ open: false, style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
+         x-data="{ settingsOpen: false, paletteOpen: false,
+                   style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
+                   sound: (window.localStorage.getItem('tm-sound') === '1'),
                    items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Pen & Ink'],['night','Night']] }"
-         x-on:click.outside="open = false">
-        <button type="button" x-on:click="open = !open" aria-label="{{ __('Map style') }}"
+         x-on:click.outside="settingsOpen = false; paletteOpen = false">
+
+        {{-- Cog --}}
+        <button type="button" x-on:click="settingsOpen = !settingsOpen; if (!settingsOpen) paletteOpen = false"
+                aria-label="{{ __('Settings') }}"
                 class="btn btn-circle border-none bg-warning text-black shadow-lg hover:bg-warning">
-            <svg class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="m71.34 26.148c-7.8477-7.0195-18.648-9.7305-28.879-7.2461-10.234 2.4805-18.59 9.8398-22.348 19.676-3.7578 9.8359-2.4375 20.891 3.5312 29.566 5.9727 8.6719 15.824 13.855 26.355 13.855h2.3398c3.9023-0.003906 7.418-2.3555 8.9141-5.9609 1.4922-3.6055 0.67188-7.7539-2.082-10.52l-4.6914-4.6914c-0.47266-0.47266-0.61328-1.1836-0.35547-1.8008 0.25391-0.62109 0.85547-1.0234 1.5234-1.0273h18.352c2.1211 0 4.1562-0.84375 5.6562-2.3438s2.3438-3.5352 2.3438-5.6562c-0.003906-9.1016-3.8828-17.773-10.66-23.852zm-15.691 23.852c-3.9023 0.003906-7.418 2.3555-8.9102 5.9609-1.4961 3.6055-0.67188 7.7539 2.082 10.52l4.6914 4.6914c0.46875 0.47266 0.60938 1.1836 0.35547 1.8008-0.25781 0.62109-0.85938 1.0234-1.5273 1.0273h-2.3398c-8.2656 0.023438-15.961-4.2031-20.371-11.191-4.4062-6.9922-4.9102-15.758-1.332-23.207 3.582-7.4453 10.742-12.531 18.953-13.453 0.91406-0.097657 1.832-0.14844 2.75-0.14844 5.9102-0.023438 11.613 2.1602 16 6.1211 5.0898 4.5508 7.9961 11.051 8 17.879z"/>
-                <path d="m62 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
-                <path d="m46 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
-                <path d="m42 54c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
+            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.6 7.6 0 0 0 0 1.139c.016.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.6 7.6 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z"/>
             </svg>
         </button>
-        <ul x-show="open" x-transition.opacity style="display:none"
-            class="menu absolute right-0 mt-2 w-56 rounded-box bg-base-100/95 p-2 shadow-xl">
-            <li class="menu-title text-xs">{{ __('Map style') }}</li>
-            <template x-for="it in items" :key="it[0]">
-                <li><a x-on:click="style = it[0]; window.__applyMapStyle && window.__applyMapStyle(it[0]); open = false"
-                       :class="{ 'active font-semibold': style === it[0] }" x-text="it[1]"></a></li>
-            </template>
-        </ul>
+
+        {{-- Palette sub-button (to the left) --}}
+        <div class="absolute top-0" style="right: 3.75rem; display: none;" x-show="settingsOpen" x-transition>
+            <button type="button" x-on:click="paletteOpen = !paletteOpen" aria-label="{{ __('Map style') }}"
+                    class="btn btn-circle border-none bg-base-100 text-base-content shadow-lg">
+                <svg class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="m71.34 26.148c-7.8477-7.0195-18.648-9.7305-28.879-7.2461-10.234 2.4805-18.59 9.8398-22.348 19.676-3.7578 9.8359-2.4375 20.891 3.5312 29.566 5.9727 8.6719 15.824 13.855 26.355 13.855h2.3398c3.9023-0.003906 7.418-2.3555 8.9141-5.9609 1.4922-3.6055 0.67188-7.7539-2.082-10.52l-4.6914-4.6914c-0.47266-0.47266-0.61328-1.1836-0.35547-1.8008 0.25391-0.62109 0.85547-1.0234 1.5234-1.0273h18.352c2.1211 0 4.1562-0.84375 5.6562-2.3438s2.3438-3.5352 2.3438-5.6562c-0.003906-9.1016-3.8828-17.773-10.66-23.852zm-15.691 23.852c-3.9023 0.003906-7.418 2.3555-8.9102 5.9609-1.4961 3.6055-0.67188 7.7539 2.082 10.52l4.6914 4.6914c0.46875 0.47266 0.60938 1.1836 0.35547 1.8008-0.25781 0.62109-0.85938 1.0234-1.5273 1.0273h-2.3398c-8.2656 0.023438-15.961-4.2031-20.371-11.191-4.4062-6.9922-4.9102-15.758-1.332-23.207 3.582-7.4453 10.742-12.531 18.953-13.453 0.91406-0.097657 1.832-0.14844 2.75-0.14844 5.9102-0.023438 11.613 2.1602 16 6.1211 5.0898 4.5508 7.9961 11.051 8 17.879z"/>
+                    <path d="m62 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
+                    <path d="m46 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
+                    <path d="m42 54c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
+                </svg>
+            </button>
+            <ul x-show="paletteOpen" x-transition.opacity style="display:none"
+                class="menu absolute right-0 mt-2 w-56 rounded-box bg-base-100/95 p-2 shadow-xl">
+                <li class="menu-title text-xs">{{ __('Map style') }}</li>
+                <template x-for="it in items" :key="it[0]">
+                    <li><a x-on:click="style = it[0]; window.__applyMapStyle && window.__applyMapStyle(it[0]); paletteOpen = false"
+                           :class="{ 'active font-semibold': style === it[0] }" x-text="it[1]"></a></li>
+                </template>
+            </ul>
+        </div>
+
+        {{-- Sound sub-button (bottom-left): read summaries aloud via ElevenLabs --}}
+        <div class="absolute" style="right: 2.5rem; top: 3.75rem; display: none;" x-show="settingsOpen" x-transition>
+            <button type="button"
+                    x-on:click="sound = !sound; window.localStorage.setItem('tm-sound', sound ? '1' : '0'); window.__timemapSoundOn = sound; if (!sound && window.__timemapStopSpeak) window.__timemapStopSpeak();"
+                    :aria-label="sound ? '{{ __('Sound on') }}' : '{{ __('Sound off') }}'"
+                    class="btn btn-circle border-none shadow-lg" :class="sound ? 'bg-success text-white' : 'bg-base-100 text-base-content'">
+                {{-- Sound on: wave/equalizer bars --}}
+                <svg x-show="sound" class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="m39 35h6v30h-6z"/><path d="m55 19h6v62h-6z"/><path d="m23 27h6v46h-6z"/><path d="m71 43h6v14h-6z"/>
+                </svg>
+                {{-- Sound off: muted speaker --}}
+                <svg x-show="!sound" style="display:none" class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="m97.828 53.828c0.58594 0.57031 0.91797 1.3477 0.92188 2.1641 0.007812 0.8125-0.3125 1.5977-0.89062 2.1719-0.57422 0.57813-1.3594 0.89844-2.1758 0.89453-0.8125-0.007813-1.5938-0.33984-2.1602-0.92188l-3.8281-3.8281-3.8281 3.8281h-0.003907c-1.1875 1.1875-3.1172 1.1875-4.3047 0-1.1914-1.1875-1.1914-3.1172-0.003906-4.3086l3.832-3.8281-3.832-3.8281c-1.1602-1.1953-1.1484-3.1016 0.03125-4.2773 1.1758-1.1797 3.082-1.1914 4.2773-0.03125l3.8281 3.8281 3.8281-3.8281c0.57031-0.58203 1.3477-0.91406 2.1641-0.92188 0.8125-0.003906 1.5977 0.31641 2.1719 0.89453 0.57812 0.57422 0.89844 1.3594 0.89453 2.1719-0.007812 0.81641-0.33984 1.5938-0.92188 2.1641l-3.8281 3.8281zm-21.801-3.8281c-0.003906 3.7578-1.3594 7.3867-3.8203 10.227-2.457 2.8398-5.8555 4.6992-9.5742 5.2383v11.922c0.011719 3.0273-1.5977 5.832-4.2227 7.3477-2.6211 1.5156-5.8555 1.5117-8.4727-0.015625l-23.012-13.289h-17.363c-4.5742-0.003907-8.2773-3.7109-8.2852-8.2812v-26.297c0.007812-4.5703 3.7109-8.2773 8.2852-8.2812h17.363l23.012-13.285c2.6211-1.5156 5.8477-1.5117 8.4648 0 2.6172 1.5117 4.2305 4.3086 4.2305 7.332v11.918c3.7188 0.53906 7.1172 2.3984 9.5742 5.2383 2.4609 2.8398 3.8164 6.4688 3.8203 10.227zm-66.465 15.34h15.133v-30.68h-15.133c-1.2109 0-2.1914 0.98047-2.1953 2.1914v26.297c0.003906 1.2109 0.98437 2.1914 2.1953 2.1914zm46.98-42.727c-0.003907-0.84766-0.45312-1.6289-1.1875-2.0508-0.73047-0.42578-1.6367-0.42578-2.3672-0.003906l-22.199 12.812v33.254l22.191 12.82c0.73438 0.42188 1.6406 0.41797 2.3711-0.003906 0.73438-0.42578 1.1836-1.207 1.1875-2.0508zm13.395 27.387c-0.003906-4.4062-3.0234-8.2344-7.3047-9.2734v18.543c4.2812-1.0352 7.2969-4.8633 7.3047-9.2695z"/>
+                </svg>
+            </button>
+        </div>
     </div>
 </div>

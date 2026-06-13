@@ -85,6 +85,8 @@ return [
     'elevenlabs' => [
         'api_key' => env('ELEVENLABS_API_KEY'),
         'base_url' => 'https://api.elevenlabs.io',
+        // Narration voice for the Time-Map "read summary aloud" feature (George by default).
+        'voice_id' => env('ELEVENLABS_VOICE_ID', 'JBFqnCBsd6RMkjVDRZzb'),
     ],
 
     'rhubarb' => [

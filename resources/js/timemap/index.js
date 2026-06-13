@@ -333,6 +333,25 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   };
   window.__applyMapStyle = applyMapStyle;
 
+  // Read-aloud (ElevenLabs): gated by the Settings sound toggle (persisted). The panel calls
+  // __timemapSpeak when a territory's summary is shown; audio is cached server-side per polity.
+  window.__timemapSoundOn = (() => { try { return localStorage.getItem('tm-sound') === '1'; } catch (e) { return false; } })();
+  let ttsAudio = null;
+  window.__timemapStopSpeak = () => { if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; } };
+  window.__timemapSpeak = (id, text) => {
+    window.__timemapStopSpeak();
+    if (!window.__timemapSoundOn || !id || !text) return;
+    const csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
+    fetch('/teacher/timemap/speak', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+      body: JSON.stringify({ id, text }),
+    }).then((r) => (r.ok ? r.json() : {})).then((d) => {
+      if (!d || !d.url || !window.__timemapSoundOn) return;
+      ttsAudio = new Audio(d.url);
+      ttsAudio.play().catch(() => { /* autoplay blocked until a user gesture */ });
+    }).catch(() => {});
+  };
+
   map.on('load', () => {
     map.addLayer({
       id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
