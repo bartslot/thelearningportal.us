@@ -1,0 +1,15 @@
+{
+"name": "public/river-tiles",
+"description": "public/river-tiles",
+"version": "2",
+"minzoom": "0",
+"maxzoom": "4",
+"center": "101.250000,31.461472,4",
+"bounds": "-165.243939,-50.240137,176.325806,73.334904",
+"antimeridian_adjusted_bounds": "-165.243939,-50.240137,176.325806,73.334904",
+"type": "overlay",
+"format": "pbf",
+"generator": "tippecanoe v2.79.0",
+"generator_options": "tippecanoe -e public/river-tiles -l rivers -Z0 -z4 --no-tile-compression --drop-densest-as-needed --no-tile-size-limit -y name -y scalerank --force storage/app/naturalearth/ne_50m_rivers_lake_centerlines.geojson",
+"json": "{\"vector_layers\":[{\"id\":\"rivers\",\"description\":\"\",\"minzoom\":0,\"maxzoom\":4,\"fields\":{\"name\":\"String\",\"scalerank\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"rivers\",\"count\":461,\"geometry\":\"LineString\",\"attributeCount\":2,\"attributes\":[{\"attribute\":\"name\",\"count\":342,\"type\":\"string\",\"values\":[\"Abay\",\"Al Furat\",\"Alabama\",\"Albany\",\"Albert Nile\",\"Aldan\",\"Allegheny\",\"Amazonas\",\"Amu  Darya\",\"Amur\",\"Anadyr’\",\"Angara\",\"Araguaia\",\"Argun’\",\"Ariège\",\"Arkansas\",\"Atbara\",\"Athabasca\",\"Ayeyarwady\",\"Back\",\"Bafing\",\"Bahr el  Zeraf\",\"Bahr el Jebel\",\"Bamingui\",\"Barito\",\"Barwon\",\"Benue\",\"Biya\",\"Borcea\",\"Braco Menor\",\"Brahmaputra\",\"Branco\",\"Bratul Chillia\",\"Bratul Sfintu Gheorghe\",\"Bratul Sulina\",\"Brazos\",\"Busira\",\"Bykovskaya Protoka\",\"Bénoué\",\"Bío-Bío\",\"Caquetá\",\"Chang Jiang\",\"Chari\",\"Chattahoochee\",\"Chattooga\",\"Chenab\",\"Chixoy\",\"Chubut\",\"Chulyshman\",\"Churchill\",\"Coco\",\"Colorado\",\"Columbia\",\"Congo\",\"Copper\",\"Coppermine\",\"Cubango\",\"Culuene\",\"Dadu\",\"Daly\",\"Dalälven\",\"Damietta Branch\",\"Danube\",\"Darling\",\"Daugava\",\"Desaguadero\",\"Dicle\",\"Digul\",\"Dihang\",\"Dnepre\",\"Dniester\",\"Dnipro\",\"Don\",\"Donau\",\"Double Mountain Fork Brazos\",\"Drava\",\"Duero\",\"Ebro\",\"El Bahr el Abyad\",\"El Bahr el Azraq\",\"Elbe\",\"Ertis\",\"Ertix\",\"Euphrates\",\"Ferenc Csatorna\",\"Finlay\",\"Firat\",\"Fitzroy\",\"Fraser\",\"Gan\",\"Ganges\",\"Garonne\",\"Genala\",\"Gharraf Canal\",\"Gila\",\"Glomma\",\"Godävari\",\"Grande\",\"Great Pee Dee\",\"Guaporé\"]},{\"attribute\":\"scalerank\",\"count\":6,\"type\":\"number\",\"values\":[1,2,3,4,5,6],\"min\":1,\"max\":6}]}]}}"
+}

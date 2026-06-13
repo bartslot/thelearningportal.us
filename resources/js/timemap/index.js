@@ -22,6 +22,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [
@@ -173,12 +174,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
     'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
       // Delicate main stroke — per-feature width variance, kept thin so dense regions stay readable.
       line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
       coast: { color: '#6b563d', opacity: 0.5, width: 0.6 },
+      river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
       // One faint bleed + one offset rough underlayer (both width-varied) beneath, then a single
       // light broken accent on top. Restrained so borders read as pen work, not a black tangle.
       inkLayers: [
@@ -232,6 +234,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         map.setPaintProperty('coast-echo', 'line-opacity', ['interpolate', ['linear'], ['to-number', ['get', 'echo']], 0, s.coast.opacity, 3, s.coast.opacity * 0.12]);
       } else {
         map.setLayoutProperty('coast-echo', 'visibility', 'none');
+      }
+    }
+    // Rivers: shown in ink styles, thicker for major rivers (low scalerank).
+    if (map.getLayer('rivers')) {
+      if (s.river) {
+        map.setLayoutProperty('rivers', 'visibility', 'visible');
+        map.setPaintProperty('rivers', 'line-color', s.river.color);
+        map.setPaintProperty('rivers', 'line-opacity', s.river.opacity ?? 0.55);
+        const w = s.river.width ?? 0.6;
+        map.setPaintProperty('rivers', 'line-width', ['interpolate', ['linear'], ['to-number', ['get', 'scalerank']], 1, w + 0.5, 6, w * 0.5]);
+      } else {
+        map.setLayoutProperty('rivers', 'visibility', 'none');
       }
     }
     if (map.getLayer('boundaries-fill')) {
@@ -289,6 +303,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
+    });
+    // Rivers (Natural Earth, major only) — above borders, below labels; ink styles only.
+    map.addLayer({
+      id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+      filter: ['<=', ['to-number', ['get', 'scalerank']], 5],
+      layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#6a7c74', 'line-width': 0.6, 'line-opacity': 0.6 },
     });
     // One derived label point per polity (see refreshLabels) — never per tile-clipped part.
     map.addSource('labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
