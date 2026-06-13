@@ -23,6 +23,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\AutoLoginDev::class,
         ]);
+
+        $middleware->prependToPriorityList(
+            \Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests::class,
+            \App\Http\Middleware\AutoLoginDev::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

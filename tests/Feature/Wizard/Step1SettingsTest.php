@@ -89,6 +89,20 @@ class Step1SettingsTest extends TestCase
             ->assertSet('audience_age', 11);
     }
 
+    public function test_avatar_picker_exposes_teacher_greeting_audio_and_hover_zoom(): void
+    {
+        $path = "avatar-greetings/{$this->avatar->id}/{$this->teacher->id}.mp3";
+        Storage::disk('public')->put($path, 'mp3');
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->assertSee("/storage/{$path}", false)
+            ->assertSee('data-avatar-sound-url', false)
+            ->assertSee('playAvatar', false)
+            ->assertSee('overflow-x-auto', false)
+            ->assertSee('group-hover:scale-110', false);
+    }
+
     public function test_saves_a_wikipedia_only_lesson_as_draft(): void
     {
         Livewire::actingAs($this->teacher)

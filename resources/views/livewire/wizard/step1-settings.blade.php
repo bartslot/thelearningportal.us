@@ -262,7 +262,7 @@
                             {{-- Grade option buttons (tiers that have an options array) --}}
                             @foreach ($this->gradeSystem['tiers'] as $tierDef)
                                 @if (!empty($tierDef['options']))
-                                    <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="flex flex-wrap gap-2">
+                                    <div x-show="activeTier === '{{ $tierDef['key'] }}'" class="flex flex-wrap gap-2 py-4">
                                         @foreach ($tierDef['options'] as $opt)
                                             <button type="button"
                                                     x-on:click="pickGrade('{{ $opt['value'] }}', '{{ $tierDef['key'] }}')"
@@ -379,10 +379,9 @@
 
                             {{-- Hover tooltip --}}
                             <div class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2
-                                        hidden group-hover:block z-50 w-52
+                                        hidden group-hover:block z-60 w-64
                                         bg-slate-800 border border-slate-600 rounded-lg shadow-xl
                                         px-3 py-2 text-xs text-slate-300 leading-relaxed">
-                                <span class="font-semibold text-white block mb-0.5">{{ $t['emoji'] }} {{ $t['label'] }}</span>
                                 {{ $t['description'] }}
                                 {{-- Arrow --}}
                                 <span class="absolute top-full left-1/2 -translate-x-1/2
@@ -419,17 +418,17 @@
             </div>
 
             {{-- Teacher details --}}
-            <label class="form-control" for="lw-details">
+            <label class="form-control flex flex-col gap-2" for="lw-details">
                 <span class="label-text text-xs uppercase tracking-wider text-slate-400">Teacher details (optional)</span>
                 <textarea id="lw-details" wire:model="details" rows="3"
                           placeholder="Extra context, learning goals, things to emphasise…"
-                          class="textarea textarea-bordered bg-slate-900 mt-1"></textarea>
+                          class="textarea textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
             </label>
         </div>
     </div>
 
     {{-- Source --}}
-    <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
+    <div class="collapse collapse-arrow bg-base-300 rounded-2xl overflow-visible">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
             <span class="font-medium text-white text-sm">Source</span>
