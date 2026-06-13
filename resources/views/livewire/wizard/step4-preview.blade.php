@@ -7,10 +7,10 @@
          data-character-url="{{ $use2dAvatar ? '' : $lesson->avatar?->glbUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
-        {{-- 2D avatar: static portrait standing where the 3D avatar would render. --}}
+        {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
         @if ($use2dAvatar && $lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
             <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
-                 class="pointer-events-none absolute bottom-0 left-1/2 z-[5] h-[80%] w-auto max-w-[42%] -translate-x-1/2 object-contain drop-shadow-2xl">
+                 class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
         @endif
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>

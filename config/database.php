@@ -96,6 +96,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => env('DB_SEARCH_PATH', 'public'),
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Reuse the connection across requests so the ~1.5s TLS handshake to the remote
+            // Supabase pooler isn't repeated on every Livewire round-trip.
+            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN)],
         ],
 
         // Read-only view over the corpus (public schema). Prefer a dedicated SELECT-only
@@ -112,6 +115,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN)],
         ],
 
         'sqlsrv' => [

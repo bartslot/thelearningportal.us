@@ -83,10 +83,10 @@
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
-    {{-- 2D avatar: static portrait at bottom-right in place of the 3D avatar. --}}
+    {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
     @if (config('avatars.use_2d') && $lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
         <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
-             class="pointer-events-none absolute bottom-0 right-[3%] z-20 h-[74%] w-auto max-w-[34%] object-contain drop-shadow-2xl">
+             class="pointer-events-none absolute bottom-6 right-6 z-30 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
     @endif
 
     {{-- ── LAYER 3: UI overlay ──────────────────────────────────────────── --}}
