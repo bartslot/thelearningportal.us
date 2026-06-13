@@ -46,6 +46,7 @@
     --color-info-content:     oklch(9% 0.022 264);
     --color-success:          oklch(73% 0.165 148);  /* emerald-400 */
     --color-success-content:  oklch(9% 0.022 264);
+    --color-link:             oklch(83% 0.161 68);   /* #fbbf24 amber-400 */
     --color-warning:          oklch(83% 0.161 68);   /* #fbbf24 amber-400 */
     --color-warning-content:  oklch(9% 0.022 264);
     --color-error:            oklch(65% 0.22 27);    /* rose-500 */
@@ -120,14 +121,14 @@
         box-shadow: 0 2px 12px rgba(245,158,11,0.35);
     }
     .btn-primary:hover, .btn-primary:focus {
-        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        background: linear-gradient(135deg, var(--color-link) 0%, #f59e0b 100%);
         box-shadow: 0 0 40px rgba(245,158,11,0.45);
     }
 
     /* Ghost / outline button: amber border */
     .btn-ghost {
         border: 1px solid rgba(245,158,11,0.4);
-        color: #fbbf24;
+        color: var(--color-link);
     }
     .btn-ghost:hover {
         background: rgba(245,158,11,0.08);
@@ -138,7 +139,7 @@
     .badge-primary {
         background: rgba(245,158,11,0.12);
         border: 1px solid rgba(245,158,11,0.28);
-        color: #fbbf24;
+        color: var(--color-link);
         font-size: 0.68rem;
         font-weight: 500;
         letter-spacing: 0.08em;
@@ -174,16 +175,16 @@
 
     /* Progress: amber fill with glow */
     .progress::-webkit-progress-value {
-        background: linear-gradient(90deg, #f59e0b, #fbbf24);
+        background: linear-gradient(90deg, #f59e0b, var(--color-link));
         box-shadow: 0 0 8px rgba(245,158,11,0.5);
     }
     .progress::-moz-progress-bar {
-        background: linear-gradient(90deg, #f59e0b, #fbbf24);
+        background: linear-gradient(90deg, #f59e0b, var(--color-link));
     }
 
     /* Tabs: amber active indicator */
     .tab-active {
-        color: #fbbf24 !important;
+        color: var(--color-link) !important;
         border-bottom-color: #f59e0b !important;
     }
 
@@ -347,6 +348,12 @@
 
     body.portal-exiting {
         overflow: hidden;
+    }
+    .link {
+        color: var(--color-link);
+    }
+    .link:hover {
+        color: var(--color-secondary);
     }
 
     body.portal-exiting .landing-cursor {
