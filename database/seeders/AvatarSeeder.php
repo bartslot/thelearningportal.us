@@ -65,7 +65,7 @@ class AvatarSeeder extends Seeder
                 'body_type' => $info['bodyType'] ?? null,
                 'source_id' => $info['sourceId'] ?? null,
                 'voice_provider' => 'elevenlabs',
-                'voice_id' => '',
+                'voice_id' => $info['voiceId'] ?? '',
                 'voice_speed' => 1.0,
                 'voice_pitch' => 1.0,
                 'voice_settings' => '[]',
