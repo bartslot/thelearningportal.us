@@ -23,6 +23,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        'ink-borders': { type: 'vector', tiles: [`${location.origin}/ink-border-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [
@@ -70,6 +71,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['<=', ['to-number', ['get', 'FromYear']], year],
     ['>=', ['to-number', ['get', 'ToYear']], year],
   ];
+  // Wobbled ink-border lines (pre-filtered to POLITY at build time) carry only FromYear/ToYear.
+  const borderDateFilter = (year) => ['all',
+    ['<=', ['to-number', ['get', 'FromYear']], year],
+    ['>=', ['to-number', ['get', 'ToYear']], year],
+  ];
   // Supplemental markers (markers.json) use their own start/end decimal-year lifespan.
   const markerFilter = (year) => ['all',
     ['<=', ['coalesce', ['to-number', ['get', 'start_decdate']], -1e6], year],
@@ -81,7 +87,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setFilter('boundaries-line', polityFilter(year));
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
-    for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.setFilter(`ink-${i}`, polityFilter(year)); }
+    const inkF = MAP_STYLES[currentStyleName] && MAP_STYLES[currentStyleName].borderSource ? borderDateFilter(year) : polityFilter(year);
+    for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.setFilter(`ink-${i}`, inkF); }
     scheduleSettle(); // recompute labels + prefetch articles for the new era (after tiles settle)
   };
 
@@ -177,17 +184,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
-      // Delicate main stroke — per-feature width variance, kept thin so dense regions stay readable.
       line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
+      // Draw borders from the wobbled ink-border tileset (hand-drawn jitter baked into geometry).
+      borderSource: { source: 'ink-borders', sourceLayer: 'ink' },
       coast: { color: '#6b563d', opacity: 0.5, width: 0.6 },
       river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
       mountains: true,
-      // One faint bleed + one offset rough underlayer (both width-varied) beneath, then a single
-      // light broken accent on top. Restrained so borders read as pen work, not a black tangle.
+      // Stacked passes on the wobbled lines: faint bleed, offset rough, the main dark stroke, then a
+      // light broken accent — all width-varied so borders read as uneven pen work.
       inkLayers: [
-        { color: '#5a4630', width: inkWidth(1.2, 2.4), opacity: 0.12, blur: 1.4 },
-        { color: '#4a3826', width: inkWidth(0.7, 1.5), opacity: 0.2, blur: 0.6, offset: 0.5 },
-        { color: '#2a1f12', width: 0.6, opacity: 0.4, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
+        { color: '#5a4630', width: inkWidth(1.2, 2.4), opacity: 0.1, blur: 1.4 },
+        { color: '#4a3826', width: inkWidth(0.7, 1.5), opacity: 0.18, blur: 0.6, offset: 0.4 },
+        { color: '#33261a', width: inkWidth(0.4, 1.2), opacity: 0.8, blur: 0.2 },
+        { color: '#2a1f12', width: 0.6, opacity: 0.32, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
       ],
       text: { color: '#33271a', halo: '#efe2c4' }, paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
     },
@@ -266,6 +275,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
       map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
       map.setLayoutProperty('boundaries-line', 'line-join', 'round');
+      // When a style supplies wobbled ink borders, hide the smooth vector line and draw from those.
+      map.setLayoutProperty('boundaries-line', 'visibility', s.borderSource ? 'none' : 'visible');
       map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
       map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
     }
@@ -277,10 +288,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // so borders read as uneven pen work rather than uniform vector lines.
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.removeLayer(`ink-${i}`); }
     if (map.getLayer('boundaries-line')) {
+      const bsrc = (s.borderSource && s.borderSource.source) || 'cliopatria';
+      const bslayer = (s.borderSource && s.borderSource.sourceLayer) || 'boundaries';
+      const bfilter = s.borderSource ? borderDateFilter(state.year) : polityFilter(state.year);
       (s.inkLayers || []).forEach((L, i) => {
         const layer = {
-          id: `ink-${i}`, type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
-          filter: polityFilter(state.year),
+          id: `ink-${i}`, type: 'line', source: bsrc, 'source-layer': bslayer,
+          filter: bfilter,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
             'line-color': L.color, 'line-width': L.width, 'line-opacity': L.opacity ?? 1, 'line-blur': L.blur ?? 0,
