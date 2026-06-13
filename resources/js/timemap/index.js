@@ -223,6 +223,26 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
     vg.style.background = `radial-gradient(ellipse 78% 78% at center, rgba(0,0,0,0) 52%, ${s.vignette} 100%)`;
   };
+  // Wave animation: gently pulse the coast-echo rings with an outward-travelling phase so the
+  // etched sea looks like rolling waves. Throttled to ~18fps; disabled for reduced-motion users.
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let waveRAF = null, coastCfg = null, lastWave = 0;
+  const waveTick = () => {
+    waveRAF = requestAnimationFrame(waveTick);
+    const now = performance.now();
+    if (now - lastWave < 55) return;
+    lastWave = now;
+    if (!coastCfg || !map.getLayer('coast-echo')) return;
+    const t = now / 1000, base = coastCfg.opacity;
+    const op = (echo) => {
+      const fade = base * Math.pow(0.45, echo); // outward fade (echo 0 = nearest/darkest)
+      return Math.max(0.015, fade * (0.6 + 0.4 * Math.sin(t * 0.9 - echo * 0.9)));
+    };
+    map.setPaintProperty('coast-echo', 'line-opacity', ['interpolate', ['linear'], ['to-number', ['get', 'echo']], 0, op(0), 1, op(1), 2, op(2), 3, op(3)]);
+  };
+  const startWaves = (coast) => { coastCfg = coast; if (!reduceMotion && !waveRAF) waveRAF = requestAnimationFrame(waveTick); };
+  const stopWaves = () => { coastCfg = null; if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; } };
+
   let currentStyleName = 'soft-atlas';
   const applyMapStyle = (name) => {
     const key = MAP_STYLES[name] ? name : 'soft-atlas';
@@ -243,9 +263,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         map.setLayoutProperty('coast-echo', 'visibility', 'visible');
         map.setPaintProperty('coast-echo', 'line-color', s.coast.color);
         map.setPaintProperty('coast-echo', 'line-width', s.coast.width ?? 0.6);
-        map.setPaintProperty('coast-echo', 'line-opacity', ['interpolate', ['linear'], ['to-number', ['get', 'echo']], 0, s.coast.opacity, 3, s.coast.opacity * 0.12]);
+        startWaves(s.coast); // animates line-opacity each frame for the rolling-wave effect
       } else {
         map.setLayoutProperty('coast-echo', 'visibility', 'none');
+        stopWaves();
       }
     }
     // Rivers: shown in ink styles, thicker for major rivers (low scalerank).
