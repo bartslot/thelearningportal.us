@@ -513,13 +513,27 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 };
 
 window.mountAtlasSlider = function (el, mapEl, initialYear) {
-  let timer = null;
+  // Throttle map updates (leading + trailing, ~100ms). _setYear is continuous/no-fetch, so this
+  // keeps the map animating live while the timeline is played or dragged, while capping filter
+  // churn, and the trailing call guarantees the map lands on the final year.
+  const THROTTLE_MS = 100;
+  let last = 0;
+  let trailing = null;
+  const pushYear = (year) => {
+    if (!mapEl._setYear) return;
+    const now = performance.now();
+    const wait = THROTTLE_MS - (now - last);
+    clearTimeout(trailing);
+    if (wait <= 0) {
+      last = now;
+      mapEl._setYear(year);
+    } else {
+      trailing = setTimeout(() => { last = performance.now(); mapEl._setYear(year); }, wait);
+    }
+  };
   const slider = mountTimeSlider(el, {
     min: -4000, max: 2010, value: initialYear,
-    onYear: (year) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => { if (mapEl._setYear) mapEl._setYear(year); }, 150);
-    },
+    onYear: (year) => pushYear(year),
   });
   // Let other UI (e.g. the panel's era links) scrub the timeline + map to a given year.
   window.__setTimemapYear = (year) => {

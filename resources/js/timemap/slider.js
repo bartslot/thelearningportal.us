@@ -23,6 +23,13 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
 
   el.classList.add('select-none');
   el.innerHTML = `
+    <!-- Play/pause: cog-sized circular button at the bottom edge of the scrubber, before the year -->
+    <button type="button" aria-label="Play timeline" aria-pressed="false"
+            class="tm-play btn btn-circle border-none bg-warning text-black shadow-lg hover:bg-warning absolute bottom-3 left-3 z-30">
+      <svg class="tm-ic-play h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>
+      <svg class="tm-ic-pause h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+    </button>
+
     <div class="tm-input-row flex items-center justify-center gap-2">
       <button type="button" class="tm-step btn btn-circle btn-ghost btn-sm" data-step="-1" aria-label="Previous year">
         <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3 5 8l5 5"/></svg>
@@ -119,6 +126,54 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
     if (fireYear) onYear(current);
   };
 
+  // Play/pause: auto-advance the year forward so the map animates through time. Driven by a
+  // time-delta rAF loop (not setInterval) so the rate stays constant even when map reloads hog the
+  // main thread — dropped frames just produce larger year jumps. Reuses seek() so the map reloads
+  // (throttled by the caller). Stops at max; restarts from min if pressed at the end.
+  const playBtn = el.querySelector('.tm-play');
+  const icPlay = el.querySelector('.tm-ic-play');
+  const icPause = el.querySelector('.tm-ic-pause');
+  const PLAY_YEARS_PER_SEC = 100;
+  let playOn = false;
+  let playRaf = null;
+  let playYear = 0; // float accumulator so rounding to whole years doesn't drift the rate
+  let playLast = 0;
+  const playing = () => playOn;
+  const renderPlay = () => {
+    icPlay.style.display = playOn ? 'none' : '';
+    icPause.style.display = playOn ? '' : 'none';
+    playBtn.setAttribute('aria-pressed', playOn ? 'true' : 'false');
+    playBtn.setAttribute('aria-label', playOn ? 'Pause timeline' : 'Play timeline');
+  };
+  const playStep = (now) => {
+    if (!playOn) return;
+    // Clamp the frame delta so a starved/backgrounded tab (where rAF pauses) resumes by advancing
+    // slowly rather than leaping years on the first frame back.
+    if (playLast) playYear += (PLAY_YEARS_PER_SEC * Math.min(now - playLast, 100)) / 1000;
+    playLast = now;
+    if (playYear >= max) { seek(max); stopPlay(); return; }
+    seek(playYear);
+    playRaf = requestAnimationFrame(playStep);
+  };
+  const stopPlay = () => {
+    if (!playOn) return;
+    playOn = false;
+    if (playRaf !== null) cancelAnimationFrame(playRaf);
+    playRaf = null;
+    playLast = 0;
+    renderPlay();
+  };
+  const startPlay = () => {
+    if (playOn) return;
+    playOn = true;
+    if (current >= max) seek(min); // wrap to the start when pressed at the end
+    playYear = current;
+    playLast = 0;
+    renderPlay();
+    playRaf = requestAnimationFrame(playStep);
+  };
+  playBtn.addEventListener('click', () => (playOn ? stopPlay() : startPlay()));
+
   // Scrubbing the timeline: derive the year from scroll position, update UI immediately, and
   // throttle the onYear callback to one per frame.
   let rafPending = false;
@@ -142,6 +197,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
   let dragStartLeft = 0;
   let dragging = false;
   scroll.addEventListener('pointerdown', (e) => {
+    stopPlay();
     dragging = true;
     dragStartX = e.clientX;
     dragStartLeft = scroll.scrollLeft;
@@ -164,6 +220,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
 
   // Number input: typing a year scrubs the map.
   input.addEventListener('input', () => {
+    stopPlay();
     const raw = parseInt(input.value, 10);
     if (Number.isNaN(raw)) return;
     seek(raw);
@@ -173,7 +230,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
 
   // Steppers.
   el.querySelectorAll('.tm-step').forEach((btn) => {
-    btn.addEventListener('click', () => seek(current + Number(btn.dataset.step)));
+    btn.addEventListener('click', () => { stopPlay(); seek(current + Number(btn.dataset.step)); });
   });
 
   // Keyboard on the track (arrow keys nudge by a year, Page keys by a decade).
@@ -181,6 +238,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
     const step = { ArrowLeft: -1, ArrowRight: 1, PageDown: -10, PageUp: 10 }[e.key];
     if (step === undefined) return;
     e.preventDefault();
+    stopPlay();
     seek(current + step);
   });
 
@@ -193,5 +251,5 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
   const ro = new ResizeObserver(() => { buildStrip(); seek(current, { fireYear: false }); });
   ro.observe(track);
 
-  return { setYear: (y) => seek(y, { fireYear: false }) };
+  return { setYear: (y) => { stopPlay(); seek(y, { fireYear: false }); } };
 }
