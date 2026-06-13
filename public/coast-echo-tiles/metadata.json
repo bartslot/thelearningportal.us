@@ -5,11 +5,11 @@
 "minzoom": "0",
 "maxzoom": "4",
 "center": "123.750000,-10.971523,4",
-"bounds": "-179.999010,-85.039243,179.999900,84.086037",
+"bounds": "-179.999010,-85.039243,179.997989,84.086037",
 "antimeridian_adjusted_bounds": "0.003689,-85.039243,359.990644,84.086037",
 "type": "overlay",
 "format": "pbf",
 "generator": "tippecanoe v2.79.0",
 "generator_options": "tippecanoe -e public/coast-echo-tiles -l coast -Z0 -z4 --no-tile-compression --drop-densest-as-needed --no-tile-size-limit -y echo --force storage/app/naturalearth/coast-echo.geojson",
-"json": "{\"vector_layers\":[{\"id\":\"coast\",\"description\":\"\",\"minzoom\":0,\"maxzoom\":4,\"fields\":{\"echo\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"coast\",\"count\":5855,\"geometry\":\"LineString\",\"attributeCount\":1,\"attributes\":[{\"attribute\":\"echo\",\"count\":4,\"type\":\"number\",\"values\":[0,1,2,3],\"min\":0,\"max\":3}]}]}}"
+"json": "{\"vector_layers\":[{\"id\":\"coast\",\"description\":\"\",\"minzoom\":0,\"maxzoom\":4,\"fields\":{\"echo\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"coast\",\"count\":742,\"geometry\":\"LineString\",\"attributeCount\":1,\"attributes\":[{\"attribute\":\"echo\",\"count\":4,\"type\":\"number\",\"values\":[0,1,2,3],\"min\":0,\"max\":3}]}]}}"
 }
