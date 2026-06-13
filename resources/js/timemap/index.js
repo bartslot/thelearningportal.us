@@ -21,10 +21,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
+        // Etched coast-echo lines sit on the sea, beneath the land fill (ink styles only).
+        { id: 'coast-echo', type: 'line', source: 'coast', 'source-layer': 'coast', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': '#6b563d', 'line-width': 0.6 } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
       ],
     },
@@ -170,11 +173,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
     'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
       // Delicate main stroke — per-feature width variance, kept thin so dense regions stay readable.
       line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
+      coast: { color: '#6b563d', opacity: 0.5, width: 0.6 },
       // One faint bleed + one offset rough underlayer (both width-varied) beneath, then a single
       // light broken accent on top. Restrained so borders read as pen work, not a black tangle.
       inkLayers: [
@@ -219,6 +223,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ...pal.flatMap((c, i) => [i, c]), pal[0]]];
     map.setPaintProperty('water', 'background-color', s.water);
     map.setPaintProperty('land', 'fill-color', s.land);
+    // Etched coast echo: shown in ink styles; opacity fades from the nearest ring outward.
+    if (map.getLayer('coast-echo')) {
+      if (s.coast) {
+        map.setLayoutProperty('coast-echo', 'visibility', 'visible');
+        map.setPaintProperty('coast-echo', 'line-color', s.coast.color);
+        map.setPaintProperty('coast-echo', 'line-width', s.coast.width ?? 0.6);
+        map.setPaintProperty('coast-echo', 'line-opacity', ['interpolate', ['linear'], ['to-number', ['get', 'echo']], 0, s.coast.opacity, 3, s.coast.opacity * 0.12]);
+      } else {
+        map.setLayoutProperty('coast-echo', 'visibility', 'none');
+      }
+    }
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
       // Keep hover/selected clearly visible even when the base fill is very faint (ink styles).
