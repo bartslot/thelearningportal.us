@@ -495,11 +495,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
 window.mountAtlasSlider = function (el, mapEl, initialYear) {
   let timer = null;
-  mountTimeSlider(el, {
+  const slider = mountTimeSlider(el, {
     min: -4000, max: 2010, value: initialYear,
     onYear: (year) => {
       clearTimeout(timer);
       timer = setTimeout(() => { if (mapEl._setYear) mapEl._setYear(year); }, 150);
     },
   });
+  // Let other UI (e.g. the panel's era links) scrub the timeline + map to a given year.
+  window.__setTimemapYear = (year) => {
+    const y = Math.round(Number(year));
+    if (Number.isNaN(y)) return;
+    slider.setYear(y);                         // move the timeline UI
+    if (mapEl._setYear) mapEl._setYear(y);     // update the map now
+  };
 };

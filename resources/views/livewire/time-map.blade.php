@@ -46,8 +46,21 @@
                     </div>
                     <button class="btn btn-ghost btn-xs" x-on:click="polity = null">✕</button>
                 </div>
-                <p class="text-xs opacity-70"
-                   x-text="(polity.inception != null ? (polity.inception < 0 ? Math.abs(polity.inception)+' BCE' : polity.inception+' CE') : '?') + ' – ' + (polity.dissolution != null ? (polity.dissolution < 0 ? Math.abs(polity.dissolution)+' BCE' : polity.dissolution+' CE') : '')"></p>
+                {{-- Both years scrub the timeline to that era. --}}
+                <p class="text-xs opacity-70">
+                    <template x-if="polity.inception != null">
+                        <a class="link link-hover cursor-pointer font-medium"
+                           x-on:click="window.__setTimemapYear && window.__setTimemapYear(polity.inception)"
+                           x-text="polity.inception < 0 ? Math.abs(polity.inception)+' BCE' : polity.inception+' CE'"></a>
+                    </template>
+                    <template x-if="polity.inception == null"><span>?</span></template>
+                    <span> – </span>
+                    <template x-if="polity.dissolution != null">
+                        <a class="link link-hover cursor-pointer font-medium"
+                           x-on:click="window.__setTimemapYear && window.__setTimemapYear(polity.dissolution)"
+                           x-text="polity.dissolution < 0 ? Math.abs(polity.dissolution)+' BCE' : polity.dissolution+' CE'"></a>
+                    </template>
+                </p>
 
                 {{-- Start a lesson about this territory (prefills the wizard topic). --}}
                 <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label)"
