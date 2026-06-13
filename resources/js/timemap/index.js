@@ -174,13 +174,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
     'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
       // Delicate main stroke — per-feature width variance, kept thin so dense regions stay readable.
       line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
       coast: { color: '#6b563d', opacity: 0.5, width: 0.6 },
       river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
+      mountains: true,
       // One faint bleed + one offset rough underlayer (both width-varied) beneath, then a single
       // light broken accent on top. Restrained so borders read as pen work, not a black tangle.
       inkLayers: [
@@ -213,9 +214,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
     vg.style.background = `radial-gradient(ellipse 78% 78% at center, rgba(0,0,0,0) 52%, ${s.vignette} 100%)`;
   };
+  let currentStyleName = 'soft-atlas';
   const applyMapStyle = (name) => {
     const key = MAP_STYLES[name] ? name : 'soft-atlas';
     const s = MAP_STYLES[key];
+    currentStyleName = key;
     try { localStorage.setItem('tm-style', key); } catch (e) { /* private mode */ }
     const pal = s.palette;
     const fill = ['case',
@@ -247,6 +250,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       } else {
         map.setLayoutProperty('rivers', 'visibility', 'none');
       }
+    }
+    // Mountain glyphs along ridge lines — ink styles only.
+    if (map.getLayer('mountains')) {
+      map.setLayoutProperty('mountains', 'visibility', s.mountains ? 'visible' : 'none');
     }
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
@@ -329,6 +336,28 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       // Strong halo so names stay readable over borders/fills in every style.
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
     });
+
+    // Mountains: a hand-drawn glyph repeated along curated ridge lines (ink styles only). The icon
+    // loads async, so add the layer in its onload, then re-apply the current style to honour the toggle.
+    const mtnSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='18' viewBox='0 0 26 18'><path d='M1 17 L7 4 L11 11 L15 5 L21 13 L25 17' fill='none' stroke='%234a3826' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'/></svg>";
+    const mImg = new Image(26, 18);
+    mImg.onload = () => {
+      if (!map.hasImage('mtn')) map.addImage('mtn', mImg);
+      if (!map.getLayer('mountains')) {
+        map.addSource('mountains', { type: 'geojson', data: '/timemap/mountains.geojson' });
+        map.addLayer({
+          id: 'mountains', type: 'symbol', source: 'mountains',
+          layout: {
+            visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 15,
+            'icon-image': 'mtn', 'icon-size': 0.7, 'icon-anchor': 'bottom',
+            'icon-rotation-alignment': 'viewport', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+          },
+          paint: { 'icon-opacity': 0.85 },
+        }, map.getLayer('boundaries-label') ? 'boundaries-label' : undefined);
+        applyMapStyle(currentStyleName); // reflect the toggle now the layer exists
+      }
+    };
+    mImg.src = mtnSvg;
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
