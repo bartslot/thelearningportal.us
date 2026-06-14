@@ -87,6 +87,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let lineOpacityValue = 1;
   const fillFadeExpr = (year) => ['*', fillOpacityCase, fadeFactor(year)];
   const lineFadeExpr = (year) => ['*', lineOpacityValue, fadeFactor(year)];
+
+  // Fade only while the timeline is auto-playing. When paused or manually scrubbing, every active
+  // polity is shown at full base opacity — the exact polityFilter already limits to the current era,
+  // so nothing is dimmed by lifespan proximity.
+  let fadeMode = false;
+  const applyBoundaryOpacity = (year) => {
+    if (!map.getLayer('boundaries-fill')) return;
+    map.setPaintProperty('boundaries-fill', 'fill-opacity', fadeMode ? fillFadeExpr(year) : fillOpacityCase);
+    if (map.getLayer('boundaries-line')) {
+      map.setPaintProperty('boundaries-line', 'line-opacity', fadeMode ? lineFadeExpr(year) : lineOpacityValue);
+    }
+  };
   // Wobbled ink-border lines (pre-filtered to POLITY at build time) carry only FromYear/ToYear.
   const borderDateFilter = (year) => ['all',
     ['<=', ['to-number', ['get', 'FromYear']], year],
@@ -101,9 +113,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
-    // Ease polities in/out near their lifespan edges as the year moves (see fadeFactor).
-    map.setPaintProperty('boundaries-fill', 'fill-opacity', fillFadeExpr(year));
-    if (map.getLayer('boundaries-line')) map.setPaintProperty('boundaries-line', 'line-opacity', lineFadeExpr(year));
+    applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
     const inkF = MAP_STYLES[currentStyleName] && MAP_STYLES[currentStyleName].borderSource ? borderDateFilter(year) : polityFilter(year);
@@ -312,8 +322,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, s.fillOpacity + 0.18),
         s.fillOpacity];
       lineOpacityValue = (s.line && s.line.opacity != null) ? s.line.opacity : 1;
-      map.setPaintProperty('boundaries-fill', 'fill-opacity', fillFadeExpr(state.year));
-      map.setPaintProperty('boundaries-line', 'line-opacity', lineFadeExpr(state.year));
+      applyBoundaryOpacity(state.year);
       map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
       map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
       map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
@@ -529,6 +538,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     return formatReadout(year);
   };
 
+  // Toggled by the slider's play/pause: enables the fade-in/out ramp only during playback.
+  el._setFadeMode = (on) => { fadeMode = !!on; applyBoundaryOpacity(state.year); };
+
   el._tmMap = map;
 
   return map;
@@ -556,6 +568,7 @@ window.mountAtlasSlider = function (el, mapEl, initialYear) {
   const slider = mountTimeSlider(el, {
     min: -4000, max: 2010, value: initialYear,
     onYear: (year) => pushYear(year),
+    onPlay: (playing) => { if (mapEl._setFadeMode) mapEl._setFadeMode(playing); },
   });
   // Let other UI (e.g. the panel's era links) scrub the timeline + map to a given year.
   window.__setTimemapYear = (year) => {

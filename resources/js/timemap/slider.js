@@ -17,7 +17,7 @@ const PX_PER_YEAR = 2; // century = 200px, decade = 20px
 const fmtEra = (y) => (y < 0 ? `${Math.abs(y)} BCE` : `${y} CE`);
 const fmtSuffix = (y) => (y < 0 ? 'BCE' : 'CE');
 
-export function mountTimeSlider(el, { min, max, value, onYear }) {
+export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   const clamp = (y) => Math.min(max, Math.max(min, y));
   let current = clamp(Math.round(value));
 
@@ -162,6 +162,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
     playRaf = null;
     playLast = 0;
     renderPlay();
+    if (onPlay) onPlay(false);
   };
   const startPlay = () => {
     if (playOn) return;
@@ -170,6 +171,7 @@ export function mountTimeSlider(el, { min, max, value, onYear }) {
     playYear = current;
     playLast = 0;
     renderPlay();
+    if (onPlay) onPlay(true);
     playRaf = requestAnimationFrame(playStep);
   };
   playBtn.addEventListener('click', () => (playOn ? stopPlay() : startPlay()));
