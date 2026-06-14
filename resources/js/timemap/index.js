@@ -71,6 +71,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['<=', ['to-number', ['get', 'FromYear']], year],
     ['>=', ['to-number', ['get', 'ToYear']], year],
   ];
+
+  // Smooth appearance/disappearance: instead of popping at the exact FromYear/ToYear, each polity
+  // eases its opacity in over its first FADE_YEARS and out over its last FADE_YEARS, as a function of
+  // the (continuously moving) year. MapLibre transitions don't apply to feature-property-driven
+  // values, so the smoothness comes from the year advancing — not from a paint transition. Because
+  // the ramp is already at 0 at the lifespan edges, the exact polityFilter cull stays invisible.
+  const FADE_YEARS = 30;
+  const fadeFactor = (year) => ['min',
+    ['max', 0, ['min', 1, ['/', ['-', year, ['to-number', ['get', 'FromYear']]], FADE_YEARS]]],
+    ['max', 0, ['min', 1, ['/', ['-', ['to-number', ['get', 'ToYear']], year], FADE_YEARS]]],
+  ];
+  // The style-driven base opacities (updated by applyMapStyle), scaled by the fade factor.
+  let fillOpacityCase = FILL_OPACITY;
+  let lineOpacityValue = 1;
+  const fillFadeExpr = (year) => ['*', fillOpacityCase, fadeFactor(year)];
+  const lineFadeExpr = (year) => ['*', lineOpacityValue, fadeFactor(year)];
   // Wobbled ink-border lines (pre-filtered to POLITY at build time) carry only FromYear/ToYear.
   const borderDateFilter = (year) => ['all',
     ['<=', ['to-number', ['get', 'FromYear']], year],
@@ -85,6 +101,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
+    // Ease polities in/out near their lifespan edges as the year moves (see fadeFactor).
+    map.setPaintProperty('boundaries-fill', 'fill-opacity', fillFadeExpr(year));
+    if (map.getLayer('boundaries-line')) map.setPaintProperty('boundaries-line', 'line-opacity', lineFadeExpr(year));
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
     const inkF = MAP_STYLES[currentStyleName] && MAP_STYLES[currentStyleName].borderSource ? borderDateFilter(year) : polityFilter(year);
@@ -288,10 +307,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
       // Keep hover/selected clearly visible even when the base fill is very faint (ink styles).
-      map.setPaintProperty('boundaries-fill', 'fill-opacity', ['case',
+      fillOpacityCase = ['case',
         ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, s.fillOpacity),
         ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, s.fillOpacity + 0.18),
-        s.fillOpacity]);
+        s.fillOpacity];
+      lineOpacityValue = (s.line && s.line.opacity != null) ? s.line.opacity : 1;
+      map.setPaintProperty('boundaries-fill', 'fill-opacity', fillFadeExpr(state.year));
+      map.setPaintProperty('boundaries-line', 'line-opacity', lineFadeExpr(state.year));
       map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
       map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
       map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
