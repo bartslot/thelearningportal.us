@@ -9,8 +9,10 @@ use Illuminate\Support\Facades\Log;
 
 class WikipediaService
 {
-    private const API_BASE   = 'https://en.wikipedia.org/api/rest_v1';
+    private const API_BASE = 'https://en.wikipedia.org/api/rest_v1';
+
     private const SEARCH_API = 'https://en.wikipedia.org/w/api.php';
+
     private const USER_AGENT = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com)';
 
     private function http(int $timeout = 10): \Illuminate\Http\Client\PendingRequest
@@ -82,11 +84,13 @@ class WikipediaService
                 }
             }
 
-            Log::warning("WikipediaService: no article found for topic '{$topic}'" . ($title ? " (title: '{$title}')" : ''));
+            Log::warning("WikipediaService: no article found for topic '{$topic}'".($title ? " (title: '{$title}')" : ''));
+
             return null;
 
         } catch (\Throwable $e) {
-            Log::error('WikipediaService::fetchFacts failed: ' . $e->getMessage());
+            Log::error('WikipediaService::fetchFacts failed: '.$e->getMessage());
+
             return null;
         }
     }
@@ -99,7 +103,7 @@ class WikipediaService
         try {
             foreach ($this->buildQuerySet($topic, $title) as $q) {
                 $slug = urlencode(str_replace(' ', '_', $q));
-                $res  = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
+                $res = $this->http(10)->get(self::API_BASE."/page/summary/{$slug}");
                 if ($res->successful() && $res->json('thumbnail.source')) {
                     return $res->json('thumbnail.source');
                 }
@@ -107,13 +111,13 @@ class WikipediaService
 
             foreach ($this->openSearch($topic) as $canonical) {
                 $slug = urlencode(str_replace(' ', '_', $canonical));
-                $res  = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
+                $res = $this->http(10)->get(self::API_BASE."/page/summary/{$slug}");
                 if ($res->successful() && $res->json('thumbnail.source')) {
                     return $res->json('thumbnail.source');
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('WikipediaService::fetchImageUrl failed: ' . $e->getMessage());
+            Log::error('WikipediaService::fetchImageUrl failed: '.$e->getMessage());
         }
 
         return null;
@@ -241,7 +245,7 @@ class WikipediaService
 
         $variants = [];
         foreach ($map as $from => $to) {
-            $pattern = '/\b' . preg_quote((string) $from, '/') . '\b/';
+            $pattern = '/\b'.preg_quote((string) $from, '/').'\b/';
             $replaced = preg_replace($pattern, (string) $to, $topic);
             if ($replaced && $replaced !== $topic) {
                 $variants[] = $replaced;
@@ -261,15 +265,16 @@ class WikipediaService
     {
         try {
             $res = $this->http(8)->get(self::SEARCH_API, [
-                'action'   => 'opensearch',
-                'search'   => $query,
-                'limit'    => $limit,
-                'format'   => 'json',
-                'redirects'=> 'resolve',
+                'action' => 'opensearch',
+                'search' => $query,
+                'limit' => $limit,
+                'format' => 'json',
+                'redirects' => 'resolve',
             ]);
 
             if ($res->successful()) {
                 $data = $res->json();
+
                 // opensearch response: [query, [titles], [descriptions], [urls]]
                 return is_array($data[1] ?? null) ? $data[1] : [];
             }
@@ -287,11 +292,11 @@ class WikipediaService
     {
         try {
             $res = $this->http(10)->get(self::SEARCH_API, [
-                'action'   => 'query',
-                'list'     => 'search',
+                'action' => 'query',
+                'list' => 'search',
                 'srsearch' => $query,
-                'srlimit'  => $limit,
-                'format'   => 'json',
+                'srlimit' => $limit,
+                'format' => 'json',
             ]);
 
             if (! $res->successful()) {
@@ -361,15 +366,31 @@ class WikipediaService
         return min($pct, 100.0);
     }
 
+    /**
+     * Fetch facts for a known Wikipedia article URL (A1). The curated catalog stores the exact
+     * article, so we extract its title and fetch THAT page directly — no slug-guessing, no
+     * disambiguation drift (this is what permanently fixes the France→Egypt class of bug).
+     */
+    public function fetchByUrl(string $url): ?string
+    {
+        if (! preg_match('~/wiki/([^?#]+)~', $url, $m)) {
+            return null;
+        }
+        $title = rawurldecode($m[1]);
+
+        return $this->fetchExtract($title) ?? $this->fetchSummary($title);
+    }
+
     private function fetchSummary(string $title): ?string
     {
         $slug = urlencode(str_replace(' ', '_', $title));
 
         try {
-            $res = $this->http(10)->get(self::API_BASE . "/page/summary/{$slug}");
+            $res = $this->http(10)->get(self::API_BASE."/page/summary/{$slug}");
 
             if ($res->successful()) {
                 $extract = $res->json('extract');
+
                 return filled($extract) ? (string) $extract : null;
             }
         } catch (\Throwable) {
@@ -382,13 +403,13 @@ class WikipediaService
     {
         try {
             $res = $this->http(10)->get(self::SEARCH_API, [
-                'action'      => 'query',
-                'prop'        => 'extracts',
-                'titles'      => $title,
+                'action' => 'query',
+                'prop' => 'extracts',
+                'titles' => $title,
                 'explaintext' => 1,
-                'exintro'     => 1,
-                'redirects'   => 1,
-                'format'      => 'json',
+                'exintro' => 1,
+                'redirects' => 1,
+                'format' => 'json',
             ]);
 
             if (! $res->successful()) {
@@ -396,7 +417,7 @@ class WikipediaService
             }
 
             $pages = $res->json('query.pages') ?? [];
-            $page  = is_array($pages) ? reset($pages) : null;
+            $page = is_array($pages) ? reset($pages) : null;
 
             return (is_array($page) && filled($page['extract'] ?? null))
                 ? (string) $page['extract']
@@ -415,6 +436,7 @@ class WikipediaService
                 return true;
             }
         }
+
         return false;
     }
 }

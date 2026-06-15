@@ -5,22 +5,40 @@
     ════════════════════════════════════════════════ --}}
     <div class="bg-base-300 rounded-2xl p-6 space-y-3">
 
-        {{-- Topic with typeahead --}}
+        {{-- Topic — locked to the curated, Wikipedia-grounded catalog (A1) --}}
         <div x-data="{ open: false }" class="relative form-control">
-            <span class="label-text text-xs uppercase tracking-wider text-slate-400">Topic</span>
-            <input id="lw-topic" name="topic" type="text"
-                   wire:model.live.debounce.250ms="topic"
-                   x-on:focus="open = true"
-                   x-on:blur="setTimeout(() => open = false, 150)"
-                   x-on:keydown.escape="open = false; $el.blur()"
-                   placeholder="e.g. French Revolution, Civil Rights Movement…"
-                   autocomplete="off"
-                   class="input input-bordered bg-slate-900 mt-1 text-base w-full" />
+            <span class="label-text text-xs uppercase tracking-wider text-slate-400">
+                Topic <span class="text-amber-400/70 normal-case tracking-normal">· pick from the catalog</span>
+            </span>
+            <div class="relative">
+                <input id="lw-topic" name="topic" type="text"
+                       wire:model.live.debounce.250ms="topic"
+                       x-on:focus="open = true"
+                       x-on:blur="setTimeout(() => open = false, 150)"
+                       x-on:keydown.escape="open = false; $el.blur()"
+                       placeholder="Search empires, kingdoms, rulers… e.g. Roman Empire"
+                       autocomplete="off"
+                       class="input input-bordered bg-slate-900 mt-1 text-base w-full
+                              @if($topicId) border-emerald-500/60 pr-10 @endif" />
+                {{-- Locked check when a catalog item is chosen --}}
+                @if ($topicId)
+                    <svg class="absolute right-3 top-1/2 -translate-y-1/2 mt-0.5 h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                @endif
+            </div>
             @error('topic') <span class="text-rose-400 text-xs mt-1">{{ $message }}</span> @enderror
 
-            {{-- Suggestions dropdown --}}
+            @if ($topicId && $topicWikipediaUrl)
+                <span class="text-xs text-emerald-400/80 mt-1">
+                    Grounded in <a href="{{ $topicWikipediaUrl }}" target="_blank" rel="noopener" class="underline">this Wikipedia article</a>.
+                </span>
+            @elseif (strlen(trim($topic)) >= 2 && !$topicId)
+                <span class="text-xs text-amber-400/70 mt-1">Select an entry from the list to continue.</span>
+            @endif
+
+            {{-- Catalog dropdown --}}
             @if (count($this->topicSuggestions) > 0)
                 <ul
+                    data-topic-suggestions
                     x-show="open"
                     x-transition:enter="transition ease-out duration-100"
                     x-transition:enter-start="opacity-0 -translate-y-1"
@@ -32,28 +50,39 @@
                     @foreach ($this->topicSuggestions as $s)
                         <li>
                             <button type="button"
-                                    wire:click="selectTopicSuggestion(
-                                        '{{ addslashes($s['topic']) }}',
-                                        '{{ $s['region'] }}',
-                                        '{{ addslashes($s['era']) }}'
-                                    )"
+                                    wire:click="selectTopic('{{ $s['id'] }}')"
                                     x-on:mousedown.prevent
                                     x-on:click="open = false"
-                                    class="flex flex-col items-start gap-0.5 py-2">
-                                <span class="text-sm text-white">{{ $s['topic'] }}</span>
-                                @if ($s['region'] || $s['era'])
-                                    @php
-                                        $regionLabel = collect(\App\Services\Support\HistoryTaxonomy::regionsFor('en'))
-                                            ->firstWhere('value', $s['region'])['label'] ?? $s['region'];
-                                        $hint = collect([$regionLabel ?: null, $s['era'] ?: null])->filter()->implode(' · ');
-                                    @endphp
-                                    <span class="text-xs text-slate-400">{{ $hint }}</span>
+                                    class="flex flex-row items-center gap-2 py-2">
+                                @if ($s['type'] === 'figure')
+                                    <span class="badge badge-sm badge-outline border-sky-500/40 text-sky-300 shrink-0">
+                                        {{ $s['figure_kind'] === 'ruler' ? 'Ruler' : 'Person' }}
+                                    </span>
                                 @endif
+                                <span class="flex flex-col items-start gap-0.5">
+                                    <span class="text-sm text-white">{{ $s['name'] }}</span>
+                                    @if ($s['era'] || $s['region'])
+                                        <span class="text-xs text-slate-400">{{ collect([$s['era'] ?: null, $s['region'] ?: null])->filter()->implode(' · ') }}</span>
+                                    @endif
+                                </span>
                             </button>
                         </li>
                     @endforeach
                 </ul>
             @endif
+        </div>
+
+        {{-- Optional focus / angle (free text — the only free-text in topic selection) --}}
+        <div class="form-control">
+            <span class="label-text text-xs uppercase tracking-wider text-slate-400">
+                Focus / angle <span class="normal-case tracking-normal text-slate-500">· optional</span>
+            </span>
+            <input type="text" name="focus"
+                   wire:model.blur="focus"
+                   placeholder="e.g. daily life of a soldier, the road to revolution…"
+                   maxlength="200"
+                   class="input input-bordered bg-slate-900 mt-1 text-sm w-full" />
+            @error('focus') <span class="text-rose-400 text-xs mt-1">{{ $message }}</span> @enderror
         </div>
 
         {{-- Region & era enrichment --}}

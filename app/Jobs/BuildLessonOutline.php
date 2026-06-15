@@ -48,10 +48,23 @@ class BuildLessonOutline implements ShouldQueue
 
                 $lesson->update(['status' => LessonStatus::FetchingSources]);
 
-                // Try World History Encyclopedia first — richer, more educational content
+                // A1: if the lesson came from the curated catalog it carries the EXACT Wikipedia
+                // article URL — fetch that page directly (no slug-guessing, no disambiguation drift).
+                $text = null;
+                $fromWH = false;
+                if (filled($lesson->wikipedia_source)) {
+                    $text = app(WikipediaService::class)->fetchByUrl($lesson->wikipedia_source);
+                    if ($text !== null) {
+                        Log::info("BuildLessonOutline #{$lesson->id}: fetched exact catalog article {$lesson->wikipedia_source}");
+                    }
+                }
+
+                // Try World History Encyclopedia next — richer, more educational content
                 $worldHistory = app(WorldHistoryService::class);
-                $text = $worldHistory->fetchFacts($lesson->topic);
-                $fromWH = $text !== null;
+                if ($text === null) {
+                    $text = $worldHistory->fetchFacts($lesson->topic);
+                    $fromWH = $text !== null;
+                }
 
                 if ($fromWH) {
                     Log::info("BuildLessonOutline #{$lesson->id}: fetched from worldhistory.org");
@@ -68,11 +81,12 @@ class BuildLessonOutline implements ShouldQueue
                             $lesson->id, $hero['colorful'] ? 'yes' : 'no', $hero['width'], $hero['height'],
                         ));
                     }
-                } else {
-                    // Fallback to Wikipedia
+                } elseif ($text === null) {
+                    // Fallback to Wikipedia by topic name (only when nothing fetched yet)
                     $text = app(WikipediaService::class)->fetchFacts($lesson->topic) ?? '';
                     Log::info("BuildLessonOutline #{$lesson->id}: fell back to Wikipedia");
                 }
+                $text ??= '';
 
                 // For 'both' mode the document text was already extracted and stored
                 $combined = $source->kind === 'both'

@@ -18,23 +18,28 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Concerns\SeedsCatalog;
 use Tests\TestCase;
 
 class Step1SettingsTest extends TestCase
 {
     use RefreshDatabase;
+    use SeedsCatalog;
 
     private User $teacher;
+
     private Avatar $avatar;
+
     private StrategyGame $game;
 
     protected function setUp(): void
     {
         parent::setUp();
         Storage::fake('public');
+        $this->seedCatalog();
 
         $this->teacher = User::factory()->create();
-        $this->avatar  = Avatar::create([
+        $this->avatar = Avatar::create([
             'name' => 'Test', 'slug' => 'test-1', 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'v',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
@@ -78,8 +83,8 @@ class Step1SettingsTest extends TestCase
     public function test_mount_hydrates_age_mode_from_existing_lesson(): void
     {
         $lesson = Lesson::create([
-            'teacher_id'  => $this->teacher->id,
-            'topic'       => 'X', 'subject' => 'history',
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'X', 'subject' => 'history',
             'grade_level' => 'Age 11',
         ]);
 
@@ -107,14 +112,14 @@ class Step1SettingsTest extends TestCase
     {
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('topic',            'Roman Empire')
-            ->set('subject',          'history')
-            ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'internet')
-            ->set('image_style',      'painted')
-            ->set('avatar_id',        $this->avatar->id)
+            ->call('selectTopic', 'polity:Q2277')
+            ->set('subject', 'history')
+            ->set('grade_level', '7th grade')
+            ->set('source_mode', 'internet')
+            ->set('image_style', 'painted')
+            ->set('avatar_id', $this->avatar->id)
             ->set('strategy_game_id', $this->game->id)
-            ->set('team_count',       2)
+            ->set('team_count', 2)
             ->set('game_split_count', 1)
             ->call('saveDraft')
             ->assertHasNoErrors();
@@ -139,13 +144,13 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('topic',            'Napoleon')
-            ->set('subject',          'history')
-            ->set('grade_level',      '9th grade')
-            ->set('source_mode',      'local')
-            ->set('sourceUpload',     $file)
-            ->set('image_style',      'cinematic')
-            ->set('avatar_id',        $this->avatar->id)
+            ->call('selectTopic', 'figure:Q517:Q2277')
+            ->set('subject', 'history')
+            ->set('grade_level', '9th grade')
+            ->set('source_mode', 'local')
+            ->set('sourceUpload', $file)
+            ->set('image_style', 'cinematic')
+            ->set('avatar_id', $this->avatar->id)
             ->set('game_split_count', 1)
             ->call('saveDraft')
             ->assertHasNoErrors();
@@ -161,12 +166,12 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('topic',            'Roman Empire')
-            ->set('subject',          'history')
-            ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'internet')
-            ->set('image_style',      'painted')
-            ->set('avatar_id',        $this->avatar->id)
+            ->call('selectTopic', 'polity:Q2277')
+            ->set('subject', 'history')
+            ->set('grade_level', '7th grade')
+            ->set('source_mode', 'internet')
+            ->set('image_style', 'painted')
+            ->set('avatar_id', $this->avatar->id)
             ->set('game_split_count', 1)
             ->call('generate')
             ->assertHasNoErrors();
@@ -180,12 +185,12 @@ class Step1SettingsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('topic',            'Roman Empire')
-            ->set('subject',          'history')
-            ->set('grade_level',      '7th grade')
-            ->set('source_mode',      'internet')
-            ->set('image_style',      'painted')
-            ->set('avatar_id',        $this->avatar->id)
+            ->call('selectTopic', 'polity:Q2277')
+            ->set('subject', 'history')
+            ->set('grade_level', '7th grade')
+            ->set('source_mode', 'internet')
+            ->set('image_style', 'painted')
+            ->set('avatar_id', $this->avatar->id)
             ->set('game_split_count', 1)
             ->call('generate')
             ->assertHasNoErrors();
@@ -198,13 +203,13 @@ class Step1SettingsTest extends TestCase
     {
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
-            ->set('topic',            'X')
-            ->set('subject',          'history')
-            ->set('grade_level',      '9th grade')
-            ->set('source_mode',      'local')
-            ->set('sourceUpload',     null)
-            ->set('image_style',      'painted')
-            ->set('avatar_id',        $this->avatar->id)
+            ->set('topic', 'X')
+            ->set('subject', 'history')
+            ->set('grade_level', '9th grade')
+            ->set('source_mode', 'local')
+            ->set('sourceUpload', null)
+            ->set('image_style', 'painted')
+            ->set('avatar_id', $this->avatar->id)
             ->set('game_split_count', 1)
             ->call('saveDraft')
             ->assertHasErrors(['sourceUpload']);

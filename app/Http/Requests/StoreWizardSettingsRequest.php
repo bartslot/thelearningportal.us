@@ -17,7 +17,8 @@ class StoreWizardSettingsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'topic' => ['required', 'string', 'min:3', 'max:100'],
+            'topic' => ['required', 'string', 'min:3', 'max:120'],
+            'focus' => ['nullable', 'string', 'max:200'],
             'region' => ['nullable', 'string', 'max:80'],
             'era' => ['nullable', 'string', 'max:120'],
             'grade_level' => ['required', 'string', 'max:50'],

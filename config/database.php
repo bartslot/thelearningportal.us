@@ -115,7 +115,10 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
-            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN)],
+            // Corpus is typically a remote (Supabase) pooler that drops idle connections — a
+            // persistent PDO handle then gets reused after the server closed it ("server closed
+            // the connection unexpectedly"). Default OFF; override only if corpus is co-located.
+            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('CORPUS_DB_PERSISTENT', false), FILTER_VALIDATE_BOOLEAN)],
         ],
 
         'sqlsrv' => [

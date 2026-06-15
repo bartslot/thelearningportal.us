@@ -97,6 +97,12 @@
             <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-28 w-auto opacity-90">
         </div>
 
+        {{-- Source attribution (A4) — bottom-left, unobtrusive --}}
+        @if ($attribution = $lesson->sourceAttribution())
+            <p class="absolute bottom-2 left-4 sm:left-6 lg:left-8 text-[10px] text-white/35 pointer-events-none"
+               style="z-index:50">{{ $attribution }}</p>
+        @endif
+
         {{-- ── Audio Controls (during playback) ──────────────────────── --}}
         <div
             x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF'"

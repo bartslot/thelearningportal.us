@@ -12,7 +12,6 @@ use App\Models\StrategyGame;
 use App\Services\DocumentExtractor;
 use App\Services\Support\GradeBandStyleRecommender;
 use App\Services\Support\HistoryTaxonomy;
-use App\Services\Support\HistoryTopics;
 use App\Services\Support\ImageStyleTemplate;
 use App\Services\Support\ToneRecommender;
 use Illuminate\Support\Str;
@@ -26,7 +25,20 @@ class Step1Settings extends Component
 
     public ?Lesson $lesson = null;
 
-    public string $topic = 'French Revolution';
+    // Display name of the chosen catalog topic (set on select; also the search box value).
+    public string $topic = '';
+
+    // Curated-catalog reference, e.g. "polity:Q2277". Null until a catalog item is picked (A1).
+    public ?string $topicId = null;
+
+    // Exact Wikipedia article URL for the chosen topic — the pipeline fetches THIS (kills France→Egypt bug).
+    public ?string $topicWikipediaUrl = null;
+
+    // Name of the locked catalog topic — guards against a trailing debounce clearing the lock.
+    public string $lockedTopicName = '';
+
+    // Optional free-text angle/focus, e.g. "daily life of a soldier".
+    public string $focus = '';
 
     public string $subject = 'history';
 
@@ -93,6 +105,10 @@ class Step1Settings extends Component
         if ($lesson?->exists) {
             $this->lesson = $lesson;
             $this->topic = $lesson->topic ?? '';
+            $this->topicId = $lesson->topic_id;
+            $this->lockedTopicName = $lesson->topic_id ? ($lesson->topic ?? '') : '';
+            $this->topicWikipediaUrl = $lesson->wikipedia_source;
+            $this->focus = $lesson->focus ?? '';
             $this->subject = $lesson->subject ?? 'history';
             $this->grade_level = $lesson->grade_level ?? 'Age 12';
             $this->hydrateAudienceFromGradeLevel($this->grade_level);
@@ -125,9 +141,19 @@ class Step1Settings extends Component
             $this->tone = 'storytelling';
         }
 
-        // Prefill the topic from the Time-Map "Create lesson" button (?topic=…).
-        if (! ($lesson?->exists) && is_string($t = request()->query('topic')) && trim($t) !== '') {
-            $this->topic = trim($t);
+        // Prefill the topic from the Time-Map "Create lesson" button. The map passes a catalog
+        // id (?topic_id=polity:Q2277) when available, else a name (?topic=…) we resolve to the catalog.
+        if (! ($lesson?->exists)) {
+            if (is_string($tid = request()->query('topic_id')) && trim($tid) !== '') {
+                $this->selectTopic(trim($tid));
+            } elseif (is_string($t = request()->query('topic')) && trim($t) !== '') {
+                $match = \App\Models\Corpus\Topic::search(trim($t), 1)->first();
+                if ($match) {
+                    $this->selectTopic($match->id);
+                } else {
+                    $this->topic = trim($t);
+                }
+            }
         }
     }
 
@@ -153,6 +179,14 @@ class Step1Settings extends Component
 
     public function updatedTopic(): void
     {
+        // Only break the lock when the text actually diverges from the selected topic — a trailing
+        // debounce that re-sends the same name must NOT clear an already-locked selection.
+        if (trim($this->topic) !== $this->lockedTopicName) {
+            $this->topicId = null;
+            $this->topicWikipediaUrl = null;
+            $this->lockedTopicName = '';
+        }
+
         if (trim($this->topic) === '') {
             $this->region = null;
             $this->era = null;
@@ -228,26 +262,48 @@ class Step1Settings extends Component
         $this->local_grade = $level;
     }
 
+    /**
+     * Curated-catalog search results for the picker (A1/A2). Each row carries the catalog id so
+     * selecting it locks the lesson to a Wikipedia-grounded topic.
+     *
+     * @return list<array{id:string,name:string,type:string,figure_kind:?string,era:string,region:?string}>
+     */
     #[Computed]
     public function topicSuggestions(): array
     {
-        return HistoryTopics::search($this->topic);
+        if (strlen(trim($this->topic)) < 2) {
+            return [];
+        }
+
+        return \App\Models\Corpus\Topic::resilient(
+            fn () => \App\Models\Corpus\Topic::search($this->topic, 10)->get()
+        )->map(fn ($t) => [
+            'id' => $t->id,
+            'name' => $t->name,
+            'type' => $t->type,
+            'figure_kind' => $t->figure_kind,
+            'era' => $t->eraLabel(),
+            'region' => $t->region_label,
+        ])->all();
     }
 
-    public function selectTopicSuggestion(string $topic, string $region, string $era): void
+    /** Select a catalog topic by its id — locks the lesson to a grounded source (A1). */
+    public function selectTopic(string $id): void
     {
-        $this->topic = $topic;
+        $topic = \App\Models\Corpus\Topic::resilient(fn () => \App\Models\Corpus\Topic::find($id));
+        if (! $topic) {
+            $this->addError('topic', 'That topic is not in the catalog. Pick one from the list.');
 
-        // Only pre-fill region/era if not already set by the teacher
-        if ($region && ! $this->region) {
-            $this->region = $region;
-            $this->era = null;
-        }
-        if ($era && ! $this->era) {
-            $this->era = $era;
+            return;
         }
 
-        // Auto-open the region/era panel when values are present
+        $this->topic = $topic->name;
+        $this->lockedTopicName = $topic->name;
+        $this->topicId = $topic->id;
+        $this->topicWikipediaUrl = $topic->wikipedia_url;
+        $this->region = $topic->region_label ?: $this->region;
+        $this->era = $topic->eraLabel() ?: $this->era;
+
         if ($this->region || $this->era) {
             $this->show_region_era = true;
         }
@@ -338,9 +394,28 @@ class Step1Settings extends Component
         return $rules;
     }
 
+    /**
+     * Server-side guard (A1): the chosen topic must come from the curated catalog. Rejects
+     * free-text topics with no catalog id, or an id that isn't in public.topics.
+     */
+    private function validateTopicCatalog(): void
+    {
+        $exists = $this->topicId
+            && \App\Models\Corpus\Topic::resilient(
+                fn () => \App\Models\Corpus\Topic::whereKey($this->topicId)->exists()
+            );
+        if (! $exists) {
+            $this->addError('topic', 'Choose a topic from the list — this grounds the lesson in a real source.');
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'topic' => 'Choose a topic from the list.',
+            ]);
+        }
+    }
+
     public function saveDraft(): Lesson
     {
         $this->validate();
+        $this->validateTopicCatalog();
 
         return $this->persist(LessonStatus::Draft);
     }
@@ -348,6 +423,7 @@ class Step1Settings extends Component
     public function generate(): void
     {
         $this->validate();
+        $this->validateTopicCatalog();
         $lesson = $this->persist(LessonStatus::Draft);
         $lesson->refresh()->startGenerationPipeline();
 
@@ -369,6 +445,9 @@ class Step1Settings extends Component
         $lesson->fill([
             'teacher_id' => auth()->id(),
             'topic' => trim($this->topic),
+            'topic_id' => $this->topicId,
+            'focus' => trim($this->focus) ?: null,
+            'wikipedia_source' => $this->topicWikipediaUrl,
             'subject' => 'history',
             'region' => $this->region ?: null,
             'era' => $this->era ?: null,

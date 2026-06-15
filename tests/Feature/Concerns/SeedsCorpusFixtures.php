@@ -50,7 +50,9 @@ trait SeedsCorpusFixtures
                 updated_at timestamptz
             )');
 
-        $corpus->statement('DROP TABLE IF EXISTS public.polities');
+        // The topics catalog view (A2) depends on polities — drop it first so the table can go.
+        $corpus->statement('DROP VIEW IF EXISTS public.topics');
+        $corpus->statement('DROP TABLE IF EXISTS public.polities CASCADE');
         $corpus->statement('
             CREATE TABLE public.polities (
                 polity_id text primary key,

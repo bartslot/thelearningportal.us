@@ -31,6 +31,8 @@ class Lesson extends Model
         'strategy_game_id',
         'title',
         'topic',
+        'topic_id',
+        'focus',
         'subject',
         'grade_level',
         'tone',
@@ -90,6 +92,22 @@ class Lesson extends Model
             'game_split_count' => 'integer',
             'wizard_step' => 'integer',
         ];
+    }
+
+    /**
+     * Source attribution line for the lesson (A4). Curated catalog topics carry their dataset
+     * licences; everything is grounded in Wikipedia. Returns null for legacy/uploaded sources.
+     */
+    public function sourceAttribution(): ?string
+    {
+        if (str_starts_with((string) $this->topic_id, 'figure:')) {
+            return 'Sources: Wikidata (CC0) · Wikipedia (CC BY-SA)';
+        }
+        if (str_starts_with((string) $this->topic_id, 'polity:')) {
+            return 'Sources: Cliopatria / Seshat (CC BY 4.0) · Wikipedia (CC BY-SA)';
+        }
+
+        return null;
     }
 
     protected function normalizeHistoricalText(?string $value): ?string
