@@ -135,6 +135,11 @@ Alpine.data('lessonGame', (lesson) => ({
     // Intel drop
     intelDropMessage: '',
 
+    // Audio controls
+    audioPlaying: false,
+    audioMuted: false,
+    _audioMutedVolume: 1.0,  // remember pre-mute volume
+
     // Internals  (_avatar lives outside Alpine proxy — see _avatarInstance module var)
     _audio:             null,
     _scriptEvents:      [],
@@ -202,6 +207,9 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Render QR code into the canvas element
       this._renderQr()
+
+      // Attach keyboard listeners for audio controls
+      this._attachKeyboardListeners()
     },
 
     _renderQr () {
@@ -568,6 +576,7 @@ Alpine.data('lessonGame', (lesson) => ({
         const bridgeAudio = () => {
           if (_avatarInstance._audio) {
             this._audio = _avatarInstance._audio
+            this._attachAudioListeners()
             this._lastEventIndex = 0
             this._scriptEvents = parseScriptTags(scene.script, this._audio.duration || 0)
             this._audio.addEventListener('timeupdate', () => this._processScriptEvents(), { once: false })
@@ -588,6 +597,7 @@ Alpine.data('lessonGame', (lesson) => ({
       } else {
         // No avatar — plain audio fallback
         this._audio = new Audio(scene.audio_url)
+        this._attachAudioListeners()
         this._lastEventIndex = 0
         this._audio.addEventListener('loadedmetadata', () => {
           this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
@@ -675,6 +685,7 @@ Alpine.data('lessonGame', (lesson) => ({
       // If a game brief audio segment exists, play it
       if (lesson.game_brief_audio_url) {
         this._audio = new Audio(lesson.game_brief_audio_url)
+        this._attachAudioListeners()
         this._audio.addEventListener('ended', () => this._transitionToGameActive())
         this._audio.play().catch(() => this._transitionToGameActive())
       } else {
@@ -751,6 +762,62 @@ Alpine.data('lessonGame', (lesson) => ({
       this.phase = 'GAME_ACTIVE'
       this.prevPhase = null
       this.intelDropMessage = ''
+    },
+
+    // ── Audio Control Methods ──────────────────────────────────────────
+    _attachAudioListeners () {
+      if (!this._audio) return
+      this._audio.addEventListener('play', () => { this.audioPlaying = true }, { once: false })
+      this._audio.addEventListener('pause', () => { this.audioPlaying = false }, { once: false })
+      this._audio.addEventListener('ended', () => { this.audioPlaying = false }, { once: false })
+    },
+
+    toggleAudio () {
+      if (!this._audio) return
+      if (this._audio.paused) {
+        this._audio.play().catch(e => console.warn('audio play failed:', e))
+        this.audioPlaying = true
+      } else {
+        this._audio.pause()
+        this.audioPlaying = false
+      }
+    },
+
+    stopAudio () {
+      if (!this._audio) return
+      this._audio.pause()
+      this._audio.currentTime = 0
+      this.audioPlaying = false
+    },
+
+    toggleMute () {
+      if (!this._audio) return
+      if (this.audioMuted) {
+        this._audio.volume = this._audioMutedVolume
+        this.audioMuted = false
+      } else {
+        this._audioMutedVolume = this._audio.volume
+        this._audio.volume = 0
+        this.audioMuted = true
+      }
+    },
+
+    // ── Keyboard shortcuts ─────────────────────────────────────────────
+    _attachKeyboardListeners () {
+      document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+        if (e.code === 'Space') {
+          e.preventDefault()
+          this.toggleAudio()
+        } else if (e.code === 'Escape') {
+          e.preventDefault()
+          this.stopAudio()
+        } else if (e.code === 'KeyM') {
+          e.preventDefault()
+          this.toggleMute()
+        }
+      })
     },
   }))
 

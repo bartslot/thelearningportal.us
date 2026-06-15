@@ -97,6 +97,51 @@
             <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-28 w-auto opacity-90">
         </div>
 
+        {{-- ── Audio Controls (during playback) ──────────────────────── --}}
+        <div
+            x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF'"
+            x-transition
+            class="absolute top-4 right-4 sm:right-6 lg:right-8 flex items-center gap-2 pointer-events-auto"
+            style="z-index:50"
+        >
+            {{-- Play / Pause button --}}
+            <button
+                @click="toggleAudio()"
+                :title="audioPlaying ? 'Pause (Space)' : 'Play (Space)'"
+                class="flex h-9 w-9 items-center justify-center rounded-full border transition-all
+                       focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-900
+                       border-amber-500 bg-amber-500/10 hover:bg-amber-500/25 text-amber-400"
+            >
+                <svg x-show="!audioPlaying" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg x-show="audioPlaying" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+
+            {{-- Stop button --}}
+            <button
+                @click="stopAudio()"
+                title="Stop (Esc)"
+                class="flex h-9 w-9 items-center justify-center rounded-full border transition-all
+                       focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-900
+                       border-amber-500/60 bg-amber-500/5 hover:bg-amber-500/15 text-amber-400/80 hover:text-amber-400"
+            >
+                <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+            </button>
+
+            {{-- Mute button --}}
+            <button
+                @click="toggleMute()"
+                :title="audioMuted ? 'Unmute (M)' : 'Mute (M)'"
+                class="flex h-9 w-9 items-center justify-center rounded-full border transition-all
+                       focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                :class="audioMuted
+                    ? 'border-slate-600/60 bg-slate-700/10 text-slate-400/80'
+                    : 'border-amber-500/60 bg-amber-500/5 text-amber-400/80 hover:text-amber-400'"
+            >
+                <svg x-show="!audioMuted" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M13.5 4.06c0-1.336-1.616-2.256-2.73-1.72l-5.24 2.97H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h.51l5.24 2.97c1.11.536 2.73-.384 2.73-1.72v-13zm3.67 3.88a1 1 0 1 0-1.33 1.49 6 6 0 0 1 0 7.06 1 1 0 1 0 1.33 1.49 8 8 0 0 0 0-9.54zm2.05-3.55a1 1 0 0 0-1.41 1.41A10 10 0 0 1 19.55 12a10 10 0 0 1-2.75 6.95 1 1 0 1 0 1.41 1.41A12 12 0 0 0 21.55 12a12 12 0 0 0-3.33-8.67z"/></svg>
+                <svg x-show="audioMuted" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M16.6915026,12.4744748 L21.5908951,7.5751461 L20.1876905,6.1719415 L15.2883018,11.0712702 L10.3909581,6.16346227 L8.9863711,7.5680493 L13.8837627,12.4744748 L9.01075265,17.338484 L10.4149653,18.7426997 L15.2883018,13.8693631 L20.1669881,18.7480694 L21.5711749,17.3438636 L16.6915026,12.4744748 Z"/></svg>
+            </button>
+        </div>
+
         {{-- Location + Year (top-left) — shown during INTRO phase --}}
         <div
             x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE'"
