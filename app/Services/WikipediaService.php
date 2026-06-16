@@ -381,6 +381,31 @@ class WikipediaService
         return $this->fetchExtract($title) ?? $this->fetchSummary($title);
     }
 
+    /**
+     * Full-resolution lead image URL for a known Wikipedia article URL — used as the lesson
+     * title-screen background. Prefers `originalimage` (full size), falls back to the thumbnail.
+     * Returns the upload.wikimedia.org URL (hotlink-safe with Commons attribution).
+     */
+    public function fetchLeadImageUrl(string $articleUrl): ?string
+    {
+        if (! preg_match('~/wiki/([^?#]+)~', $articleUrl, $m)) {
+            return null;
+        }
+        $slug = urlencode(str_replace(' ', '_', rawurldecode($m[1])));
+
+        try {
+            $res = $this->http(10)->get(self::API_BASE."/page/summary/{$slug}");
+            if (! $res->successful()) {
+                return null;
+            }
+
+            return $res->json('originalimage.source') ?? $res->json('thumbnail.source');
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
     private function fetchSummary(string $title): ?string
     {
         $slug = urlencode(str_replace(' ', '_', $title));

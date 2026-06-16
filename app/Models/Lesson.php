@@ -33,6 +33,7 @@ class Lesson extends Model
         'topic',
         'topic_id',
         'focus',
+        'title_bg_path',
         'subject',
         'grade_level',
         'tone',
@@ -308,6 +309,12 @@ class Lesson extends Model
      *   2. Avatar portrait
      *   3. Generic placeholder
      */
+    /** Wikipedia lead image used as the lesson title-screen background (catalog lessons). */
+    public function titleBgUrl(): ?string
+    {
+        return $this->title_bg_path ? $this->publicMediaUrl($this->title_bg_path) : null;
+    }
+
     public function cardImageUrl(): ?string
     {
         // 1. First scene's generated image (skybox preferred, then scene image)

@@ -34,7 +34,8 @@
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
         'quiz_timing'           => $lesson->quiz_timing,
-        'cover_image_url'       => $lesson->cardImageUrl(),
+        'cover_image_url'       => $lesson->titleBgUrl() ?? $lesson->cardImageUrl(),
+        'title_bg_url'          => $lesson->titleBgUrl(),
         'intro_text'            => $lesson->outline['scene_briefs'][0]['scenePurpose']
                                     ?? $lesson->details
                                     ?? $lesson->topic,
@@ -77,6 +78,20 @@
     <div id="background-layer" class="absolute inset-0 z-0" aria-hidden="true">
         {{-- Populated by lesson-player.js --}}
     </div>
+
+    {{-- ── LAYER 0b: Title-screen background (Wikipedia lead image) ──────────
+         Pinned during TITLE_SCREEN so the catalog topic's image is the hero backdrop,
+         independent of the scene Ken Burns / 3D skybox engine. --}}
+    <template x-if="lesson.title_bg_url">
+        <div x-show="phase === 'TITLE_SCREEN'" x-transition.opacity
+             class="absolute inset-0 z-[1]" aria-hidden="true">
+            <div class="absolute inset-0 bg-cover bg-center"
+                 :style="`background-image:url('${lesson.title_bg_url}')`"></div>
+            {{-- Darken for title legibility --}}
+            <div class="absolute inset-0 bg-black/55"></div>
+            <span class="absolute bottom-2 right-3 text-[10px] text-white/40">{{ __('Image: Wikimedia Commons') }}</span>
+        </div>
+    </template>
 
     {{-- ── LAYER 1: Shadow gradient overlay ────────────────────────────── --}}
     <div class="absolute inset-0 z-10 pointer-events-none bg-linear-to-b from-black/50 to-[#0C2033]/50"></div>

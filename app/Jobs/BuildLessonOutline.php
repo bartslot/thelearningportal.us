@@ -96,6 +96,28 @@ class BuildLessonOutline implements ShouldQueue
                 $source->update(['extracted_text' => $combined, 'wikipedia_topic' => $lesson->topic]);
             }
 
+            // Title-screen background: download the Wikipedia lead image (full-res) for catalog
+            // lessons. Hotlink-safe from upload.wikimedia.org; stored locally for offline playback.
+            if (filled($lesson->wikipedia_source) && empty($lesson->title_bg_path)) {
+                $imgUrl = app(WikipediaService::class)->fetchLeadImageUrl($lesson->wikipedia_source);
+                if ($imgUrl) {
+                    try {
+                        $bytes = \Illuminate\Support\Facades\Http::timeout(20)
+                            ->withUserAgent('TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com)')
+                            ->get($imgUrl)->body();
+                        if ($bytes !== '') {
+                            $ext = pathinfo(parse_url($imgUrl, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION) ?: 'jpg';
+                            $path = "lessons/{$lesson->id}/title-bg.{$ext}";
+                            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $bytes);
+                            $lesson->update(['title_bg_path' => $path]);
+                            Log::info("BuildLessonOutline #{$lesson->id}: title background saved from {$imgUrl}");
+                        }
+                    } catch (Throwable $e) {
+                        Log::warning("BuildLessonOutline #{$lesson->id}: title bg download failed — {$e->getMessage()}");
+                    }
+                }
+            }
+
             $lesson->update(['status' => LessonStatus::Outlining]);
 
             // Defensive: previous attempts (manual retry, queue retry, user clicked Generate twice)
