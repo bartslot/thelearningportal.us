@@ -11,7 +11,7 @@
     <div x-ref="map" class="h-full w-full" wire:ignore></div>
 
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
-    <aside x-data="{ tab: 'summary', polity: null, loading: false }"
+    <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false }"
            x-show="polity || loading"
            x-transition.opacity.duration.150ms
            x-on:polity-selected.window="
@@ -25,6 +25,7 @@
                                inception: $event.detail.inception ?? null, dissolution: $event.detail.dissolution ?? null,
                                flag_path: null, predecessor: null, successor: null };
                     loading = false;
+                    window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity);
                     window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
                     return;
                 }
@@ -32,12 +33,13 @@
                 const cached = (window.__polityCache || {})[$event.detail.id];
                 if (cached) {
                     polity = { ...cached, label: $event.detail.name || cached.label }; loading = false;
+                    window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity);
                     window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
                     return;
                 }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapSpeak && window.__timemapSpeak($event.detail.id, d.summary); });
+                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); window.__timemapSpeak && window.__timemapSpeak($event.detail.id, d.summary); });
            "
            class="absolute left-4 top-4 z-20 max-h-[calc(100%-7rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl"
            style="display:none">
@@ -69,6 +71,14 @@
                     </template>
                 </p>
 
+                {{-- Wikipedia thumbnail (fetched client-side from the CORS REST API). --}}
+                <template x-if="thumb">
+                    <figure class="mt-3 overflow-hidden rounded-lg">
+                        <img :src="thumb" :alt="polity.label" class="h-36 w-full object-cover" loading="lazy">
+                        <figcaption class="bg-base-200 px-2 py-0.5 text-[10px] opacity-60">{{ __('Image: Wikimedia Commons') }}</figcaption>
+                    </figure>
+                </template>
+
                 {{-- Start a lesson about this territory (prefills the wizard topic). --}}
                 <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label)"
                    wire:navigate
@@ -85,10 +95,24 @@
 
                 <div class="mt-3 text-sm">
                     <p x-show="tab==='summary'" x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
-                    <div x-show="tab==='wikipedia'">
-                        <template x-if="polity.wikipedia_url">
+                    <div x-show="tab==='wikipedia'" class="space-y-2">
+                        {{-- In-panel reader: fetch the fuller Wikipedia lead on demand (CORS), stay on the map. --}}
+                        <template x-if="polity.wikipedia_url && polity.wikipedia_url.includes('wikipedia.org')">
+                            <div>
+                                <p x-show="lead" x-text="lead" class="whitespace-pre-line leading-relaxed"></p>
+                                <button x-show="!lead && !leadLoading && !leadFailed"
+                                        x-on:click="window.__timemapPanelReadMore && window.__timemapPanelReadMore($data, polity)"
+                                        class="btn btn-outline btn-xs">{{ __('Read more') }}</button>
+                                <p x-show="leadLoading" class="flex items-center gap-2 opacity-70"><span class="loading loading-spinner loading-xs"></span> {{ __('Loading article…') }}</p>
+                                <p x-show="leadFailed" class="opacity-70">{{ __('Could not load the article.') }}</p>
+                                <a :href="polity.wikipedia_url" target="_blank" rel="noopener"
+                                   class="link link-primary mt-1 inline-block text-xs">{{ __('Open on Wikipedia') }} ↗</a>
+                            </div>
+                        </template>
+                        {{-- Non-Wikipedia (e.g. worldhistory.org) — external link only (no CORS). --}}
+                        <template x-if="polity.wikipedia_url && !polity.wikipedia_url.includes('wikipedia.org')">
                             <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary"
-                               x-text="(polity.wikipedia_url.includes('worldhistory.org') ? '{{ __('Open on World History Encyclopedia') }}' : '{{ __('Open on Wikipedia') }}') + ' ↗'"></a>
+                               x-text="'{{ __('Open on World History Encyclopedia') }}' + ' ↗'"></a>
                         </template>
                         <p x-show="!polity.wikipedia_url" class="opacity-70">{{ __('No article linked.') }}</p>
                     </div>

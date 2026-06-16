@@ -424,7 +424,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
     // Mountains: a hand-drawn glyph repeated along curated ridge lines (ink styles only). The icon
     // loads async, so add the layer in its onload, then re-apply the current style to honour the toggle.
-    const mtnSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='18' viewBox='0 0 26 18'><path d='M1 17 L7 4 L11 11 L15 5 L21 13 L25 17' fill='none' stroke='%234a3826' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'/></svg>";
+    const mtnAsset = '/timemap/assets/mountains/pen-ink-mountain.svg';
     const mImg = new Image(26, 18);
     mImg.onload = () => {
       if (!map.hasImage('mtn')) map.addImage('mtn', mImg);
@@ -442,7 +442,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         applyMapStyle(currentStyleName); // reflect the toggle now the layer exists
       }
     };
-    mImg.src = mtnSvg;
+    mImg.src = mtnAsset;
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
@@ -577,4 +577,62 @@ window.mountAtlasSlider = function (el, mapEl, initialYear) {
     slider.setYear(y);                         // move the timeline UI
     if (mapEl._setYear) mapEl._setYear(y);     // update the map now
   };
+};
+
+// ── In-panel Wikipedia content (oldmapsonline pattern) ────────────────────────
+// Wikipedia blocks iframing (X-Frame-Options: SAMEORIGIN), but its REST/action APIs send
+// access-control-allow-origin: *, so the browser fetches the thumbnail + article text directly
+// and we render it inside our own panel — users never leave the map.
+function __wikiTitle (url) {
+  const m = /\/wiki\/([^?#]+)/.exec(url || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// Thumbnail + short extract (one REST summary call). Returns null for non-Wikipedia URLs.
+window.__timemapWikiSummary = async (url) => {
+  if (!url || !url.includes('wikipedia.org')) return null;
+  const title = __wikiTitle(url);
+  if (!title) return null;
+  try {
+    const r = await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const d = await r.json();
+    return { thumbnail: d.thumbnail?.source || null, extract: d.extract || null };
+  } catch { return null; }
+};
+
+// Fuller lead section (plaintext) for the "Read more" expansion, via the CORS action API.
+window.__timemapWikiLead = async (url) => {
+  if (!url || !url.includes('wikipedia.org')) return null;
+  const title = __wikiTitle(url);
+  if (!title) return null;
+  try {
+    const api = 'https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext'
+      + '&redirects=1&format=json&origin=*&titles=' + encodeURIComponent(title);
+    const r = await fetch(api);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const pages = (d.query && d.query.pages) || {};
+    const first = Object.values(pages)[0];
+    return (first && first.extract) || null;
+  } catch { return null; }
+};
+
+// Panel mutators — take Alpine's reactive $data proxy and write to it directly. (Bare-identifier
+// assignment inside an async .then in an inline Alpine expression doesn't reliably write back to
+// scope; mutating the $data proxy does.)
+window.__timemapHydratePanel = (scope, p) => {
+  scope.thumb = null; scope.lead = null; scope.leadLoading = false; scope.leadFailed = false;
+  if (p && p.wikipedia_url) {
+    window.__timemapWikiSummary(p.wikipedia_url).then((s) => { scope.thumb = (s && s.thumbnail) || null; });
+  }
+};
+
+window.__timemapPanelReadMore = (scope, p) => {
+  if (!p || !p.wikipedia_url) return;
+  scope.leadLoading = true; scope.leadFailed = false;
+  window.__timemapWikiLead(p.wikipedia_url).then((t) => {
+    if (t) scope.lead = t; else scope.leadFailed = true;
+    scope.leadLoading = false;
+  });
 };
