@@ -105,7 +105,9 @@ function extractYearAndLocation (lesson) {
 let _avatarInstance = null
 let _bgInstance     = null   // background-only Avatar3DPlayer (skybox, no character)
 let _bgCanvas       = null   // module-level ref so both Alpine instances share it
-let _sceneQueue     = []   // [{audio_url, script, image_url, alignment}] for scene-based playback
+let _sceneQueue     = []   // [{kind, config, audio_url, script, image_url, alignment}] for scene-based playback
+let _mapInstance    = null   // MapLibre map block instance (lives outside Alpine's proxy)
+let _mapTimer       = null   // timed-mode auto-advance timer
 let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
 
 // ── Alpine component ──────────────────────────────────────────────────────────
@@ -139,6 +141,9 @@ Alpine.data('lessonGame', (lesson) => ({
     audioPlaying: false,
     audioMuted: false,
     _audioMutedVolume: 1.0,  // remember pre-mute volume
+
+    // Map block
+    showMapContinue: false,  // interactive map slide → show the Continue button
 
     // Internals  (_avatar lives outside Alpine proxy — see _avatarInstance module var)
     _audio:             null,
@@ -489,12 +494,16 @@ Alpine.data('lessonGame', (lesson) => ({
       if (lesson.audio_url) {
         _sceneQueue = [{ audio_url: lesson.audio_url, script: lesson.script, image_url: null }]
       } else if (lesson.scenes?.length) {
+        // Keep audio scenes AND map blocks (map blocks have no audio but are played as slides).
         _sceneQueue = lesson.scenes
-          .filter(s => s.audio_url)
-          .map(s => ({ audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
+          .filter(s => s.audio_url || s.kind === 'map')
+          .map(s => ({ kind: s.kind, config: s.config ?? null, audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
       }
 
       if (!_sceneQueue.length) return
+
+      // A map block can be first in the queue — only preload audio when the first scene has it.
+      if (!_sceneQueue[0].audio_url) return
 
       // Pre-fetch visemes (only for single-audio lessons with visemes_url)
       if (lesson.visemes_url) {
@@ -555,6 +564,9 @@ Alpine.data('lessonGame', (lesson) => ({
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
 
+      // Map block — render the historical atlas as a slide (no audio).
+      if (scene.kind === 'map') { this._playMapScene(index, scene); return }
+
       // Swap background — update 3D bg scene skybox, or fall back to CSS Ken Burns
       if (scene.image_url) {
         if (_bgInstance) {
@@ -609,6 +621,65 @@ Alpine.data('lessonGame', (lesson) => ({
           else this._onAudioEnded()
         }, { once: true })
         this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      }
+    },
+
+    // ── Map block slide ────────────────────────────────────────────────
+    _playMapScene (index, scene) {
+      // Silence any narration carried over from the previous scene.
+      if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
+
+      const cfg = scene.config || {}
+      const mode = cfg.playback_mode === 'timed' ? 'timed' : 'interactive'
+
+      const stage = document.getElementById('lesson-map-stage')
+      if (stage && window.renderLessonMap) {
+        stage.style.display = 'block'
+        stage.innerHTML = ''
+        // Inner child: MapLibre stamps position:relative on its container, which would collapse
+        // a full-bleed host to height 0.
+        const inner = document.createElement('div')
+        inner.style.width = '100%'
+        inner.style.height = '100%'
+        stage.appendChild(inner)
+        _mapInstance = window.renderLessonMap(inner, {
+          qid: cfg.qid || null,
+          year: cfg.year ?? 1600,
+          interactive: mode === 'interactive',
+        })
+      }
+
+      this.showMapContinue = (mode === 'interactive')
+      if (mode === 'timed') {
+        const hold = Math.max(2, Number(cfg.hold_seconds) || 7) * 1000
+        clearTimeout(_mapTimer)
+        _mapTimer = setTimeout(() => this._advanceFromMap(index), hold)
+      }
+    },
+
+    // Called by the Continue button (interactive) and the timer (timed).
+    advanceMap () {
+      this._advanceFromMap(this._sceneIndex)
+    },
+
+    _advanceFromMap (index) {
+      clearTimeout(_mapTimer)
+      _mapTimer = null
+      if (_mapInstance) { try { _mapInstance.destroy() } catch (_) {} _mapInstance = null }
+      const stage = document.getElementById('lesson-map-stage')
+      if (stage) { stage.style.display = 'none'; stage.innerHTML = '' }
+      this.showMapContinue = false
+      this._advanceScene(index)
+    },
+
+    // Advance to the next queued scene, or end the run.
+    _advanceScene (index) {
+      const next = index + 1
+      if (next < _sceneQueue.length) {
+        this._sceneIndex = next
+        this._playScene(next)
+      } else {
+        this._onAudioEnded()
       }
     },
 

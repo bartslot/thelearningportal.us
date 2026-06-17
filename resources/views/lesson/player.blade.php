@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $lesson->title }} — The Learning Portal</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js'])
+    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js', 'resources/js/lesson-map.js'])
 </head>
 <body class="h-full overflow-hidden bg-[#020617]">
 
@@ -46,6 +46,7 @@
             ? $lesson->scenes->map(fn($s) => [
                 'order'       => $s->order,
                 'kind'        => $s->kind,
+                'config'      => $s->config,
                 'game_type'   => $s->game_type,
                 'audio_url'   => $s->audio_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->audio_path) : null,
                 'script'      => $s->script_segment,
@@ -92,6 +93,18 @@
             <span class="absolute bottom-2 right-3 text-[10px] text-white/40">{{ __('Image: Wikimedia Commons') }}</span>
         </div>
     </template>
+
+    {{-- ── Map block slide — full-bleed historical atlas, shown while a map scene plays. --}}
+    <div id="lesson-map-stage" class="absolute inset-0 z-20" style="display:none" aria-hidden="true"></div>
+    {{-- Continue button for interactive map blocks (timed blocks auto-advance). --}}
+    <button x-show="showMapContinue" x-transition
+            @click="advanceMap()"
+            class="absolute bottom-10 left-1/2 z-40 -translate-x-1/2 flex items-center gap-2 rounded-full
+                   bg-amber-500 px-7 py-3 text-base font-bold text-slate-950 shadow-[0_0_48px_rgba(245,158,11,0.4)]
+                   transition hover:bg-amber-400 active:scale-95 pointer-events-auto">
+        {{ __('Continue') }}
+        <svg class="h-5 w-5 fill-slate-950" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </button>
 
     {{-- ── LAYER 1: Shadow gradient overlay ────────────────────────────── --}}
     <div class="absolute inset-0 z-10 pointer-events-none bg-linear-to-b from-black/50 to-[#0C2033]/50"></div>
@@ -312,7 +325,7 @@
 
                     {{-- CTA --}}
                     <div class="mt-6 sm:mt-8">
-                        <template x-if="lesson.audio_url || (lesson.scenes && lesson.scenes.some(s => s.audio_url))">
+                        <template x-if="lesson.audio_url || (lesson.scenes && lesson.scenes.some(s => s.audio_url || s.kind === 'map'))">
                             <button
                                 @click="startLesson()"
                                 class="group flex items-center gap-3 rounded-full bg-amber-500 px-6 py-3 sm:px-8 sm:py-3.5
@@ -325,7 +338,7 @@
                                 <span>Start lesson</span>
                             </button>
                         </template>
-                        <template x-if="!lesson.audio_url && !(lesson.scenes && lesson.scenes.some(s => s.audio_url))">
+                        <template x-if="!lesson.audio_url && !(lesson.scenes && lesson.scenes.some(s => s.audio_url || s.kind === 'map'))">
                             <div class="flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 text-sm text-slate-400">
                                 <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                                 <span>Audio generating…</span>

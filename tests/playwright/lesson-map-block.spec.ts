@@ -41,10 +41,14 @@ test.describe('Lesson map block (composer)', () => {
     expect(size.h).toBeGreaterThan(100);
     expect(size.canvas).toBeGreaterThan(0);
 
-    // Delete the block → back to the original count, preview hides.
+    // Delete the added block → back to the original count.
     await page.locator('button:has-text("Delete block")').click();
     await page.waitForTimeout(2500);
     expect(await page.locator('[data-scene-id]').count()).toBe(before);
+
+    // Selecting a non-map scene hides the map preview.
+    await page.locator('[data-scene-id]:not(:has-text("Map"))').first().click();
+    await page.waitForTimeout(1500);
     const hidden = await page.evaluate(() => getComputedStyle(document.getElementById('lesson-map-preview')!).display === 'none');
     expect(hidden).toBe(true);
 
