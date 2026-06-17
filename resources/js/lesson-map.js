@@ -17,7 +17,18 @@ const PALETTE = {
   fill: '#c9b79c',
   highlight: '#f5c518',
   line: '#5b4a36',
+  river: '#6a8fa0',
+  city: '#3a2c1a',
+  cityHalo: '#f3ead6',
 }
+
+const MTN_ICON = '/timemap/assets/mountains/pen-ink-mountain.svg'
+
+// Cities valid at `year` (gazetteer entries carry valid_from/valid_to; missing = always valid).
+const cityFilter = (year) => ['all',
+  ['<=', ['to-number', ['coalesce', ['get', 'valid_from'], -99999]], year],
+  ['>=', ['to-number', ['coalesce', ['get', 'valid_to'], 99999]], year],
+]
 
 // Cliopatria polities valid at `year` (Type=POLITY, skip composite "(…)" names, within lifespan).
 const polityFilter = (year) => ['all',
@@ -46,6 +57,9 @@ export function renderLessonMap (el, opts = {}) {
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        cities: { type: 'vector', tiles: [`${location.origin}/city-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
+        mountains: { type: 'geojson', data: `${location.origin}/timemap/mountains.geojson` },
         cliopatria: {
           type: 'vector',
           tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`],
@@ -56,6 +70,15 @@ export function renderLessonMap (el, opts = {}) {
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': PALETTE.land } },
+        {
+          id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+          paint: {
+            'line-color': PALETTE.river,
+            'line-opacity': 0.7,
+            // Thicker for major rivers (low scalerank).
+            'line-width': ['interpolate', ['linear'], ['to-number', ['coalesce', ['get', 'scalerank'], 6]], 1, 1.4, 6, 0.4],
+          },
+        },
         {
           id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
           filter: polityFilter(year),
@@ -68,6 +91,32 @@ export function renderLessonMap (el, opts = {}) {
           id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
           filter: polityFilter(year),
           paint: { 'line-color': PALETTE.line, 'line-width': 0.6, 'line-opacity': 0.7 },
+        },
+        {
+          id: 'city-dots', type: 'circle', source: 'cities', 'source-layer': 'cities',
+          filter: cityFilter(year),
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 1.6, 6, 3.5],
+            'circle-color': PALETTE.city,
+            'circle-stroke-color': PALETTE.cityHalo,
+            'circle-stroke-width': 1,
+            'circle-opacity': 0.9,
+          },
+        },
+        {
+          id: 'city-labels', type: 'symbol', source: 'cities', 'source-layer': 'cities',
+          filter: cityFilter(year),
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 9, 6, 13],
+            'text-anchor': 'left', 'text-offset': [0.6, 0], 'text-optional': true,
+            'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+          },
+          paint: {
+            'text-color': PALETTE.city,
+            'text-halo-color': PALETTE.cityHalo,
+            'text-halo-width': 1.4,
+          },
         },
       ],
     },
@@ -132,9 +181,33 @@ export function renderLessonMap (el, opts = {}) {
     }
   }
 
-  map.on('load', () => { setYear(year); requestAfterTiles(fitToPolity) })
+  map.on('load', () => {
+    setYear(year)
+    requestAfterTiles(fitToPolity)
+    addMountains()
+  })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })
+
+  // Mountain ranges — symbol layer using the shared pen-ink icon (needs the image registered first).
+  function addMountains () {
+    if (map.getLayer('mountains')) return
+    const img = new Image()
+    img.onload = () => {
+      if (!map.hasImage('mtn')) map.addImage('mtn', img)
+      if (map.getLayer('mountains')) return
+      map.addLayer({
+        id: 'mountains', type: 'symbol', source: 'mountains',
+        layout: {
+          'symbol-placement': 'line', 'symbol-spacing': 18,
+          'icon-image': 'mtn', 'icon-size': 0.55, 'icon-anchor': 'bottom',
+          'icon-rotation-alignment': 'viewport', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        },
+        paint: { 'icon-opacity': 0.8 },
+      }, map.getLayer('city-dots') ? 'city-dots' : undefined)
+    }
+    img.src = MTN_ICON
+  }
 
   // Re-attempt fit a few times while tiles stream in.
   function requestAfterTiles (fn) {
@@ -150,6 +223,9 @@ export function renderLessonMap (el, opts = {}) {
     if (!map.getLayer('boundaries-fill')) return
     map.setFilter('boundaries-fill', polityFilter(year))
     map.setFilter('boundaries-line', polityFilter(year))
+    // Cities are period-specific — re-filter them too.
+    if (map.getLayer('city-dots')) map.setFilter('city-dots', cityFilter(year))
+    if (map.getLayer('city-labels')) map.setFilter('city-labels', cityFilter(year))
   }
 
   return {
