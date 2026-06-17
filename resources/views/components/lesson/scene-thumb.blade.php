@@ -13,7 +13,13 @@
             'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $selected && $scene->status !== 'failed',
             'ring-1 ring-rose-500/50'                                          => $scene->status === 'failed',
         ])>
-    @if ($scene->kind === 'game')
+    @if ($scene->kind === 'map')
+        <div class="w-full h-full bg-sky-800/30 border border-sky-600/30 flex flex-col items-center justify-center text-white gap-1">
+            <svg class="h-6 w-6 opacity-90" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            <span class="text-[9px] font-bold uppercase tracking-widest">Map</span>
+            <span class="text-[9px] opacity-70">{{ $scene->year ?? '—' }}</span>
+        </div>
+    @elseif ($scene->kind === 'game')
         <div class="w-full h-full bg-teal-700/30 border border-teal-600/30 flex flex-col items-center justify-center text-white">
             <span class="text-[10px] font-bold tracking-widest mt-1">{{ strtoupper($scene->game_type ?? 'game') }}</span>
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>

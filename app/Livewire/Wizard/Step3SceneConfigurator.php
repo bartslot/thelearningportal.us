@@ -18,11 +18,13 @@ use App\Models\Scene;
 use App\Models\StrategyGame;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Step3SceneConfigurator extends Component
 {
     private const EDITABLE_FIELDS = [
+        'config',
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
@@ -116,6 +118,7 @@ class Step3SceneConfigurator extends Component
             'year' => $scene->year,
             'location' => $scene->location,
             'kind' => $scene->kind,
+            'config' => $scene->config,
             'gameType' => $scene->game_type,
             'quizQuestionCount' => $scene->quiz_question_count,
             'quizTiming' => $scene->quiz_timing,
@@ -234,6 +237,7 @@ class Step3SceneConfigurator extends Component
         $this->saveSelected();
     }
 
+    #[On('reorder')]
     public function reorder(array $orderedIds): void
     {
         DB::transaction(function () use ($orderedIds) {
@@ -323,7 +327,7 @@ class Step3SceneConfigurator extends Component
 
     public function addScene(string $kind = 'narration', ?string $gameType = null): void
     {
-        $kind = $kind === 'game' ? 'game' : 'narration';
+        $kind = in_array($kind, ['game', 'map'], true) ? $kind : 'narration';
         $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
 
@@ -332,8 +336,16 @@ class Step3SceneConfigurator extends Component
             'order' => $next,
             'kind' => $kind,
             'image_style' => $this->lesson->image_style,
-            'status' => 'pending',
+            'status' => $kind === 'map' ? 'ready' : 'pending',
         ];
+
+        if ($kind === 'map') {
+            $payload += Scene::mapPayloadForLesson($this->lesson);
+            $scene = Scene::create($payload);
+            $this->selectSceneInternal($scene->id);
+
+            return;
+        }
 
         if ($kind === 'game') {
             $gameCount = $this->lesson->scenes()->where('kind', 'game')->count();

@@ -1,3 +1,7 @@
+@push('head-scripts')
+    @vite('resources/js/lesson-map.js')
+@endpush
+
 <div class="contents" x-data="step3SceneConfigurator" wire:poll.3s>
 
     {{-- Fullscreen canvas wrapper — wire:ignore so Livewire never re-renders the
@@ -14,7 +18,45 @@
         @endif
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
+        {{-- Map block preview — overlays the canvas when a map scene is selected. Uses fixed
+             positioning (full viewport) because MapLibre relatively-positions its container, which
+             would otherwise collapse an `absolute inset-0` host to height 0. --}}
+        <div id="lesson-map-preview" class="fixed inset-0 z-[5]" style="display:none" wire:ignore></div>
     </div>
+
+    {{-- Mount/destroy the MapLibre map block when a map scene is (de)selected. --}}
+    @push('scripts')
+    <script>
+    document.addEventListener('livewire:initialized', () => {
+        const host = document.getElementById('lesson-map-preview')
+        let inst = null
+        const destroy = () => {
+            if (inst) { inst.destroy(); inst = null }
+            host.innerHTML = ''
+            host.style.display = 'none'
+        }
+
+        window.Livewire.on('scene:load', (e) => {
+            const p = Array.isArray(e) ? e[0]?.payload : e?.payload
+            if (!p || p.kind !== 'map') { destroy(); return }
+            const cfg = p.config || {}
+            const year = cfg.year ?? p.year ?? 1600
+            // Re-mount fresh each time so qid/year changes always take effect.
+            destroy()
+            host.style.display = 'block'
+            // MapLibre stamps `position:relative` on its container, which would override the host's
+            // fixed positioning and collapse it — so mount into a full-size inner child instead.
+            const inner = document.createElement('div')
+            inner.style.width = '100%'
+            inner.style.height = '100%'
+            host.appendChild(inner)
+            if (window.renderLessonMap) {
+                inst = window.renderLessonMap(inner, { qid: cfg.qid || null, year, interactive: true })
+            }
+        })
+    })
+    </script>
+    @endpush
     {{-- Draggable inspector --}}
     <aside x-cloak
            x-ref="inspectorPanel"
@@ -63,7 +105,9 @@
              :style="inspectorBodyStyle()">
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
-                @if ($sceneModel->kind === 'game')
+                @if ($sceneModel->kind === 'map')
+                    <x-lesson.scene-inspector-map :scene="$sceneModel" />
+                @elseif ($sceneModel->kind === 'game')
                     <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />

@@ -170,6 +170,11 @@ class BuildLessonOutline implements ShouldQueue
                 ]);
             }
 
+            // Standard map block (the "second screen", right after the title) for catalog lessons.
+            // Inserted at order 1, shifting content scenes down; teachers can reorder/delete it.
+            // No generation jobs needed — it renders the historical atlas live.
+            Scene::insertDefaultMapBlock($lesson->fresh());
+
             // If we have a colorful hero image from worldhistory.org, pre-assign it to
             // scene 1 so AI image generation is skipped for that scene.
             $heroPath = null;
