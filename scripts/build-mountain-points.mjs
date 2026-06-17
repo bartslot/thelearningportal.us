@@ -16,8 +16,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pub = resolve(__dirname, '../public/timemap')
 
 const BUFFER_KM = 55      // how wide the massif spreads either side of the ridge
-const GRID_KM = 20        // spacing between mountains (smaller = denser)
-const JITTER_KM = 7       // random offset so it's not a rigid grid
+const GRID_KM = 38        // spacing between mountains (smaller = denser)
+const JITTER_KM = 11      // random offset so it's not a rigid grid
 
 const ranges = JSON.parse(readFileSync(`${pub}/mountains.geojson`, 'utf8'))
 const out = []
