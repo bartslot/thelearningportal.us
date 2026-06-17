@@ -1,25 +1,22 @@
 /**
- * map-mountains.js — shared mountain-range layer for the Time-Map and lesson map.
+ * map-mountains.js — shared mountain layer for the Time-Map and lesson map.
  *
- * Mountain ranges are curated polylines (public/timemap/mountains.geojson). Each range is drawn
- * as repeated icons along the ridge. Icons are hand-painted SVGs listed in
- * public/timemap/assets/mountains/manifest.json — add a file there and it's used automatically;
- * each range is assigned a stable variant by hashing its name, so the set looks varied without
- * any per-range config.
+ * Ranges are rendered as a dense FIELD of peaks (public/timemap/mountains-points.geojson, built
+ * from the curated ridge lines by scripts/build-mountain-points.mjs). Each peak carries a `size`
+ * (small | medium | big) — big in a massif's core, small at its edges — so a range like the Alps
+ * reads as many peaks tapering outward, not a single line.
  *
- *   await addMountainLayer(map, { beforeId: 'city-dots', iconSize: 0.6 })
+ * Icons are hand-painted SVGs mapped per size in public/timemap/assets/mountains/manifest.json:
+ *   { "small": "small.svg", "medium": "medium.svg", "big": "big.svg" }
+ * Replace those files (or the manifest) and the map picks them up — no code change.
+ *
+ *   await addMountainLayer(map, { beforeId: 'city-dots' })
  */
 
 const ASSET_BASE = '/timemap/assets/mountains/'
-const GEOJSON_URL = '/timemap/mountains.geojson'
-const FALLBACK_ICONS = ['pen-ink-mountain.svg']
-
-// Stable string hash → non-negative int (deterministic variant assignment).
-function hashStr (s) {
-  let h = 0
-  for (let i = 0; i < (s || '').length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return h
-}
+const POINTS_URL = '/timemap/mountains-points.geojson'
+const SIZES = ['small', 'medium', 'big']
+const FALLBACK = { small: 'pen-ink-mountain.svg', medium: 'pen-ink-mountain.svg', big: 'pen-ink-mountain.svg' }
 
 function loadImage (map, id, url) {
   return new Promise((resolve) => {
@@ -32,41 +29,31 @@ function loadImage (map, id, url) {
 }
 
 /**
- * Add (once) the `mountains` symbol layer, loading every icon in the manifest and distributing
- * the variants across ranges. Safe to call after `map` is loaded.
+ * Add (once) the `mountains` symbol layer: a sized peak per point.
  *
  * @param {maplibregl.Map} map
- * @param {{ beforeId?: string, iconSize?: number, opacity?: number, visibility?: 'visible'|'none' }} opts
+ * @param {{ beforeId?: string, opacity?: number, visibility?: 'visible'|'none' }} opts
  */
 export async function addMountainLayer (map, opts = {}) {
-  const { beforeId, iconSize = 0.6, opacity = 0.85, visibility = 'visible' } = opts
+  const { beforeId, opacity = 0.85, visibility = 'visible' } = opts
   if (map.getLayer('mountains')) return
 
-  // 1. Resolve the icon list (manifest, else the bundled fallback).
-  let icons = FALLBACK_ICONS
+  // 1. Resolve the size→file map (manifest, else fallback).
+  let map3 = FALLBACK
   try {
     const m = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null))
-    if (Array.isArray(m) && m.length) icons = m
+    if (m && typeof m === 'object' && !Array.isArray(m)) map3 = { ...FALLBACK, ...m }
+    else if (Array.isArray(m) && m.length) map3 = { small: m[0], medium: m[0], big: m[0] }
   } catch (_) { /* keep fallback */ }
 
-  // 2. Register each icon as mtn-0..N (skip any that fail to load).
-  const loaded = []
-  await Promise.all(icons.map(async (file, i) => {
-    const ok = await loadImage(map, `mtn-${i}`, ASSET_BASE + file)
-    if (ok) loaded.push(i)
-  }))
-  if (!loaded.length) return
-  const n = loaded.length
+  // 2. Register one icon per size (skip any that fail).
+  await Promise.all(SIZES.map((s) => loadImage(map, `mtn-${s}`, ASSET_BASE + map3[s])))
 
-  // 3. Fetch ranges + assign a stable variant per range (by hashed name).
+  // 3. Load the peak field.
   let data
   try {
-    data = await fetch(GEOJSON_URL).then((r) => r.json())
+    data = await fetch(POINTS_URL).then((r) => r.json())
   } catch (_) { return }
-  for (const f of data.features || []) {
-    const variant = loaded[hashStr(f.properties && f.properties.name) % n]
-    f.properties = { ...(f.properties || {}), icon: `mtn-${variant}` }
-  }
 
   if (map.getSource('mountains')) map.getSource('mountains').setData(data)
   else map.addSource('mountains', { type: 'geojson', data })
@@ -78,14 +65,16 @@ export async function addMountainLayer (map, opts = {}) {
     source: 'mountains',
     layout: {
       visibility,
-      'symbol-placement': 'line',
-      'symbol-spacing': 18,
-      'icon-image': ['coalesce', ['get', 'icon'], 'mtn-0'],
-      'icon-size': iconSize,
+      'icon-image': ['concat', 'mtn-', ['coalesce', ['get', 'size'], 'medium']],
       'icon-anchor': 'bottom',
-      'icon-rotation-alignment': 'viewport',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
+      // Bigger peaks in the core, and everything grows with zoom.
+      'icon-size': [
+        'interpolate', ['linear'], ['zoom'],
+        2, ['match', ['get', 'size'], 'big', 0.34, 'medium', 0.24, 'small', 0.17, 0.24],
+        6, ['match', ['get', 'size'], 'big', 0.80, 'medium', 0.55, 'small', 0.38, 0.55],
+      ],
     },
     paint: { 'icon-opacity': opacity },
   }, map.getLayer(beforeId) ? beforeId : undefined)
