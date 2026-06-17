@@ -33,7 +33,9 @@ const polityFilter = (year) => ['all',
  */
 export function renderLessonMap (el, opts = {}) {
   const { qid = null, interactive = true } = opts
-  let year = Number.isFinite(opts.year) ? opts.year : 1600
+  // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
+  let year = Number(opts.year)
+  if (!Number.isFinite(year)) year = 1600
 
   const map = new maplibregl.Map({
     container: el,
@@ -80,9 +82,21 @@ export function renderLessonMap (el, opts = {}) {
 
   // Highlight + fit to the target polity once tiles for this area have loaded.
   let highlighted = null
+  let didFit = false
   const setHighlight = (id, on) => {
     if (!id) return
     map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { highlight: on })
+  }
+
+  // Bounding box (+ area) of a polygon's outer ring.
+  const ringBox = (ring) => {
+    let minX = 180, minY = 90, maxX = -180, maxY = -90
+    for (const c of ring) {
+      const x = c[0], y = c[1]
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+    }
+    return { minX, minY, maxX, maxY, area: (maxX - minX) * (maxY - minY) }
   }
 
   const fitToPolity = () => {
@@ -93,37 +107,41 @@ export function renderLessonMap (el, opts = {}) {
     })
     if (!feats.length) return
 
-    let minX = 180, minY = 90, maxX = -180, maxY = -90
-    const walk = (coords) => {
-      if (typeof coords[0] === 'number') {
-        const [x, y] = coords
-        if (x < minX) minX = x; if (x > maxX) maxX = x
-        if (y < minY) minY = y; if (y > maxY) maxY = y
-        return
-      }
-      coords.forEach(walk)
-    }
-    feats.forEach((f) => f.geometry && walk(f.geometry.coordinates))
-
-    if (minX <= maxX && minY <= maxY) {
-      map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 48, duration: 800, maxZoom: 6 })
-    }
+    // Highlight every matched part (once).
     if (highlighted !== qid) {
       setHighlight(highlighted, false)
       setHighlight(qid, true)
       highlighted = qid
     }
+
+    // Fit to the LARGEST polygon part so far-flung overseas territories don't zoom the map
+    // out to the whole globe (e.g. France 1815–1830 still carried Guiana in South America).
+    if (didFit) return
+    const parts = []
+    feats.forEach((f) => {
+      const g = f.geometry
+      if (!g) return
+      if (g.type === 'Polygon' && g.coordinates[0]) parts.push(ringBox(g.coordinates[0]))
+      else if (g.type === 'MultiPolygon') g.coordinates.forEach((poly) => poly[0] && parts.push(ringBox(poly[0])))
+    })
+    if (!parts.length) return
+    const b = parts.reduce((a, p) => (p.area > a.area ? p : a))
+    if (b.minX <= b.maxX && b.minY <= b.maxY) {
+      map.fitBounds([[b.minX, b.minY], [b.maxX, b.maxY]], { padding: 48, duration: 800, maxZoom: 6 })
+      didFit = true
+    }
   }
 
   map.on('load', () => { setYear(year); requestAfterTiles(fitToPolity) })
-  map.on('idle', () => { if (qid && highlighted !== qid) fitToPolity() })
+  // Re-fit only until the first successful fit — never yank the view after the teacher pans.
+  map.on('idle', () => { if (qid && !didFit) fitToPolity() })
 
   // Re-attempt fit a few times while tiles stream in.
   function requestAfterTiles (fn) {
     let tries = 0
     const t = setInterval(() => {
       fn()
-      if (++tries > 8 || highlighted === qid) clearInterval(t)
+      if (++tries > 8 || didFit) clearInterval(t)
     }, 400)
   }
 

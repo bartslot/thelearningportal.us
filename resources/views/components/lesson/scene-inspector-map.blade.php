@@ -12,7 +12,7 @@
 
     <label class="form-control">
         <span class="text-xs uppercase tracking-wider text-slate-400">Year</span>
-        <input type="number" wire:model.blur="selectedScene.config.year" wire:change="saveSelected"
+        <input type="number" wire:model.blur.number="selectedScene.config.year" wire:change="saveSelected"
                placeholder="e.g. 1600"
                class="input input-sm input-bordered bg-slate-900 mt-1" />
         <span class="mt-1 text-[10px] text-slate-500">Negative = BCE. Sets the map's time slider.</span>
