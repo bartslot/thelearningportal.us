@@ -34,8 +34,9 @@ for (const range of ranges.features) {
   for (const pt of grid.features) {
     if (!turf.booleanPointInPolygon(pt, massif)) continue
 
-    const d = turf.pointToLineDistance(pt, range, { units: 'kilometers' })
-    const size = d < BUFFER_KM * 0.3 ? 'big' : d < BUFFER_KM * 0.6 ? 'medium' : 'small'
+    // Bigger peaks in the core, tapering through medium/small to "smaller" at the edges.
+    const frac = turf.pointToLineDistance(pt, range, { units: 'kilometers' }) / BUFFER_KM
+    const size = frac < 0.25 ? 'large' : frac < 0.5 ? 'medium' : frac < 0.75 ? 'small' : 'smaller'
 
     const [lng, lat] = pt.geometry.coordinates
     out.push({
@@ -58,4 +59,4 @@ writeFileSync(
 )
 
 const by = (s) => out.filter((f) => f.properties.size === s).length
-console.log(`mountains-points.geojson: ${out.length} peaks (big ${by('big')}, medium ${by('medium')}, small ${by('small')})`)
+console.log(`mountains-points.geojson: ${out.length} peaks (large ${by('large')}, medium ${by('medium')}, small ${by('small')}, smaller ${by('smaller')})`)

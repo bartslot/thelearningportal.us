@@ -182,8 +182,8 @@ export function renderLessonMap (el, opts = {}) {
   map.on('load', () => {
     setYear(year)
     requestAfterTiles(fitToPolity)
-    // Hand-painted mountain ranges (manifest-driven, varied per range) — under the city labels.
-    addMountainLayer(map, { beforeId: 'city-dots', iconSize: 0.55, opacity: 0.8 })
+    // Hand-painted mountain peaks (size-graded field) — bg recolored to the land, under city labels.
+    addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
   })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })

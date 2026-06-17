@@ -1,5 +1,6 @@
 {
-  "small": "pen-ink-mountain.svg",
-  "medium": "pen-ink-mountain.svg",
-  "big": "pen-ink-mountain.svg"
+  "smaller": "mountains_mountain-smaller.svg",
+  "small": "mountains_mountain-small.svg",
+  "medium": "mountains_mountain-medium.svg",
+  "large": "mountains_mountain-large.svg"
 }

@@ -427,7 +427,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // (manifest-driven; shared with the lesson map). Added async — re-apply the style after so
     // the per-style visibility toggle is honoured.
     addMountainLayer(map, {
-      beforeId: 'boundaries-label', iconSize: 0.7, visibility: 'none',
+      beforeId: 'boundaries-label', visibility: 'none',
+      landColor: (MAP_STYLES[currentStyleName] || {}).land || theme.land,
     }).then(() => applyMapStyle(currentStyleName));
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
