@@ -99,7 +99,7 @@ export async function addMountainLayer (map, opts = {}) {
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
       // The SVGs already encode their relative sizes; this just scales the whole field with zoom.
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.30, 5, 0.61, 7, 0.87],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.34, 5, 0.69, 7, 0.98],
     },
     paint: { 'icon-opacity': opacity },
   }, map.getLayer(beforeId) ? beforeId : undefined)
