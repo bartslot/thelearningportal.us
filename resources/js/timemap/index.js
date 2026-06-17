@@ -2,6 +2,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
+import { addMountainLayer } from '../map-mountains.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 
@@ -422,27 +423,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
     });
 
-    // Mountains: a hand-drawn glyph repeated along curated ridge lines (ink styles only). The icon
-    // loads async, so add the layer in its onload, then re-apply the current style to honour the toggle.
-    const mtnAsset = '/timemap/assets/mountains/pen-ink-mountain.svg';
-    const mImg = new Image(26, 18);
-    mImg.onload = () => {
-      if (!map.hasImage('mtn')) map.addImage('mtn', mImg);
-      if (!map.getLayer('mountains')) {
-        map.addSource('mountains', { type: 'geojson', data: '/timemap/mountains.geojson' });
-        map.addLayer({
-          id: 'mountains', type: 'symbol', source: 'mountains',
-          layout: {
-            visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 15,
-            'icon-image': 'mtn', 'icon-size': 0.7, 'icon-anchor': 'bottom',
-            'icon-rotation-alignment': 'viewport', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-          },
-          paint: { 'icon-opacity': 0.85 },
-        }, map.getLayer('boundaries-label') ? 'boundaries-label' : undefined);
-        applyMapStyle(currentStyleName); // reflect the toggle now the layer exists
-      }
-    };
-    mImg.src = mtnAsset;
+    // Mountains: hand-painted glyphs repeated along curated ridge lines, varied per range
+    // (manifest-driven; shared with the lesson map). Added async — re-apply the style after so
+    // the per-style visibility toggle is honoured.
+    addMountainLayer(map, {
+      beforeId: 'boundaries-label', iconSize: 0.7, visibility: 'none',
+    }).then(() => applyMapStyle(currentStyleName));
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.

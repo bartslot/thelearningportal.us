@@ -10,6 +10,7 @@
  */
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { addMountainLayer } from './map-mountains.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -21,8 +22,6 @@ const PALETTE = {
   city: '#3a2c1a',
   cityHalo: '#f3ead6',
 }
-
-const MTN_ICON = '/timemap/assets/mountains/pen-ink-mountain.svg'
 
 // Cities valid at `year` (gazetteer entries carry valid_from/valid_to; missing = always valid).
 const cityFilter = (year) => ['all',
@@ -59,7 +58,6 @@ export function renderLessonMap (el, opts = {}) {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cities: { type: 'vector', tiles: [`${location.origin}/city-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
-        mountains: { type: 'geojson', data: `${location.origin}/timemap/mountains.geojson` },
         cliopatria: {
           type: 'vector',
           tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`],
@@ -184,30 +182,11 @@ export function renderLessonMap (el, opts = {}) {
   map.on('load', () => {
     setYear(year)
     requestAfterTiles(fitToPolity)
-    addMountains()
+    // Hand-painted mountain ranges (manifest-driven, varied per range) — under the city labels.
+    addMountainLayer(map, { beforeId: 'city-dots', iconSize: 0.55, opacity: 0.8 })
   })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })
-
-  // Mountain ranges — symbol layer using the shared pen-ink icon (needs the image registered first).
-  function addMountains () {
-    if (map.getLayer('mountains')) return
-    const img = new Image()
-    img.onload = () => {
-      if (!map.hasImage('mtn')) map.addImage('mtn', img)
-      if (map.getLayer('mountains')) return
-      map.addLayer({
-        id: 'mountains', type: 'symbol', source: 'mountains',
-        layout: {
-          'symbol-placement': 'line', 'symbol-spacing': 18,
-          'icon-image': 'mtn', 'icon-size': 0.55, 'icon-anchor': 'bottom',
-          'icon-rotation-alignment': 'viewport', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-        },
-        paint: { 'icon-opacity': 0.8 },
-      }, map.getLayer('city-dots') ? 'city-dots' : undefined)
-    }
-    img.src = MTN_ICON
-  }
 
   // Re-attempt fit a few times while tiles stream in.
   function requestAfterTiles (fn) {
