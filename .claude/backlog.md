@@ -607,6 +607,10 @@ P3 · J · depends: J-6 · **decision: RR data-reuse licence (blocker)**
 
 # EPIC K — Lesson Composer & Slideshow (modular lessons; replaces "scenes")
 
+> **Detailed, repo-grounded execution spec (built for Haiku 4.5, one ticket at a time):**
+> [`epic-k-lesson-composer-plan.md`](epic-k-lesson-composer-plan.md). Dispatch from there — it reconciles
+> these tickets with the existing `Lesson`/`Scene`/wizard code and adds K-1b, K-2a, K-8…K-10.
+
 *Came from:* your decision to drop auto-generated "scenes" and let the teacher assemble a lesson from components, then present it as a click-next slideshow. A lesson is now an **ordered list of modules**; the teacher picks and reorders them; each module renders in the composer (edit) and in the player (present). Content is pre-generated and cached from the DB (grounded), then teacher-refined.
 
 **Module library (types + who delivers them):**

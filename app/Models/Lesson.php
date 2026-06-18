@@ -177,6 +177,12 @@ class Lesson extends Model
         return $this->hasMany(Scene::class)->orderBy('order');
     }
 
+    /** Ordered lesson modules (Epic K) — the modular replacement for scenes. */
+    public function modules(): HasMany
+    {
+        return $this->hasMany(LessonModule::class)->orderBy('order');
+    }
+
     public function firstScene(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Scene::class)->oldestOfMany('order');
@@ -195,6 +201,25 @@ class Lesson extends Model
 
         $this->update(['status' => LessonStatus::SourceReady]);
         \App\Jobs\BuildLessonOutline::dispatch($this->id);
+    }
+
+    /**
+     * Persist a new module order from a list of module ids. Uses a two-phase shift to avoid the
+     * (lesson_id, order) unique clash (same pattern as Scene::insertDefaultMapBlock). Ids not
+     * belonging to this lesson are ignored.
+     *
+     * @param  list<int>  $orderedIds
+     */
+    public function reorderModules(array $orderedIds): void
+    {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($orderedIds): void {
+            foreach ($orderedIds as $index => $id) {
+                $this->modules()->whereKey($id)->update(['order' => -1 * ($index + 1)]);
+            }
+            foreach ($orderedIds as $index => $id) {
+                $this->modules()->whereKey($id)->update(['order' => $index]);
+            }
+        });
     }
 
     // ── Scopes ──────────────────────────────────────────────────────────────
