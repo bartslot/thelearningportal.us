@@ -222,21 +222,29 @@ class OpenAiImageService
      * the hand-drawn map artwork via the images/edits endpoint. The sketch conditions the model so
      * the artwork follows real geography; the prompt carries the style. Returns raw PNG bytes.
      */
-    public function editFromSketch(string $sketchBytes, string $prompt, string $size = '1536x1024'): string
+    public function editFromSketch(string $sketchBytes, string $prompt, string $size = '1536x1024', bool $transparent = true): string
     {
         $base = (string) config('services.openai.base_url');
         $key = (string) config('services.openai.image_api_key');
+
+        // True alpha must come from the API `background` param + PNG output — a prompt asking for
+        // "transparent" makes gpt-image-1 paint a fake checkerboard instead.
+        $fields = [
+            'model' => config('services.openai.image_model'),
+            'prompt' => $prompt,
+            'size' => $size,
+            'n' => 1,
+        ];
+        if ($transparent) {
+            $fields['background'] = 'transparent';
+            $fields['output_format'] = 'png';
+        }
 
         try {
             $response = Http::withToken($key)
                 ->timeout((int) config('services.openai.timeout', 120))
                 ->attach('image', $sketchBytes, 'sketch.png', ['Content-Type' => 'image/png'])
-                ->post(rtrim($base, '/').'/images/edits', [
-                    'model' => config('services.openai.image_model'),
-                    'prompt' => $prompt,
-                    'size' => $size,
-                    'n' => 1,
-                ]);
+                ->post(rtrim($base, '/').'/images/edits', $fields);
         } catch (\Throwable $e) {
             throw new RuntimeException('Image edit request failed: '.$e->getMessage(), previous: $e);
         }
@@ -251,6 +259,50 @@ class OpenAiImageService
         }
 
         throw new RuntimeException('Image edit API returned no b64_json.');
+    }
+
+    /**
+     * Luminance-key a line-art PNG to transparency: bright pixels (the paper/land fill gpt-image-1
+     * insists on adding) become transparent, dark ink strokes stay opaque, mid-tones ramp — so the
+     * result is pure ink on true alpha, ready to overlay the map's own terrain. Preserves any alpha
+     * the model already produced (e.g. transparent sea). GD-based.
+     */
+    public function keyBrightnessToAlpha(string $pngBytes, int $darkAt = 60, int $lightAt = 210): string
+    {
+        $src = imagecreatefromstring($pngBytes);
+        if ($src === false) {
+            return $pngBytes;
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $out = imagecreatetruecolor($w, $h);
+        imagealphablending($out, false);
+        imagesavealpha($out, true);
+        $span = max(1, $lightAt - $darkAt);
+
+        for ($y = 0; $y < $h; $y++) {
+            for ($x = 0; $x < $w; $x++) {
+                $c = imagecolorat($src, $x, $y);
+                $a = ($c >> 24) & 0x7F;
+                $r = ($c >> 16) & 0xFF;
+                $g = ($c >> 8) & 0xFF;
+                $b = $c & 0xFF;
+                $lum = 0.299 * $r + 0.587 * $g + 0.114 * $b;
+                if ($lum <= $darkAt) {
+                    $t = 0;
+                } elseif ($lum >= $lightAt) {
+                    $t = 127;
+                } else {
+                    $t = (int) round(($lum - $darkAt) / $span * 127);
+                }
+                imagesetpixel($out, $x, $y, imagecolorallocatealpha($out, $r, $g, $b, max($a, $t)));
+            }
+        }
+
+        ob_start();
+        imagepng($out);
+
+        return (string) ob_get_clean();
     }
 
     /**
