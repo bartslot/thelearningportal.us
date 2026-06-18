@@ -9,6 +9,8 @@
     @php $use2dAvatar = config('avatars.use_2d'); @endphp
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
          data-character-url="{{ $use2dAvatar ? '' : $lesson->avatar?->glbUrl() }}"
+         data-territory="{{ $lesson->topic }}"
+         data-flag="{{ $lesson->territoryFlagUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}

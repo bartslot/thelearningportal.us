@@ -13,21 +13,45 @@ export class SceneOverlay {
     if (this.mounted) return
     this.host.classList.add('scene-overlay')
     this.host.innerHTML = `
-      <div class="scene-overlay__year absolute bottom-40 left-40 flex flex-col gap-10" style="transition:opacity 600ms;">
+      <div class="scene-overlay__year absolute bottom-40 left-40 flex flex-col gap-3" style="transition:opacity 600ms;">
+        <img data-flag class="scene-overlay__flag" alt="" style="height:64px; width:auto; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
+        <span data-title class="scene-overlay__title" style="font-family:var(--font-history, inherit); font-size:40px; font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
         <div class="scene-overlay__location" style="display:flex; align-items:center; gap:8px; transition:opacity 600ms;  text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);">
           <span data-year class="w-full text-6xl" style="font-weight:800; color:white; text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);"></span>
             ${LOCATION_PIN_SVG}
             <span data-location style="font-size:14px; font-weight:600; color:white; letter-spacing:0.1em; text-transform:uppercase;"></span>
           </div>
-        
-        
+
+
       </div>
     `
+    this.flagEl     = this.host.querySelector('[data-flag]')
+    this.titleEl    = this.host.querySelector('[data-title]')
     this.yearEl     = this.host.querySelector('[data-year]')
     this.locationEl = this.host.querySelector('[data-location]')
     this.yearWrap   = this.host.querySelector('.scene-overlay__year')
     this.locWrap    = this.host.querySelector('.scene-overlay__location')
     this.mounted = true
+  }
+
+  // Territory identity (constant for the lesson): a bigger flag above the territory title.
+  setTerritory({ title, flagUrl } = {}) {
+    if (!this.mounted) this.mount()
+
+    if (title) {
+      this.titleEl.textContent = title
+      this.titleEl.style.display = ''
+    } else {
+      this.titleEl.style.display = 'none'
+    }
+
+    if (flagUrl) {
+      this.flagEl.src = flagUrl
+      this.flagEl.style.display = ''
+      this.flagEl.onerror = () => { this.flagEl.style.display = 'none' }
+    } else {
+      this.flagEl.style.display = 'none'
+    }
   }
 
   update({ year, location }) {

@@ -309,6 +309,17 @@ class Lesson extends Model
      *   2. Avatar portrait
      *   3. Generic placeholder
      */
+    /** Flag of the lesson's territory (polity), if the catalog flag was downloaded. */
+    public function territoryFlagUrl(): ?string
+    {
+        if (! str_starts_with((string) $this->topic_id, 'polity:')) {
+            return null;
+        }
+        $qid = substr((string) $this->topic_id, strlen('polity:'));
+
+        return file_exists(public_path("flags/{$qid}.png")) ? asset("flags/{$qid}.png") : null;
+    }
+
     /** Wikipedia lead image used as the lesson title-screen background (catalog lessons). */
     public function titleBgUrl(): ?string
     {

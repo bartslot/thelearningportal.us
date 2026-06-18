@@ -693,6 +693,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     startHandheldVibration(player)
     startKenBurnsTick()
     overlay      = new Scene.SceneOverlay(overlayEl); overlay.mount()
+    // Territory identity (flag + title) from the lesson — constant across scenes.
+    const rootData = document.getElementById('lesson-canvas-root')?.dataset || {}
+    overlay.setTerritory({ title: rootData.territory || '', flagUrl: rootData.flag || '' })
     timer        = new Scene.GameTimerOverlay(timerEl)
 
     // DB stores asset paths as relative (e.g. "lessons/31/scenes/241/narration.mp3").
