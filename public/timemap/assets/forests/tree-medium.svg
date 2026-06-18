@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="tree" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 26">
+  <g id="medium">
+    <!-- #bg: land-coloured silhouette so overlapping canopies occlude into one forest mass. -->
+    <polygon id="bg" fill="#e8dec4" points="8,2 11,10 9,10 12.5,16 10.5,16 14,22 2,22 5.5,16 3.5,16 7,10 5,10"/>
+    <line x1="8" y1="25.5" x2="8" y2="21" stroke="#3a2c1c" stroke-width="1.4" stroke-linecap="round"/>
+    <polygon fill="none" stroke="#3a2c1c" stroke-width="1.1" stroke-linejoin="round"
+             points="8,2 11,10 9,10 12.5,16 10.5,16 14,22 2,22 5.5,16 3.5,16 7,10 5,10"/>
+  </g>
+</svg>

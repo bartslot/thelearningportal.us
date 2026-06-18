@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
 import { addMountainLayer } from '../map-mountains.js';
+import { addForestLayer } from '../map-forests.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 
@@ -26,15 +27,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
         'ink-borders': { type: 'vector', tiles: [`${location.origin}/ink-border-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        // True coastline (NE 50m, light-simplified) for the bold shore line + its southern drop-shadow.
+        coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
         // Etched coast-echo lines sit on the sea, beneath the land fill (ink styles only).
         { id: 'coast-echo', type: 'line', source: 'coast', 'source-layer': 'coast', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': '#6b563d', 'line-width': 0.6 } },
+        // Coast drop-shadow: a thick coastline shifted DOWN, drawn BENEATH the land fill — so it only
+        // peeks out on south-facing shores (the land fill hides it on north shores), giving relief.
+        { id: 'coast-shadow', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#574631', 'line-width': 2.6, 'line-translate': [0, 2], 'line-blur': 0.4 } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
         // Inland lakes — water fill over land (recolored per style by applyMapStyle).
         { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes', paint: { 'fill-color': theme.water } },
+        // Bold coast outline — the crisp ink shore line, above land + lakes, below the political layers.
+        { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2f2418', 'line-width': 1.1 } },
       ],
     },
     center: [8.23, 46.8], // Switzerland
@@ -213,16 +221,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const inkWidth = (min, max) => ['interpolate', ['linear'],
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
-    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#7a6248', opacity: 0.4, width: 0.7 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
+      shore: { color: '#2f2418', width: 1.15, shadow: '#574631', shadowWidth: 2.9, dy: 2 },
       line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
       // Draw borders from the wobbled ink-border tileset (hand-drawn jitter baked into geometry).
       borderSource: { source: 'ink-borders', sourceLayer: 'ink' },
-      coast: { color: '#6b563d', opacity: 0.5, width: 0.6 },
+      coast: { color: '#5e4a34', opacity: 0.55, width: 0.85 },
       river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
       mountains: true,
+      forest: true,
       // Stacked passes on the wobbled lines: faint bleed, offset rough, the main dark stroke, then a
       // light broken accent — all width-varied so borders read as uneven pen work.
       inkLayers: [
@@ -233,7 +243,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ],
       text: { color: '#33271a', halo: '#efe2c4' }, paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
     },
-    'night': { palette: NIGHT_PAL, water: '#0f1420', land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
@@ -268,8 +278,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!coastCfg || !map.getLayer('coast-echo')) return;
     const t = now / 1000, base = coastCfg.opacity;
     const op = (echo) => {
-      const fade = base * Math.pow(0.45, echo); // outward fade (echo 0 = nearest/darkest)
-      return Math.max(0.015, fade * (0.6 + 0.4 * Math.sin(t * 0.9 - echo * 0.9)));
+      // Gentle outward fade — 0.7^echo keeps the outer ripple lines readable (was 0.45, which
+      // killed rings 2–3). echo 0 = nearest/darkest.
+      const fade = base * Math.pow(0.7, echo);
+      return Math.max(0.05, fade * (0.74 + 0.26 * Math.sin(t * 0.9 - echo * 0.9)));
     };
     map.setPaintProperty('coast-echo', 'line-opacity', ['interpolate', ['linear'], ['to-number', ['get', 'echo']], 0, op(0), 1, op(1), 2, op(2), 3, op(3)]);
   };
@@ -278,6 +290,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   let currentStyleName = 'soft-atlas';
   const applyMapStyle = (name) => {
+    // Migrate the retired raster 'ink-art' style → the vector 'pen-ink' Tolkien style.
+    if (name === 'ink-art' || name === 'inkart') name = 'pen-ink';
     const key = MAP_STYLES[name] ? name : 'soft-atlas';
     const s = MAP_STYLES[key];
     currentStyleName = key;
@@ -291,6 +305,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setPaintProperty('water', 'background-color', s.water);
     if (map.getLayer('lakes')) map.setPaintProperty('lakes', 'fill-color', s.water);
     map.setPaintProperty('land', 'fill-color', s.land);
+    // Coast: a bold ink shore line + a southern drop-shadow (shifted down, under the land fill) for
+    // relief. The shadow only shows on south-facing shores; the land fill hides it on north shores.
+    const shore = s.shore || { color: s.line.color, width: 0.9, shadow: '#574631', shadowWidth: 2.4, dy: 2 };
+    if (map.getLayer('coast-bold')) {
+      map.setPaintProperty('coast-bold', 'line-color', shore.color);
+      map.setPaintProperty('coast-bold', 'line-width', shore.width);
+    }
+    if (map.getLayer('coast-shadow')) {
+      map.setPaintProperty('coast-shadow', 'line-color', shore.shadow);
+      map.setPaintProperty('coast-shadow', 'line-width', shore.shadowWidth);
+      map.setPaintProperty('coast-shadow', 'line-translate', [0, shore.dy ?? 2]);
+    }
     // Etched coast echo: shown in ink styles; opacity fades from the nearest ring outward.
     if (map.getLayer('coast-echo')) {
       if (s.coast) {
@@ -318,6 +344,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Mountain glyphs along ridge lines — ink styles only.
     if (map.getLayer('mountains')) {
       map.setLayoutProperty('mountains', 'visibility', s.mountains ? 'visible' : 'none');
+    }
+    // Forests: tree-glyph field — ink styles only.
+    if (map.getLayer('forests')) {
+      map.setLayoutProperty('forests', 'visibility', s.forest ? 'visible' : 'none');
     }
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
@@ -430,10 +460,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Mountains: hand-painted glyphs repeated along curated ridge lines, varied per range
     // (manifest-driven; shared with the lesson map). Added async — re-apply the style after so
     // the per-style visibility toggle is honoured.
-    addMountainLayer(map, {
-      beforeId: 'boundaries-label', visibility: 'none',
-      landColor: (MAP_STYLES[currentStyleName] || {}).land || theme.land,
-    }).then(() => applyMapStyle(currentStyleName));
+    // Forests then mountains, both below the labels. Chained (not parallel) so the order is
+    // deterministic: trees sit beneath the peaks, so a range rises above its forested foothills.
+    const terrainLand = () => (MAP_STYLES[currentStyleName] || {}).land || theme.land;
+    addForestLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() })
+      .then(() => addMountainLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
+      .then(() => applyMapStyle(currentStyleName));
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
@@ -533,6 +565,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   el._setFadeMode = (on) => { fadeMode = !!on; applyBoundaryOpacity(state.year); };
 
   el._tmMap = map;
+  window.__tmMap = map; // for debugging + Playwright assertions
 
   return map;
 };

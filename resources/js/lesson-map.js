@@ -11,6 +11,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addMountainLayer } from './map-mountains.js'
+import { addForestLayer } from './map-forests.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -21,6 +22,8 @@ const PALETTE = {
   river: '#6a8fa0',
   city: '#3a2c1a',
   cityHalo: '#f3ead6',
+  coast: '#3f3020',
+  coastShadow: '#8a7a5e',
 }
 
 // Cities valid at `year` (gazetteer entries carry valid_from/valid_to; missing = always valid).
@@ -43,11 +46,6 @@ const polityFilter = (year) => ['all',
  */
 export function renderLessonMap (el, opts = {}) {
   const { qid = null, interactive = true } = opts
-  // Optional hand-drawn ink artwork overlay (transparent PNG) + its [W,S,E,N] bounds. When set,
-  // it supplies the physical decoration (coast/rivers/mountains/forests) and the vector rivers +
-  // mountain layers are hidden so they don't double up.
-  const inkUrl = opts.inkUrl || null
-  const inkBounds = Array.isArray(opts.inkBounds) ? opts.inkBounds : null
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -70,9 +68,14 @@ export function renderLessonMap (el, opts = {}) {
           maxzoom: 4,
           promoteId: { boundaries: 'Wikidata' },
         },
+        // True coastline for the bold shore line + its southern drop-shadow.
+        coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
       },
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
+        // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
+        // south-facing shores for relief.
+        { id: 'coast-shadow', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': PALETTE.coastShadow, 'line-width': 2.4, 'line-translate': [0, 2], 'line-blur': 0.4 } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': PALETTE.land } },
         // Inland lakes — water fill over land, beneath rivers (rivers feed them).
         { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes', paint: { 'fill-color': PALETTE.water, 'fill-outline-color': PALETTE.river } },
@@ -85,6 +88,8 @@ export function renderLessonMap (el, opts = {}) {
             'line-width': ['interpolate', ['linear'], ['to-number', ['coalesce', ['get', 'scalerank'], 6]], 1, 1.4, 6, 0.4],
           },
         },
+        // Bold coast outline — crisp ink shore above land/lakes/rivers, below the political borders.
+        { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': PALETTE.coast, 'line-width': 1.0 } },
         {
           // No fill overlay: the selected polity is shown as an amber RING; other territories
           // are just faint 30%-opacity borders so the terrain reads through.
@@ -190,19 +195,10 @@ export function renderLessonMap (el, opts = {}) {
     setYear(year)
     requestAfterTiles(fitToPolity)
 
-    if (inkUrl && inkBounds) {
-      // Hand-drawn ink artwork overlay: supplies coast/rivers/mountains/forests. Placed by its
-      // [W,S,E,N] bounds, above the terrain fills, below the political borders + cities.
-      const [w, s, e, n] = inkBounds
-      map.addSource('inkart', { type: 'image', url: inkUrl, coordinates: [[w, n], [e, n], [e, s], [w, s]] })
-      map.addLayer({ id: 'inkart', type: 'raster', source: 'inkart', paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 } },
-        map.getLayer('boundaries-line') ? 'boundaries-line' : undefined)
-      // The ink already draws rivers; hide the vector rivers so they don't double.
-      if (map.getLayer('rivers')) map.setLayoutProperty('rivers', 'visibility', 'none')
-    } else {
-      // Hand-painted mountain peaks (size-graded field) — bg recolored to the land, under city labels.
-      addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
-    }
+    // Vector terrain decoration: a forest field beneath the peaks, both under the city labels.
+    // Chained so the order is deterministic (forests below mountains).
+    addForestLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
+      .then(() => addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land }))
   })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })

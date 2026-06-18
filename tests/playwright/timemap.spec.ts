@@ -14,7 +14,10 @@ import { test, expect, Page } from '@playwright/test';
  * Server: start normally with `php artisan serve` (no .env changes needed).
  */
 async function loginAsTeacher(page: Page): Promise<void> {
+  // When APP_AUTO_LOGIN=true (local dev), every request is auto-authenticated as a seeded teacher,
+  // so the /login form immediately redirects away — there's no form to fill. Detect that and skip.
   await page.goto('/login');
+  if (!page.url().includes('/login')) return; // auto-login already signed us in
   await page.fill('#email', 'teacher@playwright.test');
   await page.fill('#password', 'playwright123');
   await page.click('button[type=submit]');
@@ -83,6 +86,29 @@ test('timemap-click-panel: clicking a region opens the polity panel', async ({ p
     await wikiTab.click();
     await expect(page.getByText(/Wikipedia|No Wikipedia page/)).toBeVisible();
   }
+});
+
+test('timemap-forests: the Tolkien (pen-ink) style shows the vector tree field, soft-atlas hides it', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  // The forest symbol layer is added asynchronously (icons + geojson) — wait for it.
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer?.('forests'), { timeout: 20_000 });
+
+  // Soft Atlas keeps the forest field hidden.
+  await page.evaluate(() => (window as any).__applyMapStyle('soft-atlas'));
+  const hiddenForAtlas = await page.evaluate(() =>
+    (window as any).__tmMap?.getLayoutProperty?.('forests', 'visibility'));
+  expect(hiddenForAtlas, 'forests must be hidden on soft-atlas').toBe('none');
+
+  // The Tolkien vector style (pen-ink) reveals the tree field.
+  await page.evaluate(() => (window as any).__applyMapStyle('pen-ink'));
+  const visibleForInk = await page.evaluate(() =>
+    (window as any).__tmMap?.getLayoutProperty?.('forests', 'visibility'));
+  expect(visibleForInk, 'forests must be visible on the Tolkien style').toBe('visible');
+
+  // The retired raster 'ink-art' style migrates to the vector pen-ink (no inkart layer exists).
+  await page.evaluate(() => (window as any).__applyMapStyle('ink-art'));
+  const noInkLayer = await page.evaluate(() => !!(window as any).__tmMap?.getLayer?.('inkart'));
+  expect(noInkLayer, 'the raster inkart layer must be gone').toBe(false);
 });
 
 test('timemap-local-tiles: borders load from the local Cliopatria tiles, not the network', async ({ page }) => {

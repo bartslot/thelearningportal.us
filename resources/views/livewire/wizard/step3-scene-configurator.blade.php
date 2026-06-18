@@ -53,10 +53,7 @@
             inner.style.height = '100%'
             host.appendChild(inner)
             if (window.renderLessonMap) {
-                inst = window.renderLessonMap(inner, { qid: cfg.qid || null, year, interactive: true,
-                    // Hybrid proof: hand-drawn ink artwork over Europe (transparent overlay).
-                    inkUrl: '/maptiles/europe-ink-keyed.png',
-                    inkBounds: [-41.15543, 20.31561, 61.15543, 66.09630] })
+                inst = window.renderLessonMap(inner, { qid: cfg.qid || null, year, interactive: true })
             }
         })
     })

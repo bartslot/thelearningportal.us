@@ -136,7 +136,7 @@
          x-data="{ settingsOpen: false, paletteOpen: false,
                    style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
                    sound: (window.localStorage.getItem('tm-sound') === '1'),
-                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Pen & Ink'],['night','Night']] }"
+                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Tolkien'],['night','Night']] }"
          x-on:click.outside="settingsOpen = false; paletteOpen = false">
 
         {{-- Cog --}}

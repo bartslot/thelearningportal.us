@@ -15,9 +15,9 @@ import * as turf from '@turf/turf'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pub = resolve(__dirname, '../public/timemap')
 
-const BUFFER_KM = 55      // how wide the massif spreads either side of the ridge
-const GRID_KM = 27        // spacing between mountains (smaller = denser)
-const JITTER_KM = 9       // random offset so it's not a rigid grid
+const BUFFER_KM = 78      // how wide the massif spreads either side of the ridge (wider = more spread)
+const GRID_KM = 34        // spacing between mountains (larger = more spread out, fewer/bolder peaks)
+const JITTER_KM = 12      // random offset so it's not a rigid grid
 
 const ranges = JSON.parse(readFileSync(`${pub}/mountains.geojson`, 'utf8'))
 const out = []
