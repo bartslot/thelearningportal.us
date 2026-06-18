@@ -24,6 +24,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
         'ink-borders': { type: 'vector', tiles: [`${location.origin}/ink-border-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
       },
@@ -32,6 +33,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // Etched coast-echo lines sit on the sea, beneath the land fill (ink styles only).
         { id: 'coast-echo', type: 'line', source: 'coast', 'source-layer': 'coast', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': '#6b563d', 'line-width': 0.6 } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
+        // Inland lakes — water fill over land (recolored per style by applyMapStyle).
+        { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes', paint: { 'fill-color': theme.water } },
       ],
     },
     center: [8.23, 46.8], // Switzerland
@@ -286,6 +289,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
         ...pal.flatMap((c, i) => [i, c]), pal[0]]];
     map.setPaintProperty('water', 'background-color', s.water);
+    if (map.getLayer('lakes')) map.setPaintProperty('lakes', 'fill-color', s.water);
     map.setPaintProperty('land', 'fill-color', s.land);
     // Etched coast echo: shown in ink styles; opacity fades from the nearest ring outward.
     if (map.getLayer('coast-echo')) {
