@@ -78,17 +78,16 @@ export function renderLessonMap (el, opts = {}) {
           },
         },
         {
-          id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
-          filter: polityFilter(year),
-          paint: {
-            'fill-color': ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, PALETTE.fill],
-            'fill-opacity': ['case', ['boolean', ['feature-state', 'highlight'], false], 0.9, 0.55],
-          },
-        },
-        {
+          // No fill overlay: the selected polity is shown as an amber RING; other territories
+          // are just faint 30%-opacity borders so the terrain reads through.
           id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
           filter: polityFilter(year),
-          paint: { 'line-color': PALETTE.line, 'line-width': 0.6, 'line-opacity': 0.7 },
+          layout: { 'line-join': 'round' },
+          paint: {
+            'line-color': ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, PALETTE.line],
+            'line-width': ['case', ['boolean', ['feature-state', 'highlight'], false], 2.6, 0.6],
+            'line-opacity': ['case', ['boolean', ['feature-state', 'highlight'], false], 1, 0.3],
+          },
         },
         {
           id: 'city-dots', type: 'circle', source: 'cities', 'source-layer': 'cities',
@@ -199,8 +198,7 @@ export function renderLessonMap (el, opts = {}) {
 
   function setYear (y) {
     year = Math.round(Number(y))
-    if (!map.getLayer('boundaries-fill')) return
-    map.setFilter('boundaries-fill', polityFilter(year))
+    if (!map.getLayer('boundaries-line')) return
     map.setFilter('boundaries-line', polityFilter(year))
     // Cities are period-specific — re-filter them too.
     if (map.getLayer('city-dots')) map.setFilter('city-dots', cityFilter(year))
