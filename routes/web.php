@@ -11,6 +11,11 @@ use App\Models\Avatar;
 use App\Models\Lesson;
 use Illuminate\Support\Facades\Route;
 
+// {lesson} is a bigint primary key. Constrain it to digits app-wide so a stray non-numeric
+// segment (e.g. a JS-built "/teacher/lessons/null/...") 404s instead of reaching route-model
+// binding, where Postgres throws a 500 trying to cast "null"/"abc" to bigint.
+Route::pattern('lesson', '[0-9]+');
+
 // ── Public ───────────────────────────────────────────────────────────────────
 
 Route::get('/', function () {
@@ -115,6 +120,8 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
     Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
+
+    Route::get('/lessons/{lesson}/composer', \App\Livewire\LessonComposer::class)->name('lessons.composer');
 
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');

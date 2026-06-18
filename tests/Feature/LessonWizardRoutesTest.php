@@ -54,4 +54,28 @@ class LessonWizardRoutesTest extends TestCase
         $this->assertFalse(class_exists(\App\Livewire\CreateLesson::class));
         $this->assertFalse(class_exists(\App\Livewire\LessonSettings::class));
     }
+
+    /**
+     * A stray non-numeric {lesson} segment (e.g. a JS-built "/teacher/lessons/null/wizard"
+     * where the id was null) must 404 — it must NOT reach route-model binding, where Postgres
+     * would fail casting "null" to bigint and return a 500.
+     *
+     * @dataProvider nonNumericLessonUrls
+     */
+    public function test_non_numeric_lesson_id_404s_instead_of_a_db_error(string $url): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get($url)
+            ->assertNotFound();
+    }
+
+    public static function nonNumericLessonUrls(): array
+    {
+        return [
+            'wizard'   => ['/teacher/lessons/null/wizard'],
+            'composer' => ['/teacher/lessons/null/composer'],
+            'show'     => ['/teacher/lessons/null'],
+            'junk'     => ['/teacher/lessons/abc/wizard'],
+        ];
+    }
 }

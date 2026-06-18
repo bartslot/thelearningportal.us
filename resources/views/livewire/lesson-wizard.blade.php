@@ -9,7 +9,7 @@
         @elseif ($step === 2)
             <livewire:wizard.step2-generate :lesson="$lesson" :key="'step2-' . $lesson?->id" />
         @elseif ($step === 3)
-            <livewire:wizard.step3-scene-configurator :lesson="$lesson" :key="'step3-' . $lesson?->id" />
+            <livewire:lesson-composer :lesson="$lesson" :key="'step3-' . $lesson?->id" />
         @elseif ($step === 4)
             <livewire:wizard.step4-preview :lesson="$lesson" :key="'step4-' . $lesson?->id" />
         @endif
