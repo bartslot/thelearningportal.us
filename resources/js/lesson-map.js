@@ -56,6 +56,7 @@ export function renderLessonMap (el, opts = {}) {
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cities: { type: 'vector', tiles: [`${location.origin}/city-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
         cliopatria: {
@@ -68,6 +69,8 @@ export function renderLessonMap (el, opts = {}) {
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': PALETTE.land } },
+        // Inland lakes — water fill over land, beneath rivers (rivers feed them).
+        { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes', paint: { 'fill-color': PALETTE.water, 'fill-outline-color': PALETTE.river } },
         {
           id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
           paint: {
