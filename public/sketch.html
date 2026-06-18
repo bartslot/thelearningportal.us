@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <style>html,body,#map{margin:0;height:100%;width:100%;background:#fff}</style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // Data "sketch" for the AI artwork pipeline: physical geography only, as black-ink line art on
+    // white — coastlines, rivers, lakes, mountains. No borders/cities/labels. Drives gpt-image-1
+    // so the generated map follows real geography. Params: ?w&s&e&n (bbox) OR ?lng&lat&zoom.
+    const q = new URLSearchParams(location.search)
+    const O = location.origin
+    const map = window.__map = new maplibregl.Map({
+      container: 'map',
+      interactive: false,
+      attributionControl: false,
+      style: {
+        version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        sources: {
+          land:   { type: 'vector', tiles: [`${O}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+          lakes:  { type: 'vector', tiles: [`${O}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
+          rivers: { type: 'vector', tiles: [`${O}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+          mtns:   { type: 'geojson', data: `${O}/timemap/mountains-points.geojson` },
+        },
+        layers: [
+          { id: 'bg',    type: 'background', paint: { 'background-color': '#cfe0ec' } },
+          { id: 'land',  type: 'fill', source: 'land', 'source-layer': 'land',
+            paint: { 'fill-color': '#fbfaf5' } },
+          { id: 'rivers', type: 'line', source: 'rivers', 'source-layer': 'rivers',
+            paint: { 'line-color': '#3b6ea5', 'line-width': ['interpolate',['linear'],['to-number',['coalesce',['get','scalerank'],6]], 1, 2.2, 6, 0.7] } },
+          { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes',
+            paint: { 'fill-color': '#bcd4e6', 'fill-outline-color': '#3b6ea5' } },
+        ],
+      },
+      center: [parseFloat(q.get('lng') ?? '10'), parseFloat(q.get('lat') ?? '48')],
+      zoom: parseFloat(q.get('zoom') ?? '3.4'),
+    })
+
+    map.on('load', () => {
+      // Mountains as simple black triangles (placement guide for the model).
+      const tri = document.createElement('canvas'); tri.width = 24; tri.height = 18
+      const c = tri.getContext('2d'); c.fillStyle = '#111'; c.beginPath()
+      c.moveTo(2,17); c.lineTo(12,2); c.lineTo(22,17); c.closePath(); c.fill()
+      map.addImage('tri', { width: 24, height: 18, data: c.getImageData(0,0,24,18).data })
+      map.addLayer({ id: 'mtns', type: 'symbol', source: 'mtns',
+        layout: { 'icon-image': 'tri', 'icon-size': ['match',['get','size'],'large',0.9,'medium',0.65,'small',0.45,0.3], 'icon-anchor': 'bottom', 'icon-allow-overlap': true } })
+
+      if (q.has('w')) {
+        map.fitBounds([[parseFloat(q.get('w')), parseFloat(q.get('s'))], [parseFloat(q.get('e')), parseFloat(q.get('n'))]], { padding: 0, duration: 0 })
+      }
+    })
+
+    // Signal readiness once tiles settle, so a screenshotter can capture a complete frame.
+    let idleCount = 0
+    map.on('idle', () => {
+      if (++idleCount >= 2) {
+        const b = map.getBounds()
+        window.__bounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
+        window.__sketchReady = true
+        document.title = 'SKETCH-READY'
+      }
+    })
+  </script>
+</body>
+</html>

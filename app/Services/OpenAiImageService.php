@@ -218,6 +218,42 @@ class OpenAiImageService
     }
 
     /**
+     * Restyle a data "sketch" (coastlines/rivers/lakes/mountains rendered from real geo data) into
+     * the hand-drawn map artwork via the images/edits endpoint. The sketch conditions the model so
+     * the artwork follows real geography; the prompt carries the style. Returns raw PNG bytes.
+     */
+    public function editFromSketch(string $sketchBytes, string $prompt, string $size = '1536x1024'): string
+    {
+        $base = (string) config('services.openai.base_url');
+        $key = (string) config('services.openai.image_api_key');
+
+        try {
+            $response = Http::withToken($key)
+                ->timeout((int) config('services.openai.timeout', 120))
+                ->attach('image', $sketchBytes, 'sketch.png', ['Content-Type' => 'image/png'])
+                ->post(rtrim($base, '/').'/images/edits', [
+                    'model' => config('services.openai.image_model'),
+                    'prompt' => $prompt,
+                    'size' => $size,
+                    'n' => 1,
+                ]);
+        } catch (\Throwable $e) {
+            throw new RuntimeException('Image edit request failed: '.$e->getMessage(), previous: $e);
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Image edit API returned {$response->status()}: {$response->body()}");
+        }
+
+        $b64 = $response->json('data.0.b64_json');
+        if (is_string($b64) && $b64 !== '' && ($bytes = base64_decode($b64, true)) !== false && $bytes !== '') {
+            return $bytes;
+        }
+
+        throw new RuntimeException('Image edit API returned no b64_json.');
+    }
+
+    /**
      * Call the OpenAI images/generations endpoint once and return the raw image bytes.
      */
     private function requestOne(string $prompt, string $size): string
