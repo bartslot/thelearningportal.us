@@ -43,6 +43,11 @@ const polityFilter = (year) => ['all',
  */
 export function renderLessonMap (el, opts = {}) {
   const { qid = null, interactive = true } = opts
+  // Optional hand-drawn ink artwork overlay (transparent PNG) + its [W,S,E,N] bounds. When set,
+  // it supplies the physical decoration (coast/rivers/mountains/forests) and the vector rivers +
+  // mountain layers are hidden so they don't double up.
+  const inkUrl = opts.inkUrl || null
+  const inkBounds = Array.isArray(opts.inkBounds) ? opts.inkBounds : null
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -184,8 +189,20 @@ export function renderLessonMap (el, opts = {}) {
   map.on('load', () => {
     setYear(year)
     requestAfterTiles(fitToPolity)
-    // Hand-painted mountain peaks (size-graded field) — bg recolored to the land, under city labels.
-    addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
+
+    if (inkUrl && inkBounds) {
+      // Hand-drawn ink artwork overlay: supplies coast/rivers/mountains/forests. Placed by its
+      // [W,S,E,N] bounds, above the terrain fills, below the political borders + cities.
+      const [w, s, e, n] = inkBounds
+      map.addSource('inkart', { type: 'image', url: inkUrl, coordinates: [[w, n], [e, n], [e, s], [w, s]] })
+      map.addLayer({ id: 'inkart', type: 'raster', source: 'inkart', paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 } },
+        map.getLayer('boundaries-line') ? 'boundaries-line' : undefined)
+      // The ink already draws rivers; hide the vector rivers so they don't double.
+      if (map.getLayer('rivers')) map.setLayoutProperty('rivers', 'visibility', 'none')
+    } else {
+      // Hand-painted mountain peaks (size-graded field) — bg recolored to the land, under city labels.
+      addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
+    }
   })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })
