@@ -124,3 +124,44 @@ atlas size + `flux/dev` model wired in. First build step: prototype one real atl
 extract → feather → upscayl 2× → check tiles on the sphere, before wiring `GenerateLessonSkyboxAtlas`.
 Knobs to set during the prototype: Flux canvas (2:1-friendly grid, e.g. `2048×1024` for a 2×2 of
 1024×512 tiles), steps, and the per-style upscayl model.
+
+---
+
+## Revision 2 (2026-06-19): flat Ken Burns default, skybox opt-in, format + grain
+
+This changes the render model — and makes generation simpler and cheaper.
+
+### Render model (the big change)
+- **Default `scene_view = 'slideshow'` (flat Ken Burns), not `skybox`.** The column currently defaults
+  to `skybox` (`2026_05_17_000007`), which is *why* every scene panned in 3D and why a missing skybox
+  went black. Flip the default via a new migration + the scene-creation defaults.
+- **Flat Ken Burns** renders `scene.image_path` as a 2D image with a slow zoom/pan. The Ken Burns
+  helper already exists in `lesson-player.js` (for the title slideshow) — generalize it to scene
+  images. No Three.js sphere by default → simpler, controllable, cinematic, can't go black.
+- **Skybox is opt-in per scene.** Setting `scene_view = 'skybox'` loads the **same** `scene.image_path`
+  onto the inverted sphere — exactly what `SkyboxSphere.crossfadeTo(scene.image_path)` already does.
+  **"Reuse the image ref" = yes, no second asset.** One image, two render modes.
+- This is also the real fix for the black scenes: the default is the flat image, which always exists.
+
+### Generation impact (simpler + cheaper)
+- Generate **normal cinematic scene images** (strong composition, slow-pannable), not heavy
+  equirectangular panoramas. Keep only light edge-safety so the opt-in skybox reuse is acceptable.
+- **Drop per-image seam-repair API calls from the default path entirely.** Flat Ken Burns needs no
+  seam; opt-in skybox reuses the flat image best-effort. A true seam-repaired pano becomes a later
+  opt-in "hero" extra only. → the atlas plan is cheaper still.
+- The fal Flux atlas (§6) still stands — it now generates the flat cinematic images cost-effectively
+  (1 call → N tiles → upscayl), which double as opt-in skyboxes.
+
+### Post-upscayl: compress + grain
+- **Re-encode after upscayl** to shrink the ~2.9 MB upscale:
+  - Default: **WebP** ~quality 72–80 (GD-native, already used) → ~400–700 KB.
+  - Optional: **AVIF via Imagick** (GD has no `imageavif` here; Imagick reports AVIF) → ~30% smaller.
+    Adds Imagick to the image path; gate behind a config flag.
+- **Film-grain overlay (cinematic).** `.lp-grain` already exists (app.css `::after` feTurbulence).
+  Apply it as a **render overlay** over the scene layer (flat *and* skybox), not baked per image —
+  free, flexible, toggle-able. Over the Three.js canvas, a CSS `.lp-grain` div on top is the simple
+  path; a postprocess grain shader is a later upgrade.
+
+### New open decisions
+1. Format after upscayl: **WebP-80** (simple, GD) vs **AVIF via Imagick** (smaller, +dependency).
+2. Grain over the 3D canvas: **CSS `.lp-grain` overlay** (simple) vs **shader postprocess** (later).
