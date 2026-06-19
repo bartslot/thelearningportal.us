@@ -157,8 +157,11 @@ return [
     'upscayl' => [
         'enabled' => filter_var(env('UPSCAYL_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
         'bin' => env('UPSCAYL_BIN', '/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin'),
-        'model_path' => env('UPSCAYL_MODEL_PATH', '/Applications/Upscayl.app/Contents/Resources/models'),
-        'model' => env('UPSCAYL_MODEL', 'realesrgan-x4plus'),
+        // Relative to the bin's dir: upscayl-bin prepends its own exe dir to -m, so an absolute
+        // path doubles (…/bin//Applications/…). ../models resolves to Resources/models.
+        'model_path' => env('UPSCAYL_MODEL_PATH', '../models'),
+        // Must be a model this Upscayl build actually ships (no realesrgan-x4plus here).
+        'model' => env('UPSCAYL_MODEL', 'upscayl-standard-4x'),
     ],
 
     // ── Animation tooling ─────────────────────────────────────────────────────

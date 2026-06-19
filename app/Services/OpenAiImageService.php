@@ -91,11 +91,11 @@ class OpenAiImageService
     public static function selectUpscaylModel(string $style, string $hint = ''): string
     {
         if (in_array($style, ['comic', 'animation', 'sketched'], true)) {
-            return 'realesrgan-x4plus-anime';
+            return 'digital-art-4x';
         }
 
         if ($style === 'painted') {
-            return 'realesrgan-x4plus';
+            return 'upscayl-standard-4x';
         }
 
         $hint = mb_strtolower($hint);
@@ -105,7 +105,7 @@ class OpenAiImageService
             'desert', 'savanna', 'marsh', 'swamp', 'cliff', 'beach', 'coast'];
         foreach ($natureKeywords as $kw) {
             if (str_contains($hint, $kw)) {
-                return 'realesrgan-x4plus';
+                return 'upscayl-standard-4x';
             }
         }
 
@@ -115,7 +115,7 @@ class OpenAiImageService
             'monument', 'cathedral', 'citadel', 'fortress', 'ruins'];
         foreach ($buildingKeywords as $kw) {
             if (str_contains($hint, $kw)) {
-                return 'realesrgan-x4plus';
+                return 'upscayl-standard-4x';
             }
         }
 
