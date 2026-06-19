@@ -22,6 +22,7 @@ class Step2GenerateTest extends TestCase
     use RefreshDatabase;
 
     private User $teacher;
+
     private Lesson $lesson;
 
     protected function setUp(): void
@@ -29,7 +30,7 @@ class Step2GenerateTest extends TestCase
         parent::setUp();
 
         $this->teacher = User::factory()->create();
-        $this->lesson  = Lesson::create([
+        $this->lesson = Lesson::create([
             'teacher_id' => $this->teacher->id,
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
             'status' => LessonStatus::ScenesGenerating,
@@ -45,6 +46,34 @@ class Step2GenerateTest extends TestCase
             'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'narration',
             'status' => 'failed', 'error_message' => 'boom',
         ]);
+    }
+
+    public function test_does_not_auto_advance_when_all_scenes_are_ready(): void
+    {
+        // Lesson 3's situation: fully generated (ScenesReady). Returning to step 2 must NOT redirect.
+        $lesson = Lesson::create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'Y', 'subject' => 'history', 'grade_level' => '9th',
+            'status' => LessonStatus::ScenesReady,
+        ]);
+        Scene::create([
+            'lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'ok', 'image_path' => 'x.png', 'audio_path' => 'a.mp3', 'status' => 'ready',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step2Generate::class, ['lesson' => $lesson])
+            ->call('checkAndAutoAdvance')
+            ->assertNoRedirect();
+    }
+
+    public function test_auto_advances_during_generation_when_a_scene_is_ready(): void
+    {
+        // The setup lesson is ScenesGenerating with a ready scene — the convenience auto-advance fires.
+        Livewire::actingAs($this->teacher)
+            ->test(Step2Generate::class, ['lesson' => $this->lesson])
+            ->call('checkAndAutoAdvance')
+            ->assertRedirect(route('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 3]));
     }
 
     public function test_shows_per_scene_asset_states(): void

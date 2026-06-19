@@ -42,12 +42,33 @@ class Step2Generate extends Component
     }
 
     /**
+     * Auto-advance only while scenes are still being generated. Once every scene is ready
+     * (ScenesReady) or the teacher has moved on to configure/preview/publish, stop — otherwise
+     * navigating BACK to step 2 bounces them forward to step 3 again (the reported bug).
+     */
+    #[Computed]
+    public function autoAdvanceActive(): bool
+    {
+        return ! in_array($this->lesson->status, [
+            LessonStatus::ScenesReady,
+            LessonStatus::Configuring,
+            LessonStatus::Previewable,
+            LessonStatus::Ready,
+            LessonStatus::Published,
+        ], true);
+    }
+
+    /**
      * Called on every wire:poll tick.
      * Auto-advance to step 3 the moment the first scene is ready so the teacher
      * doesn't have to wait for ALL scenes to finish before clicking Continue.
      */
     public function checkAndAutoAdvance(): void
     {
+        if (! $this->autoAdvanceActive) {
+            return;
+        }
+
         if ($this->canContinue) {
             $this->continueToConfigure();
         }
