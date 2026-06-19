@@ -48,6 +48,7 @@
                 'kind'        => $s->kind,
                 'config'      => $s->config,
                 'game_type'   => $s->game_type,
+                'scene_view'  => $s->scene_view,
                 'audio_url'   => $s->audio_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->audio_path) : null,
                 'script'      => $s->script_segment,
                 'image_url'   => $s->image_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->image_path) : null,
@@ -108,6 +109,9 @@
 
     {{-- ── LAYER 1: Shadow gradient overlay ────────────────────────────── --}}
     <div class="absolute inset-0 z-10 pointer-events-none bg-linear-to-b from-black/50 to-[#0C2033]/50"></div>
+
+    {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
+    <div class="lp-grain pointer-events-none absolute inset-0 z-[11]"></div>
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>

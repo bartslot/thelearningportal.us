@@ -465,6 +465,33 @@ Alpine.data('lessonGame', (lesson) => ({
       }
     },
 
+    // Flat 2D scene render: the scene image on the CSS Ken Burns layers, 3D canvas hidden.
+    // This is the default per scene (skybox is opt-in via scene_view).
+    _showFlatScene (url) {
+      if (!url) return
+      if (_bgCanvas) _bgCanvas.style.opacity = '0'
+      const bgLayer = document.getElementById('background-layer')
+      if (bgLayer) {
+        bgLayer.style.transition = 'opacity 1s ease-in-out'
+        bgLayer.style.opacity = '1'
+      }
+      // Stop the title auto-slideshow so it doesn't fight the per-scene image.
+      if (this._kbInterval) { clearInterval(this._kbInterval); this._kbInterval = null }
+      // Crossfade to this scene's image with a fresh Ken Burns move.
+      this._kbIndex = (this._kbIndex || 0) + 1
+      const layer = this._bgActive === 'A' ? 'B' : 'A'
+      this._showBgImage({ url }, layer)
+      if (layer === 'B') {
+        this._bgLayerB.style.opacity = '1'
+        this._bgLayerA.style.opacity = '0'
+        this._bgActive = 'B'
+      } else {
+        this._bgLayerA.style.opacity = '1'
+        this._bgLayerB.style.opacity = '0'
+        this._bgActive = 'A'
+      }
+    },
+
     _moveAvatarTo (position) {
       const posKey = position in AVATAR_POSITIONS ? position : DEFAULT_POSITION
       if (posKey === this._currentPosition) return
@@ -497,7 +524,7 @@ Alpine.data('lessonGame', (lesson) => ({
         // Keep audio scenes AND map blocks (map blocks have no audio but are played as slides).
         _sceneQueue = lesson.scenes
           .filter(s => s.audio_url || s.kind === 'map')
-          .map(s => ({ kind: s.kind, config: s.config ?? null, audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
+          .map(s => ({ kind: s.kind, config: s.config ?? null, scene_view: s.scene_view, audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
       }
 
       if (!_sceneQueue.length) return
@@ -551,7 +578,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Phase transitions ──────────────────────────────────────────────
     _playIntro () {
-      this._showBgScene()          // fade in the full-screen 3D background
+      // Background is set per scene by _playScene (flat Ken Burns by default, skybox opt-in).
       this._moveAvatarTo('bottom-right')
       if (!_sceneQueue.length) return
       this._sceneIndex = 0
@@ -567,12 +594,13 @@ Alpine.data('lessonGame', (lesson) => ({
       // Map block — render the historical atlas as a slide (no audio).
       if (scene.kind === 'map') { this._playMapScene(index, scene); return }
 
-      // Swap background — update 3D bg scene skybox, or fall back to CSS Ken Burns
+      // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per scene.
       if (scene.image_url) {
-        if (_bgInstance) {
+        if (scene.scene_view === 'skybox' && _bgInstance) {
+          this._showBgScene()                                   // reveal the 3D canvas, fade out the flat layer
           _bgInstance.setSkyboxFromUrl(scene.image_url, 0.3).catch(() => {})
         } else {
-          this._showBgImage({ url: scene.image_url }, this._bgActive === 'A' ? 'B' : 'A')
+          this._showFlatScene(scene.image_url)                  // flat 2D Ken Burns of the scene image
         }
       }
 
