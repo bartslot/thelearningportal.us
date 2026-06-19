@@ -150,6 +150,7 @@ The player's `_sceneQueue` stays a flat sequential array; branching adds skip-aw
 - Before playing a scene with a `branch_role`: if its group has **no** recorded choice → render the **choice overlay** (two buttons from the group's two option labels) and halt auto-advance; if the group **is** decided → play only if this scene's role matches, else skip to the next scene.
 - On button click → record `_choices[group] = role`, hide overlay, play the chosen option; the unchosen option is skipped; the next linear (Rejoin) scene plays normally.
 - The choice is a real user tap, which satisfies the audio autoplay gate for the following scene — branching sidesteps the silent-playback problem rather than worsening it.
+- **No mechanics revealed to the student.** The overlay shows only an in-world prompt and the two path buttons — never meta-text such as "your choice changes the next scene" or "both paths rejoin." The reconvergence is invisible to the student; the choice must read as genuinely consequential to preserve agency and immersion. (Teachers still see the Path A/B structure in Configure.)
 
 ### Configurator — locked overlay + branch tiles
 
