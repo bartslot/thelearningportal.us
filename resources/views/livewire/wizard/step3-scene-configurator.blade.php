@@ -12,6 +12,8 @@
          data-flag="{{ $lesson->territoryFlagUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
+        {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
+        <div class="lp-grain pointer-events-none absolute inset-0 z-[3]"></div>
         {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
         @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
             <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
@@ -220,7 +222,7 @@
 
     {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
     <script type="application/json" id="step3-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
+        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
     </script>
 </div>
 

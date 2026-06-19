@@ -103,7 +103,7 @@ class Step3SceneConfigurator extends Component
         $this->selectedScene = $this->snapshot($scene);
 
         $ts = $scene->updated_at?->timestamp ?? '';
-        $view = $scene->scene_view ?? 'skybox';
+        $view = $scene->scene_view ?? 'slideshow';
         // Skybox view uses the equirectangular panorama if available; fall back to flat image.
         // Slideshow view always uses the flat image.
         $imagePath = ($view === 'skybox' && ! empty($scene->skybox_image_path))

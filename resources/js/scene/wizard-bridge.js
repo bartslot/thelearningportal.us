@@ -729,7 +729,18 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     }
 
     const adapter = {
-        skybox: { crossfadeTo: (url) => applyScene({ imageUrl: url }) },
+        skybox: {
+            crossfadeTo: (url, scene) => applyScene({
+                imageUrl:   url,
+                sceneView:  scene?.scene_view ?? 'slideshow',
+                sceneId:    scene?.id,
+                duration:   scene?.duration_seconds,
+                skyboxBlur: scene?.skybox_blur,
+                year:       scene?.year,
+                location:   scene?.location,
+                kind:       scene?.kind,
+            }),
+        },
         overlay,
         timer,
         avatar: {
