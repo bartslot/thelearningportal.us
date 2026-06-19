@@ -118,6 +118,9 @@ job:
 Script quality and using the wiki / corpus / history data to ground scenes — separate effort after
 the skybox pipeline lands.
 
-## Open decision
-Pick the atlas backend in §6 (recommend **B: fal Flux, `flux/dev`**). Then I'll prototype one real
-atlas (1 call), extract + upscayl the tiles, and show them on the sphere before wiring the batched job.
+## Decision (resolved 2026-06-19)
+**Backend: fal.ai Flux (`flux/dev`)** — option B. `FalAiImageService` already exists; needs a custom
+atlas size + `flux/dev` model wired in. First build step: prototype one real atlas (1 fal call) →
+extract → feather → upscayl 2× → check tiles on the sphere, before wiring `GenerateLessonSkyboxAtlas`.
+Knobs to set during the prototype: Flux canvas (2:1-friendly grid, e.g. `2048×1024` for a 2×2 of
+1024×512 tiles), steps, and the per-style upscayl model.
