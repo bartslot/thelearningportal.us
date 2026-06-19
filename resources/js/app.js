@@ -573,9 +573,6 @@ const setupLandingCarousels = () => {
     });
 };
 
-import { initAvatarAnimator } from './avatar-animator.js';
-import './animation-alert.js';
-
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setupLandingCursor();
@@ -583,9 +580,6 @@ if (document.readyState === 'loading') {
         setupHeroParallax();
         setupPortalExitAnimation();
         setupLandingCarousels();
-        if (document.getElementById('avatar-canvas')) {
-            initAvatarAnimator('avatar-canvas', 'avatar-preview');
-        }
     }, { once: true });
 } else {
     setupLandingCursor();
@@ -593,7 +587,4 @@ if (document.readyState === 'loading') {
     setupHeroParallax();
     setupPortalExitAnimation();
     setupLandingCarousels();
-    if (document.getElementById('avatar-canvas')) {
-        initAvatarAnimator('avatar-canvas', 'avatar-preview');
-    }
 }
