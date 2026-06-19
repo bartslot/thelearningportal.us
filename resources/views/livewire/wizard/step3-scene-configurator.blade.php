@@ -175,6 +175,49 @@
     {{-- Bottom timeline --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
+    {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
+         menu stayed opacity:0 on focus). Open state is Livewire-driven; tiles call addScene(). --}}
+    <div class="modal modal-bottom sm:modal-middle {{ $addSceneOpen ? 'modal-open' : '' }}"
+         role="dialog" aria-modal="true">
+        <div class="modal-box max-w-lg border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-slate-100">Add a scene</h2>
+                <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
+                        aria-label="Close" wire:click="$set('addSceneOpen', false)">✕</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <button type="button" wire:click="addScene('narration')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="narration" />
+                    <span class="text-sm font-medium text-slate-200">Story</span>
+                </button>
+                <button type="button" wire:click="addScene('game', 'quiz')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="game" game-type="quiz" />
+                    <span class="text-sm font-medium text-slate-200">Quiz</span>
+                </button>
+                <button type="button" wire:click="addScene('game', 'strategy')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="game" game-type="strategy" />
+                    <span class="text-sm font-medium text-slate-200">Strategy game</span>
+                </button>
+                <button type="button" wire:click="addScene('game', 'debate')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="game" game-type="debate" />
+                    <span class="text-sm font-medium text-slate-200">Debate</span>
+                </button>
+                <button type="button" wire:click="addScene('map')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="map" />
+                    <span class="text-sm font-medium text-slate-200">Map</span>
+                </button>
+            </div>
+        </div>
+        <button type="button" class="modal-backdrop" aria-label="Close"
+                wire:click="$set('addSceneOpen', false)"></button>
+    </div>
+
     {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
     <script type="application/json" id="step3-scenes-data">
         {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}

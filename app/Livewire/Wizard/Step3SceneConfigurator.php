@@ -41,6 +41,8 @@ class Step3SceneConfigurator extends Component
 
     public bool $inspectorOpen = true;
 
+    public bool $addSceneOpen = false;
+
     public ?string $prevSelectedStatus = null;
 
     public function mount(Lesson $lesson): void
@@ -327,6 +329,7 @@ class Step3SceneConfigurator extends Component
 
     public function addScene(string $kind = 'narration', ?string $gameType = null): void
     {
+        $this->addSceneOpen = false;
         $kind = in_array($kind, ['game', 'map'], true) ? $kind : 'narration';
         $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
