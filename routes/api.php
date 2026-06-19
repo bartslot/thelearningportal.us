@@ -20,8 +20,6 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/user', fn(Request $request) => $request->user())->name('user');
 
-        Route::get('/audio-manifest', \App\Http\Controllers\Api\AudioManifestController::class)->name('audio-manifest');
-
         Route::get('/avatars/{avatar}/controller', \App\Http\Controllers\Api\AnimationControllerApi::class)
             ->name('avatars.controller');
 

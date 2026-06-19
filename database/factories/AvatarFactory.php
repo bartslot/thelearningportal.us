@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Enums\SpriteStatus;
 use App\Models\Avatar;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -31,7 +30,6 @@ class AvatarFactory extends Factory
             'voice_pitch'       => 1.0,
             'is_active'         => true,
             'sort_order'        => 0,
-            'sprite_status'     => SpriteStatus::Pending,
             'presentation_mode' => 'framed',
             'age'               => 35,
             'gender'            => 'male',

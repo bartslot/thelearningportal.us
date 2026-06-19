@@ -58,7 +58,7 @@ class AvatarStudio extends Component
     public ?string $flashMessage  = null;
     public bool $flashError       = false;
 
-    // ── Portrait upload ───────────────────────────────────────────────────────
+    // ── Portrait image upload (just the picture — avatars are image + ElevenLabs voice) ──
     #[Validate('nullable|image|max:4096')]
     public $portraitUpload = null;
 
@@ -260,6 +260,10 @@ class AvatarStudio extends Component
         unset($this->voiceSamples);
     }
 
+    /**
+     * Upload a new avatar image. Just stores the (resized) picture — no sprite/lip-sync
+     * processing; avatars are a static image + an ElevenLabs voice.
+     */
     public function uploadPortrait(): void
     {
         $this->validateOnly('portraitUpload', ['portraitUpload' => 'required|image|max:4096']);
@@ -267,27 +271,15 @@ class AvatarStudio extends Component
         $this->uploadingPortrait = true;
 
         try {
-            $originalPath = $this->portraitUpload->storePubliclyAs(
-                "avatars/{$this->avatar->id}",
-                'portrait_original.' . $this->portraitUpload->getClientOriginalExtension(),
-                'public'
-            );
-
-            $imageBytes   = Storage::disk('public')->get($originalPath);
+            $imageBytes   = file_get_contents($this->portraitUpload->getRealPath());
             $resized      = app(\App\Services\AvatarService::class)->resizePortraitPublic($imageBytes);
             $portraitPath = "avatars/{$this->avatar->id}/portrait.jpg";
             Storage::disk('public')->put($portraitPath, $resized);
 
-            $this->avatar->update([
-                'portrait_path'          => $portraitPath,
-                'portrait_original_path' => $originalPath,
-                'sprite_status'          => \App\Enums\SpriteStatus::Pending,
-            ]);
-
-            \App\Jobs\ProcessAvatarPortrait::dispatch($this->avatar->id);
+            $this->avatar->update(['portrait_path' => $portraitPath]);
 
             $this->portraitUpload = null;
-            $this->flash('Portrait uploaded! Processing sprites in background...', false);
+            $this->flash('Portrait updated.', false);
         } catch (\Throwable $e) {
             Log::error('AvatarStudio: portrait upload failed', ['error' => $e->getMessage()]);
             $this->flash('Upload failed: ' . $e->getMessage(), true);
@@ -306,7 +298,6 @@ class AvatarStudio extends Component
 
     public function render()
     {
-        // Always re-fetch from DB so sprite_status reflects background job updates
         $this->avatar = $this->avatar->fresh();
 
         return view('livewire.admin.avatar-studio')

@@ -57,7 +57,7 @@ class AvatarService
     }
 
     /**
-     * Public wrapper around resizePortrait for use outside this class.
+     * Public wrapper around resizePortrait — used by Avatar Studio's image upload.
      */
     public function resizePortraitPublic(string $imageData, int $maxDim = 512): string
     {

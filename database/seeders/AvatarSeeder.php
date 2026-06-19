@@ -71,7 +71,6 @@ class AvatarSeeder extends Seeder
                 'voice_settings' => '[]',
                 'is_active' => in_array($i, $activeIds, true),
                 'sort_order' => $i,
-                'sprite_status' => 'pending',
                 'presentation_mode' => 'framed',
                 'emotion_style' => 'auto',
                 'expressiveness' => 1.2,

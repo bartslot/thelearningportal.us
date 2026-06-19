@@ -52,7 +52,7 @@
 
         {{-- ── Tab bar ─────────────────────────────────────────────────────────── --}}
         <div class="flex gap-1 border-b border-slate-800">
-            @foreach([['portrait', '🖼️ Portrait'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
+            @foreach([['image', '🖼️ Image'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
                 <button
                     @click="activeTab = '{{ $tab }}'"
                     :class="activeTab === '{{ $tab }}'
@@ -67,10 +67,32 @@
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div class="h-[66vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
-        {{-- TAB: Portrait                                                          --}}
+        {{-- TAB: Image — static avatar picture (avatars are image + ElevenLabs voice) --}}
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
-        <div x-show="activeTab === 'portrait'" x-cloak>
-            @include('livewire.admin.avatar-studio.portrait-tab')
+        <div x-show="activeTab === 'image'" x-cloak class="space-y-6">
+            <div class="flex items-start gap-6">
+                <img src="{{ $avatar->portraitUrl() }}" alt="{{ $avatar->name }}"
+                     class="h-32 w-32 rounded-2xl object-cover border-2 border-amber-500/30">
+                <div class="space-y-1">
+                    <p class="text-sm font-medium text-slate-200">Current image</p>
+                    <p class="text-xs text-slate-500">512 × 512 px recommended. Shown while the ElevenLabs voice speaks.</p>
+                </div>
+            </div>
+
+            <form wire:submit="uploadPortrait" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Upload new image</label>
+                    <input type="file" wire:model="portraitUpload" accept="image/*"
+                           class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-amber-500/10 file:text-amber-400 hover:file:bg-amber-500/20">
+                    @error('portraitUpload') <p class="mt-1 text-xs text-rose-400">{{ $message }}</p> @enderror
+                </div>
+                <button type="submit"
+                        class="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+                        wire:loading.attr="disabled" wire:target="portraitUpload,uploadPortrait">
+                    <span wire:loading.remove wire:target="uploadPortrait">Save image</span>
+                    <span wire:loading wire:target="uploadPortrait">Uploading…</span>
+                </button>
+            </form>
         </div>
 
         {{-- ══════════════════════════════════════════════════════════════════════ --}}

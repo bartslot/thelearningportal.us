@@ -161,12 +161,6 @@ return [
         'model' => env('UPSCAYL_MODEL', 'realesrgan-x4plus'),
     ],
 
-    // ── Vercel serverless functions (avatar studio / audio manifest) ──────────
-
-    'vercel_functions' => [
-        'url' => env('VERCEL_FUNCTIONS_URL', 'http://localhost:3000'),
-    ],
-
     // ── Animation tooling ─────────────────────────────────────────────────────
 
     'fbx2gltf' => [
