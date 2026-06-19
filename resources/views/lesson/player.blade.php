@@ -24,7 +24,7 @@
         'portrait_url'          => $lesson->portraitUrl(),
         'slideshow_images'      => $lesson->slideshowImages(),
         'lesson_code'           => $lesson->lesson_code,
-        'avatar_glb_url'        => config('avatars.use_2d') ? null : ($lesson->avatar?->glbUrl() ?? null),
+        'avatar_glb_url'        => null, // 3D avatar retired — avatars are a 2D image + ElevenLabs voice
         'avatar_gender'         => strtolower($lesson->avatar?->gender ?? 'male'),
         'game_duration_seconds' => $lesson->strategyGame ? $lesson->strategyGame->duration_minutes * 60 : 600,
         'game_title'            => $lesson->strategyGame?->title,
@@ -112,7 +112,7 @@
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
     {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
-    @if (config('avatars.use_2d') && $lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
+    @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
         <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
              class="pointer-events-none absolute bottom-6 right-6 z-30 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
     @endif

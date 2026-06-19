@@ -6,15 +6,14 @@
 
     {{-- Fullscreen canvas wrapper — wire:ignore so Livewire never re-renders the
          canvas (which would force a new Avatar3DPlayer + reset camera/orbit). --}}
-    @php $use2dAvatar = config('avatars.use_2d'); @endphp
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
-         data-character-url="{{ $use2dAvatar ? '' : $lesson->avatar?->glbUrl() }}"
+         data-character-url=""
          data-territory="{{ $lesson->topic }}"
          data-flag="{{ $lesson->territoryFlagUrl() }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
-        @if ($use2dAvatar && $lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
+        @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
             <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
                  class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
         @endif
