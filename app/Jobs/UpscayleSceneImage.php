@@ -47,11 +47,16 @@ class UpscayleSceneImage implements ShouldQueue
 
             $enhanced = $imageService->upscaleLocal($original, $this->upscaylModel);
 
-            if ($enhanced === $original) {
-                // upscayl-bin not available or failed — log and bail gracefully
-                Log::warning('[UpscayleSceneImage] upscayl returned original bytes, skipping overwrite.', [
-                    'sceneId' => $this->sceneId,
-                    'model'   => $this->upscaylModel,
+            // A genuine upscale is ALWAYS larger than the source. Upscayl can exit 0 yet emit a
+            // blank/garbage frame when its model files fail to load — which previously overwrote
+            // the real image with a ~240-byte blank. Never replace a good image with something
+            // that isn't bigger.
+            if ($enhanced === $original || strlen($enhanced) <= strlen($original)) {
+                Log::warning('[UpscayleSceneImage] upscayl did not produce a larger image; keeping the original.', [
+                    'sceneId'       => $this->sceneId,
+                    'model'         => $this->upscaylModel,
+                    'originalBytes' => strlen($original),
+                    'enhancedBytes' => strlen($enhanced),
                 ]);
                 $scene->update(['upscale_status' => 'failed']);
                 return;
