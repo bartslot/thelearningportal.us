@@ -112,11 +112,6 @@ class Avatar extends Model
         return file_exists($path) ? asset("avatars/{$this->id}/thumbnail.webp") : null;
     }
 
-    public function glbUrl(): string
-    {
-        return asset("avatars/{$this->id}/character.glb");
-    }
-
     // ── Greeting ──────────────────────────────────────────────────────────────
 
     /**

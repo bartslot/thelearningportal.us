@@ -18,12 +18,6 @@
             'route' => 'admin.avatars.index',
             'pattern' => 'admin.avatars.*',
         ];
-        $items[] = [
-            'label' => '3D Lab',
-            'route' => 'admin.avatar-lab',
-            'pattern' => 'admin.avatar-lab',
-            'badge' => 'BETA',
-        ];
     }
 
     if ($isTeacher) {
