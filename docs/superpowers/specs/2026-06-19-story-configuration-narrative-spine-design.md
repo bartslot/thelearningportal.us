@@ -127,6 +127,11 @@ New read-only model **`App\Models\Corpus\Figure`** over `public.figures` (mirror
 2. **By region + era** — fallback: `region` match with era overlap (`era_start ≤ end AND era_end ≥ start`), ranked by fame (mirrors `Article::forRegionYear`).
 3. **Free text** — nothing found → teacher types a name (`protagonist_name` set, `protagonist_qid` null).
 
+**Hero-quality refinements (validated 2026-06-20 against a real `BuildTopics` figures sample):**
+- **Rank `figure_kind='ruler'` above `'person'`.** The P27-citizenship "people" set includes non-leader celebrities (a sample surfaced opera singer Anna Netrebko for Russia); rulers (P35/P6, reign-dated) make better protagonists. Show rulers first, people as a secondary group.
+- **Era-match is essential, not just a fallback.** Figures carry their reign/term `era_start`/`era_end`; intersect them with the lesson's era so a modern prime minister can't headline a medieval lesson. Figures are already era-appropriate *per polity* (Q12560 Ottoman → Ottoman figures; Q43 modern Turkey → modern figures), so `parent_qid` is the correct primary key.
+- **`figures.region_label` is null** — region lives on the parent polity, not the figure. The region+era fallback must read the region from the parent polity row, or simply rely on `parent_qid` (the primary path anyway).
+
 At generation, `BuildLessonOutline` reads the figure's `summary` on demand via `Corpus\Figure::resilient(fn () => Figure::find($qid))` to enrich the protagonist clause — graceful: corpus unreachable or qid null → fall back to the name. No denormalized blurb column (DRY, consistent with how the pipeline already reads corpus for map blocks).
 
 ### Prerequisite — populate `public.figures` (Task 0)
