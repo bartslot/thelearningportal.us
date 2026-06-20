@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\LessonStatus;
+use App\Enums\NarrativeFramework;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -63,6 +64,9 @@ class Lesson extends Model
         'outline',
         'wizard_step',
         'background_music',
+        'narrative_framework',
+        'protagonist_qid',
+        'protagonist_name',
     ];
 
     protected static function booted(): void
@@ -81,6 +85,7 @@ class Lesson extends Model
     {
         return [
             'status' => LessonStatus::class,
+            'narrative_framework' => NarrativeFramework::class,
             'generation_attempts' => 'integer',
             'duration_seconds' => 'integer',
             'slideshow_images' => 'array',
