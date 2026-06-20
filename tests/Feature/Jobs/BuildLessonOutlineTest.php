@@ -88,6 +88,29 @@ class BuildLessonOutlineTest extends TestCase
 
         $this->assertSame(0, Scene::where('kind', 'game')->count(), 'Game scenes must be stripped when include_game is off');
         $this->assertSame(2, Scene::where('kind', 'narration')->count());
+        // The mid-list game brief was removed and the remaining scenes re-indexed to contiguous orders.
+        $this->assertSame([1, 2], Scene::where('kind', 'narration')->orderBy('order')->pluck('order')->all());
+    }
+
+    public function test_keeps_game_scenes_when_games_are_enabled(): void
+    {
+        $this->lesson->update(['include_game' => true, 'game_type' => 'quiz']);
+
+        $this->mock(OpenAiLlmService::class, function ($mock): void {
+            $mock->shouldReceive('json')->once()->andReturn([
+                'title'        => 'Napoleon',
+                'scene_briefs' => [
+                    ['order' => 1, 'kind' => 'narration', 'year' => '1810', 'location' => 'Paris',  'beat' => 'intro', 'image_prompt_seed' => 'Paris'],
+                    ['order' => 2, 'kind' => 'game',      'year' => '1812', 'location' => 'Moscow', 'beat' => 'quiz',  'image_prompt_seed' => 'Quiz', 'game_segment_index' => 1],
+                ],
+            ]);
+        });
+
+        Bus::fake();
+
+        (new BuildLessonOutline($this->lesson->id))->handle(app(OpenAiLlmService::class));
+
+        $this->assertSame(1, Scene::where('kind', 'game')->count(), 'Game scenes must be kept when include_game is on');
     }
 
     public function test_marks_lesson_failed_and_writes_error_message_on_llm_exception(): void
