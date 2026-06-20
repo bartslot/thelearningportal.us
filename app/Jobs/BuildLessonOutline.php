@@ -140,10 +140,21 @@ class BuildLessonOutline implements ShouldQueue
                 'status' => LessonStatus::ScenesGenerating,
             ]);
 
+            // Defensive: the outline prompt tells the model to omit game scenes when games are
+            // disabled, but LLMs don't reliably obey a negative instruction. Drop any game briefs
+            // when the teacher turned games off so an unwanted quiz/strategy scene never appears.
+            $briefs = $outline['scene_briefs'] ?? [];
+            if (! $lesson->include_game) {
+                $briefs = array_values(array_filter(
+                    $briefs,
+                    fn ($brief) => ($brief['kind'] ?? 'narration') !== 'game',
+                ));
+            }
+
             // Ignore any "order" the LLM emitted — assign sequential 1-based positions so
             // we never trip the (lesson_id, order) unique index when the model repeats numbers.
             $scenes = [];
-            foreach (($outline['scene_briefs'] ?? []) as $idx => $brief) {
+            foreach ($briefs as $idx => $brief) {
                 $scenes[] = Scene::create([
                     'lesson_id' => $lesson->id,
                     'order' => $idx + 1,
