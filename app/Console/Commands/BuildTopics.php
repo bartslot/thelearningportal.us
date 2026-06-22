@@ -25,7 +25,7 @@ class BuildTopics extends Command
 {
     protected $signature = 'timemap:build-topics
         {--limit=0 : Cap the number of polities processed (0 = all)}
-        {--resume : Skip polities already processed (have figures or a region)}
+        {--resume : Skip polities that already have figures (continue an interrupted build)}
         {--people=8 : Max notable people fetched per polity}
         {--schema-only : Only (re)create the schema + topics view, then exit}';
 
@@ -44,15 +44,22 @@ class BuildTopics extends Command
         $query = $corpus->table('public.polities')
             ->whereNotNull('wikipedia_url')
             ->whereNotNull('osm_id')
+            // Figures are fetched from Wikidata, so only polities keyed by a real Wikidata QID
+            // can yield any. The catalog also holds OSM-keyed duplicate rows (negative numeric
+            // ids) for the same countries — those can never produce figures, so skip them.
+            ->where('osm_id', 'like', 'Q%')
             ->orderByDesc('sitelinks');
 
         if ($this->option('resume')) {
-            $haveFigures = $corpus->table('public.figures')->distinct()->pluck('parent_qid')->flip();
-            $query->where(function ($q) {
-                // process polities with no region AND no figures yet
-                $q->whereNull('region_lat');
-            });
-            $done = $haveFigures;
+            // Resume = skip polities that already have figures, so re-runs continue from where an
+            // interrupted build stopped (still fame-ordered, most-famous-first). The previous
+            // behaviour filtered on whereNull('region_lat'), which skipped every region-having
+            // polity — i.e. all the famous ones — and so never populated their figures.
+            $haveFigures = $corpus->table('public.figures')->distinct()->pluck('parent_qid');
+            if ($haveFigures->isNotEmpty()) {
+                $query->whereNotIn('osm_id', $haveFigures->all());
+            }
+            $done = $haveFigures->flip();
         } else {
             $done = collect();
         }
@@ -69,7 +76,7 @@ class BuildTopics extends Command
 
         foreach ($polities as $p) {
             $qid = $p->osm_id;
-            if ($this->option('resume') && $done->has($qid) && $p->region_lat !== null) {
+            if ($this->option('resume') && $done->has($qid)) {
                 $bar->advance();
 
                 continue;
