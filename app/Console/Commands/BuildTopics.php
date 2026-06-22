@@ -94,7 +94,18 @@ class BuildTopics extends Command
 
                 // 2. Collect rulers (from claims) + people (SPARQL).
                 $rulers = $data['rulers'];
-                $people = $figures->peopleFor($qid, $peopleLimit);
+
+                // The people query is a heavy SPARQL scan that times out for high-population
+                // polities (e.g. modern countries). Isolate it so a people-fetch failure never
+                // costs us the rulers + region we already resolved — rulers are the priority
+                // for the hero picker anyway.
+                $people = [];
+                try {
+                    $people = $figures->peopleFor($qid, $peopleLimit);
+                } catch (\Throwable $e) {
+                    $this->newLine();
+                    $this->warn("polity {$qid}: people fetch failed ({$e->getMessage()}) — keeping rulers only");
+                }
 
                 // 3. Hydrate ruler details (names, wiki, sitelinks, birth/death).
                 $rulerQids = array_column($rulers, 'qid');
