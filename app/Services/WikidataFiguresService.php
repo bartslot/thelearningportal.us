@@ -21,9 +21,9 @@ class WikidataFiguresService
 
     private const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
 
-    private function client(): PendingRequest
+    private function client(int $timeout = 60): PendingRequest
     {
-        return Http::withHeaders(['User-Agent' => self::USER_AGENT])->timeout(60);
+        return Http::withHeaders(['User-Agent' => self::USER_AGENT])->timeout($timeout);
     }
 
     /**
@@ -73,7 +73,10 @@ class WikidataFiguresService
         } ORDER BY DESC(?sitelinks) LIMIT {$limit}
         SPARQL;
 
-        $rows = $this->client()
+        // Shorter timeout than the default: this sitelinks-sorted scan times out for
+        // high-population polities. Fail fast (25s) so the caller falls back to rulers
+        // instead of blocking the whole build for a full 60s on every big polity.
+        $rows = $this->client(25)
             ->get(self::SPARQL_ENDPOINT, ['query' => $sparql, 'format' => 'json'])
             ->json('results.bindings', []);
 
