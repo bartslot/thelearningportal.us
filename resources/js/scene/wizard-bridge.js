@@ -311,6 +311,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // on the scene's clear color so it renders as a flat 2D backdrop.
     const slideshowTextureCache = new Map()
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10) {
+        // A blank/map scene carries no image. Never hand the loader a null url — THREE fetches
+        // the literal string "null", which the browser resolves relative to the wizard page as
+        // /teacher/lessons/{id}/null and logs a stray 404.
+        if (!url) return
         try {
             let tex = slideshowTextureCache.get(url)
             if (!tex) {
