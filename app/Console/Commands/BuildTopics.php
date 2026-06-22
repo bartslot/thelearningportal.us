@@ -25,6 +25,7 @@ class BuildTopics extends Command
 {
     protected $signature = 'timemap:build-topics
         {--limit=0 : Cap the number of polities processed (0 = all)}
+        {--only= : Comma-separated polity QIDs to (re)process directly, ignoring fame order + resume}
         {--resume : Skip polities that already have figures (continue an interrupted build)}
         {--people=8 : Max notable people fetched per polity}
         {--schema-only : Only (re)create the schema + topics view, then exit}';
@@ -62,6 +63,13 @@ class BuildTopics extends Command
             $done = $haveFigures->flip();
         } else {
             $done = collect();
+        }
+
+        // Targeted (re)processing of specific polities, overriding fame order + resume skipping.
+        $only = array_filter(array_map('trim', explode(',', (string) $this->option('only'))));
+        if ($only !== []) {
+            $query->whereIn('osm_id', $only);
+            $done = collect();  // never skip an explicitly-requested polity
         }
 
         $polities = $query->get(['osm_id', 'label', 'region_lat']);
@@ -114,6 +122,17 @@ class BuildTopics extends Command
                     $this->warn("polity {$qid}: people fetch failed ({$e->getMessage()}) — keeping rulers only");
                 }
 
+                // 2b. People who held a ruler office of this polity (P39 → position P1001).
+                // Captures the historical monarchs the claims miss, each with a portrait. Isolated
+                // like the people query so a timeout never costs us the rest.
+                $positionRulers = [];
+                try {
+                    $positionRulers = $figures->rulersByPosition($qid, $peopleLimit);
+                } catch (\Throwable $e) {
+                    $this->newLine();
+                    $this->warn("polity {$qid}: position-ruler fetch failed ({$e->getMessage()})");
+                }
+
                 // 3. Hydrate ruler details (names, wiki, sitelinks, birth/death).
                 $rulerQids = array_column($rulers, 'qid');
                 $hydrated = $figures->hydrate($rulerQids);
@@ -130,7 +149,31 @@ class BuildTopics extends Command
                 }
                 unset($r);
 
-                $figureCount += $this->upsertFigures($corpus, $qid, array_merge($rulers, $people));
+                // Merge claim-rulers + position-rulers + people, then collapse by qid: a person
+                // who is also a ruler is tagged 'ruler' and keeps whichever portrait we found.
+                $merged = [];
+                foreach (array_merge($people, $rulers, $positionRulers) as $f) {
+                    $key = $f['qid'] ?? null;
+                    if (! $key) {
+                        continue;
+                    }
+                    if (! isset($merged[$key])) {
+                        $merged[$key] = $f;
+
+                        continue;
+                    }
+                    $prev = $merged[$key];
+                    $f['kind'] = (($prev['kind'] ?? '') === 'ruler' || ($f['kind'] ?? '') === 'ruler')
+                        ? 'ruler'
+                        : ($f['kind'] ?? $prev['kind'] ?? 'person');
+                    $f['image_url'] = ($f['image_url'] ?? null) ?: ($prev['image_url'] ?? null);
+                    $f['wikipedia_url'] = ($f['wikipedia_url'] ?? null) ?: ($prev['wikipedia_url'] ?? null);
+                    $f['era_start'] ??= $prev['era_start'] ?? null;
+                    $f['era_end'] ??= $prev['era_end'] ?? null;
+                    $merged[$key] = $f;
+                }
+
+                $figureCount += $this->upsertFigures($corpus, $qid, array_values($merged));
             } catch (\Throwable $e) {
                 $this->newLine();
                 $this->warn("polity {$qid} failed: {$e->getMessage()}");
@@ -153,8 +196,12 @@ class BuildTopics extends Command
     {
         $n = 0;
         foreach ($figures as $f) {
-            if (! ($f['qid'] ?? null) || ! ($f['wikipedia_url'] ?? null)) {
-                continue;  // skip figures with no Wikipedia article (catalog requires one)
+            $name = $f['name'] ?? null;
+            // Require a qid, a Wikipedia article AND a resolved label. When Wikidata throttles
+            // label lookups the name falls back to the bare QID — skipping those keeps junk out
+            // AND preserves any good row already stored (updateOrInsert simply isn't called).
+            if (! ($f['qid'] ?? null) || ! ($f['wikipedia_url'] ?? null) || ! $name || $name === $f['qid']) {
+                continue;
             }
             $corpus->table('public.figures')->updateOrInsert(
                 ['qid' => $f['qid'], 'parent_qid' => $parentQid],
@@ -169,6 +216,7 @@ class BuildTopics extends Command
                     'region_lng' => $f['region_lng'] ?? null,
                     'region_label' => $f['region_label'] ?? null,
                     'sitelinks' => $f['sitelinks'] ?? 0,
+                    'image_url' => $f['image_url'] ?? null,
                     'is_publishable' => true,
                     'updated_at' => now(),
                 ]
@@ -210,6 +258,9 @@ class BuildTopics extends Command
                 updated_at timestamptz,
                 PRIMARY KEY (qid, parent_qid)
             )');
+
+        // Portrait (P18 → Commons FilePath URL). Added after the table existed, so guard it.
+        $corpus->statement('ALTER TABLE public.figures ADD COLUMN IF NOT EXISTS image_url text');
 
         // topics view: single source for the picker (polities UNION figures).
         $corpus->statement('

@@ -64,37 +64,81 @@ class WikidataFiguresService
     public function peopleFor(string $polityQid, int $limit = 8): array
     {
         $sparql = <<<SPARQL
-        SELECT ?person ?personLabel ?birth ?death ?article ?sitelinks WHERE {
+        SELECT ?person ?personLabel ?birth ?death ?article ?sitelinks ?image WHERE {
           ?person wdt:P27 wd:{$polityQid} ; wikibase:sitelinks ?sitelinks .
           OPTIONAL { ?person wdt:P569 ?birth. }
           OPTIONAL { ?person wdt:P570 ?death. }
+          OPTIONAL { ?person wdt:P18 ?image. }
           OPTIONAL { ?article schema:about ?person ; schema:isPartOf <https://en.wikipedia.org/> . }
           SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
         } ORDER BY DESC(?sitelinks) LIMIT {$limit}
         SPARQL;
 
-        // Shorter timeout than the default: this sitelinks-sorted scan times out for
-        // high-population polities. Fail fast (25s) so the caller falls back to rulers
-        // instead of blocking the whole build for a full 60s on every big polity.
-        $rows = $this->client(25)
+        return $this->mapPeopleRows($this->runPeopleQuery($sparql), 'person');
+    }
+
+    /**
+     * Historical + modern rulers: people who held a position (P39) whose jurisdiction (P1001)
+     * is this polity — the canonical way Wikidata models emperors, sultans, kings and presidents.
+     * Catches the rulers that rulersFromClaims misses (ancient monarchs aren't claimed by the
+     * polity entity), and carries a P18 portrait. Misses only where the position's jurisdiction
+     * is a sibling entity (e.g. Roman emperor's office is scoped to "Ancient Rome", not the
+     * catalog's "Roman Empire" QID) — those keep the citizenship + free-text fallback.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function rulersByPosition(string $polityQid, int $limit = 12): array
+    {
+        $sparql = <<<SPARQL
+        SELECT DISTINCT ?person ?personLabel ?birth ?death ?article ?sitelinks ?image WHERE {
+          ?person p:P39/ps:P39 ?position .
+          ?position wdt:P1001 wd:{$polityQid} .
+          ?person wikibase:sitelinks ?sitelinks .
+          OPTIONAL { ?person wdt:P569 ?birth. }
+          OPTIONAL { ?person wdt:P570 ?death. }
+          OPTIONAL { ?person wdt:P18 ?image. }
+          OPTIONAL { ?article schema:about ?person ; schema:isPartOf <https://en.wikipedia.org/> . }
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+        } ORDER BY DESC(?sitelinks) LIMIT {$limit}
+        SPARQL;
+
+        return $this->mapPeopleRows($this->runPeopleQuery($sparql), 'ruler');
+    }
+
+    /** Run a people/ruler SPARQL with a short timeout (these scans time out on big polities). */
+    private function runPeopleQuery(string $sparql): array
+    {
+        // Shorter timeout than the default: these sitelinks-sorted scans time out for
+        // high-population polities. Fail fast (25s) so the caller keeps what it already has.
+        return $this->client(25)
             ->get(self::SPARQL_ENDPOINT, ['query' => $sparql, 'format' => 'json'])
             ->json('results.bindings', []);
+    }
 
+    /**
+     * Map raw SPARQL person rows to figure arrays. P18 comes back as a Commons FilePath URL.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function mapPeopleRows(array $rows, string $kind): array
+    {
         $out = [];
         foreach ($rows as $r) {
             $qid = $this->qidFromUri($r['person']['value'] ?? '');
             if (! $qid) {
                 continue;
             }
+            $image = $r['image']['value'] ?? null;
             $out[] = [
                 'qid' => $qid,
                 'name' => $r['personLabel']['value'] ?? $qid,
-                'kind' => 'person',
+                'kind' => $kind,
                 'era_start' => isset($r['birth']) ? $this->yearFromIso($r['birth']['value']) : null,
                 'era_end' => isset($r['death']) ? $this->yearFromIso($r['death']['value']) : null,
                 'wikipedia_url' => $r['article']['value'] ?? null,
                 'summary' => null,
                 'sitelinks' => (int) ($r['sitelinks']['value'] ?? 0),
+                'image_url' => $image ? str_replace('http://', 'https://', $image) : null,
                 'region_lat' => null,
                 'region_lng' => null,
                 'region_label' => null,
