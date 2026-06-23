@@ -23,7 +23,7 @@ class Step4Preview extends Component
         $this->lesson = $lesson;
 
         if ($this->lesson->status !== LessonStatus::Published) {
-            $this->lesson->update(['status' => LessonStatus::Previewable, 'wizard_step' => 4]);
+            $this->lesson->update(['status' => LessonStatus::Previewable, 'wizard_step' => 5]);
         }
 
         $first = $this->lesson->scenes()->ordered()->first();

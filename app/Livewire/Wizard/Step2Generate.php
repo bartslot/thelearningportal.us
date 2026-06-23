@@ -24,8 +24,8 @@ class Step2Generate extends Component
         $this->lesson = $lesson;
 
         // Claim this step in the parent's authoritative DB pointer.
-        if ((int) $lesson->wizard_step !== 2) {
-            $lesson->update(['wizard_step' => 2]);
+        if ((int) $lesson->wizard_step !== 3) {
+            $lesson->update(['wizard_step' => 3]);
         }
     }
 
@@ -125,8 +125,8 @@ class Step2Generate extends Component
 
     public function continueToConfigure(): void
     {
-        $this->lesson->update(['wizard_step' => 3]);
-        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 3], navigate: true);
+        $this->lesson->update(['wizard_step' => 4]);
+        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 4], navigate: true);
     }
 
     public function render()

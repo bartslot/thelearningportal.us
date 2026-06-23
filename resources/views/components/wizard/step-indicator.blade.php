@@ -9,21 +9,26 @@
     // Highest step the teacher is allowed to jump to.
     $maxStep = 1;
     if ($lesson) {
-        // Lesson exists → generation phase is at least visible.
+        // Lesson exists → Story step reachable.
         $maxStep = 2;
-        if (in_array($statusValue, ['scenes_ready', 'configuring', 'previewable', 'published'], true)) {
+        // Generation has been triggered (past Draft) → Generate step reachable.
+        if ($statusValue && $statusValue !== 'draft') {
             $maxStep = 3;
         }
-        if (in_array($statusValue, ['previewable', 'published'], true)) {
+        if (in_array($statusValue, ['scenes_ready', 'configuring', 'previewable', 'published'], true)) {
             $maxStep = 4;
+        }
+        if (in_array($statusValue, ['previewable', 'published'], true)) {
+            $maxStep = 5;
         }
     }
 
     $steps = [
         1 => 'Settings',
-        2 => 'Generate',
-        3 => 'Configure',
-        4 => 'Preview',
+        2 => 'Story',
+        3 => 'Generate',
+        4 => 'Configure',
+        5 => 'Preview',
     ];
 
     $stepUrl = fn (int $n) => $lesson

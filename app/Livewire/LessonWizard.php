@@ -20,14 +20,14 @@ class LessonWizard extends Component
         // because its two-way sync was rewriting the URL on every component update,
         // making it impossible to land on a different step via the address bar.
         $urlStep = request()->integer('step');
-        $resolvedStep = $urlStep >= 1 && $urlStep <= 4 ? $urlStep : null;
+        $resolvedStep = $urlStep >= 1 && $urlStep <= 5 ? $urlStep : null;
 
         if ($lesson?->exists) {
             abort_unless($lesson->teacher_id === auth()->id(), 403);
             $this->lesson = $lesson;
 
             $this->step = $resolvedStep
-                ?? max(1, min(4, (int) ($lesson->wizard_step ?? 1)));
+                ?? max(1, min(5, (int) ($lesson->wizard_step ?? 1)));
         } else {
             $this->step = $resolvedStep ?? 1;
         }
@@ -35,7 +35,7 @@ class LessonWizard extends Component
 
     public function goToStep(int $step): void
     {
-        $this->step = max(1, min(4, $step));
+        $this->step = max(1, min(5, $step));
         if ($this->lesson) {
             $this->lesson->update(['wizard_step' => $this->step]);
         }

@@ -49,7 +49,7 @@ class Step3SceneConfigurator extends Component
     {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
         $this->lesson = $lesson;
-        $this->lesson->update(['status' => LessonStatus::Configuring, 'wizard_step' => 3]);
+        $this->lesson->update(['status' => LessonStatus::Configuring, 'wizard_step' => 4]);
 
         $first = $this->lesson->scenes()->ordered()->first();
         if ($first) {
@@ -281,7 +281,7 @@ class Step3SceneConfigurator extends Component
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->skybox_image_path) {
-            $this->dispatch('toast', message: 'Generate the skybox image first before enhancing.', type: 'warning');
+            $this->dispatch('toast', message: 'Generate the panorama image first before enhancing.', type: 'warning');
 
             return;
         }
@@ -313,7 +313,7 @@ class Step3SceneConfigurator extends Component
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->image_path) {
-            $this->dispatch('toast', message: 'Generate the skybox image first before creating a WorldLabs world.', type: 'warning');
+            $this->dispatch('toast', message: 'Generate the panorama image first before creating a WorldLabs world.', type: 'warning');
 
             return;
         }
@@ -497,8 +497,8 @@ class Step3SceneConfigurator extends Component
 
     public function continueToPreview(): void
     {
-        $this->lesson->update(['wizard_step' => 4, 'status' => LessonStatus::Previewable]);
-        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 4], navigate: true);
+        $this->lesson->update(['wizard_step' => 5, 'status' => LessonStatus::Previewable]);
+        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 5], navigate: true);
     }
 
     /** Called on every poll tick — pushes updated world status to the canvas. */

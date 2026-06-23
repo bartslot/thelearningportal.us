@@ -631,7 +631,7 @@
         <button type="button" wire:click="generate"
                 wire:loading.attr="disabled" wire:target="generate"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">
-            <span wire:loading.remove wire:target="generate">Generate lesson →</span>
+            <span wire:loading.remove wire:target="generate">Next: Story →</span>
             <span wire:loading wire:target="generate" class="flex items-center gap-2">
                 <span class="w-4 h-4 border-2 border-slate-950/40 border-t-slate-950 rounded-full animate-spin"></span>
                 Saving…
@@ -641,7 +641,7 @@
 
     @if ($errors->any())
         <div class="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4 text-sm text-rose-200 space-y-1">
-            <p class="font-semibold">Cannot generate yet — fix these:</p>
+            <p class="font-semibold">Cannot continue yet — fix these:</p>
             <ul class="list-disc ml-5">
                 @foreach ($errors->all() as $err)
                     <li>{{ $err }}</li>
