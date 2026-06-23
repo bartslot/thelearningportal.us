@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\NarrativeFramework;
 use App\Models\Lesson;
 use App\Models\StrategyGame;
 
@@ -55,6 +56,8 @@ Rules:
 - visualEvidence must be period-accurate: no anachronisms.
 - avoidList must include obvious anachronisms for the period (modern vehicles, electricity, etc.).{$gameNote}
 - Place game scenes at pedagogically sensible points (after a narration has introduced new content).
+- Follow the "Narrative arc" in the user message: map the scenes onto its beats in order, connect each
+  beat to the previous with "but"/"therefore" (never "and then"), and centre the story on the protagonist when one is named.
 SYS;
     }
 
@@ -81,6 +84,24 @@ SYS;
             $gameClause = 'Debate game: insert one game scene where students defend opposing interpretations using evidence from the lesson.';
         }
 
+        // Narrative arc (Spec 1): the chosen framework's dramatic spine shapes the beat structure.
+        $framework = $lesson->narrative_framework instanceof NarrativeFramework
+            ? $lesson->narrative_framework
+            : (NarrativeFramework::tryFrom((string) $lesson->narrative_framework) ?? NarrativeFramework::default());
+        $spine = StorySpine::for($framework);
+
+        $arcLines = [
+            "Narrative arc: \"{$framework->label()}\" — map the scenes onto these beats, in order: {$spine->beatsLine()}.",
+            $spine->abtRule,
+        ];
+        if ($protagonistClause = $spine->protagonistClause($lesson->protagonist_name)) {
+            $arcLines[] = $protagonistClause;
+        }
+        if ($gameClause !== '') {
+            $arcLines[] = "Place the game at the \"{$spine->gamePlacementBeat}\" beat of the arc.";
+        }
+        $arcBlock = implode("\n", $arcLines);
+
         return <<<USR
 Topic: {$lesson->topic}
 Subject: {$lesson->subject}
@@ -89,6 +110,8 @@ Tone: {$lesson->tone}
 Teacher details: {$lesson->details}
 Target duration: {$duration} minutes
 target_narration_scenes: {$targetNarrationScenes} (must be ≥3; aim within ±1)
+
+{$arcBlock}
 {$gameClause}
 
 Source text:
