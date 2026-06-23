@@ -537,7 +537,8 @@
         </div>
     </div>
 
-    {{-- Game --}}
+    {{-- Game config moved to the Story step (step 2), pre-paired to the chosen arc. --}}
+    @if (false)
     <div class="bg-base-300 rounded-2xl overflow-hidden"
          x-data="{ open: @js((bool) $include_game) }"
          x-on:livewire-update.window="open = $wire.include_game">
@@ -621,6 +622,7 @@
             @endif
         </div>
     </div>
+    @endif
 
     {{-- ═══════════════════════════════════════════════
          ACTIONS
