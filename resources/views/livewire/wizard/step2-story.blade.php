@@ -131,8 +131,8 @@
                 </div>
 
                 @if ($game_type === 'quiz')
-                    <div class="border-t border-white/10 pt-4 flex gap-6">
-                        <div class="w-1/3 space-y-2 shrink-0">
+                    <div class="border-t border-white/10 pt-4 flex flex-col sm:flex-row gap-6">
+                        <div class="w-full sm:w-1/3 space-y-2 shrink-0">
                             <p class="text-xs uppercase tracking-wider text-slate-400">Number of questions</p>
                             <input type="number" wire:model.live="quiz_question_count" min="1" max="10"
                                    class="input input-bordered bg-slate-900 w-24 text-center" />

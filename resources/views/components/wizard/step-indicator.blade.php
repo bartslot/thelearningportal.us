@@ -48,7 +48,7 @@
                 <a href="{{ $stepUrl($n) }}" wire:navigate
                    class="flex items-center gap-2 group">
                     <span class="w-7 h-7 rounded-full flex items-center justify-center font-semibold bg-slate-900 text-slate-200 group-hover:bg-slate-600 transition-colors">{{ $n }}</span>
-                    <span class="text-slate-300 group-hover:text-amber-300 transition-colors">{{ $label }}</span>
+                    <span class="hidden sm:inline text-slate-300 group-hover:text-amber-300 transition-colors">{{ $label }}</span>
                 </a>
             @elseif ($isActive)
                 <div class="flex items-center gap-2">
@@ -58,7 +58,7 @@
             @else
                 <div class="flex items-center gap-2 opacity-40 cursor-not-allowed" title="Not yet available">
                     <span class="w-7 h-7 rounded-full flex items-center justify-center font-semibold bg-slate-800 text-slate-500">{{ $n }}</span>
-                    <span class="text-slate-500">{{ $label }}</span>
+                    <span class="hidden sm:inline text-slate-500">{{ $label }}</span>
                 </div>
             @endif
 
