@@ -13,7 +13,7 @@ class Scene extends Model
         'lesson_id', 'order', 'kind', 'config',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
         'year', 'location', 'script_segment',
-        'image_prompt', 'image_path', 'skybox_image_path', 'image_style',
+        'image_prompt', 'image_path', 'skybox_image_path', 'skybox_candidates', 'image_style',
         'skybox_blur', 'skybox_opacity', 'background_color', 'scene_view',
         'animation_clip_id',
         'audio_path', 'audio_alignment', 'audio_script_hash',
@@ -31,6 +31,7 @@ class Scene extends Model
         return [
             'order' => 'integer',
             'config' => 'array',
+            'skybox_candidates' => 'array',
             'audio_alignment' => 'array',
             'duration_seconds' => 'integer',
             'game_segment_index' => 'integer',

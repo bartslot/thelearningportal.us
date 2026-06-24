@@ -9,6 +9,7 @@ use App\Jobs\EnhanceSkyboxImage;
 use App\Jobs\GenerateSceneAudio;
 use App\Jobs\GenerateSceneImage;
 use App\Jobs\GenerateSceneScript;
+use App\Jobs\GenerateSkyboxCandidates;
 use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
 use App\Models\AnimationClip;
@@ -432,6 +433,52 @@ class Step3SceneConfigurator extends Component
 
         $scene->update(['status' => 'generating', 'error_message' => null]);
         GenerateSkyboxImage::dispatch($sceneId);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+    }
+
+    /**
+     * Kick off the 4-candidate panorama flow. The teacher will pick one of the results,
+     * which then becomes the scene's skybox via selectSkyboxCandidate().
+     */
+    public function generateSkyboxCandidates(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        if (! $scene->image_path) {
+            $this->dispatch('toast', message: 'Generate the flat image first.', type: 'warning');
+
+            return;
+        }
+
+        $scene->update(['status' => 'generating', 'error_message' => null]);
+        GenerateSkyboxCandidates::dispatch($sceneId);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+    }
+
+    /**
+     * Promote a chosen candidate to the scene's skybox: it becomes skybox_image_path
+     * (which the player/preview render on the 3D sphere) and the candidate set is cleared.
+     */
+    public function selectSkyboxCandidate(int $sceneId, int $index): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        $cands = $scene->skybox_candidates ?? [];
+        if (! isset($cands[$index])) {
+            return;
+        }
+
+        $scene->update([
+            'skybox_image_path' => $cands[$index],
+            'skybox_candidates' => null,
+            'status' => 'ready',
+        ]);
 
         if ($this->selectedSceneId === $sceneId) {
             $this->selectSceneInternal($sceneId);

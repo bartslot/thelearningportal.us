@@ -13,6 +13,7 @@
     $isUpscaling    = ($scene->upscale_status ?? null) === 'upscaling';
     $isBusy         = $isGenerating;
     $hasSkyboxImage = ! empty($scene->skybox_image_path);
+    $candidates     = $scene->skybox_candidates ?? [];
 @endphp
 
 <div class="mt-2 space-y-3"
@@ -62,7 +63,7 @@
     <div>
         <span class="text-[10px] uppercase tracking-widest text-slate-500 block mb-1.5">Scene View</span>
         <div class="flex rounded-lg overflow-hidden border border-slate-700 text-[11px] font-medium">
-            @foreach (['slideshow' => 'Slideshow', 'skybox' => 'Skybox', 'world' => 'World'] as $tabVal => $tabLabel)
+            @foreach (['slideshow' => 'Slideshow', 'skybox' => 'Panorama', 'world' => '3D World'] as $tabVal => $tabLabel)
                 <button type="button"
                         @click="
                             view = '{{ $tabVal }}';
@@ -119,8 +120,34 @@
     {{-- ── Skybox tab ───────────────────────────────────────────────────────── --}}
     <div x-show="view === 'skybox'" x-cloak class="space-y-2">
 
-        {{-- 2:1 preview --}}
-        @if ($hasSkyboxImage)
+        @if (count($candidates) && ! $hasSkyboxImage)
+            {{-- ── State A: candidates ready, awaiting the teacher's pick ───────── --}}
+            <div class="space-y-2">
+                <span class="text-[10px] uppercase tracking-widest text-slate-500 block">Pick your panorama</span>
+                <div class="grid grid-cols-2 gap-1.5">
+                    @foreach ($candidates as $i => $path)
+                        <button type="button"
+                                wire:click="selectSkyboxCandidate({{ $scene->id }}, {{ $i }})"
+                                wire:loading.attr="disabled" wire:target="selectSkyboxCandidate,generateSkyboxCandidates"
+                                class="group relative block w-full overflow-hidden rounded ring-1 ring-slate-700 hover:ring-2 hover:ring-amber-400 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                style="aspect-ratio:2/1">
+                            <img src="{{ asset('storage/' . $path) }}"
+                                 class="w-full h-full object-cover" />
+                        </button>
+                    @endforeach
+                </div>
+                <button type="button"
+                        wire:click="generateSkyboxCandidates({{ $scene->id }})"
+                        wire:loading.attr="disabled" wire:target="generateSkyboxCandidates"
+                        @disabled($isBusy)
+                        class="text-[10px] text-slate-400 hover:text-sky-400 underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1">
+                    <span wire:loading wire:target="generateSkyboxCandidates"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                    <span wire:loading.remove wire:target="generateSkyboxCandidates">↻ Generate 4 new options</span>
+                    <span wire:loading wire:target="generateSkyboxCandidates">Generating…</span>
+                </button>
+            </div>
+        @elseif ($hasSkyboxImage)
+            {{-- ── State B: a skybox has been chosen ───────────────────────────── --}}
             <div class="relative">
                 <img src="{{ asset('storage/' . $scene->skybox_image_path) }}?v={{ $scene->updated_at?->timestamp }}"
                      class="w-full rounded object-cover @if($isUpscaling) opacity-60 @endif" style="aspect-ratio:2/1" />
@@ -131,36 +158,16 @@
                     </div>
                 @endif
             </div>
-        @else
-            <div class="w-full rounded bg-slate-800 border border-dashed border-slate-600 flex items-center justify-center" style="aspect-ratio:2/1">
-                @if ($isGenerating)
-                    <x-icons.spinner class="w-5 h-5 animate-spin text-slate-500" />
-                @else
-                    <span class="text-xs text-slate-500">No panorama yet</span>
-                @endif
-            </div>
-        @endif
 
-        <div class="flex flex-wrap gap-1.5">
-            @if (! $hasSkyboxImage)
+            <div class="flex flex-wrap gap-1.5">
                 <button type="button"
-                        wire:click="generateSkyboxImage({{ $scene->id }})"
-                        wire:loading.attr="disabled" wire:target="generateSkyboxImage"
-                        @disabled($isBusy || ! $scene->image_path)
-                        class="btn btn-xs bg-sky-600 text-white hover:bg-sky-500 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                    <span wire:loading wire:target="generateSkyboxImage"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
-                    <span wire:loading.remove wire:target="generateSkyboxImage">Generate Skybox</span>
-                    <span wire:loading wire:target="generateSkyboxImage">Generating…</span>
-                </button>
-            @else
-                <button type="button"
-                        wire:click="generateSkyboxImage({{ $scene->id }})"
-                        wire:loading.attr="disabled" wire:target="generateSkyboxImage"
+                        wire:click="generateSkyboxCandidates({{ $scene->id }})"
+                        wire:loading.attr="disabled" wire:target="generateSkyboxCandidates"
                         @disabled($isBusy)
                         class="btn btn-xs btn-outline btn-sm border-slate-600 text-slate-400 hover:border-sky-500 hover:text-sky-400 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                    <span wire:loading wire:target="generateSkyboxImage"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
-                    <span wire:loading.remove wire:target="generateSkyboxImage">↻ Regenerate</span>
-                    <span wire:loading wire:target="generateSkyboxImage">Generating…</span>
+                    <span wire:loading wire:target="generateSkyboxCandidates"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                    <span wire:loading.remove wire:target="generateSkyboxCandidates">↻ Regenerate</span>
+                    <span wire:loading wire:target="generateSkyboxCandidates">Generating…</span>
                 </button>
                 <button type="button"
                         wire:click="enhanceSkybox({{ $scene->id }})"
@@ -171,11 +178,32 @@
                     <span wire:loading.remove wire:target="enhanceSkybox">Enhance 4×</span>
                     <span wire:loading wire:target="enhanceSkybox">Enhancing…</span>
                 </button>
-            @endif
-        </div>
+            </div>
+        @else
+            {{-- ── State C: nothing generated yet ──────────────────────────────── --}}
+            <div class="w-full rounded bg-slate-800 border border-dashed border-slate-600 flex items-center justify-center" style="aspect-ratio:2/1">
+                @if ($isGenerating)
+                    <x-icons.spinner class="w-5 h-5 animate-spin text-slate-500" />
+                @else
+                    <span class="text-xs text-slate-500">No panorama yet</span>
+                @endif
+            </div>
+
+            <div class="flex flex-wrap gap-1.5">
+                <button type="button"
+                        wire:click="generateSkyboxCandidates({{ $scene->id }})"
+                        wire:loading.attr="disabled" wire:target="generateSkyboxCandidates"
+                        @disabled($isBusy || ! $scene->image_path)
+                        class="btn btn-xs bg-sky-600 text-white hover:bg-sky-500 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                    <span wire:loading wire:target="generateSkyboxCandidates"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                    <span wire:loading.remove wire:target="generateSkyboxCandidates">Generate 4 panorama options</span>
+                    <span wire:loading wire:target="generateSkyboxCandidates">Generating…</span>
+                </button>
+            </div>
+        @endif
 
         @if (! $scene->image_path)
-            <p class="text-[10px] text-slate-500">Generate the flat image first to unlock skybox conversion.</p>
+            <p class="text-[10px] text-slate-500">Generate the flat image first to unlock panorama options.</p>
         @endif
 
         {{-- Blur --}}

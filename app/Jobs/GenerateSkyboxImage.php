@@ -75,6 +75,15 @@ class GenerateSkyboxImage implements ShouldQueue
 
     private function buildSkyboxPrompt(Scene $scene, string $style, OpenAiLlmService $llm): string
     {
+        return self::buildSkyboxPromptFor($scene, $style, $llm);
+    }
+
+    /**
+     * Build the equirectangular-panorama prompt for a scene. Shared by the single-panorama
+     * job and the 4-candidate job so both produce identical prompt logic.
+     */
+    public static function buildSkyboxPromptFor(Scene $scene, string $style, OpenAiLlmService $llm): string
+    {
         $brief = $scene->lesson->outline['scene_briefs'][$scene->order - 1] ?? [];
         $proposedVisuals = array_merge(
             $brief['visualEvidence'] ?? [],
