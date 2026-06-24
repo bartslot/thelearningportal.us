@@ -322,6 +322,25 @@
     z-index: 5;
 }
 
+/* ─── Reduced motion (accessibility) ─────────────────────────────────────
+   Respect prefers-reduced-motion: freeze the animated film grain and stop any
+   looping/long transitions. The grain texture stays (it's static), but it no
+   longer flickers — important for motion-sensitive students. */
+@media (prefers-reduced-motion: reduce) {
+    .lp-grain-poster::after,
+    .skybox-grain-overlay {
+        animation: none !important;
+    }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 /* ─── Background gradients ───────────────────────────────────────────── */
 .lp-bg-hero {
     background: linear-gradient(160deg, #020617 0%, #0f172a 45%, #1e3a5f 80%, #020617 100%);

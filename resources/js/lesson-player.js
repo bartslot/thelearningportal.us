@@ -114,7 +114,8 @@ let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpin
 // Alpine is imported directly (no Livewire on this page) — register before start()
 Alpine.data('lessonGame', (lesson) => ({
     // ── State ──────────────────────────────────────────────────────────
-    phase:  'LOADING',          // LOADING | TITLE_SCREEN | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP
+    phase:  'LOADING',          // LOADING | TITLE_SCREEN | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP | ENDED
+    canResumeAfterGame: false,  // shows the "Continue the lesson" button on the TIME_UP screen
     lesson: lesson,             // exposed to templates (title screen meta, etc.)
     prevPhase: null,            // phase before INTEL_DROP, to return to
 
@@ -620,15 +621,7 @@ Alpine.data('lessonGame', (lesson) => ({
             this._lastEventIndex = 0
             this._scriptEvents = parseScriptTags(scene.script, this._audio.duration || 0)
             this._audio.addEventListener('timeupdate', () => this._processScriptEvents(), { once: false })
-            this._audio.addEventListener('ended', () => {
-              const next = index + 1
-              if (next < _sceneQueue.length) {
-                this._sceneIndex = next
-                this._playScene(next)
-              } else {
-                this._onAudioEnded()
-              }
-            }, { once: true })
+            this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
           } else {
             setTimeout(bridgeAudio, 50)
           }
@@ -643,11 +636,7 @@ Alpine.data('lessonGame', (lesson) => ({
           this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
         })
         this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
-        this._audio.addEventListener('ended', () => {
-          const next = index + 1
-          if (next < _sceneQueue.length) { this._sceneIndex = next; this._playScene(next) }
-          else this._onAudioEnded()
-        }, { once: true })
+        this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
         this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
       }
     },
@@ -712,10 +701,12 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     _onAudioEnded () {
-      if (this.phase === 'INTRO') {
-        this._transitionToTeamReveal()
-      } else if (this.phase === 'GAME_BRIEF') {
+      if (this.phase === 'GAME_BRIEF') {
         this._transitionToGameActive()
+      } else {
+        // End of the narrative. Games are now driven by their own kind='game' scene, so the
+        // old end-of-narration team reveal is no longer the fallback — finish the lesson.
+        this._endLesson()
       }
     },
 
@@ -781,15 +772,13 @@ Alpine.data('lessonGame', (lesson) => ({
       this.phase = 'GAME_BRIEF'
       this._moveAvatarTo('right-centre')
 
-      // If a game brief audio segment exists, play it
+      // Narrate the setup if a brief-audio segment exists, but DON'T auto-advance — the challenge
+      // stays on screen until the teacher taps "Begin the challenge" (beginGame), so students have
+      // time to read the story-aligned scenario.
       if (lesson.game_brief_audio_url) {
         this._audio = new Audio(lesson.game_brief_audio_url)
         this._attachAudioListeners()
-        this._audio.addEventListener('ended', () => this._transitionToGameActive())
-        this._audio.play().catch(() => this._transitionToGameActive())
-      } else {
-        // No brief audio — go straight to game after short delay
-        setTimeout(() => this._transitionToGameActive(), 3000)
+        this._audio.play().catch(() => {})
       }
     },
 
@@ -813,6 +802,57 @@ Alpine.data('lessonGame', (lesson) => ({
         const msUntilDrop = lesson.intel_drop_at_seconds * 1000
         setTimeout(() => this._triggerIntelDrop(), msUntilDrop)
       }
+    },
+
+    // ── Game flow (driven by a kind='game' scene) ──────────────────────
+    // When narration reaches a game scene we play its intro audio, then show the
+    // story-aligned challenge brief. The teacher taps "Begin the challenge" to start
+    // the timer and "Continue the lesson" afterwards to return to the narrative.
+    _afterSceneAudio (index, scene) {
+      if (scene && scene.kind === 'game') {
+        this._gameResumeIndex = index + 1
+        this.canResumeAfterGame = this._gameResumeIndex < _sceneQueue.length
+        this._beginGameFlow(scene)
+        return
+      }
+      const next = index + 1
+      if (next < _sceneQueue.length) {
+        this._sceneIndex = next
+        this._playScene(next)
+      } else {
+        this._onAudioEnded()
+      }
+    },
+
+    _beginGameFlow (scene) {
+      this._gameScene = scene
+      if (scene.duration_seconds) this._gameDurationSecs = scene.duration_seconds
+      this._transitionToGameBrief()
+    },
+
+    beginGame () {
+      if (this._audio && !this._audio.paused) this._audio.pause()
+      this._transitionToGameActive()
+    },
+
+    resumeAfterGame () {
+      if (this._timerInterval) clearInterval(this._timerInterval)
+      this.canResumeAfterGame = false
+      const next = this._gameResumeIndex
+      if (next != null && next < _sceneQueue.length) {
+        this.phase = 'INTRO'
+        this._sceneIndex = next
+        this._playScene(next)
+      } else {
+        this._endLesson()
+      }
+    },
+
+    _endLesson () {
+      if (this._audio && !this._audio.paused) this._audio.pause()
+      if (this._timerInterval) clearInterval(this._timerInterval)
+      this.phase = 'ENDED'
+      this.audioPlaying = false
     },
 
     // ── Timer ──────────────────────────────────────────────────────────

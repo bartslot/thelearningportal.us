@@ -33,6 +33,10 @@ class GenerateLessonQuiz implements ShouldQueue
     {
         $lesson = Lesson::with('scenes')->findOrFail($this->lessonId);
 
+        // Idempotent: a retry, a manual re-run, or a re-queued batch ->then() must regenerate
+        // the question set, not append duplicates on top of the previous run.
+        QuizQuestion::where('lesson_id', $lesson->id)->delete();
+
         $result = $llm->json(
             system: QuizPrompt::system(),
             user:   QuizPrompt::user($lesson),
