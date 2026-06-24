@@ -22,7 +22,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-9XL0guqv.css",
+    "file": "assets/app-Z9FbiS5P.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -74,7 +74,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-ld2cMvmQ.js",
+    "file": "assets/lesson-player-StpF0v9-.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
