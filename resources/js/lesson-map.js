@@ -12,12 +12,15 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addMountainLayer } from './map-mountains.js'
 import { addForestLayer } from './map-forests.js'
+import { addScatterLayer } from './map-scatter.js'
+import { addVolcanoLayer } from './map-volcanoes.js'
 
 const PALETTE = {
   land: '#f3ead6',
   water: '#d8e9f3',
   fill: '#c9b79c',
-  highlight: '#f5c518',
+  highlight: '#c0392b',      // selected-polity border (red)
+  highlightFill: '#c0392b',  // selected-polity red wash, painted over the terrain (~0.3 opacity)
   line: '#5b4a36',
   river: '#6a8fa0',
   city: '#3a2c1a',
@@ -56,9 +59,10 @@ export function renderLessonMap (el, opts = {}) {
     attributionControl: false,
     style: {
       version: 8,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      glyphs: `${location.origin}/fonts/{fontstack}/{range}.pbf`, // calligraphy labels (see build-glyphs.mjs)
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        graticule: { type: 'geojson', data: `${location.origin}/timemap/graticule.geojson` },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         cities: { type: 'vector', tiles: [`${location.origin}/city-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -73,6 +77,8 @@ export function renderLessonMap (el, opts = {}) {
       },
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
+        // Sketched sea grid (old-chart graticule), water-only (clipped at build time), beneath the coast/land.
+        { id: 'graticule', type: 'line', source: 'graticule', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b9277', 'line-width': 0.55, 'line-opacity': 0.5 } },
         // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
         // south-facing shores for relief.
         { id: 'coast-shadow', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': PALETTE.coastShadow, 'line-width': 2.4, 'line-translate': [0, 2], 'line-blur': 0.4 } },
@@ -120,7 +126,8 @@ export function renderLessonMap (el, opts = {}) {
             'text-field': ['get', 'name'],
             'text-size': ['interpolate', ['linear'], ['zoom'], 2, 9, 6, 13],
             'text-anchor': 'left', 'text-offset': [0.6, 0], 'text-optional': true,
-            'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+            'text-font': ['Eagle Lake'], // Tolkien-style calligraphy for city names
+            'text-letter-spacing': 0.02,
           },
           paint: {
             'text-color': PALETTE.city,
@@ -195,10 +202,26 @@ export function renderLessonMap (el, opts = {}) {
     setYear(year)
     requestAfterTiles(fitToPolity)
 
-    // Vector terrain decoration: a forest field beneath the peaks, both under the city labels.
-    // Chained so the order is deterministic (forests below mountains).
-    addForestLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land })
-      .then(() => addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land }))
+    // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
+    // all below the city labels. Peaks are softened (opacity 0.7) so dense ranges read as a
+    // mountain field rather than a black wall, and the territory's red wash stays legible.
+    addScatterLayer(map, { beforeId: 'city-dots' })
+      .then(() => addForestLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land }))
+      .then(() => addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land, opacity: 0.7 }))
+      .then(() => addVolcanoLayer(map, { beforeId: 'city-dots' }))
+      .then(() => {
+        // Red territory wash ABOVE the terrain so it tints the whole selected polity — hills
+        // and peaks included. Only the highlighted (selected) polity is painted; others stay clear.
+        if (map.getLayer('boundaries-fill')) return
+        map.addLayer({
+          id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
+          filter: polityFilter(year),
+          paint: {
+            'fill-color': PALETTE.highlightFill,
+            'fill-opacity': ['case', ['boolean', ['feature-state', 'highlight'], false], 0.32, 0],
+          },
+        }, map.getLayer('city-dots') ? 'city-dots' : undefined)
+      })
   })
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })
@@ -216,6 +239,7 @@ export function renderLessonMap (el, opts = {}) {
     year = Math.round(Number(y))
     if (!map.getLayer('boundaries-line')) return
     map.setFilter('boundaries-line', polityFilter(year))
+    if (map.getLayer('boundaries-fill')) map.setFilter('boundaries-fill', polityFilter(year))
     // Cities are period-specific — re-filter them too.
     if (map.getLayer('city-dots')) map.setFilter('city-dots', cityFilter(year))
     if (map.getLayer('city-labels')) map.setFilter('city-labels', cityFilter(year))

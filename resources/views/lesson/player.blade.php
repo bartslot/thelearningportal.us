@@ -126,7 +126,9 @@
 
         {{-- Logo — always visible, top-left, same size as app navbar --}}
         <div class="absolute top-4 left-4 sm:left-6 lg:left-8 pointer-events-none" style="z-index:50">
-            <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-28 w-auto opacity-90">
+            {{-- Dark halo keeps the light wordmark legible on bright map / Ken Burns slides. --}}
+            <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-28 w-auto"
+                 style="filter: drop-shadow(0 0 14px rgba(0,0,0,0.85)) drop-shadow(0 2px 4px rgba(0,0,0,0.65));">
         </div>
 
         {{-- Source attribution (A4) — bottom-left, unobtrusive --}}
@@ -180,36 +182,25 @@
             </button>
         </div>
 
-        {{-- Location + Year (top-left) — shown during INTRO phase --}}
+        {{-- Location + era — bottom-left, shown during INTRO / GAME_ACTIVE (no moon) --}}
         <div
             x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE'"
             x-transition:enter="transition ease-out duration-700"
-            x-transition:enter-start="opacity-0 -translate-y-4"
+            x-transition:enter-start="opacity-0 translate-y-4"
             x-transition:enter-end="opacity-100 translate-y-0"
-            class="absolute top-8 left-8 flex items-center gap-5 pointer-events-none"
+            class="absolute bottom-8 left-4 sm:left-6 lg:left-8 flex flex-col gap-1.5 pointer-events-none"
+            style="z-index:45"
         >
-            {{-- Year inside Moon SVG --}}
-            <div class="relative flex items-center justify-center" style="width:120px;height:123px;">
-                <svg class="absolute inset-0" width="120" height="123" viewBox="0 0 235 240" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M67.019 231.899C97.6638 240.641 132.178 237.544 162.462 220.608C220.148 188.346 240.644 118.109 208.241 63.7269C175.837 9.34474 102.802 -8.58925 45.1148 23.671C25.6292 34.5687 10.3932 49.8048 0 67.2943C10.4394 46.5488 27.1619 28.4934 49.3482 16.0853C108.551 -17.024 184.242 2.61848 218.409 59.958C252.576 117.298 232.279 190.621 173.076 223.73C139.498 242.508 100.62 244.312 67.019 231.899Z" fill="white"/>
-                </svg>
-                <span
-                    x-text="lessonYear"
-                    :class="lessonYear && lessonYear.length > 4 ? 'text-3xl' : 'text-4xl'"
-                    class="relative font-history font-bold text-[#E1EEF4] drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] leading-none z-10"
-                ></span>
-            </div>
-
             {{-- Location --}}
             <div class="flex items-center gap-2">
-                <svg class="shrink-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" width="16" height="20" viewBox="0 0 21 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <svg class="shrink-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" width="16" height="20" viewBox="0 0 21 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M10.3329 0C4.63543 0 0 4.63543 0 10.3329C0 19.3812 9.58334 25.4792 9.9913 25.735L10.334 25.9493L10.6767 25.735C11.0848 25.4795 20.668 19.3812 20.668 10.3329C20.668 4.63543 16.0326 0 10.3351 0H10.3329ZM10.3329 15.5C7.47996 15.5 5.16584 13.1871 5.16584 10.3329C5.16584 7.47996 7.47872 5.16584 10.3329 5.16584C13.1859 5.16584 15.5 7.47872 15.5 10.3329C15.5 13.1859 13.1871 15.5 10.3329 15.5Z" fill="white"/>
                 </svg>
-                <span
-                    x-text="lessonLocation"
-                    class="font-history font-bold text-lg text-[#E1EEF4] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
-                ></span>
+                <span x-text="lessonLocation" class="font-history font-bold text-xl text-[#E1EEF4] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"></span>
             </div>
+
+            {{-- Era / year --}}
+            <span x-show="lessonYear" x-text="lessonYear" class="pl-6 font-history font-semibold text-base text-[#E1EEF4]/90 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"></span>
         </div>
 
         {{-- ── TITLE SCREEN — Netflix style ────────────────────────────── --}}
