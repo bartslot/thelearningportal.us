@@ -18,7 +18,19 @@ Route::pattern('lesson', '[0-9]+');
 // ── Public ───────────────────────────────────────────────────────────────────
 
 Route::get('/', function () {
-    return view('historyportal');
+    // Publicly playable lessons (Published + Previewable) surfaced on the landing page so
+    // visitors can open one straight into the player (no auth required — see lesson.play).
+    $playableLessons = Lesson::whereIn('status', [
+            LessonStatusEnum::Published->value,
+            LessonStatusEnum::Previewable->value,
+        ])
+        ->whereNotNull('lesson_code')
+        ->with(['firstScene', 'source'])
+        ->latest()
+        ->take(12)
+        ->get();
+
+    return view('historyportal', compact('playableLessons'));
 })->name('home');
 
 Route::get('/about', function () {
@@ -91,13 +103,16 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
             $data = $request->filled('qid')
                 ? $resolver->resolveByQid($request->string('qid')->toString())
                 : $resolver->resolve($request->string('name')->toString());
+            // Era = the Cliopatria span the tiles render by (see CliopatriaSpans), so the panel
+            // matches the map; Wikidata P571/P576 is only a fallback for non-list polities.
+            $span = app(\App\Services\CliopatriaSpans::class)->for($request->filled('qid') ? $request->string('qid')->toString() : $osmId);
             $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
                 // Prefer the dataset's clean era-name (Cliopatria Name) over the Wikidata label so the
                 // panel title matches the map label; fall back to the Wikidata label.
                 'polity_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $data['label'],
                 'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],
-                'wikipedia_url' => $data['wikipedia_url'], 'inception' => $data['inception'],
-                'dissolution' => $data['dissolution'], 'predecessor' => $data['predecessor'],
+                'wikipedia_url' => $data['wikipedia_url'], 'inception' => $span['from'] ?? $data['inception'],
+                'dissolution' => $span['to'] ?? $data['dissolution'], 'predecessor' => $data['predecessor'],
                 'successor' => $data['successor'], 'sitelinks' => $data['sitelinks'],
                 'significant' => true, 'updated_at' => now(),
             ]);
