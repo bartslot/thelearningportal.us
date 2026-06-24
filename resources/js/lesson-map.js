@@ -14,6 +14,7 @@ import { addMountainLayer } from './map-mountains.js'
 import { addForestLayer } from './map-forests.js'
 import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
+import { renderAnnotations } from './map-annotations.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -48,7 +49,7 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true } = opts
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null } = opts
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -223,6 +224,12 @@ export function renderLessonMap (el, opts = {}) {
         }, map.getLayer('city-dots') ? 'city-dots' : undefined)
       })
   })
+  // Teacher map annotations (focus cities, etc.) — rendered as DOM markers once the style is up.
+  let anno = null
+  map.on('load', () => {
+    anno = renderAnnotations(map, annotations, { editable, onChange: onAnnotationsChange })
+  })
+
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
   map.on('idle', () => { if (qid && !didFit) fitToPolity() })
 
@@ -249,7 +256,9 @@ export function renderLessonMap (el, opts = {}) {
     map,
     setYear,
     flyToPolity: fitToPolity,
-    destroy: () => { try { map.remove() } catch (_) {} },
+    setAnnotations: (a) => anno?.update(a),
+    beginAddFocus: () => anno?.beginAddFocus(),
+    destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
   }
 }
 

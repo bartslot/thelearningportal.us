@@ -36,6 +36,37 @@
         </label>
     </div>
 
+    {{-- Focus cities — teacher drops a red dot + label on the map (annotations[].type === 'focus'). --}}
+    <div class="form-control border-t border-slate-700/50 pt-3">
+        <span class="text-xs uppercase tracking-wider text-slate-400">Focus cities</span>
+        <button type="button"
+                onclick="window.dispatchEvent(new CustomEvent('lessonmap:add-focus'))"
+                class="btn btn-sm btn-outline btn-block mt-1">+ Add focus city (then click the map)</button>
+
+        @php $annotations = $scene->config['annotations'] ?? []; @endphp
+        @if (count($annotations))
+            <ul class="mt-2 space-y-1.5">
+                @foreach ($annotations as $i => $a)
+                    @if (($a['type'] ?? null) === 'focus')
+                        <li class="flex items-center gap-1.5">
+                            <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:#c0392b;border:2px solid #fff;"></span>
+                            <input type="text"
+                                   value="{{ $a['label'] ?? '' }}"
+                                   wire:change="renameFocus({{ $i }}, $event.target.value)"
+                                   placeholder="Place name"
+                                   class="input input-xs input-bordered bg-slate-900 flex-1" />
+                            <button type="button" wire:click="removeFocus({{ $i }})"
+                                    class="shrink-0 text-rose-300 hover:text-rose-200 text-xs px-1"
+                                    title="Remove focus city" aria-label="Remove focus city">✕</button>
+                        </li>
+                    @endif
+                @endforeach
+            </ul>
+        @else
+            <p class="mt-1 text-[10px] text-slate-500">No focus cities yet — add one to mark a key place on the map.</p>
+        @endif
+    </div>
+
     {{-- Territory picker — link a polity's Wikidata QID for an accurate red boundary. --}}
     @php $qid = $scene->config['qid'] ?? null; @endphp
     <div class="form-control">

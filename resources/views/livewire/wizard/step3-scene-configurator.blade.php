@@ -54,9 +54,19 @@
             inner.style.height = '100%'
             host.appendChild(inner)
             if (window.renderLessonMap) {
-                inst = window.renderLessonMap(inner, { qid: cfg.qid || null, year, interactive: true })
+                inst = window.renderLessonMap(inner, {
+                    qid: cfg.qid || null,
+                    year,
+                    interactive: true,
+                    annotations: cfg.annotations || [],
+                    editable: true,
+                    onAnnotationsChange: (a) => window.Livewire.dispatch('annotationsChanged', { sceneId: p.sceneId, annotations: a }),
+                })
             }
         })
+
+        // Inspector "+ Add focus city" button → put the map into drop-a-pin mode.
+        window.addEventListener('lessonmap:add-focus', () => inst && inst.beginAddFocus())
     })
     </script>
     @endpush

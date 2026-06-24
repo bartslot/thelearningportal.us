@@ -713,6 +713,7 @@ Alpine.data('lessonGame', (lesson) => ({
           qid: cfg.qid || null,
           year: cfg.year ?? 1600,
           interactive: mode === 'interactive',
+          annotations: cfg.annotations || [],   // read-only focus cities for students
         })
       }
 

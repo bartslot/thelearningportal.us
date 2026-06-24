@@ -296,6 +296,103 @@ class Step3SceneConfigurator extends Component
         $this->saveSelected();
     }
 
+    // ── Map block: focus-city annotations ────────────────────────────────
+    // The map preview (editable) drops/drags red "focus" dots and dispatches the whole array
+    // back here. Annotations live in scene.config.annotations as:
+    //   ['type' => 'focus', 'lng' => <float>, 'lat' => <float>, 'label' => <string ≤80>]
+    // Designed for extension: unknown future types (arrows, markers) pass through untouched so
+    // older data is never destroyed; phase 1 only coerces 'focus' items.
+    private const FOCUS_LABEL_MAX = 80;
+
+    #[On('annotationsChanged')]
+    public function updateAnnotations(int $sceneId, array $annotations): void
+    {
+        $scene = $this->lesson->scenes()->find($sceneId);
+        if (! $scene) {
+            return;
+        }
+
+        $clean = $this->sanitizeAnnotations($annotations);
+
+        $scene->config = array_merge($scene->config ?? [], ['annotations' => $clean]);
+        $scene->save();
+
+        // Keep the inspector list in sync if this is the scene currently open.
+        if ($this->selectedSceneId === $sceneId && $this->selectedScene !== null) {
+            $this->selectedScene['config'] = array_merge(
+                $this->selectedScene['config'] ?? [],
+                ['annotations' => $clean]
+            );
+        }
+    }
+
+    public function renameFocus(int $index, string $label): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $annotations = $this->selectedScene['config']['annotations'] ?? [];
+        if (! array_key_exists($index, $annotations) || ($annotations[$index]['type'] ?? null) !== 'focus') {
+            return;
+        }
+        $annotations[$index]['label'] = mb_substr(trim($label), 0, self::FOCUS_LABEL_MAX);
+        $this->selectedScene['config']['annotations'] = $annotations;
+        $this->saveSelected();
+    }
+
+    public function removeFocus(int $index): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $annotations = $this->selectedScene['config']['annotations'] ?? [];
+        if (! array_key_exists($index, $annotations)) {
+            return;
+        }
+        array_splice($annotations, $index, 1);
+        $this->selectedScene['config']['annotations'] = array_values($annotations);
+        $this->saveSelected();
+    }
+
+    /**
+     * Coerce focus items to a safe shape; pass unknown types through untouched so future
+     * annotation kinds survive a phase-1 save. Drops malformed focus items.
+     *
+     * @param  array<int,mixed>  $annotations
+     * @return array<int,array<string,mixed>>
+     */
+    private function sanitizeAnnotations(array $annotations): array
+    {
+        $clean = [];
+        foreach ($annotations as $a) {
+            if (! is_array($a)) {
+                continue;
+            }
+            $type = $a['type'] ?? null;
+
+            if ($type === 'focus') {
+                if (! isset($a['lng'], $a['lat']) || ! is_numeric($a['lng']) || ! is_numeric($a['lat'])) {
+                    continue;
+                }
+                $clean[] = [
+                    'type' => 'focus',
+                    'lng' => (float) $a['lng'],
+                    'lat' => (float) $a['lat'],
+                    'label' => mb_substr(trim((string) ($a['label'] ?? '')), 0, self::FOCUS_LABEL_MAX),
+                ];
+
+                continue;
+            }
+
+            // Unknown/future type — keep as-is so we never destroy data we don't yet understand.
+            if ($type !== null) {
+                $clean[] = $a;
+            }
+        }
+
+        return $clean;
+    }
+
     public function setSceneView(string $view): void
     {
         if ($this->selectedScene) {
