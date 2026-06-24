@@ -299,6 +299,7 @@
                     window.addEventListener('pointerup', this._inspectorUpHandler);
                     window.addEventListener('resize', this._inspectorResizeHandler);
 
+                    await window.loadLessonScene?.();
                     if (!window.LessonScene?.mountWizardScene) return;
 
                     const dataEl       = document.getElementById('step3-scenes-data');

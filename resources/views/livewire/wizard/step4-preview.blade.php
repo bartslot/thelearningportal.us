@@ -71,6 +71,7 @@
             _fadingOut: false,
 
             async init() {
+                await window.loadLessonScene?.();
                 if (!window.LessonScene?.mountWizardScene) return;
 
                 const dataEl       = document.getElementById('step4-scenes-data');

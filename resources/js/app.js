@@ -2,20 +2,17 @@ import './bootstrap';
 import { gsap } from 'gsap';
 import Flickity from 'flickity';
 import 'flickity/css/flickity.css';
-import { SkyboxSphere }        from './scene/SkyboxSphere.js';
-import { SceneOverlay }        from './scene/SceneOverlay.js';
-import { SceneTimelinePlayer } from './scene/SceneTimelinePlayer.js';
-import { GameTimerOverlay }    from './scene/GameTimerOverlay.js';
-import { AmplitudeWaveform }   from './scene/AmplitudeWaveform.js';
-import { mountWizardScene }    from './scene/wizard-bridge.js';
 import Sortable                from 'sortablejs';
 
 window.Sortable = Sortable;
 
-window.LessonScene = {
-    SkyboxSphere, SceneOverlay, SceneTimelinePlayer, GameTimerOverlay, AmplitudeWaveform,
-    mountWizardScene,
-};
+// The 3D scene system (three.js, ~1.7 MB) is used ONLY by the lesson-creation wizard. Load it on
+// demand via window.loadLessonScene() so the landing page and other app pages never download three.
+// The wizard step views await this before touching window.LessonScene.
+window.loadLessonScene = () => import('./scene/index.js').then((module) => {
+    window.LessonScene = module;
+    return module;
+});
 
 const isHeroBackgroundHover = (eventTarget) => {
     const hero = document.querySelector('#home');
