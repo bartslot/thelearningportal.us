@@ -8,9 +8,6 @@
     <meta name="description" content="The Learning Portal is a cinematic history landing page for teachers and students.">
     <title>{{ $title }} — The Learning Portal</title>
 
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
-
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>

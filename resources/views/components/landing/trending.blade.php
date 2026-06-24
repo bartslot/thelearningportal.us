@@ -3,31 +3,31 @@
         [
             'title' => 'The Punic Wars',
             'category' => 'Ancient History',
-            'image' => asset('history/popular1.jpg'),
+            'image' => asset('history/popular1.webp'),
             'description' => 'Three devastating wars between Rome and Carthage that shaped the ancient Mediterranean world.',
         ],
         [
             'title' => 'Abraham Lincoln',
             'category' => 'American History',
-            'image' => asset('history/popular2.jpg'),
+            'image' => asset('history/popular2.webp'),
             'description' => 'The 16th President who led America through the Civil War and abolished slavery.',
         ],
         [
             'title' => 'Colosseum',
             'category' => 'Roman Empire',
-            'image' => asset('history/popular3.jpg'),
+            'image' => asset('history/popular3.webp'),
             'description' => "Rome's iconic amphitheater where gladiators fought before 50,000 spectators.",
         ],
         [
             'title' => 'Gladiators',
             'category' => 'Roman Culture',
-            'image' => asset('history/popular4.jpg'),
+            'image' => asset('history/popular4.webp'),
             'description' => 'Professional fighters who battled in arenas for entertainment and honor in ancient Rome.',
         ],
         [
             'title' => 'Silk Road',
             'category' => 'Trade Routes',
-            'image' => asset('history/popular5.jpg'),
+            'image' => asset('history/popular5.webp'),
             'description' => 'Ancient network of trade routes connecting East and West for over 1,400 years.',
         ],
     ];
@@ -36,25 +36,25 @@
         [
             'title' => 'Interactive Lessons',
             'description' => 'Interaction energizes your class. Techniques that prompt students to respond in real time keep attention high and make the material easier to absorb.',
-            'image' => asset('history/6history.jpg'),
+            'image' => asset('history/6history.webp'),
             'icon' => '📚',
         ],
         [
             'title' => 'Engaged Students',
             'description' => 'Learning can be fun. With gamification, lessons feel active and memorable, improving engagement and retention in class.',
-            'image' => asset('history/12history.jpg'),
+            'image' => asset('history/12history.webp'),
             'icon' => '🎮',
         ],
         [
             'title' => 'Track Progress',
             'description' => 'Track each student’s progress and see how lessons perform through a clear dashboard built for teachers.',
-            'image' => asset('history/18history.jpg'),
+            'image' => asset('history/18history.webp'),
             'icon' => '📊',
         ],
         [
             'title' => 'Made for Teachers',
             'description' => 'The editor helps teachers refine, adjust, and enhance content. Building a new lesson is faster and easier with the right tools.',
-            'image' => asset('history/24history.jpg'),
+            'image' => asset('history/24history.webp'),
             'icon' => '👩‍🏫',
         ],
     ];

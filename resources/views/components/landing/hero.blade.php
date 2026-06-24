@@ -36,7 +36,7 @@
     data-portal-images='@json(array_map(fn ($image) => asset("assets/{$image}"), $portalCards))'
 >
     {{-- Deep navy radial gradient background --}}
-    <img src="{{ asset('assets/videocards.webp') }}" alt="wheel" class="h-7xl w-7xl pointer-events-none absolute wheel z-10" />
+    <img src="{{ asset('assets/videocards.webp') }}" alt="wheel" fetchpriority="high" class="h-7xl w-7xl pointer-events-none absolute wheel z-10" />
     <div class="hero-glow pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_100%,#0d2a4a_0%,#020b24_55%,#010510_100%)] opacity-60"></div>
     {{-- Subtle center glow --}}
     <div class="hero-spotlight pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_60%,rgba(30,80,140,0.45)_0%,transparent_70%)] bg-blend-overlay"></div>

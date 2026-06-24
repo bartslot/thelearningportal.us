@@ -23,10 +23,11 @@ APP_DEBUG=false
 APP_URL=https://thelearningportal.us
 # APP_KEY — generate a fresh one:  php artisan key:generate
 
-# App DB (your prod Postgres — e.g. a Supabase app project)
+# App DB — SiteGround LOCAL Postgres (sub-ms; NOT a remote cloud DB). Create the
+# DB + user in Site Tools -> PostgreSQL Manager, then ASSIGN the user to the DB.
 DB_CONNECTION=pgsql
-DB_HOST=...  DB_PORT=5432  DB_DATABASE=...  DB_USERNAME=...  DB_PASSWORD=...
-DB_SEARCH_PATH=app
+DB_HOST=127.0.0.1  DB_PORT=5432  DB_DATABASE=<sg_db>  DB_USERNAME=<sg_user>  DB_PASSWORD=...
+DB_SEARCH_PATH=app  DB_SSLMODE=prefer
 
 # Corpus (unchanged — already secured with RLS)
 CORPUS_DB_HOST=aws-1-us-east-2.pooler.supabase.com
@@ -44,7 +45,8 @@ QUEUE_CONNECTION=database
 Import the dump into your prod Postgres (fresh DB recommended — the dump carries schema + data):
 ```bash
 psql "$DATABASE_URL" < storage/app/backups/demo-snapshot.sql
-# (or paste it into the Supabase SQL editor)
+# app DB = SiteGround's LOCAL Postgres; the read-only corpus stays on Supabase.
+# To re-migrate app data off a cloud DB:  pg_dump -n app --no-owner --no-privileges <src> | psql <local>
 ```
 If the dump's roles/owners differ on prod, it was made with --no-owner so it should apply cleanly.
 
