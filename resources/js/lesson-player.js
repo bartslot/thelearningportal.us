@@ -15,8 +15,12 @@
  */
 
 import Alpine from 'alpinejs'
-import { Avatar3DPlayer } from './avatar-3d.js'
 import QRCode from 'qrcode'
+
+// 3D narrator retired — the player is fully 2D (portrait badge + Ken-Burns background).
+// Flip to true to re-enable the Three.js avatar/skybox path; the avatar-3d.js chunk is
+// code-split behind dynamic import()s below so it never downloads while this is false.
+const USE_3D = false
 
 // ── Avatar canvas position presets ───────────────────────────────────────────
 // Each preset is a CSS class set applied to the #avatar-wrap element.
@@ -189,7 +193,15 @@ Alpine.data('lessonGame', (lesson) => ({
       const coverImg    = lesson.cover_image_url ? [{ url: lesson.cover_image_url }] : []
       const slideshowImgs = lesson.slideshow_images ?? []
       const sceneImgs   = (slideshowImgs.length === 0) ? (lesson.scene_images ?? []) : []
-      this._kbImages    = [...coverImg, ...slideshowImgs, ...sceneImgs]
+      // 2D mode: fold every scene's panorama (skybox scenes included) into the Ken-Burns
+      // slideshow so a skybox scene shows its 360° image flat as a 2D background.
+      const scenePanoramas = USE_3D
+        ? []
+        : (lesson.scenes ?? [])
+            .map(s => s.skybox_image_path || s.image_url)
+            .filter(Boolean)
+            .map(url => ({ url }))
+      this._kbImages    = [...coverImg, ...slideshowImgs, ...sceneImgs, ...scenePanoramas]
 
       this._buildBackgroundLayer()
       this._buildAvatarWrapper()
@@ -257,10 +269,14 @@ Alpine.data('lessonGame', (lesson) => ({
         console.warn('lesson-player: assets load error (starting anyway):', e?.message)
       }
 
-      // 3D bg canvas takes over — stop Ken Burns slideshow and reveal 3D scene
-      clearInterval(this._kbInterval)
-      this._kbInterval = null
-      this._showBgScene()
+      // 3D bg canvas takes over — stop Ken Burns slideshow and reveal 3D scene.
+      // In 2D mode there is no 3D canvas, so keep the Ken-Burns slideshow running
+      // for the whole lesson (each scene's image is fed into it by _playScene).
+      if (USE_3D) {
+        clearInterval(this._kbInterval)
+        this._kbInterval = null
+        this._showBgScene()
+      }
 
       this.phase = 'INTRO'
       this._playIntro()
@@ -357,6 +373,9 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     async _initAvatar () {
+      // 3D avatar retired — the narrator is a flat portrait badge (see player.blade.php).
+      if (!USE_3D) return
+
       // Destroy any existing instance first — prevents dual RAF loops from Vite HMR
       // or any re-init scenario where two Avatar3DPlayer instances fight over morph targets
       if (_avatarInstance) {
@@ -376,6 +395,8 @@ Alpine.data('lessonGame', (lesson) => ({
       }
 
       try {
+        // Dynamic import keeps the heavy Three.js avatar chunk out of the eager bundle.
+        const { Avatar3DPlayer } = await import('./avatar-3d.js')
         _avatarInstance = new Avatar3DPlayer(canvas, { characterUrl: avatarUrl, alpha: true })
         window._av = _avatarInstance
         await _avatarInstance.init()
@@ -405,6 +426,9 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Background 3D scene (skybox only, no character) ────────────────
     async _initBgScene () {
+      // 3D skybox retired — scene backgrounds render flat via the Ken-Burns slideshow.
+      if (!USE_3D) return
+
       // Destroy any stale instance (e.g. Vite HMR)
       if (_bgInstance) {
         try { _bgInstance.destroy?.() } catch (_) {}
@@ -432,6 +456,8 @@ Alpine.data('lessonGame', (lesson) => ({
       await new Promise(r => setTimeout(r, 50))
 
       try {
+        // Dynamic import keeps the heavy Three.js skybox chunk out of the eager bundle.
+        const { Avatar3DPlayer } = await import('./avatar-3d.js')
         _bgInstance = new Avatar3DPlayer(canvas, { characterUrl: null })
         await _bgInstance.init()
 
@@ -463,6 +489,8 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // Fade the 3D background scene in (called when lesson starts)
     _showBgScene () {
+      // 2D mode: there is no 3D canvas — keep the Ken-Burns slideshow visible.
+      if (!USE_3D) return
       if (!_bgCanvas) return
       // Apply immediately (no rAF — rAF pauses in background/unfocused tabs)
       _bgCanvas.classList.remove('opacity-0')
@@ -652,12 +680,24 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     // ── Map block slide ────────────────────────────────────────────────
-    _playMapScene (index, scene) {
+    async _playMapScene (index, scene) {
       // Silence any narration carried over from the previous scene.
       if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
 
       const cfg = scene.config || {}
       const mode = cfg.playback_mode === 'timed' ? 'timed' : 'interactive'
+
+      // Load the MapLibre map block (+ its ~1 MB volcanoes/terrain chunk) on demand — it is no
+      // longer eagerly bundled with the player. The module sets window.renderLessonMap on import.
+      if (!window.renderLessonMap) {
+        try {
+          await import('./lesson-map.js')
+        } catch (e) {
+          console.warn('lesson-player: map block failed to load — skipping map scene', e)
+          this._advanceScene(index)
+          return
+        }
+      }
 
       const stage = document.getElementById('lesson-map-stage')
       if (stage && window.renderLessonMap) {

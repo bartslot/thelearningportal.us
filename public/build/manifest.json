@@ -21,8 +21,18 @@
     "file": "assets/map-volcanoes-DNVN2dqC.css",
     "src": "_map-volcanoes-DNVN2dqC.css"
   },
+  "_preload-helper-DIdkKO6w.js": {
+    "file": "assets/preload-helper-DIdkKO6w.js",
+    "name": "preload-helper"
+  },
+  "node_modules/three/build/three.module.js": {
+    "file": "assets/three.module-CpB-wl7P.js",
+    "name": "three.module",
+    "src": "node_modules/three/build/three.module.js",
+    "isDynamicEntry": true
+  },
   "resources/css/app.css": {
-    "file": "assets/app-C1_FxCmG.css",
+    "file": "assets/app-C8kQAHVh.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -31,17 +41,18 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-NpHsa01w.js",
+    "file": "assets/app-qLJx-PKd.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
     "imports": [
+      "_preload-helper-DIdkKO6w.js",
       "_index-DDlvirwQ.js",
-      "__commonjsHelpers-CqkleIqs.js",
-      "resources/js/avatar-3d.js"
+      "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
-      "resources/js/avatar-3d.js"
+      "resources/js/scene/index.js",
+      "node_modules/three/build/three.module.js"
     ],
     "css": [
       "assets/app-AEfMPvIN.css"
@@ -57,30 +68,46 @@
     ]
   },
   "resources/js/avatar-3d.js": {
-    "file": "assets/avatar-3d-BXpyKIRK.js",
+    "file": "assets/avatar-3d-CaPQOF-m.js",
     "name": "avatar-3d",
     "src": "resources/js/avatar-3d.js",
     "isEntry": true,
-    "isDynamicEntry": true
+    "imports": [
+      "node_modules/three/build/three.module.js"
+    ]
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-Hr17U5k4.js",
+    "file": "assets/lesson-map-Bv97XaHJ.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
+    "isDynamicEntry": true,
     "imports": [
       "_map-volcanoes-CBPJCBgV.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-StpF0v9-.js",
+    "file": "assets/lesson-player-QW8Ih1V9.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
     "imports": [
-      "resources/js/avatar-3d.js",
+      "_preload-helper-DIdkKO6w.js",
       "__commonjsHelpers-CqkleIqs.js"
+    ],
+    "dynamicImports": [
+      "resources/js/lesson-map.js"
+    ]
+  },
+  "resources/js/scene/index.js": {
+    "file": "assets/index-BKtR6XKp.js",
+    "name": "index",
+    "src": "resources/js/scene/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "node_modules/three/build/three.module.js",
+      "resources/js/avatar-3d.js"
     ]
   },
   "resources/js/timemap/index.js": {

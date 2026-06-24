@@ -4,7 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $lesson->title }} — The Learning Portal</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js', 'resources/js/lesson-map.js'])
+    {{-- lesson-map.js (+ the ~1 MB MapLibre/volcanoes chunk) is loaded on demand by
+         lesson-player.js only when a lesson actually contains a map scene. --}}
+    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js'])
 </head>
 <body class="h-full overflow-hidden bg-[#020617]">
 
