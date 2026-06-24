@@ -25,6 +25,9 @@ Route::get('/', function () {
             LessonStatusEnum::Previewable->value,
         ])
         ->whereNotNull('lesson_code')
+        // Only lessons that actually play — at least one narrated scene. Excludes empty
+        // stubs that would open the player to a perpetual "audio generating" screen.
+        ->whereHas('scenes', fn ($q) => $q->whereNotNull('audio_path'))
         ->with(['firstScene', 'source'])
         ->latest()
         ->take(12)
