@@ -17,10 +17,11 @@
 import Alpine from 'alpinejs'
 import QRCode from 'qrcode'
 
-// 3D narrator retired — the player is fully 2D (portrait badge + Ken-Burns background).
-// Flip to true to re-enable the Three.js avatar/skybox path; the avatar-3d.js chunk is
-// code-split behind dynamic import()s below so it never downloads while this is false.
-const USE_3D = false
+// The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
+// The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
+// the Three.js chunk (avatar-3d.js, via the dynamic import in _initBgScene) for the skybox; pure-2D
+// lessons never download it. `this._usesSkybox` (set in init from the scenes) is that runtime switch.
+const USE_3D_AVATAR = false
 
 // ── Avatar canvas position presets ───────────────────────────────────────────
 // Each preset is a CSS class set applied to the #avatar-wrap element.
@@ -160,6 +161,7 @@ Alpine.data('lessonGame', (lesson) => ({
     _kbInterval:        null,
     _kbIndex:           0,
     _kbImages:          [],
+    _usesSkybox:        false,  // true when any scene opts into scene_view:'skybox' → lazy-load 3D skybox
     _bgLayerA:          null,
     _bgLayerB:          null,
     _bgActive:          'A',
@@ -193,9 +195,12 @@ Alpine.data('lessonGame', (lesson) => ({
       const coverImg    = lesson.cover_image_url ? [{ url: lesson.cover_image_url }] : []
       const slideshowImgs = lesson.slideshow_images ?? []
       const sceneImgs   = (slideshowImgs.length === 0) ? (lesson.scene_images ?? []) : []
-      // 2D mode: fold every scene's panorama (skybox scenes included) into the Ken-Burns
-      // slideshow so a skybox scene shows its 360° image flat as a 2D background.
-      const scenePanoramas = USE_3D
+      // The 3D skybox is opt-in per scene; if ANY scene uses it the lesson lazy-loads the
+      // Three.js skybox engine (see _initBgScene). Pure-2D lessons never touch Three.js.
+      this._usesSkybox = (lesson.scenes ?? []).some(s => s.scene_view === 'skybox')
+      // For pure-2D lessons, fold each scene's panorama into the Ken-Burns slideshow so a
+      // would-be skybox image still shows flat. Skybox lessons render those in 3D instead.
+      const scenePanoramas = this._usesSkybox
         ? []
         : (lesson.scenes ?? [])
             .map(s => s.skybox_image_path || s.image_url)
@@ -269,10 +274,10 @@ Alpine.data('lessonGame', (lesson) => ({
         console.warn('lesson-player: assets load error (starting anyway):', e?.message)
       }
 
-      // 3D bg canvas takes over — stop Ken Burns slideshow and reveal 3D scene.
-      // In 2D mode there is no 3D canvas, so keep the Ken-Burns slideshow running
-      // for the whole lesson (each scene's image is fed into it by _playScene).
-      if (USE_3D) {
+      // Skybox lessons: the 3D canvas takes over — stop Ken Burns and reveal the skybox.
+      // Pure-2D lessons keep the Ken-Burns slideshow running the whole lesson (each scene's
+      // image is fed into it by _playScene).
+      if (this._usesSkybox) {
         clearInterval(this._kbInterval)
         this._kbInterval = null
         this._showBgScene()
@@ -373,8 +378,8 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     async _initAvatar () {
-      // 3D avatar retired — the narrator is a flat portrait badge (see player.blade.php).
-      if (!USE_3D) return
+      // 3D avatar character retired — the narrator is a flat portrait badge (see player.blade.php).
+      if (!USE_3D_AVATAR) return
 
       // Destroy any existing instance first — prevents dual RAF loops from Vite HMR
       // or any re-init scenario where two Avatar3DPlayer instances fight over morph targets
@@ -426,8 +431,8 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Background 3D scene (skybox only, no character) ────────────────
     async _initBgScene () {
-      // 3D skybox retired — scene backgrounds render flat via the Ken-Burns slideshow.
-      if (!USE_3D) return
+      // Skybox is opt-in — only lessons with a scene_view:'skybox' scene load the Three.js skybox.
+      if (!this._usesSkybox) return
 
       // Destroy any stale instance (e.g. Vite HMR)
       if (_bgInstance) {
@@ -489,8 +494,8 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // Fade the 3D background scene in (called when lesson starts)
     _showBgScene () {
-      // 2D mode: there is no 3D canvas — keep the Ken-Burns slideshow visible.
-      if (!USE_3D) return
+      // Pure-2D lesson: no 3D canvas — keep the Ken-Burns slideshow visible.
+      if (!this._usesSkybox) return
       if (!_bgCanvas) return
       // Apply immediately (no rAF — rAF pauses in background/unfocused tabs)
       _bgCanvas.classList.remove('opacity-0')
