@@ -66,6 +66,7 @@
                         @if($cardImage)
                             <img src="{{ $cardImage }}"
                                  alt="{{ $lesson->title }}"
+                                 loading="lazy" decoding="async"
                                  class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]">
                         @else
                             {{-- Fallback gradient when no image yet --}}

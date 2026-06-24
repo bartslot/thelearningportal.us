@@ -381,6 +381,12 @@ class Lesson extends Model
             return $this->publicMediaUrl($this->portrait_path);
         }
 
+        // 4. Wikipedia lead image (title-screen background) — last resort so every
+        //    catalog lesson shows a topical cover instead of the generic glyph.
+        if ($this->title_bg_path) {
+            return $this->publicMediaUrl($this->title_bg_path);
+        }
+
         return null;
     }
 
