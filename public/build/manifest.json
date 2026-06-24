@@ -7,22 +7,22 @@
     "file": "assets/index-DDlvirwQ.js",
     "name": "index"
   },
-  "_map-forests-DNVN2dqC.css": {
-    "file": "assets/map-forests-DNVN2dqC.css",
-    "src": "_map-forests-DNVN2dqC.css"
-  },
-  "_map-forests-fdMwF_yu.js": {
-    "file": "assets/map-forests-fdMwF_yu.js",
-    "name": "map-forests",
+  "_map-volcanoes-CBPJCBgV.js": {
+    "file": "assets/map-volcanoes-CBPJCBgV.js",
+    "name": "map-volcanoes",
     "imports": [
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "css": [
-      "assets/map-forests-DNVN2dqC.css"
+      "assets/map-volcanoes-DNVN2dqC.css"
     ]
   },
+  "_map-volcanoes-DNVN2dqC.css": {
+    "file": "assets/map-volcanoes-DNVN2dqC.css",
+    "src": "_map-volcanoes-DNVN2dqC.css"
+  },
   "resources/css/app.css": {
-    "file": "assets/app-Z9FbiS5P.css",
+    "file": "assets/app-C1_FxCmG.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -64,12 +64,12 @@
     "isDynamicEntry": true
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-CYeU4_TJ.js",
+    "file": "assets/lesson-map-Hr17U5k4.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
     "imports": [
-      "_map-forests-fdMwF_yu.js",
+      "_map-volcanoes-CBPJCBgV.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]
   },
@@ -84,12 +84,12 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-CztMpGq3.js",
+    "file": "assets/index-Cu-oo2ch.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
-      "_map-forests-fdMwF_yu.js",
+      "_map-volcanoes-CBPJCBgV.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]
   }
