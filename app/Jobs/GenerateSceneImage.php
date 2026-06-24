@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
+use App\Services\FigureAppearanceService;
 use App\Services\HistoricalImageValidationPrompt;
 use App\Services\OpenAiImageService;
 use App\Services\OpenAiLlmService;
@@ -35,7 +36,7 @@ class GenerateSceneImage implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiImageService $image, OpenAiLlmService $llm): void
+    public function handle(OpenAiImageService $image, OpenAiLlmService $llm, FigureAppearanceService $appearance): void
     {
         $scene = Scene::with('lesson.source')->findOrFail($this->sceneId);
 
@@ -43,7 +44,7 @@ class GenerateSceneImage implements ShouldQueue
             $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
             $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox.png";
 
-            $prompt = $this->buildPrompt($scene, $style, $llm);
+            $prompt = $this->buildPrompt($scene, $style, $llm, $appearance);
 
             $bytes = $image->generatePanoramaBytesFromPrompt(
                 prompt: $prompt,
@@ -73,7 +74,7 @@ class GenerateSceneImage implements ShouldQueue
         }
     }
 
-    private function buildPrompt(Scene $scene, string $style, OpenAiLlmService $llm): string
+    private function buildPrompt(Scene $scene, string $style, OpenAiLlmService $llm, FigureAppearanceService $appearance): string
     {
         // Teacher-supplied prompt: still run validation to add the negative block,
         // but skip the LLM round-trip and use the teacher's text as the scene description.
@@ -95,10 +96,17 @@ class GenerateSceneImage implements ShouldQueue
         }
 
         // ── Historical accuracy validation ────────────────────────────────────
+        // Ground the protagonist's look in a real reference portrait (cached per figure) so the
+        // validator renders them accurately instead of inventing anachronisms (e.g. a modern cap).
+        $figureAppearance = $appearance->describe(
+            $scene->lesson->protagonist_qid,
+            $scene->lesson->protagonist_name,
+        );
+
         try {
             $validation = $llm->json(
                 system: HistoricalImageValidationPrompt::system(),
-                user: HistoricalImageValidationPrompt::user($scene, $proposedVisuals),
+                user: HistoricalImageValidationPrompt::user($scene, $proposedVisuals, $figureAppearance),
             );
         } catch (Throwable $e) {
             // Validation failure is non-fatal — fall back to unvalidated prompt.

@@ -35,11 +35,12 @@ Rules:
 - Be strict. If you are uncertain whether something existed in the period, put it in riskyOrUncertainVisuals, not accurateVisuals.
 - anachronismsToAvoid must be comprehensive: include obvious items (cars, phones, electric lights) AND subtle ones specific to this period (e.g. "Eiffel Tower" for anything before 1889, "tricolore flags" for French scenes before July 1789).
 - recommendedScene must be safe: only use items from accurateVisuals. Never include items from riskyOrUncertainVisuals or anachronismsToAvoid.
+- If a "Protagonist appearance" is supplied below AND the scene depicts that person, recommendedScene MUST render them with that exact face, hair, build, and period dress. Historical figures must NEVER wear modern clothing, baseball caps, hats, sunglasses, headphones, or accessories — treat those as anachronisms.
 - Do not invent historical facts.
 SYS;
     }
 
-    public static function user(Scene $scene, array $proposedVisuals): string
+    public static function user(Scene $scene, array $proposedVisuals, ?string $figureAppearance = null): string
     {
         $brief    = $scene->lesson->outline['scene_briefs'][$scene->order - 1] ?? [];
         $topic    = $scene->lesson->topic;
@@ -50,6 +51,14 @@ SYS;
 
         $visualsList = implode("\n", array_map(fn ($v) => "- {$v}", $proposedVisuals));
 
+        $appearanceBlock = '';
+        if (filled($figureAppearance)) {
+            $who = filled($scene->lesson->protagonist_name)
+                ? $scene->lesson->protagonist_name
+                : 'the central historical figure';
+            $appearanceBlock = "\n\nProtagonist appearance — {$who} (from a reference portrait): {$figureAppearance}";
+        }
+
         return <<<USR
 Topic: {$topic}
 Subject: {$subject}
@@ -58,7 +67,7 @@ Location: {$location}
 Scene purpose: {$purpose}
 
 Proposed visual elements to validate:
-{$visualsList}
+{$visualsList}{$appearanceBlock}
 
 Validate these visuals for historical accuracy. Return the JSON object now.
 USR;

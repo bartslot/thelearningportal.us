@@ -46,6 +46,29 @@ class OpenAiLlmService
         return $this->call($system, $user, $model, jsonMode: false);
     }
 
+    /**
+     * Describe a reference image in words (vision). Used to ground a historical figure's
+     * appearance in a real portrait/bust so generated scenes render them accurately instead of
+     * inventing anachronistic looks. `imageUrl` may be a public URL or a base64 data URL.
+     */
+    public function describeImage(string $imageUrl, string $instruction, ?string $model = null): string
+    {
+        return $this->send([
+            'model' => $model
+                ?? config('services.openai.vision_model')
+                ?? $this->model
+                ?? config('services.openai.model'),
+            'messages' => [
+                ['role' => 'user', 'content' => [
+                    ['type' => 'text', 'text' => $instruction],
+                    ['type' => 'image_url', 'image_url' => ['url' => $imageUrl, 'detail' => 'low']],
+                ]],
+            ],
+            'max_tokens'  => 220,
+            'temperature' => 0.2,
+        ]);
+    }
+
     private function call(string $system, string $user, ?string $model, bool $jsonMode): string
     {
         $payload = [
@@ -69,6 +92,12 @@ class OpenAiLlmService
             $payload['response_format'] = ['type' => $jsonFormat];
         }
 
+        return $this->send($payload);
+    }
+
+    /** Issue a chat/completions request and return the assistant text. */
+    private function send(array $payload): string
+    {
         $base    = $this->baseUrl ?? config('services.openai.base_url');
         $key     = $this->apiKey  ?? config('services.openai.api_key');
         $timeout = $this->timeout ?? (int) config('services.openai.timeout', 60);
