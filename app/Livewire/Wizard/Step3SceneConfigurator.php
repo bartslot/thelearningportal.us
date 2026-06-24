@@ -231,6 +231,71 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    // ── Map block: territory picker ──────────────────────────────────────
+    // Search the corpus for a polity and link its Wikidata QID so the map fits + paints an
+    // accurate historical boundary (red). Mirrors Step 2's hero picker. The map block's QID
+    // otherwise only auto-fills from a `polity:` catalog topic, leaving city/free-text lessons blank.
+    public string $territoryQuery = '';
+
+    #[Computed]
+    public function territoryResults()
+    {
+        $q = trim($this->territoryQuery);
+        if (mb_strlen($q) < 2) {
+            return collect();
+        }
+
+        return \App\Models\Corpus\Topic::resilient(
+            fn () => \App\Models\Corpus\Topic::query()
+                ->where('id', 'like', 'polity:%')
+                ->where('name', 'ilike', '%'.$q.'%')
+                ->orderByRaw('length(name)')   // prefer the shortest (most exact) match first
+                ->limit(8)
+                ->get(['id', 'qid', 'name', 'region_label', 'era_start', 'era_end'])
+        ) ?? collect();
+    }
+
+    public function linkTerritory(string $qid): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+
+        $topic = \App\Models\Corpus\Topic::resilient(
+            fn () => \App\Models\Corpus\Topic::query()
+                ->where('id', 'like', 'polity:%')
+                ->where('qid', $qid)
+                ->first()
+        );
+        if (! $topic) {
+            return;
+        }
+
+        $start = $topic->era_start;
+        $end = $topic->era_end;
+        $midYear = ($start !== null && $end !== null) ? (int) (($start + $end) / 2) : ($start ?? $end);
+
+        $this->selectedScene['config']['qid'] = $topic->qid;
+        // Seed the time slider to the polity's mid-life only if the teacher hasn't set a year.
+        if ($midYear !== null && empty($this->selectedScene['config']['year'])) {
+            $this->selectedScene['config']['year'] = $midYear;
+        }
+        $this->selectedScene['location'] = $topic->name;
+
+        $this->territoryQuery = '';
+        unset($this->territoryResults);
+        $this->saveSelected();   // location change → stageDirty → scene:load → map re-renders with the new QID
+    }
+
+    public function unlinkTerritory(): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $this->selectedScene['config']['qid'] = null;
+        $this->saveSelected();
+    }
+
     public function setSceneView(string $view): void
     {
         if ($this->selectedScene) {

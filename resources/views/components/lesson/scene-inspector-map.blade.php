@@ -1,4 +1,4 @@
-@props(['scene' => null])
+@props(['scene' => null, 'territoryResults' => null, 'territoryQuery' => ''])
 
 <div class="space-y-3 text-sm">
     <h3 class="flex items-center gap-2 font-semibold text-sky-300">
@@ -36,12 +36,43 @@
         </label>
     </div>
 
+    {{-- Territory picker — link a polity's Wikidata QID for an accurate red boundary. --}}
     @php $qid = $scene->config['qid'] ?? null; @endphp
-    @if ($qid)
-        <p class="text-[10px] text-slate-500">Territory: {{ $scene->location ?? $qid }} ({{ $qid }})</p>
-    @else
-        <p class="text-[10px] text-amber-400/70">No territory linked — pick a catalog topic in Step 1 for an accurate boundary.</p>
-    @endif
+    <div class="form-control">
+        <span class="text-xs uppercase tracking-wider text-slate-400">Territory</span>
+
+        @if ($qid)
+            <div class="mt-1 flex items-center justify-between gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-2.5 py-1.5">
+                <div class="min-w-0">
+                    <p class="truncate text-sm text-emerald-200">{{ $scene->location ?? $qid }}</p>
+                    <p class="text-[10px] text-slate-500">{{ $qid }} · red boundary, fit at the chosen year</p>
+                </div>
+                <button type="button" wire:click="unlinkTerritory"
+                        class="shrink-0 text-[11px] text-rose-300 underline hover:text-rose-200">Change</button>
+            </div>
+        @else
+            <input type="search" wire:model.live.debounce.400ms="territoryQuery"
+                   placeholder="Search an empire/kingdom — e.g. Byzantine Empire"
+                   class="input input-sm input-bordered bg-slate-900 mt-1" />
+            <p class="mt-1 text-[10px] text-amber-400/70">No territory linked — search a polity (cities: link the empire that ruled it).</p>
+
+            @if (filled($territoryQuery) && $territoryResults && $territoryResults->isNotEmpty())
+                <ul class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-700/60 divide-y divide-slate-800 bg-slate-900/95">
+                    @foreach ($territoryResults as $t)
+                        <li>
+                            <button type="button" wire:click="linkTerritory('{{ $t->qid }}')"
+                                    class="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-slate-800/70">
+                                <span class="truncate text-sm text-slate-200">{{ $t->name }}</span>
+                                <span class="shrink-0 text-[10px] text-slate-500">{{ $t->region_label ?: ($t->era_start !== null ? ($t->era_start < 0 ? abs($t->era_start).' BCE' : $t->era_start) : '') }}</span>
+                            </button>
+                        </li>
+                    @endforeach
+                </ul>
+            @elseif (filled($territoryQuery))
+                <p class="mt-1 text-[10px] text-slate-500">No polity matches “{{ $territoryQuery }}”.</p>
+            @endif
+        @endif
+    </div>
 
     <button type="button" wire:click="deleteScene({{ $scene->id }})"
             wire:confirm="Delete this map block?"

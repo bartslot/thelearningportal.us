@@ -42,21 +42,36 @@
 @if ($editable)
 @push('scripts')
 <script>
-document.addEventListener('livewire:initialized', () => {
-    const track = document.getElementById('timeline-track')
-    if (!track || !window.Sortable) return
-    new window.Sortable(track, {
-        animation: 150,
-        filter: '[data-no-drag]',
-        // Default preventOnFilter:true calls preventDefault() on [data-no-drag], which swallows
-        // the click on the "Add scene" button. Keep native clicks alive on filtered elements.
-        preventOnFilter: false,
-        onEnd: () => {
-            const ids = [...track.querySelectorAll('[data-scene-id]')].map(el => Number(el.dataset.sceneId))
-            window.Livewire.dispatch('timeline:reordered', { ids })
-        },
-    })
-})
+(() => {
+    function mountTimelineSortable() {
+        const track = document.getElementById('timeline-track')
+        // Skip if deps missing or already mounted on THIS element (guards double-init).
+        if (!track || !window.Sortable || track._sortableMounted) return
+        track._sortableMounted = true
+        new window.Sortable(track, {
+            animation: 150,
+            draggable: '[data-scene-id]',  // only scene thumbs drag — never the "Add" button
+            filter: '[data-no-drag]',
+            // Default preventOnFilter:true calls preventDefault() on [data-no-drag], which swallows
+            // the click on the "Add scene" button. Keep native clicks alive on filtered elements.
+            preventOnFilter: false,
+            onEnd: () => {
+                const ids = [...track.querySelectorAll('[data-scene-id]')].map(el => Number(el.dataset.sceneId))
+                window.Livewire.dispatch('timeline:reordered', { ids })
+            },
+        })
+    }
+    function boot() {
+        mountTimelineSortable()
+        // wire:poll.3s re-renders the timeline; if the morph swaps the track element, re-mount on it.
+        window.Livewire?.hook('morph.updated', ({ el }) => { if (el && el.id === 'timeline-track') mountTimelineSortable() })
+    }
+    // Livewire DEFERS @stack scripts, so `livewire:initialized` has usually ALREADY fired by the time
+    // this runs — mount immediately in that case (the old code only listened, so it never mounted).
+    if (window.Livewire) boot()
+    else document.addEventListener('livewire:initialized', boot)
+    document.addEventListener('livewire:navigated', mountTimelineSortable)
+})()
 </script>
 @endpush
 @endif

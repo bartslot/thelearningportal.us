@@ -109,7 +109,9 @@
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
                 @if ($sceneModel->kind === 'map')
-                    <x-lesson.scene-inspector-map :scene="$sceneModel" />
+                    <x-lesson.scene-inspector-map :scene="$sceneModel"
+                                                 :territory-results="$this->territoryResults"
+                                                 :territory-query="$territoryQuery" />
                 @elseif ($sceneModel->kind === 'game')
                     <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games" />
                 @else
