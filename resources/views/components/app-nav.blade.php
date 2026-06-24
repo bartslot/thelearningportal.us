@@ -56,20 +56,50 @@
                 <x-logo />
             </a>
 
-            <div class="flex items-center gap-6">
+            <div class="flex items-center gap-3 sm:gap-6">
                 @auth
-                    @foreach ($items as $item)
-                        @php $active = request()->routeIs($item['pattern']); @endphp
-                        <a href="{{ route($item['route']) }}"
-                           class="text-sm flex items-center gap-1.5 transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
-                            <span>{{ $item['label'] }}</span>
-                            @if (!empty($item['badge']))
-                                <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
-                                    {{ $item['badge'] }}
-                                </span>
-                            @endif
-                        </a>
-                    @endforeach
+                    {{-- Desktop: inline nav links --}}
+                    <div class="hidden items-center gap-6 sm:flex">
+                        @foreach ($items as $item)
+                            @php $active = request()->routeIs($item['pattern']); @endphp
+                            <a href="{{ route($item['route']) }}"
+                               class="text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
+                                <span>{{ $item['label'] }}</span>
+                                @if (!empty($item['badge']))
+                                    <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
+                                        {{ $item['badge'] }}
+                                    </span>
+                                @endif
+                            </a>
+                        @endforeach
+                    </div>
+
+                    {{-- Mobile: collapse nav links into a menu so the bar never wraps --}}
+                    <div class="dropdown dropdown-end sm:hidden">
+                        <div tabindex="0" role="button" aria-label="Menu"
+                             class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-slate-800/60 hover:text-white">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </div>
+                        <ul tabindex="0"
+                            class="dropdown-content menu menu-sm mt-3 w-56 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-[60]">
+                            @foreach ($items as $item)
+                                @php $active = request()->routeIs($item['pattern']); @endphp
+                                <li>
+                                    <a href="{{ route($item['route']) }}"
+                                       class="text-sm {{ $active ? 'text-amber-400' : 'text-slate-300 hover:text-white' }}">
+                                        {{ $item['label'] }}
+                                        @if (!empty($item['badge']))
+                                            <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
+                                                {{ $item['badge'] }}
+                                            </span>
+                                        @endif
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
 
                     <div class="dropdown dropdown-end">
                         <div tabindex="0" role="button"
