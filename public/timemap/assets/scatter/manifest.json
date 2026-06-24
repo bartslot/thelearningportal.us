@@ -1,0 +1,28 @@
+{
+  "tree": [
+    "s-tree-0",
+    "s-tree-0f",
+    "s-tree-1",
+    "s-tree-1f",
+    "s-tree-2",
+    "s-tree-2f",
+    "s-tree-3",
+    "s-tree-3f",
+    "s-tree-4",
+    "s-tree-4f"
+  ],
+  "dune": [
+    "dune-d-0",
+    "dune-d-0f",
+    "dune-d-1",
+    "dune-d-1f",
+    "dune-d-2",
+    "dune-d-2f",
+    "dune-d-3",
+    "dune-d-3f",
+    "dune-d-4",
+    "dune-d-4f",
+    "dune-d-5",
+    "dune-d-5f"
+  ]
+}

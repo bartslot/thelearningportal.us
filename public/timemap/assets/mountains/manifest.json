@@ -1,6 +1,36 @@
 {
-  "smaller": "mountains_mountain-smaller.svg",
-  "small": "mountains_mountain-small.svg",
-  "medium": "mountains_mountain-medium.svg",
-  "large": "mountains_mountain-large.svg"
+  "smaller": [
+    "m-smaller-h0",
+    "m-smaller-h1",
+    "m-smaller-h2",
+    "m-smaller-h3",
+    "m-smaller-h4",
+    "m-smaller-h5"
+  ],
+  "small": [
+    "m-small-h0",
+    "m-small-h1",
+    "m-small-h2",
+    "m-small-h3",
+    "m-small-h4",
+    "m-small-h5",
+    "m-small-h6",
+    "m-small-h7"
+  ],
+  "medium": [
+    "m-medium-0",
+    "m-medium-0f",
+    "m-medium-1",
+    "m-medium-1f",
+    "m-medium-2",
+    "m-medium-2f"
+  ],
+  "large": [
+    "m-large-0",
+    "m-large-0f",
+    "m-large-1",
+    "m-large-1f",
+    "m-large-horizontal_range",
+    "m-large-medium_vertical_range"
+  ]
 }

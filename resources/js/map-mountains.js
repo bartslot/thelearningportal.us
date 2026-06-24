@@ -1,44 +1,35 @@
 /**
  * map-mountains.js — shared mountain layer for the Time-Map and lesson map.
  *
- * Ranges render as a dense FIELD of peaks (public/timemap/mountains-points.geojson, built from the
- * curated ridge lines by scripts/build-mountain-points.mjs). Each peak carries a `size`
- * (smaller | small | medium | large) — large in a massif's core, smaller at its edges — so a range
- * like the Alps reads as many peaks tapering outward.
+ * Ranges render as a sparse row of peaks following each ridge (public/timemap/mountains-points.geojson,
+ * built by scripts/build-mountain-points.mjs). Each peak carries:
+ *   • size  (smaller | small | medium | large) — driven by the range's real peak elevation
+ *   • icon  — one of several VARIANT glyphs for that size (so the field isn't one shape repeated)
+ *   • sz    — a per-peak size multiplier (random ~0.9–1.12) for organic scale variety
+ *   • rot   — a small per-peak rotation (deg) so peaks don't line up mechanically
  *
- * Icons are hand-painted SVGs mapped per size in public/timemap/assets/mountains/manifest.json.
- * Each SVG has an `id="bg"` silhouette which we recolor to the map's live land colour at load,
- * so the painted base always melts into the terrain (and tracks each Time-Map style).
+ * Glyphs are detailed pen-ink drawings (ink on transparent) listed per size in
+ * public/timemap/assets/mountains/manifest.json: { smaller:[ids], small:[…], medium:[…], large:[…] }.
+ * Built (with mirrored variants) by scripts/build-terrain-icons.mjs.
  *
- *   await addMountainLayer(map, { beforeId: 'city-dots', landColor: '#f3ead6' })
+ *   await addMountainLayer(map, { beforeId: 'city-dots' })
  */
 
 const ASSET_BASE = '/timemap/assets/mountains/'
 const POINTS_URL = '/timemap/mountains-points.geojson'
-const SIZES = ['smaller', 'small', 'medium', 'large']
-const FALLBACK = {
-  smaller: 'mountains_mountain-smaller.svg',
-  small: 'mountains_mountain-small.svg',
-  medium: 'mountains_mountain-medium.svg',
-  large: 'mountains_mountain-large.svg',
-}
 const RASTER_SCALE = 4 // render the SVG at 4× for crisp icons
 
-// Load one size's SVG, recolor its #bg silhouette to the land colour, rasterize, register.
-async function loadSizedIcon (map, size, file, landColor) {
-  const id = `mtn-${size}`
+// Load one icon SVG, rasterize, register under its id. Mountains are ink-on-transparent — no recolor.
+async function loadIcon (map, id) {
   let txt
   try {
-    const res = await fetch(ASSET_BASE + file)
+    const res = await fetch(`${ASSET_BASE}${id}.svg`)
     if (!res.ok) return
     txt = await res.text()
   } catch (_) { return }
 
   const doc = new DOMParser().parseFromString(txt, 'image/svg+xml')
   const svg = doc.documentElement
-  const bg = doc.getElementById('bg')
-  if (bg) bg.setAttribute('fill', landColor)
-
   const vb = (svg.getAttribute('viewBox') || '0 0 24 16').split(/\s+/).map(Number)
   const w = Math.max(1, Math.round((vb[2] || 24) * RASTER_SCALE))
   const h = Math.max(1, Math.round((vb[3] || 16) * RASTER_SCALE))
@@ -59,24 +50,25 @@ async function loadSizedIcon (map, size, file, landColor) {
 }
 
 /**
- * Add (once) the `mountains` symbol layer: a sized, terrain-blended peak per point.
+ * Add (once) the `mountains` symbol layer: a varied, randomized peak per point.
  *
  * @param {maplibregl.Map} map
- * @param {{ beforeId?: string, opacity?: number, visibility?: 'visible'|'none', landColor?: string }} opts
+ * @param {{ beforeId?: string, opacity?: number, visibility?: 'visible'|'none' }} opts
  */
 export async function addMountainLayer (map, opts = {}) {
-  const { beforeId, opacity = 1, visibility = 'visible', landColor = '#f3ead6' } = opts
+  const { beforeId, opacity = 1, visibility = 'visible' } = opts
   if (map.getLayer('mountains')) return
 
-  // 1. size → file map (manifest, else fallback).
-  let map4 = FALLBACK
+  // 1. variant ids per size (manifest).
+  let manifest
   try {
-    const m = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null))
-    if (m && typeof m === 'object' && !Array.isArray(m)) map4 = { ...FALLBACK, ...m }
-  } catch (_) { /* keep fallback */ }
+    manifest = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null))
+  } catch (_) { /* ignore */ }
+  if (!manifest || typeof manifest !== 'object') return
+  const ids = [...new Set(Object.values(manifest).flat())]
 
-  // 2. register one (recolored) icon per size.
-  await Promise.all(SIZES.map((s) => loadSizedIcon(map, s, map4[s], landColor)))
+  // 2. register every variant icon.
+  await Promise.all(ids.map((id) => loadIcon(map, id)))
 
   // 3. load the peak field.
   let data
@@ -94,12 +86,19 @@ export async function addMountainLayer (map, opts = {}) {
     source: 'mountains',
     layout: {
       visibility,
-      'icon-image': ['concat', 'mtn-', ['coalesce', ['get', 'size'], 'medium']],
+      // each peak names its own variant glyph; fall back to a medium variant if missing.
+      'icon-image': ['coalesce', ['get', 'icon'], 'm-medium-0'],
       'icon-anchor': 'bottom',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      // The SVGs already encode their relative sizes; this just scales the whole field with zoom.
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.48, 5, 0.98, 7, 1.36],
+      'icon-rotation-alignment': 'viewport',
+      'icon-rotate': ['coalesce', ['get', 'rot'], 0],
+      // zoom scale with the peak's own size jitter (sz) folded into each stop, so heights vary
+      // organically. (maplibre forbids nesting `zoom` inside `*`, so multiply per-stop instead.)
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+        2, ['*', 0.2, ['coalesce', ['get', 'sz'], 1]],
+        5, ['*', 0.46, ['coalesce', ['get', 'sz'], 1]],
+        7, ['*', 0.66, ['coalesce', ['get', 'sz'], 1]]],
     },
     paint: { 'icon-opacity': opacity },
   }, map.getLayer(beforeId) ? beforeId : undefined)

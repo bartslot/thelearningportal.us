@@ -1,6 +1,10 @@
 {
-  "conifer-small": "tree-small.svg",
-  "conifer-medium": "tree-medium.svg",
-  "deciduous-small": "tree-deciduous-small.svg",
-  "deciduous-medium": "tree-deciduous-medium.svg"
+  "small": [
+    "g-small-0",
+    "g-small-0f"
+  ],
+  "medium": [
+    "g-medium-0",
+    "g-medium-0f"
+  ]
 }

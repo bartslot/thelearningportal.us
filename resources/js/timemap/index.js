@@ -4,6 +4,8 @@ import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
 import { addMountainLayer } from '../map-mountains.js';
 import { addForestLayer } from '../map-forests.js';
+import { addScatterLayer } from '../map-scatter.js';
+import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 
@@ -20,9 +22,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     container: el,
     style: {
       version: 8,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      // Calligraphy labels: locally-built SDF glyphs (scripts/build-glyphs.mjs) — Eagle Lake +
+      // Cinzel. No runtime CDN; non-Latin names fall back to nothing (data is romanized).
+      glyphs: `${location.origin}/fonts/{fontstack}/{range}.pbf`,
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
+        graticule: { type: 'geojson', data: `${location.origin}/timemap/graticule.geojson` },
+        // Elevation for the subtle relief hillshade (free AWS terrain tiles, terrarium-encoded).
+        dem: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 12 },
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -33,23 +40,35 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
+        // Sketched sea grid (old-chart graticule), water-only (clipped at build time). Beneath the
+        // coast/land. Recolored + toggled per style by applyMapStyle (atlas styles only).
+        { id: 'graticule', type: 'line', source: 'graticule', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8a9aa0', 'line-width': 0.6, 'line-opacity': 0.5 } },
         // Etched coast-echo lines sit on the sea, beneath the land fill (ink styles only).
         { id: 'coast-echo', type: 'line', source: 'coast', 'source-layer': 'coast', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': '#6b563d', 'line-width': 0.6 } },
         // Coast drop-shadow: a thick coastline shifted DOWN, drawn BENEATH the land fill — so it only
         // peeks out on south-facing shores (the land fill hides it on north shores), giving relief.
         { id: 'coast-shadow', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#574631', 'line-width': 2.6, 'line-translate': [0, 2], 'line-blur': 0.4 } },
         { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': theme.land } },
+        // Subtle relief hillshade over the land for depth (atlas styles only; toggled by applyMapStyle).
+        // Sun upper-right (~55°) to match the mountains' shaded side.
+        { id: 'hillshade', type: 'hillshade', source: 'dem', layout: { visibility: 'none' }, paint: { 'hillshade-exaggeration': 0.45, 'hillshade-illumination-direction': 55, 'hillshade-shadow-color': '#4a3a28', 'hillshade-highlight-color': '#fbf2d8', 'hillshade-accent-color': '#6b563d' } },
+        // Lake drop-shadow: the lake outline shifted DOWN, under the fill — peeks out on the southern
+        // shore for relief (mirrors the coast treatment). Recolored per style by applyMapStyle.
+        { id: 'lake-shadow', type: 'line', source: 'lakes', 'source-layer': 'lakes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#574631', 'line-width': 2.0, 'line-translate': [0, 1.6], 'line-blur': 0.4 } },
         // Inland lakes — water fill over land (recolored per style by applyMapStyle).
         { id: 'lakes', type: 'fill', source: 'lakes', 'source-layer': 'lakes', paint: { 'fill-color': theme.water } },
+        // Thin calligraphic ink edge around every lake, above the fill.
+        { id: 'lake-line', type: 'line', source: 'lakes', 'source-layer': 'lakes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3a2c1a', 'line-width': 0.7, 'line-opacity': 0.8 } },
         // Bold coast outline — the crisp ink shore line, above land + lakes, below the political layers.
         { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2f2418', 'line-width': 1.1 } },
       ],
     },
     center: [8.23, 46.8], // Switzerland
     zoom: 4,
-    // Fixed-overview navigation tool: don't zoom in past the standard level (no detailed tiles
-    // exist there anyway). Zoom-out stays open so other continents/markers come into view.
-    maxZoom: 4,
+    // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
+    // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
+    // zoom. Zoom-out stays open so other continents/markers come into view.
+    maxZoom: 7,
     attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
   });
 
@@ -158,6 +177,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then((img) => { if (!map.hasImage(`flag-${qid}`)) map.addImage(`flag-${qid}`, img.data); return true; })
       .catch(() => false);
   };
+  // Hand-tuned label anchors (QID → [lng, lat]) that override the auto centroid where it crowds a
+  // neighbour. Crown of Castile's centroid sits central-Iberia and squeezes Portugal's name; pin it
+  // up by Madrid so the two never collide.
+  const LABEL_ANCHOR = {
+    Q217196: [-3.7, 40.4], // Crown of Castile → Madrid
+  };
   const refreshLabels = () => {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
@@ -177,8 +202,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const apply = () => src.setData({
       type: 'FeatureCollection',
       features: [...best.entries()].map(([id, b]) => ({
-        type: 'Feature', geometry: { type: 'Point', coordinates: b.c },
-        properties: { name: b.name, flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '' },
+        type: 'Feature', geometry: { type: 'Point', coordinates: LABEL_ANCHOR[id] || b.c },
+        // `sel` drives symbol-sort-key so the open territory's name is placed first and never
+        // culled by a neighbour's label (its flag survived collision but its text was dropped).
+        properties: { name: b.name, flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '', sel: String(selectedId) === id },
       })),
     });
     apply();
@@ -221,8 +248,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const inkWidth = (min, max) => ['interpolate', ['linear'],
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
-    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
       shore: { color: '#2f2418', width: 1.15, shadow: '#574631', shadowWidth: 2.9, dy: 2 },
@@ -231,6 +258,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       borderSource: { source: 'ink-borders', sourceLayer: 'ink' },
       coast: { color: '#5e4a34', opacity: 0.55, width: 0.85 },
       river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
+      grid: { color: '#8f8c6e', opacity: 0.45, width: 0.5 }, hillshade: true,
       mountains: true,
       forest: true,
       // Stacked passes on the wobbled lines: faint bleed, offset rough, the main dark stroke, then a
@@ -304,6 +332,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ...pal.flatMap((c, i) => [i, c]), pal[0]]];
     map.setPaintProperty('water', 'background-color', s.water);
     if (map.getLayer('lakes')) map.setPaintProperty('lakes', 'fill-color', s.water);
+    // Lake edges track the coast tones: thin ink line all round + a deeper southern drop-shadow.
+    {
+      const sh = s.shore || { color: s.line.color, shadow: '#574631' };
+      if (map.getLayer('lake-line')) map.setPaintProperty('lake-line', 'line-color', sh.color);
+      if (map.getLayer('lake-shadow')) map.setPaintProperty('lake-shadow', 'line-color', sh.shadow);
+    }
     map.setPaintProperty('land', 'fill-color', s.land);
     // Coast: a bold ink shore line + a southern drop-shadow (shifted down, under the land fill) for
     // relief. The shadow only shows on south-facing shores; the land fill hides it on north shores.
@@ -341,6 +375,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         map.setLayoutProperty('rivers', 'visibility', 'none');
       }
     }
+    // Relief hillshade — atlas styles only (gives the terrain depth under the ink glyphs).
+    if (map.getLayer('hillshade')) {
+      map.setLayoutProperty('hillshade', 'visibility', s.hillshade ? 'visible' : 'none');
+    }
+    // Sketched sea grid (graticule) — atlas styles only; recolored to the style's grid tone.
+    if (map.getLayer('graticule')) {
+      if (s.grid) {
+        map.setLayoutProperty('graticule', 'visibility', 'visible');
+        map.setPaintProperty('graticule', 'line-color', s.grid.color);
+        map.setPaintProperty('graticule', 'line-opacity', s.grid.opacity ?? 0.5);
+        map.setPaintProperty('graticule', 'line-width', s.grid.width ?? 0.6);
+      } else {
+        map.setLayoutProperty('graticule', 'visibility', 'none');
+      }
+    }
     // Mountain glyphs along ridge lines — ink styles only.
     if (map.getLayer('mountains')) {
       map.setLayoutProperty('mountains', 'visibility', s.mountains ? 'visible' : 'none');
@@ -349,6 +398,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (map.getLayer('forests')) {
       map.setLayoutProperty('forests', 'visibility', s.forest ? 'visible' : 'none');
     }
+    // Sparse single-tree texture across empty land — rides the same forest toggle.
+    if (map.getLayer('land-scatter')) {
+      map.setLayoutProperty('land-scatter', 'visibility', s.forest ? 'visible' : 'none');
+    }
+    // Famous volcanoes — shown with the mountains (ink/atlas styles).
+    setVolcanoVisibility(map, !!s.mountains);
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
       // Keep hover/selected clearly visible even when the base fill is very faint (ink styles).
@@ -449,12 +504,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'icon-anchor': 'bottom',
         'icon-allow-overlap': false, 'icon-optional': true,
         'text-field': ['get', 'name'],
-        'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.35],
+        // Major places in grand Cinzel small-caps — the Tolkien-map hierarchy.
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
+        // Text sits clearly BELOW the flag (flag pushed up via icon-translate) so they never overlap.
+        'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.55],
         'text-allow-overlap': false, 'text-optional': true,
         'text-padding': 6, // space labels out so dense regions de-clutter
+        // Place the selected territory's label first (lowest key wins collision) so its name
+        // always shows; everyone else keeps the default source-order placement.
+        'symbol-sort-key': ['case', ['get', 'sel'], 0, 1],
       },
       // Strong halo so names stay readable over borders/fills in every style.
-      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+      // icon-translate lifts the flag a few px above the name (independent of icon-size).
+      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9] },
     });
 
     // Mountains: hand-painted glyphs repeated along curated ridge lines, varied per range
@@ -463,8 +525,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Forests then mountains, both below the labels. Chained (not parallel) so the order is
     // deterministic: trees sit beneath the peaks, so a range rises above its forested foothills.
     const terrainLand = () => (MAP_STYLES[currentStyleName] || {}).land || theme.land;
-    addForestLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() })
+    addScatterLayer(map, { beforeId: 'boundaries-label', visibility: 'none' })
+      .then(() => addForestLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
       .then(() => addMountainLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
+      .then(() => addVolcanoLayer(map, { beforeId: 'boundaries-label', visibility: 'none' }))
       .then(() => applyMapStyle(currentStyleName));
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
@@ -480,9 +544,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.addLayer({
       id: 'markers-label', type: 'symbol', source: 'markers',
       layout: {
-        'text-field': ['get', 'name'], 'text-size': 12,
+        'text-field': ['get', 'name'], 'text-size': 14,
+        // Regions/peoples in flowing Eagle Lake calligraphy (the body hand of the map).
+        'text-font': ['Eagle Lake'],
         'text-offset': [0, 0.9], 'text-anchor': 'top',
-        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.08,
+        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.02,
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
@@ -521,7 +587,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const box = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
     const marker = map.queryRenderedFeatures(box, { layers: ['markers-dot'] })[0];
     if (marker) {
-      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; }
+      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
       const p = marker.properties;
       state.selectedRegion = p.id;
       sync();
@@ -543,6 +609,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (selectedId !== null) setSelected(selectedId, false);
     selectedId = hit ? hit.id : null;
     if (selectedId !== null) setSelected(selectedId, true);
+    refreshLabels(); // re-rank labels so the newly-selected territory's name wins collision
 
     const qid = hit ? hit.properties.Wikidata : null;
     const name = hit ? hit.properties.Name : null;
