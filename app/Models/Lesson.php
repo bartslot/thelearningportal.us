@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -356,35 +357,84 @@ class Lesson extends Model
         return $this->title_bg_path ? $this->publicMediaUrl($this->title_bg_path) : null;
     }
 
+    /**
+     * Scenic portrait of the lesson's protagonist (Wikidata P18), resolved from the read-only
+     * corpus by QID. People-topic lessons should show the person, never a flag. Cached per QID
+     * (the corpus is static) so per-card resolution on a list page stays O(1) and survives a
+     * dropped pooler connection without caching the transient failure.
+     */
+    public function protagonistImageUrl(): ?string
+    {
+        if (! $this->protagonist_qid) {
+            return null;
+        }
+
+        $key = "figure_image:{$this->protagonist_qid}";
+        $cached = Cache::get($key);
+        if ($cached !== null) {
+            return $cached ?: null; // '' is the cached "known to have no portrait" sentinel
+        }
+
+        try {
+            $url = \App\Models\Corpus\Figure::on('pgsql_corpus')
+                ->where('qid', $this->protagonist_qid)
+                ->value('image_url');
+        } catch (\Throwable $e) {
+            return null; // corpus unreachable — don't cache, retry next request
+        }
+
+        Cache::put($key, $url ?? '', now()->addWeek());
+
+        return $url ?: null;
+    }
+
+    /**
+     * Best SCENIC cover for the lesson, in priority order. Never a flag or a bare map: the
+     * Wikipedia title image (which is a flag/map for some empires) sits below the protagonist
+     * portrait, the generated scene, and the editorial hero — so person-led empire lessons show
+     * the person. The pre-filtered slideshow art is a safety net before the avatar headshot.
+     */
     public function cardImageUrl(): ?string
     {
-        // 1. First scene's generated image (skybox preferred, then scene image)
+        // 1. People: scenic portrait/painting of the protagonist (corpus P18).
+        if ($url = $this->protagonistImageUrl()) {
+            return $url;
+        }
+
+        // 2. First scene's generated panorama (skybox preferred, then the base scene image).
         if ($this->relationLoaded('firstScene') && $this->firstScene) {
-            $scene = $this->firstScene;
-            $url = $this->publicMediaUrl($scene->skybox_image_path)
-                  ?? $this->publicMediaUrl($scene->image_path);
+            $url = $this->publicMediaUrl($this->firstScene->skybox_image_path)
+                  ?? $this->publicMediaUrl($this->firstScene->image_path);
             if ($url) {
                 return $url;
             }
         }
 
-        // 2. Source hero image
+        // 3. Editorial hero image (worldhistory.org), when the source provided one.
         if ($this->relationLoaded('source') && $this->source?->hero_image_path) {
-            $url = $this->publicMediaUrl($this->source->hero_image_path);
-            if ($url) {
+            if ($url = $this->publicMediaUrl($this->source->hero_image_path)) {
                 return $url;
             }
         }
 
-        // 3. Portrait fallback
+        // 4. Wikipedia title-screen image — scenic for most topics (a flag/map only for some
+        //    empires, which are person-led and already covered by step 1).
+        if ($this->title_bg_path) {
+            if ($url = $this->publicMediaUrl($this->title_bg_path)) {
+                return $url;
+            }
+        }
+
+        // 5. Curated slideshow art (Europeana/Wikimedia, pre-filtered to drop flags/maps/icons).
+        foreach ($this->slideshowImages() as $img) {
+            if (! empty($img['url'])) {
+                return $img['url'];
+            }
+        }
+
+        // 6. Avatar portrait — last resort headshot.
         if ($this->portrait_path) {
             return $this->publicMediaUrl($this->portrait_path);
-        }
-
-        // 4. Wikipedia lead image (title-screen background) — last resort so every
-        //    catalog lesson shows a topical cover instead of the generic glyph.
-        if ($this->title_bg_path) {
-            return $this->publicMediaUrl($this->title_bg_path);
         }
 
         return null;
