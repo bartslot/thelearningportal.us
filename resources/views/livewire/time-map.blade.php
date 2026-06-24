@@ -10,14 +10,20 @@
          inset-0 and collapses it to 0 height. --}}
     <div x-ref="map" class="h-full w-full" wire:ignore></div>
 
+    {{-- Papery overlay: a tileable parchment grain blended over the whole map for an old-paper feel.
+         pointer-events-none so it never blocks map interaction. Swap public/timemap/parchment.png
+         for your own scan to change the paper. --}}
+    <div class="pointer-events-none absolute inset-0 z-[5]"
+         style="mix-blend-mode:overlay;opacity:0.2;background-image:url('{{ asset('timemap/parchment.png') }}');background-repeat:repeat;background-size:360px 360px"></div>
+
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
-    <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false }"
+    <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false, selected: [] }"
            x-show="polity || loading"
            x-transition.opacity.duration.150ms
            x-on:polity-selected.window="
                 window.__timemapStopSpeak && window.__timemapStopSpeak();
                 if (!$event.detail.id) { polity = null; loading = false; return; }
-                tab = 'summary';
+                tab = 'summary'; selected = [];
                 if ($event.detail.articleUrl) {
                     // Curated external-article marker (e.g. worldhistory.org) — render directly, no server call.
                     polity = { label: $event.detail.name, summary: $event.detail.summary || null,
@@ -80,41 +86,65 @@
                 </template>
 
                 {{-- Start a lesson about this territory (prefills the wizard topic). --}}
-                <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label)"
+                <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label) + (selected.length ? '&protagonist_qid=' + encodeURIComponent(selected[0].qid) + '&protagonist_name=' + encodeURIComponent(selected[0].name) : '')"
                    wire:navigate
                    class="btn btn-warning btn-sm mt-3 w-full gap-2 font-semibold">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.54 1.118l-3.367-2.447a1 1 0 00-1.175 0l-3.367 2.447c-.784.57-1.838-.196-1.539-1.118l1.286-3.957a1 1 0 00-.363-1.118L2.343 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
-                    {{ __('Create lesson') }}
+                    <span x-text="selected.length ? '{{ __('Create lesson with') }} ' + selected[0].name + (selected.length > 1 ? ' +' + (selected.length - 1) : '') : '{{ __('Create lesson') }}'"></span>
                 </a>
 
                 <div role="tablist" class="tabs tabs-bordered mt-3">
                     <a role="tab" class="tab" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
-                    <a role="tab" class="tab" :class="tab==='wikipedia' && 'tab-active'" x-on:click="tab='wikipedia'">{{ __('Article') }}</a>
+                    <a role="tab" class="tab" :class="tab==='people' && 'tab-active'" x-on:click="tab='people'">{{ __('People') }}</a>
                     <a role="tab" class="tab" :class="tab==='overtime' && 'tab-active'" x-on:click="tab='overtime'">{{ __('Over Time') }}</a>
                 </div>
 
                 <div class="mt-3 text-sm">
-                    <p x-show="tab==='summary'" x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
-                    <div x-show="tab==='wikipedia'" class="space-y-2">
-                        {{-- In-panel reader: fetch the fuller Wikipedia lead on demand (CORS), stay on the map. --}}
+                    {{-- Summary, with the Wikipedia article link underneath it. --}}
+                    <div x-show="tab==='summary'" class="space-y-2">
+                        <p x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
                         <template x-if="polity.wikipedia_url && polity.wikipedia_url.includes('wikipedia.org')">
                             <div>
                                 <p x-show="lead" x-text="lead" class="whitespace-pre-line leading-relaxed"></p>
                                 <button x-show="!lead && !leadLoading && !leadFailed"
                                         x-on:click="window.__timemapPanelReadMore && window.__timemapPanelReadMore($data, polity)"
-                                        class="btn btn-outline btn-xs">{{ __('Read more') }}</button>
+                                        class="btn btn-outline btn-xs mt-1">{{ __('Read more') }}</button>
                                 <p x-show="leadLoading" class="flex items-center gap-2 opacity-70"><span class="loading loading-spinner loading-xs"></span> {{ __('Loading article…') }}</p>
-                                <p x-show="leadFailed" class="opacity-70">{{ __('Could not load the article.') }}</p>
                                 <a :href="polity.wikipedia_url" target="_blank" rel="noopener"
                                    class="link link-primary mt-1 inline-block text-xs">{{ __('Open on Wikipedia') }} ↗</a>
                             </div>
                         </template>
-                        {{-- Non-Wikipedia (e.g. worldhistory.org) — external link only (no CORS). --}}
                         <template x-if="polity.wikipedia_url && !polity.wikipedia_url.includes('wikipedia.org')">
-                            <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary"
+                            <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary text-xs"
                                x-text="'{{ __('Open on World History Encyclopedia') }}' + ' ↗'"></a>
                         </template>
-                        <p x-show="!polity.wikipedia_url" class="opacity-70">{{ __('No article linked.') }}</p>
+                    </div>
+
+                    {{-- People: rulers + notable figures of this polity (corpus). The toggle selects a figure
+                         for the "Create lesson" button, feeding it into the lesson wizard as the protagonist. --}}
+                    <div x-show="tab==='people'" class="space-y-2">
+                        <template x-if="!polity.figures || polity.figures.length === 0">
+                            <p class="opacity-70">{{ __('No people linked yet for this territory.') }}</p>
+                        </template>
+                        <template x-for="f in (polity.figures || [])" :key="f.qid">
+                            <div class="flex items-center gap-3 rounded-lg border border-base-300 p-2">
+                                <div class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-base-300">
+                                    <template x-if="f.image_url">
+                                        <img :src="f.image_url + '?width=80'" :alt="f.name" class="h-full w-full object-cover" loading="lazy">
+                                    </template>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate font-semibold leading-tight" x-text="f.name"></p>
+                                    <p class="truncate text-xs capitalize opacity-60" x-text="[f.kind, f.era].filter(Boolean).join(' · ')"></p>
+                                </div>
+                                <button type="button"
+                                        x-on:click="selected.some(s => s.qid === f.qid) ? (selected = selected.filter(s => s.qid !== f.qid)) : (selected = [...selected, f])"
+                                        class="btn btn-xs shrink-0"
+                                        :class="selected.some(s => s.qid === f.qid) ? 'btn-success' : 'btn-outline'"
+                                        x-text="selected.some(s => s.qid === f.qid) ? '✓ {{ __('Selected') }}' : '{{ __('Use in lesson') }}'">
+                                </button>
+                            </div>
+                        </template>
                     </div>
                     <div x-show="tab==='overtime'" class="space-y-1">
                         <p><span class="opacity-70">{{ __('Preceded by') }}:</span> <span x-text="polity.predecessor || '—'"></span></p>

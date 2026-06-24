@@ -122,6 +122,29 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
             $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
         }
 
+        // Rulers + notable people of this polity (corpus), for the People tab cards. Rulers first,
+        // then by fame (sitelinks). The QID comes from the click payload or the stored polity.
+        $qid = $request->filled('qid') ? $request->string('qid')->toString() : $p?->wikidata_id;
+        $figures = [];
+        if ($qid) {
+            $figures = $corpus->table('public.figures')
+                ->where('parent_qid', $qid)
+                ->whereNotNull('name')
+                ->orderByRaw("CASE WHEN figure_kind = 'ruler' THEN 0 ELSE 1 END")
+                ->orderByDesc('sitelinks')
+                ->limit(12)
+                ->get(['qid', 'name', 'figure_kind', 'image_url', 'era_start', 'era_end'])
+                ->map(fn ($f) => [
+                    'qid'       => $f->qid,
+                    'name'      => $f->name,
+                    'kind'      => $f->figure_kind,
+                    'image_url' => $f->image_url,
+                    'era'       => ($f->era_start !== null || $f->era_end !== null)
+                        ? trim(($f->era_start ?? '?').'–'.($f->era_end ?? '?'), '–')
+                        : null,
+                ])->all();
+        }
+
         return response()->json([
             // Title = the clicked feature's name (matches the map label even if a QID is shared
             // across differently-named Cliopatria segments); QID still drives summary/flag/dates.
@@ -131,6 +154,7 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
             'inception' => $p?->inception !== null ? (int) $p->inception : null,
             'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
             'predecessor' => $p?->predecessor, 'successor' => $p?->successor,
+            'figures' => $figures,
         ])->header('Cache-Control', 'public, max-age=86400');
     })->name('timemap.polity');
 
