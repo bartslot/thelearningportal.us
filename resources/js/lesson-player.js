@@ -148,6 +148,9 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // Internals  (_avatar lives outside Alpine proxy — see _avatarInstance module var)
     _audio:             null,
+    _intelAudio:        null,   // intel-drop sfx — tracked so teardown can stop it
+    _kbHandler:         null,   // keydown listener ref — removed on destroy()
+    _navStop:           null,   // pagehide / livewire:navigating handler ref
     _scriptEvents:      [],
     _lastEventIndex:    0,
     _kbInterval:        null,
@@ -216,6 +219,13 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Attach keyboard listeners for audio controls
       this._attachKeyboardListeners()
+
+      // new Audio() objects play independently of the DOM, so without explicit
+      // teardown the narration keeps playing after the user leaves the page —
+      // including the app's wire:navigate SPA transitions. Stop it on the way out.
+      this._navStop = () => this._stopAllAudio()
+      window.addEventListener('pagehide', this._navStop)
+      document.addEventListener('livewire:navigating', this._navStop)
     },
 
     _renderQr () {
@@ -886,9 +896,9 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Play intel drop audio if available
       if (lesson.intel_drop_audio_url) {
-        const intelAudio = new Audio(lesson.intel_drop_audio_url)
-        intelAudio.play().catch(() => {})
-        intelAudio.addEventListener('ended', () => this._endIntelDrop())
+        this._intelAudio = new Audio(lesson.intel_drop_audio_url)
+        this._intelAudio.play().catch(() => {})
+        this._intelAudio.addEventListener('ended', () => this._endIntelDrop())
       } else {
         setTimeout(() => this._endIntelDrop(), 8000)
       }
@@ -943,7 +953,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Keyboard shortcuts ─────────────────────────────────────────────
     _attachKeyboardListeners () {
-      document.addEventListener('keydown', (e) => {
+      this._kbHandler = (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
 
         if (e.code === 'Space') {
@@ -956,7 +966,47 @@ Alpine.data('lessonGame', (lesson) => ({
           e.preventDefault()
           this.toggleMute()
         }
-      })
+      }
+      document.addEventListener('keydown', this._kbHandler)
+    },
+
+    // ── Teardown ───────────────────────────────────────────────────────
+    // Fully stop every Audio object. They live outside the DOM, so nothing
+    // else releases them when the page goes away.
+    _stopAllAudio () {
+      for (const a of [this._audio, this._intelAudio]) {
+        if (!a) continue
+        try { a.pause(); a.src = ''; a.load?.() } catch (_) {}
+      }
+      this._audio = null
+      this._intelAudio = null
+      this.audioPlaying = false
+    },
+
+    // Alpine lifecycle hook — runs when the component element is removed,
+    // including Livewire wire:navigate transitions. Belt-and-suspenders with
+    // the pagehide / livewire:navigating listeners wired in init().
+    destroy () {
+      this._stopAllAudio()
+      if (this._navStop) {
+        window.removeEventListener('pagehide', this._navStop)
+        document.removeEventListener('livewire:navigating', this._navStop)
+        this._navStop = null
+      }
+      if (this._kbHandler) {
+        document.removeEventListener('keydown', this._kbHandler)
+        this._kbHandler = null
+      }
+      clearInterval(this._timerInterval);      this._timerInterval = null
+      clearInterval(this._teamRevealInterval); this._teamRevealInterval = null
+      clearInterval(this._kbInterval);         this._kbInterval = null
+      try { _avatarInstance?.destroy?.() } catch (_) {}
+      try { _bgInstance?.destroy?.() } catch (_) {}
+      try { _mapInstance?.destroy?.() } catch (_) {}
+      _avatarInstance = null
+      _bgInstance = null
+      _mapInstance = null
+      _initDone = false  // allow a later mount (e.g. opening another lesson) to re-init
     },
   }))
 

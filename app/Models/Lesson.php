@@ -80,6 +80,19 @@ class Lesson extends Model
                 $lesson->lesson_code = $code;
             }
         });
+
+        // Keep the cached public pages fresh: any lesson save/delete (publish, status change,
+        // edit, removal) drops both the landing-page list (routes/web.php home route) and this
+        // lesson's player payload (LessonPlayerController), so changes show on the next request
+        // instead of up to 10–30 min later.
+        $forgetCaches = static function (Lesson $lesson): void {
+            Cache::forget('home.playable_lessons');
+            if (! empty($lesson->lesson_code)) {
+                Cache::forget('lesson.player.'.strtoupper($lesson->lesson_code));
+            }
+        };
+        static::saved($forgetCaches);
+        static::deleted($forgetCaches);
     }
 
     protected function casts(): array

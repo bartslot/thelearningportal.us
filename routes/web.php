@@ -20,18 +20,27 @@ Route::pattern('lesson', '[0-9]+');
 Route::get('/', function () {
     // Publicly playable lessons (Published + Previewable) surfaced on the landing page so
     // visitors can open one straight into the player (no auth required — see lesson.play).
-    $playableLessons = Lesson::whereIn('status', [
-            LessonStatusEnum::Published->value,
-            LessonStatusEnum::Previewable->value,
-        ])
-        ->whereNotNull('lesson_code')
-        // Only lessons that actually play — at least one narrated scene. Excludes empty
-        // stubs that would open the player to a perpetual "audio generating" screen.
-        ->whereHas('scenes', fn ($q) => $q->whereNotNull('audio_path'))
-        ->with(['firstScene', 'source'])
-        ->latest()
-        ->take(12)
-        ->get();
+    //
+    // Cached (local file store) for 10 min. This whereHas EXISTS subquery + eager loads against
+    // the remote Supabase DB costs ~2s cold, and the landing page is the most-hit route — caching
+    // takes it from ~2.2s to ~40ms. The key is busted on any Lesson save (see Lesson::booted),
+    // so a newly published lesson appears immediately.
+    $playableLessons = \Illuminate\Support\Facades\Cache::remember(
+        'home.playable_lessons',
+        now()->addMinutes(10),
+        fn () => Lesson::whereIn('status', [
+                LessonStatusEnum::Published->value,
+                LessonStatusEnum::Previewable->value,
+            ])
+            ->whereNotNull('lesson_code')
+            // Only lessons that actually play — at least one narrated scene. Excludes empty
+            // stubs that would open the player to a perpetual "audio generating" screen.
+            ->whereHas('scenes', fn ($q) => $q->whereNotNull('audio_path'))
+            ->with(['firstScene', 'source'])
+            ->latest()
+            ->take(12)
+            ->get()
+    );
 
     return view('historyportal', compact('playableLessons'));
 })->name('home');
