@@ -79,7 +79,7 @@
         <div
             data-portal-signup
             class="pointer-events-none absolute left-1/2 top-1/2 z-40 w-full max-w-md -translate-x-1/2 -translate-y-1/2 px-4 opacity-0"
-            aria-hidden="true"
+            inert
         >
             <div class="rounded-3xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
                 <h2 class="text-center text-2xl font-semibold text-white">Create your account</h2>

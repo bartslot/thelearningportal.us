@@ -23,6 +23,7 @@
                         @if ($cover)
                             <img src="{{ $cover }}" alt="{{ $lesson->title }}"
                                  loading="lazy" decoding="async"
+                                 width="480" height="768"
                                  class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]">
                         @else
                             <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-4xl opacity-40">🏛️</div>

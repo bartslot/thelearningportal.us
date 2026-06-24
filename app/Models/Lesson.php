@@ -378,6 +378,23 @@ class Lesson extends Model
      */
     public function protagonistImageUrl(): ?string
     {
+        $url = $this->protagonistImageUrlFull();
+        if ($url === null) {
+            return null;
+        }
+
+        // Bound the raw Wikimedia original so even the pre-cover fallback <img> never pulls a
+        // multi-MB file. Cover generation uses the unbounded full-size original instead.
+        return $this->boundedWikimediaImageUrl($url, 600);
+    }
+
+    /**
+     * Full-size protagonist portrait URL (corpus P18) with no thumbnail bound — the best source
+     * for a high-quality cover crop. Cached per QID for a week (the corpus is static); a transient
+     * corpus failure is never cached so the next request retries.
+     */
+    public function protagonistImageUrlFull(): ?string
+    {
         if (! $this->protagonist_qid) {
             return null;
         }
@@ -402,6 +419,46 @@ class Lesson extends Model
     }
 
     /**
+     * Append a bounded thumbnail width to a Wikimedia Special:FilePath URL (preserving any existing
+     * query string) so an <img> never streams a multi-MB original. Non-Wikimedia URLs are returned
+     * unchanged.
+     */
+    private function boundedWikimediaImageUrl(string $url, int $width): string
+    {
+        if (! str_contains($url, 'Special:FilePath') || str_contains($url, 'width=')) {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url.$separator.'width='.$width;
+    }
+
+    /**
+     * Public URL for the pre-rendered local WebP cover, or null if it hasn't been generated yet.
+     * Built exactly like publicMediaUrl() so it matches every other media URL on the model.
+     */
+    public function coverImageUrl(): ?string
+    {
+        $path = "lessons/{$this->id}/cover.webp";
+
+        if (! Storage::disk('public')->exists($path)) {
+            return null;
+        }
+
+        return rtrim($this->mediaBaseUrl(), '/').'/storage/'.ltrim($path, '/');
+    }
+
+    /**
+     * Public wrapper around the private publicMediaUrl() so the cover-generation command can
+     * resolve a storage-path source image without duplicating URL-building logic.
+     */
+    public function coverSourceMediaUrl(?string $path): ?string
+    {
+        return $this->publicMediaUrl($path);
+    }
+
+    /**
      * Best SCENIC cover for the lesson, in priority order. Never a flag or a bare map: the
      * Wikipedia title image (which is a flag/map for some empires) sits below the protagonist
      * portrait, the generated scene, and the editorial hero — so person-led empire lessons show
@@ -409,6 +466,13 @@ class Lesson extends Model
      */
     public function cardImageUrl(): ?string
     {
+        // 0. Pre-rendered local WebP cover (small, cropped) — by far the lightest option, so it
+        //    wins outright. The chain below remains the SOURCE for generation and the fallback
+        //    shown until app:generate-lesson-covers has run for this lesson.
+        if ($url = $this->coverImageUrl()) {
+            return $url;
+        }
+
         // 1. People: scenic portrait/painting of the protagonist (corpus P18).
         if ($url = $this->protagonistImageUrl()) {
             return $url;

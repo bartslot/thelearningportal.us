@@ -173,7 +173,7 @@
 
             <a
                 href="#contact"
-                class="mt-8 inline-flex items-center gap-3 rounded-full border border-sky-400/40 bg-sky-500 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_20px_40px_rgba(14,165,233,0.25)] transition hover:bg-sky-400"
+                class="mt-8 inline-flex items-center gap-3 rounded-full border border-sky-400/40 bg-sky-600 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_20px_40px_rgba(14,165,233,0.25)] transition hover:bg-sky-500"
             >
                 <span>Start Teaching History</span>
                 <span aria-hidden="true">→</span>

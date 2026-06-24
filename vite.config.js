@@ -10,6 +10,13 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
+    build: {
+        // The hero "launch" animation dynamically imports three.js (~1.7 MB). Vite would emit a
+        // <link rel="modulepreload"> for that chunk on every page that loads app.js — including the
+        // landing page — pulling 1.7 MB nobody needs until they actually click. Disabling preload
+        // keeps the dynamic import working but defers the download to on-demand.
+        modulePreload: false,
+    },
     server: {
         host: '127.0.0.1',
         port: 5173,

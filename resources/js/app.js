@@ -536,6 +536,7 @@ const setupPortalExitAnimation = () => {
 
             if (signup) {
                 tl.set(signup, { pointerEvents: 'auto' }, 1.22)
+                    .call(() => { signup.inert = false; }, null, 1.22)
                     .to(signup, {
                         opacity: 1,
                         y: 0,
