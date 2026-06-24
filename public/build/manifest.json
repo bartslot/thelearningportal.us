@@ -1,0 +1,96 @@
+{
+  "__commonjsHelpers-CqkleIqs.js": {
+    "file": "assets/_commonjsHelpers-CqkleIqs.js",
+    "name": "_commonjsHelpers"
+  },
+  "_index-DDlvirwQ.js": {
+    "file": "assets/index-DDlvirwQ.js",
+    "name": "index"
+  },
+  "_map-forests-C9CVg1VZ.js": {
+    "file": "assets/map-forests-C9CVg1VZ.js",
+    "name": "map-forests",
+    "imports": [
+      "__commonjsHelpers-CqkleIqs.js"
+    ],
+    "css": [
+      "assets/map-forests-DNVN2dqC.css"
+    ]
+  },
+  "_map-forests-DNVN2dqC.css": {
+    "file": "assets/map-forests-DNVN2dqC.css",
+    "src": "_map-forests-DNVN2dqC.css"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-CGTseYsv.css",
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "name": "app",
+    "names": [
+      "app.css"
+    ]
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-NpHsa01w.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "imports": [
+      "_index-DDlvirwQ.js",
+      "__commonjsHelpers-CqkleIqs.js",
+      "resources/js/avatar-3d.js"
+    ],
+    "dynamicImports": [
+      "resources/js/avatar-3d.js"
+    ],
+    "css": [
+      "assets/app-AEfMPvIN.css"
+    ]
+  },
+  "resources/js/argument-map.js": {
+    "file": "assets/argument-map-B0aFImoa.js",
+    "name": "argument-map",
+    "src": "resources/js/argument-map.js",
+    "isEntry": true,
+    "imports": [
+      "_index-DDlvirwQ.js"
+    ]
+  },
+  "resources/js/avatar-3d.js": {
+    "file": "assets/avatar-3d-BXpyKIRK.js",
+    "name": "avatar-3d",
+    "src": "resources/js/avatar-3d.js",
+    "isEntry": true,
+    "isDynamicEntry": true
+  },
+  "resources/js/lesson-map.js": {
+    "file": "assets/lesson-map-DQs5WSEp.js",
+    "name": "lesson-map",
+    "src": "resources/js/lesson-map.js",
+    "isEntry": true,
+    "imports": [
+      "_map-forests-C9CVg1VZ.js",
+      "__commonjsHelpers-CqkleIqs.js"
+    ]
+  },
+  "resources/js/lesson-player.js": {
+    "file": "assets/lesson-player-ld2cMvmQ.js",
+    "name": "lesson-player",
+    "src": "resources/js/lesson-player.js",
+    "isEntry": true,
+    "imports": [
+      "resources/js/avatar-3d.js",
+      "__commonjsHelpers-CqkleIqs.js"
+    ]
+  },
+  "resources/js/timemap/index.js": {
+    "file": "assets/index-CpLyHdhW.js",
+    "name": "index",
+    "src": "resources/js/timemap/index.js",
+    "isEntry": true,
+    "imports": [
+      "_map-forests-C9CVg1VZ.js",
+      "__commonjsHelpers-CqkleIqs.js"
+    ]
+  }
+}
