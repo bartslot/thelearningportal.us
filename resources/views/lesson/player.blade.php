@@ -117,9 +117,11 @@
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
-    {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
+    {{-- 2D narrator portrait — small reminder badge during PLAYBACK only. The title screen has its
+         own framed narrator card (below), so hide this there to avoid a dark, duplicate portrait. --}}
     @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
         <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
+             x-show="phase !== 'TITLE_SCREEN'" x-cloak
              class="pointer-events-none absolute bottom-6 right-6 z-30 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
     @endif
 
@@ -228,16 +230,25 @@
             {{-- Animated film grain — heavier than normal (0.12 opacity) --}}
             <div class="skybox-grain-overlay" style="opacity: 0.22; z-index: 2;"></div>
 
-            {{-- Narrator label — bottom right, above the 3D avatar --}}
+            {{-- Narrator card — framed + brightened portrait beside the label/name/era. Avatar
+                 thumbnails are often dark, so a warm ring + shadow + brightness lifts it off the
+                 dark cover so it reads as "on the forefront" (not a dark blob). --}}
+            @php $narratorImg = $lesson->avatar?->thumbnailUrl() ?? $lesson->avatar?->portraitUrl(); @endphp
             @if($lesson->avatar?->name || $lesson->historical_figure)
-                <div class="absolute bottom-10 right-8 sm:right-12 hidden sm:flex flex-col items-end gap-0.5 text-right"
-                     style="z-index:10">
-                    <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/70">Your narrator</p>
-                    <p class="font-history text-2xl font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] leading-tight">
-                        {{ $lesson->avatar?->name ?? $lesson->historical_figure }}
-                    </p>
-                    @if($lesson->avatar?->era || $lesson->era)
-                        <p class="text-xs text-slate-400">{{ $lesson->avatar?->era ?? $lesson->era }}</p>
+                <div class="absolute bottom-10 right-8 sm:right-12 hidden sm:flex items-center gap-4" style="z-index:20">
+                    <div class="flex flex-col items-end gap-0.5 text-right">
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">Your narrator</p>
+                        <p class="font-history text-2xl font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                            {{ $lesson->avatar?->name ?? $lesson->historical_figure }}
+                        </p>
+                        @if($lesson->avatar?->era || $lesson->era)
+                            <p class="text-xs text-slate-300/80">{{ $lesson->avatar?->era ?? $lesson->era }}</p>
+                        @endif
+                    </div>
+                    @if($narratorImg)
+                        <img src="{{ $narratorImg }}" alt="{{ $lesson->avatar?->name }}"
+                             class="h-28 w-28 shrink-0 rounded-2xl object-cover shadow-[0_10px_34px_rgba(0,0,0,0.6)] ring-2 ring-amber-400/50"
+                             style="filter: brightness(1.18) contrast(1.06) saturate(1.05);">
                     @endif
                 </div>
             @endif
