@@ -58,5 +58,9 @@ class DatabaseSeeder extends Seeder
         // ── French Revolution demo lesson ─────────────────────────────────────
         $this->call(FrenchRevolutionDemoSeeder::class);
 
+        // ── Curated historical city names ─────────────────────────────────────
+        // Run after `php artisan app:import-cities` so most rows match an imported
+        // city; any curated city NE lacks is created as a coordinate-less stub.
+        $this->call(HistoricalCityNamesSeeder::class);
     }
 }
