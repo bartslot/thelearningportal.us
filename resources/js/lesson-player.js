@@ -119,7 +119,7 @@ let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpin
 // Alpine is imported directly (no Livewire on this page) — register before start()
 Alpine.data('lessonGame', (lesson) => ({
     // ── State ──────────────────────────────────────────────────────────
-    phase:  'LOADING',          // LOADING | TITLE_SCREEN | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP | ENDED
+    phase:  'LOADING',          // LOADING | TITLE_SCREEN | WELCOME_VIDEO | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP | ENDED
     canResumeAfterGame: false,  // shows the "Continue the lesson" button on the TIME_UP screen
     lesson: lesson,             // exposed to templates (title screen meta, etc.)
     prevPhase: null,            // phase before INTEL_DROP, to return to
@@ -229,6 +229,12 @@ Alpine.data('lessonGame', (lesson) => ({
       // Only audio metadata is strictly required before lesson can start
       this._assetsReady = this._loadAudio()
 
+      // Pick + preload the welcome video (full vs lite) while the title screen is up,
+      // so it plays instantly on "Start lesson".
+      if (lesson.narrator_welcome_url && this.$refs.welcomeVideo) {
+        this.$refs.welcomeVideo.src = this._welcomeSrc()
+      }
+
       this.phase = 'TITLE_SCREEN'
 
       // Render QR code into the canvas element
@@ -264,6 +270,73 @@ Alpine.data('lessonGame', (lesson) => ({
         if (AudioCtx) { const ctx = new AudioCtx(); ctx.resume(); ctx.close() }
       } catch (_) {}
 
+      // Narrator welcome video plays once, full-screen, before the first block. It runs
+      // synchronously off this click gesture (so it keeps its sound), while lesson assets
+      // keep preloading in the background. _endWelcomeVideo() advances into playback.
+      if (lesson.narrator_welcome_url && !this._welcomePlayed) {
+        this._welcomePlayed = true
+        this.phase = 'WELCOME_VIDEO'
+        // Play synchronously within the click gesture so autoplay-with-sound is allowed.
+        // The overlay (x-show) becomes visible on Alpine's reactive flush a tick later.
+        this._playWelcomeVideo()
+        return
+      }
+
+      this._enterPlayback()
+    },
+
+    // ── Narrator welcome video ─────────────────────────────────────────
+    _welcomePlayed: false,
+
+    // Choose full vs lite source. Network Information API (Chrome/Android/Edge) is
+    // authoritative when present; iOS Safari lacks it, so phones fall back to lite
+    // (the clip renders ~390px wide there — the 480px lite file is plenty).
+    _welcomeSrc () {
+      const full = lesson.narrator_welcome_url
+      const lite = lesson.narrator_welcome_lite_url
+      if (!lite) return full
+
+      const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+      if (c) {
+        if (c.saveData) return lite
+        if (['slow-2g', '2g', '3g'].includes(c.effectiveType)) return lite
+        return full // 4g / wifi
+      }
+
+      // No connection API → can't detect cellular. Default phones to lite, desktops to full.
+      const isPhone = /iPhone|Android.*Mobile/i.test(navigator.userAgent)
+        || Math.min(window.innerWidth, window.innerHeight) <= 480
+      return isPhone ? lite : full
+    },
+
+    _playWelcomeVideo () {
+      const v = this.$refs.welcomeVideo
+      if (!v) { this._enterPlayback(); return }
+      if (!v.getAttribute('src')) v.src = this._welcomeSrc() // safety: ensure a source
+
+
+
+      // Advance to the first block when the intro ends (or fails) — only once.
+      v.addEventListener('ended', () => this._endWelcomeVideo(), { once: true })
+      v.addEventListener('error', () => this._endWelcomeVideo(), { once: true })
+
+      try { v.currentTime = 0 } catch (_) {}
+      v.play().catch(e => {
+        // Autoplay-with-sound blocked despite the gesture — don't strand the student.
+        console.warn('lesson-player: welcome video autoplay blocked', e)
+        this._endWelcomeVideo()
+      })
+    },
+
+    _endWelcomeVideo () {
+      if (this.phase !== 'WELCOME_VIDEO') return // guard against double-fire (ended + skip)
+      const v = this.$refs.welcomeVideo
+      try { if (v) { v.pause(); v.removeAttribute('src'); v.load() } } catch (_) {}
+      this._enterPlayback()
+    },
+
+    // ── Load assets, then start the first block ────────────────────────
+    async _enterPlayback () {
       this.phase = 'LOADING'
       try {
         await Promise.race([

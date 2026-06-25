@@ -112,6 +112,28 @@ class Avatar extends Model
         return file_exists($path) ? asset("avatars/{$this->id}/thumbnail.webp") : null;
     }
 
+    /**
+     * URL for the narrator welcome video (talking-avatar intro that plays once,
+     * full-screen, before the first lesson block). Null when the avatar has none.
+     */
+    public function welcomeVideoUrl(): ?string
+    {
+        $path = public_path("avatars/{$this->id}/welcome.mp4");
+
+        return file_exists($path) ? asset("avatars/{$this->id}/welcome.mp4") : null;
+    }
+
+    /**
+     * Smaller (480px) welcome video for slow / data-saver connections and phones.
+     * The player picks this over the full file via the Network Information API.
+     */
+    public function welcomeVideoLiteUrl(): ?string
+    {
+        $path = public_path("avatars/{$this->id}/welcome-lite.mp4");
+
+        return file_exists($path) ? asset("avatars/{$this->id}/welcome-lite.mp4") : null;
+    }
+
     // ── Greeting ──────────────────────────────────────────────────────────────
 
     /**

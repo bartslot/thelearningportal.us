@@ -28,6 +28,8 @@
         'lesson_code'           => $lesson->lesson_code,
         'avatar_glb_url'        => null, // 3D avatar retired — avatars are a 2D image + ElevenLabs voice
         'avatar_gender'         => strtolower($lesson->avatar?->gender ?? 'male'),
+        'narrator_welcome_url'      => $lesson->avatar?->welcomeVideoUrl(),
+        'narrator_welcome_lite_url' => $lesson->avatar?->welcomeVideoLiteUrl(),
         'game_duration_seconds' => $lesson->strategyGame ? $lesson->strategyGame->duration_minutes * 60 : 600,
         'game_title'            => $lesson->strategyGame?->title,
         'game_instructions'     => $lesson->strategyGame?->instructions,
@@ -108,6 +110,34 @@
         {{ __('Continue') }}
         <svg class="h-5 w-5 fill-slate-950" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </button>
+
+    {{-- ── Narrator welcome video ───────────────────────────────────────────
+         Plays once, full-screen, right after "Start lesson" is clicked and before
+         the first block. Dark-blue base + black vignette focuses the talking avatar;
+         the player auto-advances to block 1 the moment it ends (see _endWelcomeVideo). --}}
+    @if ($welcomeVideoUrl = $lesson->avatar?->welcomeVideoUrl())
+        <div x-show="phase === 'WELCOME_VIDEO'" x-cloak
+             class="absolute inset-0 z-[60] flex items-center justify-center pointer-events-auto"
+             style="background:#0f172a;">
+
+            {{-- Black vignette --}}
+            <div class="pointer-events-none absolute inset-0"
+                 style="background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 72%, rgba(0,0,0,0.92) 100%);"></div>
+
+            {{-- src is chosen at runtime (full vs lite) by _welcomeSrc() based on connection/screen. --}}
+            <video x-ref="welcomeVideo" playsinline preload="auto"
+                   class="relative z-[1] max-h-full max-w-full object-contain"></video>
+
+            {{-- Skip — small, unobtrusive --}}
+            <button @click="_endWelcomeVideo()"
+                    class="absolute bottom-8 right-8 z-[2] flex items-center gap-2 rounded-full border border-white/20
+                           bg-black/40 px-5 py-2 text-sm font-semibold text-white/80 backdrop-blur-sm
+                           transition hover:bg-black/60 hover:text-white active:scale-95">
+                {{ __('Skip') }}
+                <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M4 5v14l8-7zM13 5v14l8-7z"/></svg>
+            </button>
+        </div>
+    @endif
 
     {{-- ── LAYER 1: Shadow gradient overlay ────────────────────────────── --}}
     <div class="absolute inset-0 z-10 pointer-events-none bg-linear-to-b from-black/50 to-[#0C2033]/50"></div>
