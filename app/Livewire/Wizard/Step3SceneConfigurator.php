@@ -238,6 +238,43 @@ class Step3SceneConfigurator extends Component
     // otherwise only auto-fills from a `polity:` catalog topic, leaving city/free-text lessons blank.
     public string $territoryQuery = '';
 
+    /** The scene's chosen year (drives which polities existed then). */
+    private function sceneYear(): ?int
+    {
+        $y = $this->selectedScene['config']['year'] ?? null;
+
+        return is_numeric($y) ? (int) $y : null;
+    }
+
+    /**
+     * Reference point for "surrounding-first" ranking: the already-linked territory's centroid, else
+     * the first focus city placed on the map. Lets neighbours of what's on screen rank above far-off
+     * homonyms.
+     *
+     * @return array{0: float, 1: float}|null  [lat, lng]
+     */
+    private function territoryRefPoint(): ?array
+    {
+        $qid = $this->selectedScene['config']['qid'] ?? null;
+        if ($qid) {
+            $t = \App\Models\Corpus\Topic::resilient(
+                fn () => \App\Models\Corpus\Topic::query()
+                    ->where('id', 'like', 'polity:%')->where('qid', $qid)
+                    ->first(['region_lat', 'region_lng'])
+            );
+            if ($t && $t->region_lat !== null && $t->region_lng !== null) {
+                return [(float) $t->region_lat, (float) $t->region_lng];
+            }
+        }
+        foreach (($this->selectedScene['config']['annotations'] ?? []) as $a) {
+            if (($a['type'] ?? null) === 'focus' && isset($a['lat'], $a['lng']) && is_numeric($a['lat']) && is_numeric($a['lng'])) {
+                return [(float) $a['lat'], (float) $a['lng']];
+            }
+        }
+
+        return null;
+    }
+
     #[Computed]
     public function territoryResults()
     {
@@ -246,14 +283,46 @@ class Step3SceneConfigurator extends Component
             return collect();
         }
 
-        return \App\Models\Corpus\Topic::resilient(
-            fn () => \App\Models\Corpus\Topic::query()
-                ->where('id', 'like', 'polity:%')
-                ->where('name', 'ilike', '%'.$q.'%')
-                ->orderByRaw('length(name)')   // prefer the shortest (most exact) match first
-                ->limit(8)
-                ->get(['id', 'qid', 'name', 'region_label', 'era_start', 'era_end'])
-        ) ?? collect();
+        $year = $this->sceneYear();
+        $ref = $this->territoryRefPoint();
+        $tol = 75; // years of slack around the chosen year, so a polity that just ended/began still shows
+
+        // Pull a wider set, then rank in PHP by name match + proximity (surrounding) + era closeness.
+        $fetch = fn (bool $byYear) => \App\Models\Corpus\Topic::query()
+            ->where('id', 'like', 'polity:%')
+            ->where('name', 'ilike', '%'.$q.'%')
+            ->when($byYear && $year !== null, function ($query) use ($year, $tol) {
+                // keep only polities whose lifespan overlaps [year-tol, year+tol] (unknown era passes)
+                $query->where(fn ($w) => $w->whereNull('era_start')->orWhere('era_start', '<=', $year + $tol))
+                    ->where(fn ($w) => $w->whereNull('era_end')->orWhere('era_end', '>=', $year - $tol));
+            })
+            ->limit(40)
+            ->get(['id', 'qid', 'name', 'region_label', 'era_start', 'era_end', 'region_lat', 'region_lng', 'sitelinks']);
+
+        return \App\Models\Corpus\Topic::resilient(function () use ($fetch, $q, $year, $ref) {
+            $rows = $fetch(true);
+            if ($rows->isEmpty() && $year !== null) {
+                $rows = $fetch(false); // nothing in-era → relax the year filter so the picker isn't empty
+            }
+            $ql = mb_strtolower($q);
+
+            return $rows->sortBy(function ($t) use ($ql, $year, $ref) {
+                $name = mb_strtolower($t->name);
+                $score = str_starts_with($name, $ql) ? 0.0 : 2.0;                 // name-prefix matches first
+                if ($ref && $t->region_lat !== null && $t->region_lng !== null) { // surrounding first
+                    $dLat = (float) $t->region_lat - $ref[0];
+                    $dLng = ((float) $t->region_lng - $ref[1]) * cos(deg2rad($ref[0]));
+                    $score += sqrt($dLat * $dLat + $dLng * $dLng) * 0.03;
+                }
+                if ($year !== null && $t->era_start !== null && $t->era_end !== null) { // closest era next
+                    $score += abs((($t->era_start + $t->era_end) / 2) - $year) * 0.0015;
+                }
+                $score += mb_strlen((string) $t->name) * 0.01;
+                $score -= min((int) ($t->sitelinks ?? 0), 200) * 0.0008;          // nudge well-known polities up
+
+                return $score;
+            })->take(8)->values();
+        }) ?? collect();
     }
 
     public function linkTerritory(string $qid): void
@@ -339,6 +408,8 @@ class Step3SceneConfigurator extends Component
         $annotations[$index]['label'] = mb_substr(trim($label), 0, self::FOCUS_LABEL_MAX);
         $this->selectedScene['config']['annotations'] = $annotations;
         $this->saveSelected();
+        // Push the fresh annotations back to the live preview so the marker label updates without a re-mount.
+        $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
     }
 
     public function removeFocus(int $index): void
@@ -352,6 +423,18 @@ class Step3SceneConfigurator extends Component
         }
         array_splice($annotations, $index, 1);
         $this->selectedScene['config']['annotations'] = array_values($annotations);
+        $this->saveSelected();
+        // Push the fresh annotations back to the live preview so the removed marker disappears immediately.
+        $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
+    }
+
+    /** Map block: flip the projection between flat 2D (mercator) and 3D globe; persists in scene.config. */
+    public function setProjection(string $type): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $this->selectedScene['config']['projection'] = in_array($type, ['mercator', 'globe'], true) ? $type : 'mercator';
         $this->saveSelected();
     }
 

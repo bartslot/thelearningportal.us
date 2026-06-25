@@ -36,6 +36,27 @@
         </label>
     </div>
 
+    {{-- VIEW — flat 2D (mercator) vs 3D globe. The onclick flips the live preview instantly; the
+         wire:click persists the choice so it survives a re-mount / reload. --}}
+    @php $projection = $scene->config['projection'] ?? 'mercator'; @endphp
+    <div class="form-control">
+        <span class="text-xs uppercase tracking-wider text-slate-400">View</span>
+        <div class="mt-1 inline-flex overflow-hidden rounded-lg border border-slate-700/60">
+            <button type="button"
+                    wire:click="setProjection('mercator')"
+                    onclick="window.dispatchEvent(new CustomEvent('lessonmap:projection',{detail:{type:'mercator'}}))"
+                    class="flex-1 px-3 py-1.5 text-xs font-medium transition-colors {{ $projection === 'globe' ? 'bg-slate-800 text-slate-400' : 'bg-amber-500 text-slate-950' }}">
+                Flat 2D
+            </button>
+            <button type="button"
+                    wire:click="setProjection('globe')"
+                    onclick="window.dispatchEvent(new CustomEvent('lessonmap:projection',{detail:{type:'globe'}}))"
+                    class="flex-1 px-3 py-1.5 text-xs font-medium transition-colors {{ $projection === 'globe' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400' }}">
+                Globe 3D
+            </button>
+        </div>
+    </div>
+
     {{-- Focus cities — teacher drops a red dot + label on the map (annotations[].type === 'focus'). --}}
     <div class="form-control border-t border-slate-700/50 pt-3">
         <span class="text-xs uppercase tracking-wider text-slate-400">Focus cities</span>
@@ -91,10 +112,16 @@
                 <ul class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-700/60 divide-y divide-slate-800 bg-slate-900/95">
                     @foreach ($territoryResults as $t)
                         <li>
+                            @php
+                                $fmtYr = fn ($y) => $y === null ? '?' : ($y < 0 ? abs($y).' BCE' : (string) $y);
+                                $era = ($t->era_start !== null || $t->era_end !== null)
+                                    ? $fmtYr($t->era_start).'–'.$fmtYr($t->era_end)
+                                    : ($t->region_label ?: '');
+                            @endphp
                             <button type="button" wire:click="linkTerritory('{{ $t->qid }}')"
                                     class="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-slate-800/70">
                                 <span class="truncate text-sm text-slate-200">{{ $t->name }}</span>
-                                <span class="shrink-0 text-[10px] text-slate-500">{{ $t->region_label ?: ($t->era_start !== null ? ($t->era_start < 0 ? abs($t->era_start).' BCE' : $t->era_start) : '') }}</span>
+                                <span class="shrink-0 text-[10px] text-slate-500" title="Active era">{{ $era }}</span>
                             </button>
                         </li>
                     @endforeach
