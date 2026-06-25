@@ -270,13 +270,50 @@ export function renderLessonMap (el, opts = {}) {
       // Render ABOVE the normal city labels: addLayer(layer, beforeId) inserts BELOW beforeId, so we
       // append on top (no beforeId) — moving it after city-labels if that layer exists.
       if (map.getLayer('city-labels')) map.moveLayer('hcity-label')
+      // This overlay can load AFTER the annotations set its focus names, so re-apply the current
+      // exclusion now that `hcity-label` exists (no-op when no focus cities are present).
+      applyFocusExclusion('hcity-label', lastFocusNames)
     } catch (_) { /* overlay is decorative — never break the map */ }
   })
 
-  // Teacher map annotations (focus cities, etc.) — rendered as DOM markers once the style is up.
+  // Teacher map annotations (focus cities, etc.) — rendered as MapLibre layers once the style is up.
+  // A focus city is re-drawn BIG (calligraphy + drop shadow) by map-annotations, so its normal small
+  // label would duplicate it. We suppress the duplicate by excluding the focus display names from the
+  // `city-labels` and `hcity-label` layers, keeping each layer's original filter as the base.
   let anno = null
+  const labelLayers = ['city-labels', 'hcity-label']
+  // Saved once the layers exist; null = "not captured yet". An entry can also be undefined,
+  // meaning the layer had no filter (its base is `true`).
+  const baseFilters = {}
+
+  const captureBaseFilter = (id) => {
+    if (id in baseFilters) return
+    if (!map.getLayer(id)) return
+    baseFilters[id] = map.getFilter(id)
+  }
+
+  // Exclude `names` (focus display names) from a label layer, ANDed onto its original filter.
+  // Empty names → restore the original filter.
+  const applyFocusExclusion = (id, names) => {
+    if (!map.getLayer(id)) return
+    captureBaseFilter(id)
+    const base = baseFilters[id] ?? true
+    if (!names || names.length === 0) {
+      map.setFilter(id, baseFilters[id] ?? null)
+      return
+    }
+    map.setFilter(id, ['all', base, ['!', ['in', ['get', 'name'], ['literal', names]]]])
+  }
+
+  // Last names handed to us — re-applied to layers that load after the annotations (e.g. hcity-label).
+  let lastFocusNames = []
+  const onFocusNames = (names) => {
+    lastFocusNames = Array.isArray(names) ? names : []
+    labelLayers.forEach((id) => applyFocusExclusion(id, lastFocusNames))
+  }
+
   map.on('load', () => {
-    anno = renderAnnotations(map, annotations, { editable, onChange: onAnnotationsChange })
+    anno = renderAnnotations(map, annotations, { editable, onChange: onAnnotationsChange, onFocusNames })
   })
 
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
@@ -298,7 +335,12 @@ export function renderLessonMap (el, opts = {}) {
     if (map.getLayer('boundaries-fill')) map.setFilter('boundaries-fill', polityFilter(year))
     // Cities are period-specific — re-filter them too.
     if (map.getLayer('city-dots')) map.setFilter('city-dots', cityFilter(year))
-    if (map.getLayer('city-labels')) map.setFilter('city-labels', cityFilter(year))
+    if (map.getLayer('city-labels')) {
+      // The new period filter becomes `city-labels`' base; re-apply the focus exclusion on top of it
+      // so a focus city's small duplicate label stays suppressed across year changes.
+      baseFilters['city-labels'] = cityFilter(year)
+      applyFocusExclusion('city-labels', lastFocusNames)
+    }
   }
 
   return {

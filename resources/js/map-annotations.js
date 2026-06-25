@@ -1,5 +1,5 @@
 /**
- * map-annotations.js — teacher-placed map annotations rendered as MapLibre markers.
+ * map-annotations.js — teacher-placed map annotations rendered as MapLibre layers.
  *
  * The ONLY place annotation rendering lives. Reused by the lesson composer (editable)
  * and the lesson player (read-only). An annotation is a plain object stored in
@@ -7,88 +7,52 @@
  *
  *   { type: 'focus', lng: <float>, lat: <float>, label: <string> }
  *
- * Later phases (arrows, army/person markers) will add more `type`s — the render loop
+ * A focus city reuses the map's calligraphy (Eagle Lake) style but BIGGER, with a drop
+ * shadow and a small centred dot — no dark chip, no offset DOM marker. It's drawn with
+ * native MapLibre symbol/circle layers (a GeoJSON source `focus-src`), so it aligns to the
+ * point exactly and the host can suppress the normal duplicate label for that city.
+ *
+ * Later phases (arrows, army/person markers) will add more `type`s — the build loop
  * skips unknown types so older clients never crash on data they don't understand.
  *
- *   const anno = renderAnnotations(map, annotations, { editable: true, onChange })
- *   anno.beginAddFocus(); anno.update(newArray); anno.destroy()
+ *   const anno = renderAnnotations(map, annotations, { editable: true, onChange, onFocusNames })
+ *   anno.beginAddFocus(); anno.update(newArray); anno.getFocusNames(); anno.destroy()
  */
-import maplibregl from 'maplibre-gl'
 
-// Focus-city dot styling. Kept as constants so the look stays consistent and tweakable.
-const FOCUS_DOT_SIZE_PX = 18
-const FOCUS_DOT_FILL = '#c0392b'        // matches the selected-polity red in lesson-map.js
-const FOCUS_DOT_RING = '#ffffff'
-const FOCUS_CAPITAL_RING = '#f5c518'    // gold ring around a territory's auto-added capital
+// Focus-city styling. Kept as constants so the calligraphy look stays consistent and tweakable.
+const FOCUS_SRC = 'focus-src'
+const FOCUS_SHADOW_LAYER = 'focus-shadow'
+const FOCUS_LABEL_LAYER = 'focus-label'
+const FOCUS_DOT_LAYER = 'focus-dot'
+const FOCUS_FONT = ['Eagle Lake']        // same Tolkien-style calligraphy as the map's city labels
+const FOCUS_SHADOW_COLOR = '#1c140b'     // near-black ink, offset = drop shadow
+const FOCUS_LABEL_COLOR = '#7a1f12'      // deep historical red
+const FOCUS_HALO_COLOR = '#f3ead6'       // parchment halo
+const FOCUS_DOT_RING = '#f3ead6'         // parchment ring around the dot
+const FOCUS_CAPITAL_RING = '#f5c518'     // gold ring around a territory's auto-added capital
 const FOCUS_LABEL_PLACEHOLDER = 'New place'
 const LABEL_MAX_LENGTH = 80
 
+// Zoom-interpolated label size — bigger than the normal city label so the focus city reads as primary.
+const FOCUS_TEXT_SIZE = ['interpolate', ['linear'], ['zoom'], 2, 15, 6, 22]
+// Zoom-interpolated dot radius — a small centred marker, not the old oversized DOM dot.
+const FOCUS_DOT_RADIUS = ['interpolate', ['linear'], ['zoom'], 2, 3, 6, 5]
+
 /**
- * Build the custom HTML element for a focus-city marker: a red dot with a white ring
- * and a label chip beside it.
- *
- * When `anno.historical` is a non-empty string the chip shows the dual name across two lines —
- * the historical name (bold) over "(modern)". Otherwise it's a single line of `anno.label`.
- * When `anno.capital` is true the dot gets a 2px gold ring (the territory's auto-added capital).
- *
- * @param {{label?:string, historical?:string|null, capital?:boolean}} anno
- * @returns {HTMLElement}
+ * The shared text-field expression: a dual name when `historical` is set
+ * (historical name big, "(modern)" smaller) — otherwise just the single label.
+ * @returns {Array} a MapLibre `text-field` expression
  */
-function buildFocusElement (anno) {
-  const a = anno || {}
-  const wrap = document.createElement('div')
-  wrap.style.display = 'flex'
-  wrap.style.alignItems = 'center'
-  wrap.style.gap = '6px'
-  wrap.style.pointerEvents = 'auto'
-  wrap.style.whiteSpace = 'nowrap'
-
-  const dot = document.createElement('div')
-  dot.style.width = `${FOCUS_DOT_SIZE_PX}px`
-  dot.style.height = `${FOCUS_DOT_SIZE_PX}px`
-  dot.style.borderRadius = '50%'
-  dot.style.background = FOCUS_DOT_FILL
-  dot.style.border = `3px solid ${FOCUS_DOT_RING}`
-  // Capital cities get a gold ring outside the white one (box-shadow keeps the dot size stable).
-  dot.style.boxShadow = a.capital === true
-    ? `0 0 0 2px ${FOCUS_CAPITAL_RING}, 0 1px 6px rgba(0,0,0,0.45)`
-    : '0 1px 6px rgba(0,0,0,0.45)'
-  dot.style.flex = '0 0 auto'
-
-  const chip = document.createElement('span')
-  chip.style.display = 'inline-block'
-  chip.style.color = '#ffffff'
-  chip.style.background = 'rgba(15,23,42,0.78)'   // dark translucent pill (slate-900-ish)
-  chip.style.padding = '2px 8px'
-  chip.style.borderRadius = '9999px'
-  chip.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)'
-  chip.style.lineHeight = '1.15'
-
-  const historical = typeof a.historical === 'string' ? a.historical.trim() : ''
-  if (historical) {
-    // Two-line dual name: historical (bold) over a dim "(modern)".
-    const top = document.createElement('span')
-    top.textContent = historical
-    top.style.display = 'block'
-    top.style.font = '700 13px/1.15 system-ui, sans-serif'
-
-    const bottom = document.createElement('span')
-    bottom.textContent = a.label ? `(${a.label})` : '(modern)'
-    bottom.style.display = 'block'
-    bottom.style.font = '400 10px/1.15 system-ui, sans-serif'
-    bottom.style.opacity = '0.8'
-
-    chip.appendChild(top)
-    chip.appendChild(bottom)
-  } else {
-    chip.textContent = a.label || FOCUS_LABEL_PLACEHOLDER
-    chip.style.font = '700 13px/1.2 system-ui, sans-serif'
-  }
-
-  wrap.appendChild(dot)
-  wrap.appendChild(chip)
-  return wrap
-}
+const focusTextField = () => ['case',
+  ['has', 'historical'],
+  ['format',
+    ['get', 'historical'], { 'font-scale': 1 },
+    '\n(', {},
+    ['get', 'label'], {},
+    ')', { 'font-scale': 0.72 },
+  ],
+  ['get', 'label'],
+]
 
 /**
  * Coerce one focus annotation into a clean shape; returns null for anything malformed.
@@ -109,56 +73,117 @@ function sanitizeFocus (a) {
 }
 
 /**
- * Render annotations as MapLibre markers on top of `map`.
+ * Build a GeoJSON FeatureCollection from the focus annotations. Each feature carries the
+ * display fields the layers read: `label`, `historical` (omitted when absent so `['has','historical']`
+ * is false), and `capital`.
+ * @param {Array<object>} annotations
+ * @returns {{collection: object, names: string[]}}
+ */
+function buildFocusData (annotations) {
+  const features = []
+  const names = []
+  ;(Array.isArray(annotations) ? annotations : []).forEach((raw) => {
+    const a = sanitizeFocus(raw)
+    if (!a) return
+    const properties = { label: a.label, capital: a.capital }
+    // Only set `historical` when present so `['has','historical']` cleanly drives the dual-name path.
+    if (a.historical) properties.historical = a.historical
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
+      properties,
+    })
+    names.push(a.label)
+  })
+  return { collection: { type: 'FeatureCollection', features }, names }
+}
+
+/**
+ * Render annotations as MapLibre layers on top of `map`.
  *
  * @param {import('maplibre-gl').Map} map
  * @param {Array<object>} annotations  initial annotation array
- * @param {{ editable?: boolean, onChange?: ((annotations: Array<object>) => void) | null }} [options]
- * @returns {{ update: Function, beginAddFocus: Function, destroy: Function }}
+ * @param {{ editable?: boolean, onChange?: ((annotations: Array<object>) => void) | null, onFocusNames?: ((names: string[]) => void) | null }} [options]
+ * @returns {{ update: Function, beginAddFocus: Function, getFocusNames: Function, destroy: Function }}
  */
-export function renderAnnotations (map, annotations, { editable = false, onChange = null } = {}) {
+export function renderAnnotations (map, annotations, { editable = false, onChange = null, onFocusNames = null } = {}) {
   // Working copy — never mutate the caller's array in place.
   let current = Array.isArray(annotations) ? annotations.slice() : []
-  /** @type {import('maplibre-gl').Marker[]} */
-  let markers = []
+  let focusNames = []
   let addPending = false
 
   const emitChange = () => {
     if (typeof onChange === 'function') onChange(current.slice())
   }
 
-  const clearMarkers = () => {
-    markers.forEach((m) => { try { m.remove() } catch (_) {} })
-    markers = []
+  const emitFocusNames = () => {
+    if (typeof onFocusNames === 'function') onFocusNames(focusNames.slice())
+  }
+
+  // Add the three focus layers ONCE (guarded). `focus-shadow` is the offset dark copy (drop
+  // shadow), `focus-label` the deep-red calligraphy on top, `focus-dot` a small centred marker
+  // (circle layers auto-centre on the point, which fixes the old DOM-dot misalignment).
+  const ensureLayers = () => {
+    if (!map.getSource(FOCUS_SRC)) {
+      map.addSource(FOCUS_SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    }
+
+    if (!map.getLayer(FOCUS_SHADOW_LAYER)) {
+      map.addLayer({
+        id: FOCUS_SHADOW_LAYER, type: 'symbol', source: FOCUS_SRC,
+        layout: {
+          'text-field': focusTextField(),
+          'text-font': FOCUS_FONT,
+          'text-size': FOCUS_TEXT_SIZE,
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': FOCUS_SHADOW_COLOR,
+          'text-translate': [1.6, 1.6],
+        },
+      })
+    }
+
+    if (!map.getLayer(FOCUS_LABEL_LAYER)) {
+      map.addLayer({
+        id: FOCUS_LABEL_LAYER, type: 'symbol', source: FOCUS_SRC,
+        layout: {
+          'text-field': focusTextField(),
+          'text-font': FOCUS_FONT,
+          'text-size': FOCUS_TEXT_SIZE,
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': FOCUS_LABEL_COLOR,
+          'text-halo-color': FOCUS_HALO_COLOR,
+          'text-halo-width': 1.6,
+        },
+      })
+    }
+
+    if (!map.getLayer(FOCUS_DOT_LAYER)) {
+      map.addLayer({
+        id: FOCUS_DOT_LAYER, type: 'circle', source: FOCUS_SRC,
+        paint: {
+          'circle-radius': FOCUS_DOT_RADIUS,
+          'circle-color': FOCUS_LABEL_COLOR,
+          // Capital cities get a gold ring; everyone else a parchment ring.
+          'circle-stroke-color': ['case', ['boolean', ['get', 'capital'], false], FOCUS_CAPITAL_RING, FOCUS_DOT_RING],
+          'circle-stroke-width': ['case', ['boolean', ['get', 'capital'], false], 2, 1],
+        },
+      })
+    }
   }
 
   const render = () => {
-    clearMarkers()
-    current.forEach((anno, index) => {
-      // Skip unknown types so future arrow/marker data never crashes phase-1 clients.
-      if (!anno || anno.type !== 'focus') return
-      const lng = Number(anno.lng)
-      const lat = Number(anno.lat)
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return
-
-      const element = buildFocusElement(anno)
-      const marker = new maplibregl.Marker({ element, draggable: editable, anchor: 'center' })
-        .setLngLat([lng, lat])
-        .addTo(map)
-
-      if (editable) {
-        marker.on('dragend', () => {
-          const pos = marker.getLngLat()
-          // Immutable update of the moved item; keep everything else untouched.
-          current = current.map((item, i) =>
-            i === index ? { ...item, lng: pos.lng, lat: pos.lat } : item
-          )
-          emitChange()
-        })
-      }
-
-      markers.push(marker)
-    })
+    ensureLayers()
+    const { collection, names } = buildFocusData(current)
+    focusNames = names
+    const src = map.getSource(FOCUS_SRC)
+    if (src) src.setData(collection)
+    emitFocusNames()
   }
 
   render()
@@ -193,9 +218,17 @@ export function renderAnnotations (map, annotations, { editable = false, onChang
       })
     },
 
-    /** Remove every marker (call before discarding the map). */
+    /** Current focus display names (each focus item's `label`), in render order. */
+    getFocusNames () {
+      return focusNames.slice()
+    },
+
+    /** Remove the focus layers + source (call before discarding the map). */
     destroy () {
-      clearMarkers()
+      [FOCUS_DOT_LAYER, FOCUS_LABEL_LAYER, FOCUS_SHADOW_LAYER].forEach((id) => {
+        try { if (map.getLayer(id)) map.removeLayer(id) } catch (_) {}
+      })
+      try { if (map.getSource(FOCUS_SRC)) map.removeSource(FOCUS_SRC) } catch (_) {}
     },
   }
 }
