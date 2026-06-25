@@ -60,6 +60,9 @@ export function renderLessonMap (el, opts = {}) {
     attributionControl: false,
     style: {
       version: 8,
+      // 2D flat (mercator) vs 3D globe (MapLibre v5) — set on the style at init so the map starts
+      // in the right projection. Calling setProjection mid-load disrupts tile/layer loading.
+      projection: { type: projection },
       glyphs: `${location.origin}/fonts/{fontstack}/{range}.pbf`, // calligraphy labels (see build-glyphs.mjs)
       sources: {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
@@ -201,8 +204,6 @@ export function renderLessonMap (el, opts = {}) {
 
   map.on('load', () => {
     setYear(year)
-    // 2D flat (mercator) vs 3D globe — MapLibre v5 supports a true globe projection.
-    try { map.setProjection({ type: projection }) } catch (_) {}
     requestAfterTiles(fitToPolity)
 
     // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
