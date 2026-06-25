@@ -2,6 +2,7 @@
 
 use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Jobs\GenerateLesson;
 use App\Livewire\Admin\AvatarStudio;
@@ -51,6 +52,11 @@ Route::get('/about', function () {
 
 // Student lesson player — public, no auth required
 Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
+
+// Curated historical cities as GeoJSON — public reference data for the lesson-atlas overlay
+// (labelled "Constantinople (Istanbul)" markers). No auth: shared by the composer preview and
+// the student player, both of which load the map unauthenticated.
+Route::get('/map/historical-cities.geojson', HistoricalCitiesController::class)->name('map.historical-cities');
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 

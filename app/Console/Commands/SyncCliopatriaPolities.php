@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\CliopatriaSpans;
 use App\Services\WikidataPolityResolver;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -18,13 +19,13 @@ use Illuminate\Support\Facades\Http;
  */
 class SyncCliopatriaPolities extends Command
 {
-    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)} {--resume : Skip QIDs already enriched (have a summary)}';
+    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)} {--resume : Skip QIDs already enriched (have a summary)} {--dates-only : Realign every polity era to the Cliopatria span + rewrite the snapshot, no Wikidata calls}';
 
     protected $description = 'Enrich Cliopatria polities (by Wikidata QID) into polities + download flags';
 
     private const UA = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
 
-    public function handle(WikidataPolityResolver $resolver): int
+    public function handle(WikidataPolityResolver $resolver, CliopatriaSpans $spans): int
     {
         $list = json_decode(File::get(database_path('data/cliopatria-polities.json')), true);
         if (! is_array($list)) {
@@ -38,9 +39,16 @@ class SyncCliopatriaPolities extends Command
         }
 
         $this->ensureTable();
+        $corpus = DB::connection('pgsql_corpus');
+
+        // Fast path: only realign eras to the Cliopatria span (no Wikidata/flag traffic). Use this to
+        // apply a span correction to an already-enriched corpus without a full re-sync.
+        if ($this->option('dates-only')) {
+            return $this->refreshDates($corpus, $spans);
+        }
+
         $flagsDir = public_path('flags');
         File::ensureDirectoryExists($flagsDir);
-        $corpus = DB::connection('pgsql_corpus');
 
         $resume = (bool) $this->option('resume');
         $done = $resume
@@ -77,8 +85,10 @@ class SyncCliopatriaPolities extends Command
                     'flag_path' => $flagPath,
                     'summary' => $data['summary'],
                     'wikipedia_url' => $data['wikipedia_url'],
-                    'inception' => $data['inception'],
-                    'dissolution' => $data['dissolution'],
+                    // Era = the Cliopatria span the tiles render by, so the panel matches the map.
+                    // Wikidata P571/P576 is only a fallback for polities the list does not span.
+                    'inception' => $row['from'] ?? $data['inception'],
+                    'dissolution' => $row['to'] ?? $data['dissolution'],
                     'predecessor' => $data['predecessor'],
                     'successor' => $data['successor'],
                     'sitelinks' => $data['sitelinks'],
@@ -93,23 +103,62 @@ class SyncCliopatriaPolities extends Command
         $this->newLine();
 
         $this->writeFlagManifest($flagsDir);
-        $this->writeArticlesSnapshot($corpus);
+        $this->writeArticlesSnapshot($corpus, $spans);
         $this->info("enriched {$count} Cliopatria polities");
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Realign every stored polity era to its Cliopatria span and rewrite the article snapshot,
+     * without re-querying Wikidata (summaries/flags are left untouched). Idempotent.
+     */
+    private function refreshDates(\Illuminate\Database\Connection $corpus, CliopatriaSpans $spans): int
+    {
+        // One UPDATE per chunk (a VALUES join), not ~1400 single-row round-trips: the Supabase pooler
+        // drops a long single-row loop mid-run ("server closed the connection unexpectedly").
+        $updated = 0;
+        foreach (array_chunk($spans->all(), 200, true) as $chunk) {
+            $rows = [];
+            $bindings = [];
+            foreach ($chunk as $qid => $span) {
+                $rows[] = '(?::text, ?::integer, ?::integer)';
+                $bindings[] = $qid;
+                $bindings[] = $span['from'];
+                $bindings[] = $span['to'];
+            }
+            $values = implode(',', $rows);
+            $updated += $corpus->update(
+                "UPDATE public.polities AS p
+                 SET inception = v.f, dissolution = v.t, updated_at = now()
+                 FROM (VALUES {$values}) AS v(qid, f, t)
+                 WHERE p.osm_id = v.qid",
+                $bindings
+            );
+        }
+
+        $this->writeArticlesSnapshot($corpus, $spans);
+        $this->info("realigned {$updated} polity eras to the Cliopatria span");
 
         return self::SUCCESS;
     }
 
     /** Static article cache (public/timemap/articles.json) keyed by QID — the map prefetches this
      *  instead of querying the slow corpus pooler at page load. */
-    private function writeArticlesSnapshot(\Illuminate\Database\Connection $corpus): void
+    private function writeArticlesSnapshot(\Illuminate\Database\Connection $corpus, CliopatriaSpans $spans): void
     {
         $out = [];
         foreach ($corpus->table('public.polities')->where('osm_id', 'like', 'Q%')->whereNotNull('summary')->get() as $p) {
+            // The Cliopatria span is authoritative for the era (it is what the tiles render by), so
+            // overlay it onto the stored columns — keeps the snapshot correct even if a row still
+            // holds a stale Wikidata-derived date. Falls back to the column for non-list polities.
+            $span = $spans->for($p->osm_id);
+            $inception = $span['from'] ?? ($p->inception !== null ? (int) $p->inception : null);
+            $dissolution = $span['to'] ?? ($p->dissolution !== null ? (int) $p->dissolution : null);
             $out[$p->osm_id] = [
                 'osm_id' => $p->osm_id, 'label' => $p->label, 'summary' => $p->summary,
                 'flag_path' => $p->flag_path, 'wikipedia_url' => $p->wikipedia_url,
-                'inception' => $p->inception !== null ? (int) $p->inception : null,
-                'dissolution' => $p->dissolution !== null ? (int) $p->dissolution : null,
+                'inception' => $inception, 'dissolution' => $dissolution,
                 'predecessor' => $p->predecessor, 'successor' => $p->successor,
             ];
         }

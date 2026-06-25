@@ -90,6 +90,25 @@ class LessonComposerTest extends TestCase
         $this->assertSame(0, $this->lesson->modules()->count());
     }
 
+    public function test_renders_lesson_containing_an_unbuildable_module_without_crashing(): void
+    {
+        // The scenes backfill can create modules (e.g. timeline_map) whose renderer hasn't
+        // shipped yet. The composer must degrade to a placeholder, not throw a ViewException.
+        $this->lesson->modules()->create([
+            'type' => ModuleType::TimelineMap,
+            'title' => 'Roman expansion',
+            'order' => 0,
+            'config' => [],
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonComposer::class, ['lesson' => $this->lesson])
+            ->assertSuccessful()
+            ->assertSee('Roman expansion')
+            ->assertSee(ModuleType::TimelineMap->label())
+            ->assertSee('coming soon');   // the non-editable placeholder, not a crash
+    }
+
     public function test_delete_module_removes_it(): void
     {
         $m1 = $this->lesson->modules()->create([

@@ -226,6 +226,52 @@ export function renderLessonMap (el, opts = {}) {
         }, map.getLayer('city-dots') ? 'city-dots' : undefined)
       })
   })
+  // Labelled overlay of the curated HISTORICAL cities (e.g. "Constantinople (Istanbul)"), fetched
+  // as GeoJSON and drawn ABOVE the normal city labels. Append-only and fully guarded: any fetch /
+  // add failure is swallowed so the map still renders. Same on the composer preview and the player.
+  map.on('load', async () => {
+    try {
+      const res = await fetch(`${location.origin}/map/historical-cities.geojson`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (map.getSource('hcities')) return
+      map.addSource('hcities', { type: 'geojson', data })
+      map.addLayer({
+        id: 'hcity-dot', type: 'circle', source: 'hcities',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2.6, 6, 4.5],
+          'circle-color': '#7a1f12',          // deep historical red
+          'circle-stroke-color': '#f3ead6',   // parchment halo
+          'circle-stroke-width': 1,
+        },
+      })
+      map.addLayer({
+        id: 'hcity-label', type: 'symbol', source: 'hcities',
+        layout: {
+          // Historical name bold on top, then a smaller "(modern)" line below.
+          'text-field': ['format',
+            ['get', 'historical'], { 'font-scale': 1.0 },
+            '\n(', {},
+            ['get', 'name'], {},
+            ')', { 'font-scale': 0.72 },
+          ],
+          'text-font': ['Eagle Lake'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 14],
+          'text-anchor': 'top', 'text-offset': [0, 0.6], 'text-optional': true,
+          'symbol-sort-key': ['to-number', ['coalesce', ['get', 'scalerank'], 5]],
+        },
+        paint: {
+          'text-color': '#3a2c1a',
+          'text-halo-color': '#f3ead6',
+          'text-halo-width': 1.4,
+        },
+      })
+      // Render ABOVE the normal city labels: addLayer(layer, beforeId) inserts BELOW beforeId, so we
+      // append on top (no beforeId) — moving it after city-labels if that layer exists.
+      if (map.getLayer('city-labels')) map.moveLayer('hcity-label')
+    } catch (_) { /* overlay is decorative — never break the map */ }
+  })
+
   // Teacher map annotations (focus cities, etc.) — rendered as DOM markers once the style is up.
   let anno = null
   map.on('load', () => {

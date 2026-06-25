@@ -24,7 +24,11 @@ class AvatarSeeder extends Seeder
         $inserted = 0;
 
         // Only these avatars are offered for lesson creation; the rest are seeded but inactive.
-        $activeIds = [1, 4]; // Napoleon, Joan of Arc
+        $activeIds = [31, 1, 4]; // Julian (default), Napoleon, Joan of Arc
+
+        // Julian is the default narrator: force the lowest sort_order so he sorts first
+        // everywhere active avatars are ordered (wizard pre-selection, picker, narrator card).
+        $sortOverrides = [31 => 0];
 
         // Scan numbered subfolders 1–99 for avatarinfo.json
         for ($i = 1; $i <= 99; $i++) {
@@ -70,7 +74,7 @@ class AvatarSeeder extends Seeder
                 'voice_pitch' => 1.0,
                 'voice_settings' => '[]',
                 'is_active' => in_array($i, $activeIds, true),
-                'sort_order' => $i,
+                'sort_order' => $sortOverrides[$i] ?? $i,
                 'presentation_mode' => 'framed',
                 'emotion_style' => 'auto',
                 'expressiveness' => 1.2,

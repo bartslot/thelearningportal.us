@@ -14,8 +14,10 @@ export class SceneOverlay {
     this.host.classList.add('scene-overlay')
     this.host.innerHTML = `
       <div class="scene-overlay__year absolute bottom-40 left-40 flex flex-col gap-3" style="transition:opacity 600ms;">
-        <img data-flag class="scene-overlay__flag" alt="" style="height:64px; width:auto; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
-        <span data-title class="scene-overlay__title" style="font-family:var(--font-history, inherit); font-size:40px; font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
+        <div class="scene-overlay__identity" style="display:flex; align-items:center; gap:12px;">
+          <img data-flag class="scene-overlay__flag" alt="" style="height:64px; width:auto; flex:none; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
+          <span data-title class="scene-overlay__title" style="font-family:var(--font-history, inherit); font-size:40px; font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
+        </div>
         <div class="scene-overlay__location" style="display:flex; align-items:center; gap:8px; transition:opacity 600ms;  text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);">
           <span data-year class="w-full text-6xl" style="font-weight:800; color:white; text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);"></span>
             ${LOCATION_PIN_SVG}

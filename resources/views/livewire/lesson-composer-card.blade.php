@@ -76,15 +76,23 @@
             </div>
         @endif
 
-        {{-- Module editor (inline or collapsible) --}}
-        <details class="mt-4">
-            <summary class="cursor-pointer font-medium text-base-content/80">
-                {{ __('Edit') }}
-            </summary>
-            <div class="mt-3 border-t border-base-300 pt-3">
-                {!! $module->implementation()->renderEditor($module) !!}
+        {{-- Module editor (inline or collapsible). Types ship incrementally (Epic K), and the
+             scenes backfill can create rows before their renderer exists, so guard on isBuildable()
+             before resolving the implementation — otherwise the whole composer would crash. --}}
+        @if ($module->isBuildable())
+            <details class="mt-4">
+                <summary class="cursor-pointer font-medium text-base-content/80">
+                    {{ __('Edit') }}
+                </summary>
+                <div class="mt-3 border-t border-base-300 pt-3">
+                    {!! $module->implementation()->renderEditor($module) !!}
+                </div>
+            </details>
+        @else
+            <div class="alert alert-info mt-4 text-sm" role="note">
+                <span>{{ __(':label modules aren\'t editable here yet — coming soon.', ['label' => $module->type->label()]) }}</span>
             </div>
-        </details>
+        @endif
 
         {{-- Action buttons (mobile-friendly) --}}
         <div class="flex gap-2 mt-4 flex-wrap">

@@ -14,9 +14,11 @@ use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
 use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
+use App\Models\City;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\StrategyGame;
+use App\Support\PolityCapitals;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
@@ -238,6 +240,9 @@ class Step3SceneConfigurator extends Component
     // otherwise only auto-fills from a `polity:` catalog topic, leaving city/free-text lessons blank.
     public string $territoryQuery = '';
 
+    /** Map block: live query for the focus-city typeahead (searches the cities corpus). */
+    public string $cityQuery = '';
+
     /** The scene's chosen year (drives which polities existed then). */
     private function sceneYear(): ?int
     {
@@ -351,9 +356,14 @@ class Step3SceneConfigurator extends Component
         }
         $this->selectedScene['location'] = $topic->name;
 
+        // Auto-add the polity's capital as a ★ focus marker (if it's in our cities corpus).
+        $this->applyCapitalFocus($topic->qid);
+
         $this->territoryQuery = '';
         unset($this->territoryResults);
         $this->saveSelected();   // location change → stageDirty → scene:load → map re-renders with the new QID
+        // Push the fresh annotations to the live preview so the capital marker appears without a re-mount.
+        $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
     }
 
     public function unlinkTerritory(): void
@@ -362,7 +372,10 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $this->selectedScene['config']['qid'] = null;
+        // Remove the auto-added capital marker now that no territory is linked.
+        $this->applyCapitalFocus(null);
         $this->saveSelected();
+        $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
     }
 
     // ── Map block: focus-city annotations ────────────────────────────────
@@ -372,6 +385,101 @@ class Step3SceneConfigurator extends Component
     // Designed for extension: unknown future types (arrows, markers) pass through untouched so
     // older data is never destroyed; phase 1 only coerces 'focus' items.
     private const FOCUS_LABEL_MAX = 80;
+
+    /**
+     * Typeahead over the cities corpus: matches modern OR historical name, well-known cities
+     * first (scalerank). Returns nothing under 2 chars so we don't run a wildcard on a single
+     * letter. Dual-name display ("Constantinople (Istanbul)") is built from name + historical_name.
+     */
+    #[Computed]
+    public function cityResults()
+    {
+        if (mb_strlen(trim($this->cityQuery)) < 2) {
+            return collect();
+        }
+
+        $q = trim($this->cityQuery);
+
+        return City::query()
+            ->where(fn ($w) => $w->where('name', 'ilike', '%'.$q.'%')
+                ->orWhere('historical_name', 'ilike', '%'.$q.'%'))
+            ->orderBy('scalerank')
+            ->limit(8)
+            ->get(['id', 'name', 'lat', 'lng', 'historical_name']);
+    }
+
+    /**
+     * Add a city from the typeahead as a focus annotation. Stores the historical period name so
+     * the marker can render a dual label; `capital` is false (only auto-added capitals set it).
+     */
+    public function addFocusCity(int $cityId): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $c = City::find($cityId);
+        if (! $c) {
+            return;
+        }
+
+        $annotations = $this->selectedScene['config']['annotations'] ?? [];
+        $annotations[] = [
+            'type' => 'focus',
+            'lng' => (float) $c->lng,
+            'lat' => (float) $c->lat,
+            'label' => $c->name,
+            'historical' => $c->historical_name,
+        ];
+        $this->selectedScene['config']['annotations'] = array_values($annotations);
+
+        $this->cityQuery = '';
+        unset($this->cityResults);
+        $this->saveSelected();
+        $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
+    }
+
+    /**
+     * Sync the auto-added capital marker to the linked territory. Always strips the previous
+     * capital first (so re-linking never leaves a stale ★), then appends the new one when the
+     * polity QID resolves to a curated capital that exists in our cities corpus. A null QID just
+     * removes the capital (used on unlink). The capital marker carries `capital => true` so it
+     * survives sanitize and renders with a gold ring + ★.
+     */
+    private function applyCapitalFocus(?string $qid): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+
+        $annotations = $this->selectedScene['config']['annotations'] ?? [];
+        // Drop any existing auto-added capital — there is at most one at a time.
+        $annotations = array_values(array_filter(
+            $annotations,
+            fn ($a) => ! (is_array($a) && ($a['capital'] ?? false) === true)
+        ));
+
+        if ($qid !== null) {
+            $row = PolityCapitals::for($qid);
+            if ($row) {
+                $city = City::query()
+                    ->where('wikidata_qid', $row['qid'])
+                    ->orWhere('name', 'ilike', $row['city'])
+                    ->first(['id', 'name', 'lat', 'lng', 'historical_name', 'wikidata_qid']);
+                if ($city) {
+                    $annotations[] = [
+                        'type' => 'focus',
+                        'lng' => (float) $city->lng,
+                        'lat' => (float) $city->lat,
+                        'label' => $city->name,
+                        'historical' => $city->historical_name,
+                        'capital' => true,
+                    ];
+                }
+            }
+        }
+
+        $this->selectedScene['config']['annotations'] = array_values($annotations);
+    }
 
     #[On('annotationsChanged')]
     public function updateAnnotations(int $sceneId, array $annotations): void
@@ -457,11 +565,17 @@ class Step3SceneConfigurator extends Component
                 if (! isset($a['lng'], $a['lat']) || ! is_numeric($a['lng']) || ! is_numeric($a['lat'])) {
                     continue;
                 }
+                // Preserve the dual-name period and the auto-capital flag alongside the core fields.
+                $historical = isset($a['historical']) && $a['historical'] !== null && $a['historical'] !== ''
+                    ? mb_substr(trim((string) $a['historical']), 0, self::FOCUS_LABEL_MAX)
+                    : null;
                 $clean[] = [
                     'type' => 'focus',
                     'lng' => (float) $a['lng'],
                     'lat' => (float) $a['lat'],
                     'label' => mb_substr(trim((string) ($a['label'] ?? '')), 0, self::FOCUS_LABEL_MAX),
+                    'historical' => $historical,
+                    'capital' => (bool) ($a['capital'] ?? false),
                 ];
 
                 continue;

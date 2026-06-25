@@ -55,6 +55,16 @@ class LessonModule extends Model
         return ModuleRegistry::for($this->type);
     }
 
+    /**
+     * Whether this module's type has a renderer registered today. Epic K ships types
+     * incrementally and the scenes backfill can create rows (e.g. timeline_map) before their
+     * renderer exists, so the composer/player must branch on this before calling implementation().
+     */
+    public function isBuildable(): bool
+    {
+        return ModuleRegistry::has($this->type);
+    }
+
     public function isReady(): bool
     {
         return $this->status === 'ready';

@@ -186,6 +186,31 @@ class LessonComposer extends Component
         return view('livewire.lesson-composer', [
             'modules' => $this->lesson->modules()->ordered()->get(),
             'availableTypes' => ModuleRegistry::available(),
+            'comingSoonTypes' => $this->comingSoonTypes(),
         ]);
+    }
+
+    /**
+     * Roadmap module types shown in the picker as disabled "Soon" previews so the teacher can see
+     * what's coming. Curated (not every enum case) to keep the picker focused; any that become
+     * buildable drop out of this list automatically.
+     *
+     * @return list<ModuleType>
+     */
+    private function comingSoonTypes(): array
+    {
+        $featured = [
+            ModuleType::StoryBlock,
+            ModuleType::PriorKnowledge,
+            ModuleType::TimelineMap,
+            ModuleType::ThreeDModel,
+            ModuleType::Reflection,
+            ModuleType::Conclusion,
+        ];
+
+        return array_values(array_filter(
+            $featured,
+            static fn (ModuleType $type): bool => ! ModuleRegistry::has($type),
+        ));
     }
 }

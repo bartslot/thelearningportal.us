@@ -83,6 +83,18 @@ class LessonModuleModelTest extends TestCase
         $this->assertSame(ModuleType::Intro, $module->implementation()::type());
     }
 
+    public function test_is_buildable_reflects_whether_a_renderer_is_registered(): void
+    {
+        $lesson = Lesson::factory()->create();
+
+        $intro = $lesson->modules()->create(['type' => ModuleType::Intro, 'order' => 0, 'config' => []]);
+        // timeline_map has no renderer yet but the scenes backfill can create such rows.
+        $timelineMap = $lesson->modules()->create(['type' => ModuleType::TimelineMap, 'order' => 1, 'config' => []]);
+
+        $this->assertTrue($intro->isBuildable());
+        $this->assertFalse($timelineMap->isBuildable());
+    }
+
     public function test_quiz_default_config_has_four_labelled_answers(): void
     {
         $config = QuizMcqModule::defaultConfig();

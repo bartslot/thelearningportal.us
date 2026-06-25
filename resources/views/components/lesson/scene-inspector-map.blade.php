@@ -1,4 +1,4 @@
-@props(['scene' => null, 'territoryResults' => null, 'territoryQuery' => ''])
+@props(['scene' => null, 'territoryResults' => null, 'territoryQuery' => '', 'cityResults' => null, 'cityQuery' => ''])
 
 <div class="space-y-3 text-sm">
     <h3 class="flex items-center gap-2 font-semibold text-sky-300">
@@ -57,25 +57,61 @@
         </div>
     </div>
 
-    {{-- Focus cities — teacher drops a red dot + label on the map (annotations[].type === 'focus'). --}}
+    {{-- Focus cities — search the cities corpus (modern OR historical name), then drop a red dot
+         + label on the map (annotations[].type === 'focus'). A typeahead leads; dropping a raw pin
+         is the secondary path. --}}
     <div class="form-control border-t border-slate-700/50 pt-3">
         <span class="text-xs uppercase tracking-wider text-slate-400">Focus cities</span>
+
+        <input type="search" wire:model.live.debounce.350ms="cityQuery"
+               placeholder="Search a city — e.g. Constantinople"
+               class="input input-sm input-bordered bg-slate-900 mt-1" />
+
+        @if (filled($cityQuery) && $cityResults && $cityResults->isNotEmpty())
+            <ul class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-700/60 divide-y divide-slate-800 bg-slate-900/95">
+                @foreach ($cityResults as $c)
+                    <li>
+                        <button type="button" wire:click="addFocusCity({{ $c->id }})"
+                                class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-slate-800/70">
+                            <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:#c0392b;border:2px solid #fff;"></span>
+                            @if (filled($c->historical_name))
+                                <span class="truncate text-sm text-slate-200">
+                                    <span class="font-semibold">{{ $c->historical_name }}</span>
+                                    <span class="text-[11px] text-slate-400">({{ $c->name }})</span>
+                                </span>
+                            @else
+                                <span class="truncate text-sm text-slate-200">{{ $c->name }}</span>
+                            @endif
+                        </button>
+                    </li>
+                @endforeach
+            </ul>
+        @elseif (filled($cityQuery))
+            <p class="mt-1 text-[10px] text-slate-500">No city matches “{{ $cityQuery }}”. Try a different spelling, or drop a pin below.</p>
+        @endif
+
         <button type="button"
                 onclick="window.dispatchEvent(new CustomEvent('lessonmap:add-focus'))"
-                class="btn btn-sm btn-outline btn-block mt-1">+ Add focus city (then click the map)</button>
+                class="mt-1 text-[11px] text-sky-300 underline hover:text-sky-200">or drop a pin on the map</button>
 
         @php $annotations = $scene->config['annotations'] ?? []; @endphp
         @if (count($annotations))
             <ul class="mt-2 space-y-1.5">
                 @foreach ($annotations as $i => $a)
                     @if (($a['type'] ?? null) === 'focus')
+                        @php
+                            $isCapital = $a['capital'] ?? false;
+                            $hist = $a['historical'] ?? null;
+                            $rowLabel = filled($hist) ? $hist.' ('.($a['label'] ?? '').')' : ($a['label'] ?? '');
+                        @endphp
                         <li class="flex items-center gap-1.5">
                             <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:#c0392b;border:2px solid #fff;"></span>
                             <input type="text"
-                                   value="{{ $a['label'] ?? '' }}"
+                                   value="{{ ($isCapital ? '★ ' : '').$rowLabel }}"
                                    wire:change="renameFocus({{ $i }}, $event.target.value)"
                                    placeholder="Place name"
-                                   class="input input-xs input-bordered bg-slate-900 flex-1" />
+                                   class="input input-xs input-bordered bg-slate-900 flex-1"
+                                   @if ($isCapital) title="Territory capital (auto-added)" @endif />
                             <button type="button" wire:click="removeFocus({{ $i }})"
                                     class="shrink-0 text-rose-300 hover:text-rose-200 text-xs px-1"
                                     title="Remove focus city" aria-label="Remove focus city">✕</button>
@@ -84,7 +120,7 @@
                 @endforeach
             </ul>
         @else
-            <p class="mt-1 text-[10px] text-slate-500">No focus cities yet — add one to mark a key place on the map.</p>
+            <p class="mt-1 text-[10px] text-slate-500">No focus cities yet — search above or drop a pin to mark a key place on the map.</p>
         @endif
     </div>
 

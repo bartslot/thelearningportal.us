@@ -131,7 +131,9 @@
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
                                                  :territory-results="$this->territoryResults"
-                                                 :territory-query="$territoryQuery" />
+                                                 :territory-query="$territoryQuery"
+                                                 :city-results="$this->cityResults"
+                                                 :city-query="$cityQuery" />
                 @elseif ($sceneModel->kind === 'game')
                     <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games" />
                 @else
