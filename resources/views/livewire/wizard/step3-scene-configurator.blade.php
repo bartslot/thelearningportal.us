@@ -35,10 +35,12 @@
     document.addEventListener('livewire:initialized', () => {
         const host = document.getElementById('lesson-map-preview')
         let inst = null
+        let lastKey = null
         const destroy = () => {
             if (inst) { inst.destroy(); inst = null }
             host.innerHTML = ''
             host.style.display = 'none'
+            lastKey = null
         }
 
         window.Livewire.on('scene:load', (e) => {
@@ -46,8 +48,19 @@
             if (!p || p.kind !== 'map') { destroy(); return }
             const cfg = p.config || {}
             const year = cfg.year ?? p.year ?? 1600
-            // Re-mount fresh each time so qid/year changes always take effect.
-            destroy()
+            // Only the scene-defining bits decide a re-mount. scene:load re-fires constantly (status
+            // polling, saves, etc.); re-mounting each time would yank the globe back to its fit and
+            // discard the camera the teacher panned. If nothing map-defining changed, keep the live
+            // map and just sync the focus markers.
+            // (projection is excluded — the Flat/Globe toggle flips it in place via lessonmap:projection,
+            //  which keeps the camera; re-mounting for it would reset the view)
+            const key = [p.sceneId, cfg.qid || '', year].join('|')
+            if (inst && key === lastKey) {
+                try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
+                return
+            }
+            destroy()                 // clears lastKey…
+            lastKey = key             // …so set it after
             host.style.display = 'block'
             // MapLibre stamps `position:relative` on its container, which would override the host's
             // fixed positioning and collapse it — so mount into a full-size inner child instead.
