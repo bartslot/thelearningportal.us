@@ -22,6 +22,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     container: el,
     style: {
       version: 8,
+      // Globe projection → a gentle earth curvature, so the parchment reads as a map laid on a 3D
+      // table. Subtle at regional zoom; the warm `sky` below is the atmospheric fog/haze.
+      projection: { type: 'globe' },
+      sky: {
+        // warm parchment haze that fades as you zoom in (less fog up close)
+        'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 2, 0.7, 5, 0.3, 7, 0.05],
+        'sky-color': '#cbbf9e',
+        'sky-horizon-blend': 0.7,
+        'horizon-color': '#dfd0a6',
+        'horizon-fog-blend': 0.6,
+        'fog-color': '#e8d6ac',
+        'fog-ground-blend': 0.5,
+      },
       // Calligraphy labels: locally-built SDF glyphs (scripts/build-glyphs.mjs) — Eagle Lake +
       // Cinzel. No runtime CDN; non-Latin names fall back to nothing (data is romanized).
       glyphs: `${location.origin}/fonts/{fontstack}/{range}.pbf`,
@@ -65,6 +78,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     },
     center: [8.23, 46.8], // Switzerland
     zoom: 4,
+    pitch: 28,   // gentle tilt for the "map on a table" look (symbols stay billboarded upright)
+    maxPitch: 70,
     // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
     // zoom. Zoom-out stays open so other continents/markers come into view.
