@@ -290,7 +290,8 @@ class Step3SceneConfigurator extends Component
 
         $year = $this->sceneYear();
         $ref = $this->territoryRefPoint();
-        $tol = 75; // years of slack around the chosen year, so a polity that just ended/began still shows
+        $tol = 10; // small slack only — a polity must be ACTIVE at the year; one that ended decades
+                   // earlier (e.g. Kingdom of Hungary †1546 for a 1614 scene) must not appear
 
         // Pull a wider set, then rank in PHP by name match + proximity (surrounding) + era closeness.
         $fetch = fn (bool $byYear) => \App\Models\Corpus\Topic::query()
@@ -375,6 +376,9 @@ class Step3SceneConfigurator extends Component
         // Remove the auto-added capital marker now that no territory is linked.
         $this->applyCapitalFocus(null);
         $this->saveSelected();
+        // Re-fire scene:load so the map re-mounts with qid=null — otherwise the old red boundary
+        // lingers (a bare qid change doesn't mark the scene "stage dirty").
+        $this->selectSceneInternal($this->selectedSceneId);
         $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
     }
 

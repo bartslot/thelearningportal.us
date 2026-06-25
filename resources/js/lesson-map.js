@@ -249,12 +249,14 @@ export function renderLessonMap (el, opts = {}) {
       map.addLayer({
         id: 'hcity-label', type: 'symbol', source: 'hcities',
         layout: {
-          // Historical name bold on top, then a smaller "(modern)" line below.
+          // Historical name in calligraphy (a touch smaller), then the modern name MUCH smaller and
+          // in the app sans (Inter) on the line below, so the two read as distinct registers.
           'text-field': ['format',
-            ['get', 'historical'], { 'font-scale': 1.0 },
-            '\n(', {},
-            ['get', 'name'], {},
-            ')', { 'font-scale': 0.72 },
+            ['get', 'historical'], { 'font-scale': 0.9 },
+            '\n', {},
+            '(', { 'font-scale': 0.52, 'text-font': ['literal', ['inter']] },
+            ['get', 'name'], { 'font-scale': 0.52, 'text-font': ['literal', ['inter']] },
+            ')', { 'font-scale': 0.52, 'text-font': ['literal', ['inter']] },
           ],
           'text-font': ['Eagle Lake'],
           'text-size': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 14],

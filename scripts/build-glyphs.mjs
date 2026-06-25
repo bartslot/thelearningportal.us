@@ -18,8 +18,11 @@ import { PbfWriter as Pbf } from 'pbf'
 const JOBS = [
   { gf: 'Eagle+Lake', family: 'Eagle Lake', weight: 400, style: 'normal', out: 'Eagle Lake' },
   { gf: 'Cinzel:wght@600', family: 'Cinzel', weight: 600, style: 'normal', out: 'Cinzel' },
+  { gf: 'Inter:wght@500', family: 'Inter', weight: 500, style: 'normal', out: 'inter' }, // app sans — modern (city) names. lowercase folder = matches existing inter/ webfonts (case-sensitive prod)
 ]
-const RANGES = [[0, 255], [256, 511]] // Basic Latin + Latin-1 Supplement + Latin Extended-A
+// Basic Latin + Latin-1 + Latin Extended-A/B + IPA + combining/Greek + Latin Extended Additional
+// (the last covers transliterated place names: ḥ ṣ ṭ ā … — avoids missing-glyph 404s on the map).
+const RANGES = [[0, 255], [256, 511], [512, 767], [768, 1023], [7680, 7935]]
 const FONT_SIZE = 24, BUFFER = 3, RADIUS = 8, CUTOFF = 0.25
 
 // TinySDF source, transformed so it attaches to window inside the page.

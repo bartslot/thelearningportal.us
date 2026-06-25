@@ -19,7 +19,9 @@
             <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
                  class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
         @endif
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
+        {{-- Scene overlay (flag + territory title). z-[6] so it sits ABOVE the map preview (z-[5]),
+             not hidden behind the globe. pointer-events-none keeps the map interactive. --}}
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32 z-[6]"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
         {{-- Map block preview — overlays the canvas when a map scene is selected. Uses fixed
              positioning (full viewport) because MapLibre relatively-positions its container, which
