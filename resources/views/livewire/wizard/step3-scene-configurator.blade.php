@@ -57,6 +57,7 @@
                 inst = window.renderLessonMap(inner, {
                     qid: cfg.qid || null,
                     year,
+                    projection: cfg.projection || 'mercator',
                     interactive: true,
                     annotations: cfg.annotations || [],
                     editable: true,
@@ -67,6 +68,15 @@
 
         // Inspector "+ Add focus city" button → put the map into drop-a-pin mode.
         window.addEventListener('lessonmap:add-focus', () => inst && inst.beginAddFocus())
+
+        // Inspector VIEW toggle (Flat 2D / Globe 3D) → flip the live preview projection immediately.
+        window.addEventListener('lessonmap:projection', (e) => inst && inst.setProjection(e.detail.type))
+
+        // Focus-city rename/remove saved server-side → push fresh annotations so marker labels update live.
+        window.Livewire.on('focusAnnotationsRefresh', (e) => {
+            const p = Array.isArray(e) ? e[0] : e
+            if (inst) inst.setAnnotations(p.annotations || [])
+        })
     })
     </script>
     @endpush

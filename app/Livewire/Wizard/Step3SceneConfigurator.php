@@ -300,10 +300,9 @@ class Step3SceneConfigurator extends Component
             ->get(['id', 'qid', 'name', 'region_label', 'era_start', 'era_end', 'region_lat', 'region_lng', 'sitelinks']);
 
         return \App\Models\Corpus\Topic::resilient(function () use ($fetch, $q, $year, $ref) {
+            // In-era only — never surface out-of-era homonyms (a 20th-c. state for a 1614 scene).
+            // If nothing existed then, the picker stays empty and the view nudges to the ruling empire.
             $rows = $fetch(true);
-            if ($rows->isEmpty() && $year !== null) {
-                $rows = $fetch(false); // nothing in-era → relax the year filter so the picker isn't empty
-            }
             $ql = mb_strtolower($q);
 
             return $rows->sortBy(function ($t) use ($ql, $year, $ref) {

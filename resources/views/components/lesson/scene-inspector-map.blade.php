@@ -127,7 +127,11 @@
                     @endforeach
                 </ul>
             @elseif (filled($territoryQuery))
-                <p class="mt-1 text-[10px] text-slate-500">No polity matches “{{ $territoryQuery }}”.</p>
+                @php $blockYear = $scene->config['year'] ?? null; @endphp
+                <p class="mt-1 text-[10px] text-slate-500">
+                    No “{{ $territoryQuery }}” existed@if ($blockYear !== null) around {{ $blockYear < 0 ? abs($blockYear).' BCE' : $blockYear }}@endif.
+                    @if ($blockYear !== null) Try the empire that ruled it then (e.g. a larger kingdom or monarchy).@endif
+                </p>
             @endif
         @endif
     </div>

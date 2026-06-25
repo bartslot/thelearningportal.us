@@ -49,7 +49,7 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null } = opts
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, projection = 'mercator' } = opts
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -201,6 +201,8 @@ export function renderLessonMap (el, opts = {}) {
 
   map.on('load', () => {
     setYear(year)
+    // 2D flat (mercator) vs 3D globe — MapLibre v5 supports a true globe projection.
+    try { map.setProjection({ type: projection }) } catch (_) {}
     requestAfterTiles(fitToPolity)
 
     // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
@@ -257,6 +259,7 @@ export function renderLessonMap (el, opts = {}) {
     setYear,
     flyToPolity: fitToPolity,
     setAnnotations: (a) => anno?.update(a),
+    setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
     destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
   }
