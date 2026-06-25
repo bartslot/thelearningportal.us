@@ -7,8 +7,8 @@
     "file": "assets/index-DDlvirwQ.js",
     "name": "index"
   },
-  "_map-volcanoes-CBPJCBgV.js": {
-    "file": "assets/map-volcanoes-CBPJCBgV.js",
+  "_map-volcanoes-BtFq4ki9.js": {
+    "file": "assets/map-volcanoes-BtFq4ki9.js",
     "name": "map-volcanoes",
     "imports": [
       "__commonjsHelpers-CqkleIqs.js"
@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-C8kQAHVh.css",
+    "file": "assets/app-BQ01ohes.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-qLJx-PKd.js",
+    "file": "assets/app-UOVN93X3.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -68,27 +68,28 @@
     ]
   },
   "resources/js/avatar-3d.js": {
-    "file": "assets/avatar-3d-CaPQOF-m.js",
+    "file": "assets/avatar-3d-BskHQ67v.js",
     "name": "avatar-3d",
     "src": "resources/js/avatar-3d.js",
     "isEntry": true,
+    "isDynamicEntry": true,
     "imports": [
       "node_modules/three/build/three.module.js"
     ]
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-Bv97XaHJ.js",
+    "file": "assets/lesson-map-BHZS657G.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_map-volcanoes-CBPJCBgV.js",
+      "_map-volcanoes-BtFq4ki9.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-QW8Ih1V9.js",
+    "file": "assets/lesson-player-BksGAZW2.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -97,11 +98,12 @@
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
+      "resources/js/avatar-3d.js",
       "resources/js/lesson-map.js"
     ]
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-BKtR6XKp.js",
+    "file": "assets/index-iUKvSxzU.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -111,12 +113,12 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-Cu-oo2ch.js",
+    "file": "assets/index-CU6V55Nh.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
-      "_map-volcanoes-CBPJCBgV.js",
+      "_map-volcanoes-BtFq4ki9.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]
   }
