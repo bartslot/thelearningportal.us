@@ -26,14 +26,16 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       // table. Subtle at regional zoom; the warm `sky` below is the atmospheric fog/haze.
       projection: { type: 'globe' },
       sky: {
-        // warm parchment haze that fades as you zoom in (less fog up close)
-        'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 2, 0.7, 5, 0.3, 7, 0.05],
-        'sky-color': '#cbbf9e',
-        'sky-horizon-blend': 0.7,
-        'horizon-color': '#dfd0a6',
-        'horizon-fog-blend': 0.6,
-        'fog-color': '#e8d6ac',
-        'fog-ground-blend': 0.5,
+        // A faint atmosphere glow at the globe's limb; the dark "space" itself is the container
+        // background gradient (set below). Warm ground haze on the land for depth; atmosphere fades
+        // out as you zoom in.
+        'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 2, 0.5, 4, 0.35, 6, 0.12, 7, 0.04],
+        'sky-color': '#0a1230',
+        'sky-horizon-blend': 0.5,
+        'horizon-color': '#1a2c5a',
+        'horizon-fog-blend': 0.5,
+        'fog-color': '#dcc9a0',       // subtle warm haze on the land (depth)
+        'fog-ground-blend': 0.7,
       },
       // Calligraphy labels: locally-built SDF glyphs (scripts/build-glyphs.mjs) — Eagle Lake +
       // Cinzel. No runtime CDN; non-Latin names fall back to nothing (data is romanized).
@@ -86,6 +88,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     maxZoom: 7,
     attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
   });
+
+  // Dark "space" behind the globe: a very-dark-blue centre fading to near-black at the corners (a
+  // vignette). The WebGL canvas is transparent outside the globe, so this container background shows
+  // through as space.
+  el.style.background = 'radial-gradient(ellipse 90% 90% at 50% 48%, #14224a 0%, #070c1e 55%, #02030a 100%)';
 
   // The container settles to its final height after Alpine/Livewire mount; without this the
   // map can initialise against a transient height and render short until the next resize.
