@@ -7,13 +7,13 @@
 
 <header class="fixed inset-x-0 top-0 z-50">
     <div class="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-        <a href="#home" class="shrink-0">
+        <a href="/#home" class="shrink-0">
             <img src="{{ asset('assets/logo.svg') }}" alt="History Portal" width="75" height="64" class="h-16 w-auto">
         </a>
 
         <nav class="flex items-center gap-8">
             <a href="{{ route('about') }}" class="text-sm text-white/80 transition hover:text-white">About</a>
-            <a href="#pricing" class="text-sm text-white/80 transition hover:text-white">Pricing</a>
+            <a href="/#pricing" class="text-sm text-white/80 transition hover:text-white">Pricing</a>
             @if($isTeacher)
                 <a
                     href="{{ route('teacher.dashboard') }}"
