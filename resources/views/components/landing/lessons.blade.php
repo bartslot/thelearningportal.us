@@ -11,11 +11,14 @@
             </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            @foreach ($lessons as $lesson)
-                @php $cover = $lesson->cardImageUrl(); @endphp
-                <a href="{{ route('lesson.play', $lesson->lesson_code) }}"
-                   class="group relative block focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 rounded-[1.35rem]">
+        {{-- Single-row Flickity carousel (same engine as Trending) — arrows + drag on desktop, swipe on
+             mobile. Auto-initialised by setupLandingCarousels() for any .js-disney-carousel. --}}
+        <div class="relative overflow-hidden rounded-[2rem]">
+            <div class="js-disney-carousel">
+                @foreach ($lessons as $lesson)
+                    @php $cover = $lesson->cardImageUrl(); @endphp
+                    <a href="{{ route('lesson.play', $lesson->lesson_code) }}"
+                       class="carousel-cell group relative mx-2 block w-[15rem] shrink-0 rounded-[1.35rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 sm:w-[16rem] lg:w-[17rem]">
                     <div class="lp-grain-poster relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10
                                 bg-black/40 shadow-[0_16px_34px_rgba(0,0,0,0.35)] transition duration-300 ease-out
                                 group-hover:-translate-y-1 group-hover:border-sky-400/25 group-hover:shadow-[0_24px_52px_rgba(0,0,0,0.5)]">
@@ -50,7 +53,8 @@
                         </div>
                     </div>
                 </a>
-            @endforeach
+                @endforeach
+            </div>
         </div>
     </div>
 </section>
