@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BQ01ohes.css",
+    "file": "assets/app-BBqBAfhs.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -78,7 +78,7 @@
     ]
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-BHZS657G.js",
+    "file": "assets/lesson-map-CAVTyQ5V.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-BksGAZW2.js",
+    "file": "assets/lesson-player-3crMgewt.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
