@@ -237,12 +237,15 @@
             @if($lesson->avatar?->name || $lesson->historical_figure)
                 <div class="absolute bottom-10 right-8 sm:right-12 hidden sm:flex items-center gap-4" style="z-index:20">
                     <div class="flex flex-col items-end gap-0.5 text-right">
-                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">Your narrator</p>
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">Narrated by</p>
                         <p class="font-history text-2xl font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
                             {{ $lesson->avatar?->name ?? $lesson->historical_figure }}
                         </p>
-                        @if($lesson->avatar?->era || $lesson->era)
-                            <p class="text-xs text-slate-300/80">{{ $lesson->avatar?->era ?? $lesson->era }}</p>
+                        {{-- The narrator's ROLE (e.g. "Historian"), not the lesson era — the narrator is a
+                             timeless guide, not a figure from the lesson's period. Falls back to era. --}}
+                        @php $narratorRole = $lesson->avatar?->avatar_title ?: ($lesson->avatar?->era ?? $lesson->era); @endphp
+                        @if($narratorRole)
+                            <p class="text-xs text-slate-300/80">{{ $narratorRole }}</p>
                         @endif
                     </div>
                     @if($narratorImg)
