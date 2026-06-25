@@ -66,8 +66,8 @@
         // wire:poll.3s re-renders the timeline; if the morph swaps the track element, re-mount on it.
         window.Livewire?.hook('morph.updated', ({ el }) => { if (el && el.id === 'timeline-track') mountTimelineSortable() })
     }
-    // Livewire DEFERS @stack scripts, so `livewire:initialized` has usually ALREADY fired by the time
-    // this runs — mount immediately in that case (the old code only listened, so it never mounted).
+    // Livewire defers stacked scripts, so `livewire:initialized` has usually ALREADY fired by the
+    // time this runs — mount immediately in that case (the old code only listened, so it never mounted).
     if (window.Livewire) boot()
     else document.addEventListener('livewire:initialized', boot)
     document.addEventListener('livewire:navigated', mountTimelineSortable)
