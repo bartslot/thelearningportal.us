@@ -196,10 +196,16 @@ export function renderLessonMap (el, opts = {}) {
     })
     if (!parts.length) return
     const b = parts.reduce((a, p) => (p.area > a.area ? p : a))
-    if (b.minX <= b.maxX && b.minY <= b.maxY) {
-      map.fitBounds([[b.minX, b.minY], [b.maxX, b.maxY]], { padding: 48, duration: 800, maxZoom: 6 })
-      didFit = true
-    }
+    if (b.minX > b.maxX || b.minY > b.maxY) return
+    // NOTE: map.fitBounds() is unreliable under the globe projection (it can solve to a wildly wrong
+    // centre — e.g. snapping Europe to South America). Compute centre + zoom ourselves and easeTo,
+    // which behaves the same in both projections.
+    const spanX = Math.max(0.4, b.maxX - b.minX)
+    const spanY = Math.max(0.4, b.maxY - b.minY)
+    const center = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]
+    const zoom = Math.min(6, Math.max(1.6, Math.log2(300 / Math.max(spanX, spanY * 1.7))))
+    map.easeTo({ center, zoom, duration: 800 })
+    didFit = true
   }
 
   map.on('load', () => {
