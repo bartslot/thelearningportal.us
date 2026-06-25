@@ -165,8 +165,11 @@
             @elseif (filled($territoryQuery))
                 @php $blockYear = $scene->config['year'] ?? null; @endphp
                 <p class="mt-1 text-[10px] text-slate-500">
-                    No “{{ $territoryQuery }}” existed@if ($blockYear !== null) around {{ $blockYear < 0 ? abs($blockYear).' BCE' : $blockYear }}@endif.
-                    @if ($blockYear !== null) Try the empire that ruled it then (e.g. a larger kingdom or monarchy).@endif
+                    @if ($blockYear !== null)
+                        No “{{ $territoryQuery }}” existed around {{ $blockYear < 0 ? abs($blockYear).' BCE' : $blockYear }}. Try the empire that ruled it then (e.g. a larger kingdom or monarchy).
+                    @else
+                        No “{{ $territoryQuery }}” found — try the empire that ruled the region.
+                    @endif
                 </p>
             @endif
         @endif
