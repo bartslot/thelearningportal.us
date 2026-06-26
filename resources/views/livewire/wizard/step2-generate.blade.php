@@ -87,10 +87,14 @@ $isFailed  = $lesson->status === LessonStatus::Failed;
             <p class="text-xs text-slate-500">{{ $displayPct }}% complete</p>
         </header>
 
-        {{-- Scene cards (only once scenes exist) --}}
-        @if ($this->scenes->isNotEmpty())
+        {{-- Scene cards — only the generatable narration scenes (the "script" blocks). Map and
+             game scenes have no script/image/audio, so they never belong in this progress list
+             (a map shown here would sit on amber "pending" dots forever). Renumber 1..N so the
+             first narration scene reads "Scene 1", not "Scene 2" when a map leads the lesson. --}}
+        @php $generatable = $this->scenes->where('kind', 'narration')->values(); @endphp
+        @if ($generatable->isNotEmpty())
             <div class="space-y-3">
-                @foreach ($this->scenes as $scene)
+                @foreach ($generatable as $scene)
                     <div @class([
                         'rounded-2xl p-4 flex items-start gap-4 border',
                         'border-rose-500/40 bg-rose-500/5'       => $scene->status === 'failed',
@@ -98,8 +102,7 @@ $isFailed  = $lesson->status === LessonStatus::Failed;
                         'border-slate-700 bg-slate-900/40'       => ! in_array($scene->status, ['failed','ready']),
                     ])>
                         <div class="text-sm font-semibold text-slate-200 w-24 shrink-0">
-                            Scene {{ $scene->order }}
-                            @if ($scene->kind === 'game') <span class="ml-1 text-amber-400">🎲</span> @endif
+                            Scene {{ $loop->iteration }}
                         </div>
                         <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                             @foreach (['script' => 'Script', 'image' => 'Image', 'audio' => 'Audio'] as $asset => $label)

@@ -77,7 +77,9 @@ class Step2Generate extends Component
     #[Computed]
     public function overallProgress(): int
     {
-        $scenes = $this->scenes;
+        // Only narration ("script") scenes generate script/image/audio. Map and game scenes have
+        // none, so counting them would cap progress below 100% even when every real scene is done.
+        $scenes = $this->scenes->where('kind', 'narration')->values();
         if ($scenes->isEmpty()) {
             return 0;
         }

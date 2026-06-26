@@ -216,4 +216,32 @@
             </button>
         </div>
     </div>
+
+    {{-- Floating read-aloud control: appears only while a summary is being read so teachers can
+         pause, scrub, or stop it. Driven by the `timemap-audio` events the map JS emits; the buttons
+         call back into the same window.__timemap* helpers. It hides the moment audio ends, is
+         stopped, or the page navigates away. --}}
+    <div x-data="{
+            playing: false, cur: 0, dur: 0, visible: false,
+            fmt(t) { t = Math.max(0, Math.round(t || 0)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); },
+            seek(e) { const r = $refs.bar.getBoundingClientRect(); window.__timemapSeek && window.__timemapSeek((e.clientX - r.left) / r.width); }
+         }"
+         x-on:timemap-audio.window="visible = $event.detail.visible; playing = $event.detail.playing; cur = $event.detail.currentTime; dur = $event.detail.duration"
+         x-show="visible" style="display:none"
+         class="absolute left-1/2 top-4 z-30 flex w-[22rem] max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-box bg-base-100/95 px-3 py-2 shadow-xl">
+        <button type="button" x-on:click="window.__timemapToggleSpeak && window.__timemapToggleSpeak()"
+                class="btn btn-circle btn-sm btn-warning shrink-0 text-black"
+                :aria-label="playing ? '{{ __('Pause') }}' : '{{ __('Play') }}'">
+            <svg x-show="!playing" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg x-show="playing" style="display:none" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        </button>
+        <span class="shrink-0 text-xs tabular-nums opacity-70" x-text="fmt(cur)"></span>
+        <div x-ref="bar" x-on:click="seek($event)"
+             class="relative h-1.5 flex-1 cursor-pointer rounded-full bg-base-300" role="slider" aria-label="{{ __('Seek') }}">
+            <div class="absolute inset-y-0 left-0 rounded-full bg-warning" :style="`width:${dur ? (cur / dur * 100) : 0}%`"></div>
+        </div>
+        <span class="shrink-0 text-xs tabular-nums opacity-70" x-text="fmt(dur)"></span>
+        <button type="button" x-on:click="window.__timemapStopSpeak && window.__timemapStopSpeak()"
+                class="btn btn-ghost btn-xs btn-circle shrink-0" aria-label="{{ __('Stop') }}">✕</button>
+    </div>
 </div>

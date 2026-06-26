@@ -32,8 +32,13 @@
     {{-- Mount/destroy the MapLibre map block when a map scene is (de)selected. --}}
     @push('scripts')
     <script>
-    document.addEventListener('livewire:initialized', () => {
+    (() => {
+    let booted = false
+    function boot() {
+        if (booted || !window.Livewire) return
+        booted = true
         const host = document.getElementById('lesson-map-preview')
+        if (!host) return
         let inst = null
         let lastKey = null
         const destroy = () => {
@@ -78,6 +83,10 @@
                     editable: true,
                     onAnnotationsChange: (a) => window.Livewire.dispatch('annotationsChanged', { sceneId: p.sceneId, annotations: a }),
                 })
+            } else {
+                // lesson-map.js failed to load — surface it instead of silently leaving an empty host,
+                // which reveals the 3D canvas (narration art) behind and reads as "the map didn't open".
+                console.error('[lesson-map] renderLessonMap unavailable — lesson-map.js did not load')
             }
         })
 
@@ -92,7 +101,14 @@
             const p = Array.isArray(e) ? e[0] : e
             if (inst) inst.setAnnotations(p.annotations || [])
         })
-    })
+    }
+    // Livewire defers stacked scripts, so `livewire:initialized` has often ALREADY fired by the time
+    // this runs — boot immediately in that case; otherwise wait for the event. (Same footgun the
+    // timeline Sortable hit: a bare addEventListener never fired, so the scene:load handler never
+    // registered and selecting/adding a map block did nothing.)
+    if (window.Livewire) boot()
+    else document.addEventListener('livewire:initialized', boot)
+    })()
     </script>
     @endpush
     {{-- Draggable inspector --}}
@@ -150,7 +166,8 @@
                                                  :city-results="$this->cityResults"
                                                  :city-query="$cityQuery" />
                 @elseif ($sceneModel->kind === 'game')
-                    <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games" />
+                    <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games"
+                                                  :quiz-draft="$quizDraft" :quiz-errors="$quizErrors" :quiz-saved="$quizSaved" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
                 @endif

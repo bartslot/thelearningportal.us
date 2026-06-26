@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Wizard;
 
 use App\Enums\LessonStatus;
+use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
 use App\Jobs\EnhanceSkyboxImage;
 use App\Jobs\GenerateSceneAudio;
 use App\Jobs\GenerateSceneImage;
@@ -26,6 +27,8 @@ use Livewire\Component;
 
 class Step3SceneConfigurator extends Component
 {
+    use EditsQuizQuestions;
+
     private const EDITABLE_FIELDS = [
         'config',
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
@@ -147,6 +150,10 @@ class Step3SceneConfigurator extends Component
                 'metricScaleFactor' => (float) (($scene->world_semantics ?? [])['metric_scale_factor'] ?? 1),
             ],
         ]);
+
+        // Keep the quiz-question draft in step with the selected scene: loads on a real switch,
+        // preserved across status-poll re-selects so unsaved edits aren't wiped mid-typing.
+        $this->syncQuizDraftFor($scene);
     }
 
     /**

@@ -480,7 +480,38 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // __timemapSpeak when a territory's summary is shown; audio is cached server-side per polity.
   window.__timemapSoundOn = (() => { try { return localStorage.getItem('tm-sound') === '1'; } catch (e) { return false; } })();
   let ttsAudio = null;
-  window.__timemapStopSpeak = () => { if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; } };
+
+  // Broadcast read-aloud state to the floating audio control (Alpine, in the blade). `visible` is
+  // forced false when there's no clip, so a late media event can never re-show a stopped bar.
+  const emitAudioState = (visible) => {
+    const a = ttsAudio;
+    window.dispatchEvent(new CustomEvent('timemap-audio', { detail: {
+      visible: !!(visible && a),
+      playing: !!(a && !a.paused && !a.ended),
+      currentTime: a ? (a.currentTime || 0) : 0,
+      duration: a && isFinite(a.duration) ? a.duration : 0,
+    } }));
+  };
+
+  window.__timemapStopSpeak = () => {
+    if (ttsAudio) { try { ttsAudio.pause(); } catch (e) { /* noop */ } ttsAudio = null; }
+    emitAudioState(false);
+  };
+  // Pause/resume the current clip without discarding it (floating control's play/pause button).
+  window.__timemapToggleSpeak = () => {
+    if (!ttsAudio) return;
+    if (ttsAudio.paused) ttsAudio.play().catch(() => {});
+    else ttsAudio.pause();
+    emitAudioState(true);
+  };
+  // Seek to a fraction [0..1] of the clip (click-to-scrub on the progress bar).
+  window.__timemapSeek = (frac) => {
+    if (ttsAudio && isFinite(ttsAudio.duration)) {
+      ttsAudio.currentTime = Math.max(0, Math.min(1, frac)) * ttsAudio.duration;
+      emitAudioState(true);
+    }
+  };
+
   window.__timemapSpeak = (id, text) => {
     window.__timemapStopSpeak();
     if (!window.__timemapSoundOn || !id || !text) return;
@@ -491,9 +522,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }).then((r) => (r.ok ? r.json() : {})).then((d) => {
       if (!d || !d.url || !window.__timemapSoundOn) return;
       ttsAudio = new Audio(d.url);
+      ['loadedmetadata', 'timeupdate', 'play', 'pause'].forEach((ev) =>
+        ttsAudio.addEventListener(ev, () => emitAudioState(true)));
+      ttsAudio.addEventListener('ended', () => window.__timemapStopSpeak());
       ttsAudio.play().catch(() => { /* autoplay blocked until a user gesture */ });
+      emitAudioState(true);
     }).catch(() => {});
   };
+
+  // A bare `new Audio()` plays independently of the DOM, so an SPA page swap (wire:navigate) leaves
+  // the read-aloud playing over the next page. Stop it on navigate-away or unload. Guard so repeated
+  // timemap mounts don't stack duplicate listeners.
+  if (!window.__timemapAudioTeardownBound) {
+    window.__timemapAudioTeardownBound = true;
+    document.addEventListener('livewire:navigating', () => window.__timemapStopSpeak && window.__timemapStopSpeak());
+    window.addEventListener('pagehide', () => window.__timemapStopSpeak && window.__timemapStopSpeak());
+  }
 
   map.on('load', () => {
     map.addLayer({

@@ -1,4 +1,4 @@
-@props(['scene' => null, 'games' => collect()])
+@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false])
 
 @php
     $isGenerating = $scene->status === 'generating';
@@ -51,6 +51,65 @@
                 </select>
             </label>
         </div>
+
+        {{-- Multiple-choice question editor. Questions are lesson-level (shared across quiz segments);
+             each has up to four colour-coded options (A/B/C/D) with exactly one marked correct. This
+             is the actual quiz content — the field below is only the spoken intro, not the questions. --}}
+        @php $letters = ['A', 'B', 'C', 'D']; $palette = ['#e11d48', '#0284c7', '#d97706', '#059669']; @endphp
+        <div class="space-y-3 border-t border-white/10 pt-3">
+            <div class="flex items-center justify-between">
+                <p class="text-xs uppercase tracking-wider text-slate-400">Quiz questions</p>
+                <span class="text-[11px] text-slate-500">{{ count($quizDraft) }} total</span>
+            </div>
+
+            @forelse ($quizDraft as $i => $q)
+                <div class="rounded-box border border-slate-700/70 bg-base-200/50 p-3 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-[11px] font-semibold text-amber-300">Question {{ $i + 1 }}</span>
+                        <button type="button" wire:click="removeQuizQuestion({{ $i }})"
+                                class="text-rose-300 hover:text-rose-200 text-[11px] underline">Remove</button>
+                    </div>
+
+                    <textarea wire:model.blur="quizDraft.{{ $i }}.question" rows="2"
+                              placeholder="Type the question…"
+                              class="textarea textarea-sm textarea-bordered bg-slate-900 w-full"></textarea>
+
+                    <div class="space-y-1.5">
+                        @foreach ($letters as $oi => $letter)
+                            @php $isCorrect = (int) ($q['correct_index'] ?? 0) === $oi; @endphp
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white"
+                                      style="background-color: {{ $palette[$oi] }}">{{ $letter }}</span>
+                                <input type="text" wire:model.blur="quizDraft.{{ $i }}.options.{{ $oi }}"
+                                       placeholder="Answer {{ $letter }}"
+                                       class="input input-xs input-bordered bg-slate-900 flex-1" />
+                                <button type="button" wire:click="setQuizCorrect({{ $i }}, {{ $oi }})"
+                                        class="btn btn-xs btn-square {{ $isCorrect ? 'btn-success' : 'btn-ghost text-slate-500' }}"
+                                        title="Mark answer {{ $letter }} as correct"
+                                        aria-label="Mark answer {{ $letter }} as correct">{!! $isCorrect ? '✓' : '○' !!}</button>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    @if (! empty($quizErrors[$i]))
+                        <ul class="text-[11px] text-rose-300 list-disc list-inside space-y-0.5">
+                            @foreach ($quizErrors[$i] as $err)<li>{{ $err }}</li>@endforeach
+                        </ul>
+                    @endif
+                </div>
+            @empty
+                <p class="text-xs text-slate-500">No questions yet — add one below.</p>
+            @endforelse
+
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" wire:click="addQuizQuestion" class="btn btn-xs btn-outline">+ Add question</button>
+                <button type="button" wire:click="saveQuiz"
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">Save questions</button>
+                @if ($quizSaved)
+                    <span class="text-[11px] text-emerald-400">✓ Saved</span>
+                @endif
+            </div>
+        </div>
     @endif
 
     @if ($gameType === 'strategy')
@@ -81,7 +140,7 @@
     <div class="space-y-1">
         <p class="text-xs uppercase tracking-wider text-slate-400">
             @if ($gameType === 'quiz')
-                Quiz setup
+                Spoken intro <span class="normal-case text-slate-500">(optional — narrated before the quiz)</span>
             @elseif ($gameType === 'debate')
                 Debate prompt
             @else
