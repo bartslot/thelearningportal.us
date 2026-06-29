@@ -1,7 +1,7 @@
-<x-layouts.guest title="Sign In">
+<x-layouts.guest :title="__('Sign In')">
 
     <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-sm">
-        <h1 class="text-xl font-semibold text-slate-100 mb-6 text-center">Welcome back</h1>
+        <h1 class="text-xl font-semibold text-slate-100 mb-6 text-center">{{ __('Welcome back') }}</h1>
 
         {{-- Validation errors --}}
         @if($errors->any())
@@ -16,7 +16,7 @@
             {{-- Email --}}
             <div>
                 <label for="email" class="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Email address
+                    {{ __('Email address') }}
                 </label>
                 <input
                     id="email"
@@ -34,7 +34,7 @@
             {{-- Password --}}
             <div>
                 <label for="password" class="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Password
+                    {{ __('Password') }}
                 </label>
                 <input
                     id="password"
@@ -52,7 +52,7 @@
             <div class="flex items-center gap-2">
                 <input id="remember" name="remember" type="checkbox"
                        class="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500">
-                <label for="remember" class="text-sm text-slate-400">Keep me signed in</label>
+                <label for="remember" class="text-sm text-slate-400">{{ __('Keep me signed in') }}</label>
             </div>
 
             {{-- Submit --}}
@@ -62,14 +62,14 @@
                        hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2
                        focus:ring-offset-slate-900 transition-colors"
             >
-                Sign in
+                {{ __('Sign in') }}
             </button>
         </form>
 
         <p class="mt-5 text-center text-xs text-slate-400">
-            Students: use the
+            {{ __('Students: use the') }}
             <a href="#" class="text-amber-400 hover:underline">Learning Portal app</a>
-            to access your lessons.
+            {{ __('to access your lessons.') }}
         </p>
     </div>
 

@@ -64,7 +64,7 @@
                             @php $active = request()->routeIs($item['pattern']); @endphp
                             <a href="{{ route($item['route']) }}"
                                class="text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
-                                <span>{{ $item['label'] }}</span>
+                                <span>{{ __($item['label']) }}</span>
                                 @if (!empty($item['badge']))
                                     <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
                                         {{ $item['badge'] }}
@@ -89,7 +89,7 @@
                                 <li>
                                     <a href="{{ route($item['route']) }}"
                                        class="text-sm {{ $active ? 'text-amber-400' : 'text-slate-300 hover:text-white' }}">
-                                        {{ $item['label'] }}
+                                        {{ __($item['label']) }}
                                         @if (!empty($item['badge']))
                                             <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
                                                 {{ $item['badge'] }}
@@ -122,7 +122,7 @@
                                     </div>
                                     @if ($roleLabel)
                                         <span class="shrink-0 rounded bg-amber-400/10 px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-amber-400">
-                                            {{ $roleLabel }}
+                                            {{ __($roleLabel) }}
                                         </span>
                                     @endif
                                 </div>
@@ -132,14 +132,14 @@
                             @if (Route::has('profile.edit'))
                                 <li>
                                     <a href="{{ route('profile.edit') }}" class="text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
-                                        Profile
+                                        {{ __('Profile') }}
                                     </a>
                                 </li>
                             @endif
                             @if (Route::has('settings.index'))
                                 <li>
                                     <a href="{{ route('settings.index') }}" class="text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
-                                        Account Settings
+                                        {{ __('Account Settings') }}
                                     </a>
                                 </li>
                             @endif
@@ -151,7 +151,7 @@
                                 <form method="POST" action="{{ route('logout') }}" class="w-full">
                                     @csrf
                                     <button type="submit" class="w-full text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-rose-400">
-                                        Sign out
+                                        {{ __('Sign out') }}
                                     </button>
                                 </form>
                             </li>
@@ -159,7 +159,7 @@
                     </div>
                 @else
                     <a href="{{ route('login') }}" class="text-sm text-slate-300 transition-colors hover:text-amber-400">
-                        Sign in
+                        {{ __('Sign in') }}
                     </a>
                 @endauth
             </div>

@@ -1,16 +1,16 @@
-<x-layouts.app title="Teacher Dashboard">
+<x-layouts.app :title="__('Teacher Dashboard')">
 <div class="space-y-8">
 
     {{-- ── Header ─────────────────────────────────────────────────────────── --}}
     <div class="flex items-end justify-between gap-4">
         <div>
-            <p class="text-xs uppercase tracking-widest text-amber-400">Teacher workspace</p>
-            <h1 class="mt-2 text-3xl font-semibold text-slate-100">Your lessons</h1>
-            <p class="mt-1 text-sm text-slate-400">{{ $lessons->total() }} lesson{{ $lessons->total() !== 1 ? 's' : '' }} total</p>
+            <p class="text-xs uppercase tracking-widest text-amber-400">{{ __('Teacher workspace') }}</p>
+            <h1 class="mt-2 text-3xl font-semibold text-slate-100">{{ __('Your lessons') }}</h1>
+            <p class="mt-1 text-sm text-slate-400">{{ $lessons->total() }} {{ $lessons->total() === 1 ? __('lesson total') : __('lessons total') }}</p>
         </div>
         <a href="{{ route('teacher.lessons.create') }}"
            class="flex-shrink-0 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-colors">
-            + New lesson
+            {{ __('+ New lesson') }}
         </a>
     </div>
 
@@ -21,11 +21,11 @@
     @if($lessons->isEmpty())
         <div class="rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
             <p class="text-2xl mb-3">🏛️</p>
-            <p class="text-sm font-medium text-slate-300">No lessons yet</p>
-            <p class="mt-1 text-sm text-slate-400">Create your first AI-generated history lesson to get started.</p>
+            <p class="text-sm font-medium text-slate-300">{{ __('No lessons yet') }}</p>
+            <p class="mt-1 text-sm text-slate-400">{{ __('Create your first AI-generated history lesson to get started.') }}</p>
             <a href="{{ route('teacher.lessons.create') }}"
                class="mt-4 inline-flex rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-colors">
-                Create your first lesson
+                {{ __('Create your first lesson') }}
             </a>
         </div>
     @else
