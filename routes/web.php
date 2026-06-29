@@ -71,6 +71,10 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 // ── Teacher dashboard (auth required) ────────────────────────────────────────
 
+// Self-service account settings (UI-language switcher) — available to any signed-in user.
+// Named `settings.index` so the nav's existing "Account Settings" link activates automatically.
+Route::middleware(['auth'])->get('/settings', \App\Livewire\Settings::class)->name('settings.index');
+
 Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function () {
 
     Route::get('/dashboard', function () {

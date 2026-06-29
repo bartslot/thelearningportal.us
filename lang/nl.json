@@ -54,5 +54,12 @@
     "Seek": "Zoeken",
     "Pause": "Pauzeren",
     "Play": "Afspelen",
-    "Stop": "Stoppen"
+    "Stop": "Stoppen",
+    "Manage your account preferences.": "Beheer je accountvoorkeuren.",
+    "Your settings have been saved.": "Je instellingen zijn opgeslagen.",
+    "Name": "Naam",
+    "Email": "E-mail",
+    "Language": "Taal",
+    "Changes the language of the interface.": "Wijzigt de taal van de interface.",
+    "Save": "Opslaan"
 }
