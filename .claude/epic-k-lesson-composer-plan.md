@@ -397,6 +397,20 @@ text in order. Paste output.
 
 ---
 
+### K-11 — Composite / split blocks (backlog · from map-session feedback)  ·  depends: K-2
+**Goal:** let a teacher combine two module types into one slide — e.g. an interactive **map beside a
+story/script**, or a **quiz over an image/script** — instead of them being separate full-screen blocks.
+Surfaced when dragging a map block onto an image/quiz block in the composer read like a "split slide"
+affordance (currently just reorders).
+**Sketch:** a module could hold a `layout` (`full` | `split-h` | `split-v`) plus a secondary
+`content_ref`/child module, OR a dedicated `CompositeBlock` type wrapping two child modules. Decide during
+K-2 polish. Drag-one-block-onto-another = the create-split gesture.
+**AC:** teacher can make at least one combo (map + story) that renders side-by-side in the player; ordering
+still works; a split can be un-split back into two blocks.
+**Note:** design decision pending — do NOT build before K-2/K-3 are stable.
+
+---
+
 ## 5. Module-type build order (don't build all 17 at once)
 
 | Phase | Types | Ticket |
