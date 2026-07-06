@@ -15,7 +15,9 @@ final class LessonOutlinePrompt
         $kindEnum   = $hasGame ? '"narration" | "game"' : '"narration"';
         $gameNote   = $hasGame
             ? ''
-            : "\n- Do NOT include any scenes with kind=\"game\". Only narration scenes are allowed.";
+            : "\n- Do NOT include any scenes with kind=\"game\". Only narration scenes are allowed."
+              ."\n- No scene may depict students, quizzes, tests, or classroom activities — every scene"
+              .' stays inside the historical story itself.';
 
         return <<<SYS
 You are a K-12 curriculum writer producing structured lesson outlines.
@@ -23,12 +25,22 @@ Return ONLY a JSON object with this exact shape — no markdown, no prose, no ex
 
 {
   "title": string,
+  "learning_objectives": [
+    {
+      "id": string ("LO1", "LO2", ...),
+      "text": string (specific and testable — "The student can explain why X led to Y", never "learn about X"),
+      "bloom": "remember" | "understand" | "apply" | "analyze"
+    }
+  ],
   "scene_briefs": [
     {
       "order": integer (1-indexed),
       "kind": {$kindEnum},
       "phase": "intro" | "development" | "climax" | "resolution",
       "scenePurpose": string (one sentence — what should the student understand after this scene),
+      "objective_ids": string[] (which learning objectives this scene teaches — at least one),
+      "characters": string[] (1-3 NAMED historical people who act in this scene — from source only),
+      "conflict": string (one sentence — the tension, threat, or dilemma driving this scene),
       "year": string | null,
       "location": string | null,
       "viewerPosition": string | null (e.g. "standing in the market square", "on a ship deck"),
@@ -43,6 +55,14 @@ Return ONLY a JSON object with this exact shape — no markdown, no prose, no ex
 }
 
 Rules:
+- Write 3-5 learning_objectives FIRST, derived from the most important ideas in the source text.
+  Each must be specific and testable from the lesson itself. These drive everything else: every
+  objective must be covered by at least one scene (objective_ids), and every scene must teach at
+  least one objective. A scene that teaches nothing is forbidden.
+- Every scene needs "characters" (named people from the source who ACT in it) and a "conflict"
+  (what is at stake). History without people deciding things is a museum plaque, not a lesson.
+- The LAST narration scene is the resolution AND the recap: it lands the story's meaning and
+  revisits every learning objective as one memorable line each — never a dry summary list.
 - Produce AT LEAST 3 narration scenes — single-scene outlines are forbidden. Break the story into
   distinct beats (e.g. setup → rising action → climax → resolution); use the "phase" field to mark them.
 - Aim for roughly one narration scene per 60–90 seconds of target duration; the user message gives an
@@ -61,7 +81,7 @@ Rules:
 SYS;
     }
 
-    public static function user(Lesson $lesson, string $sourceText): string
+    public static function user(Lesson $lesson, string $sourceText, ?\App\Models\Story $story = null): string
     {
         $game       = $lesson->strategyGame;
         $gameType   = $lesson->game_type ?? 'quiz';
@@ -102,6 +122,8 @@ SYS;
         }
         $arcBlock = implode("\n", $arcLines);
 
+        $storyBlock = $story ? self::buildStoryBlock($story) : '';
+
         return <<<USR
 Topic: {$lesson->topic}
 Subject: {$lesson->subject}
@@ -113,7 +135,7 @@ target_narration_scenes: {$targetNarrationScenes} (must be ≥3; aim within ±1)
 
 {$arcBlock}
 {$gameClause}
-
+{$storyBlock}
 Source text:
 """
 {$sourceText}
@@ -121,6 +143,40 @@ Source text:
 
 Produce the JSON outline now.
 USR;
+    }
+
+    /**
+     * Curated-catalog pedagogy: the story's human-reviewed objectives are adopted verbatim
+     * (same ids), and its documented misconceptions become quiz-distractor raw material.
+     */
+    private static function buildStoryBlock(\App\Models\Story $story): string
+    {
+        $lines = [];
+
+        $objectives = collect($story->learning_objectives ?? [])
+            ->map(fn (array $objective) => '- '.($objective['id'] ?? '?').': '.($objective['text'] ?? ''))
+            ->implode("\n");
+        if ($objectives !== '') {
+            $lines[] = "Use these curated learning objectives EXACTLY as given — same ids, same text, no additions:\n{$objectives}";
+        }
+
+        $facts = collect($story->key_facts ?? [])
+            ->map(fn (array $fact) => '- '.($fact['fact'] ?? ''))
+            ->filter(fn (string $line) => $line !== '- ')
+            ->implode("\n");
+        if ($facts !== '') {
+            $lines[] = "Key facts that MUST appear across the scenes:\n{$facts}";
+        }
+
+        $misconceptions = collect($story->misconceptions ?? [])
+            ->map(fn (array $entry) => '- '.($entry['misconception'] ?? '').' (correct: '.($entry['correction'] ?? '').')')
+            ->filter(fn (string $line) => $line !== '-  (correct: )')
+            ->implode("\n");
+        if ($misconceptions !== '') {
+            $lines[] = "Common student misconceptions (address in scenes where natural):\n{$misconceptions}";
+        }
+
+        return $lines === [] ? '' : "\n".implode("\n\n", $lines)."\n";
     }
 
     private static function buildGameClause(string $gameTitle, int $teamCount, int $splitCount): string

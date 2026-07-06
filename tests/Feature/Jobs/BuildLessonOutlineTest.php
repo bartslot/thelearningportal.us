@@ -41,7 +41,7 @@ class BuildLessonOutlineTest extends TestCase
         ]);
     }
 
-    public function test_writes_scene_rows_from_llm_json_and_dispatches_batch(): void
+    public function test_writes_scene_rows_from_llm_json_and_dispatches_script_job(): void
     {
         $this->mock(OpenAiLlmService::class, function ($mock): void {
             $mock->shouldReceive('json')->once()->andReturn([
@@ -62,9 +62,9 @@ class BuildLessonOutlineTest extends TestCase
         $this->assertSame(LessonStatus::ScenesGenerating, $this->lesson->status);
         $this->assertSame(2, Scene::count());
 
-        Bus::assertBatched(function ($batch): bool {
-            return $batch->jobs->count() === 6;
-        });
+        // The whole-lesson script job owns the per-scene asset fan-out now.
+        Bus::assertDispatched(\App\Jobs\GenerateLessonScript::class);
+        Bus::assertNothingBatched();
     }
 
     public function test_drops_game_scenes_when_games_are_disabled(): void
@@ -111,6 +111,49 @@ class BuildLessonOutlineTest extends TestCase
         (new BuildLessonOutline($this->lesson->id))->handle(app(OpenAiLlmService::class));
 
         $this->assertSame(1, Scene::where('kind', 'game')->count(), 'Game scenes must be kept when include_game is on');
+    }
+
+    public function test_catalog_story_grounds_the_source_and_overrides_objectives(): void
+    {
+        $story = \App\Models\Story::create([
+            'slug' => 'napoleon-russia',
+            'title' => 'Napoleon in Russia',
+            'status' => 'published',
+            'learning_objectives' => [
+                ['id' => 'LO1', 'text' => 'Explain why the invasion of Russia failed.', 'bloom' => 'understand'],
+            ],
+        ]);
+        \App\Models\StorySource::create([
+            'story_id' => $story->id,
+            'origin' => 'gutenberg',
+            'title' => 'Famous Men of Modern Times — Napoleon',
+            'excerpt' => 'In 1812 Napoleon led the Grande Armée into Russia…',
+        ]);
+        $this->lesson->update(['story_id' => $story->id]);
+        $this->lesson->source->update(['extracted_text' => '']);
+
+        $this->mock(OpenAiLlmService::class, function ($mock): void {
+            $mock->shouldReceive('json')->once()->andReturn([
+                'title' => 'Napoleon in Russia',
+                'learning_objectives' => [
+                    ['id' => 'LOX', 'text' => 'Model-invented objective (must be overridden).'],
+                ],
+                'scene_briefs' => [
+                    ['order' => 1, 'kind' => 'narration', 'beat' => 'march'],
+                    ['order' => 2, 'kind' => 'narration', 'beat' => 'winter'],
+                ],
+            ]);
+        });
+
+        Bus::fake();
+
+        (new BuildLessonOutline($this->lesson->id))->handle(app(OpenAiLlmService::class));
+
+        $this->lesson->refresh();
+        // Source text came from the story excerpt, not Wikipedia.
+        $this->assertStringContainsString('Grande Armée', (string) $this->lesson->source->extracted_text);
+        // Curated objectives override whatever the model emitted.
+        $this->assertSame('LO1', $this->lesson->outline['learning_objectives'][0]['id']);
     }
 
     public function test_marks_lesson_failed_and_writes_error_message_on_llm_exception(): void

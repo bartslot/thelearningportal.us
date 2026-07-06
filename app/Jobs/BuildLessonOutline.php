@@ -11,13 +11,11 @@ use App\Services\LessonOutlinePrompt;
 use App\Services\OpenAiLlmService;
 use App\Services\WikipediaService;
 use App\Services\WorldHistoryService;
-use Illuminate\Bus\Batch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -41,9 +39,19 @@ class BuildLessonOutline implements ShouldQueue
         $lesson = Lesson::with('source', 'strategyGame')->findOrFail($this->lessonId);
 
         try {
+            // ── Step 0: Catalog stories carry their own curated narrative sources — no fetch. ──
+            $story = $lesson->story_id ? \App\Models\Story::with('sources')->find($lesson->story_id) : null;
+            if ($story && $lesson->source && (string) $lesson->source->extracted_text === '') {
+                $lesson->source->update([
+                    'extracted_text' => $story->combinedSourceText(),
+                    'wikipedia_topic' => $lesson->topic,
+                ]);
+                Log::info("BuildLessonOutline #{$lesson->id}: grounded in catalog story '{$story->slug}'");
+            }
+
             // ── Step 1: Fetch internet sources (worldhistory.org → wikipedia fallback) ──
             $source = $lesson->source;
-            if ($source && in_array($source->kind, ['internet', 'wikipedia', 'both'], true)
+            if (! $story && $source && in_array($source->kind, ['internet', 'wikipedia', 'both'], true)
                 && (string) $source->extracted_text === '') {
 
                 $lesson->update(['status' => LessonStatus::FetchingSources]);
@@ -131,8 +139,14 @@ class BuildLessonOutline implements ShouldQueue
             $hasGame = (bool) $lesson->include_game;
             $outline = $llm->json(
                 system: LessonOutlinePrompt::system($hasGame),
-                user: LessonOutlinePrompt::user($lesson, $sourceText),
+                user: LessonOutlinePrompt::user($lesson, $sourceText, $story),
             );
+
+            // Curated stories are the pedagogical source of truth: their reviewed objectives
+            // always override whatever the model emitted.
+            if ($story && ! empty($story->learning_objectives)) {
+                $outline['learning_objectives'] = $story->learning_objectives;
+            }
 
             $lesson->update([
                 'title' => $outline['title'] ?? $lesson->topic,
@@ -222,25 +236,14 @@ class BuildLessonOutline implements ShouldQueue
                 }
             }
 
-            $jobs = [];
-            foreach ($scenes as $idx => $scene) {
-                // Attach hero image to scene 1 (skip AI image gen for it)
-                if ($idx === 0 && $heroPath) {
-                    $scene->update(['image_path' => $heroPath]);
-                    $jobs[] = new GenerateSceneScript($scene->id);
-                    $jobs[] = new GenerateSceneAudio($scene->id);
-                    // No GenerateSceneImage — image already set
-                } else {
-                    $jobs[] = new GenerateSceneScript($scene->id);
-                    $jobs[] = new GenerateSceneImage($scene->id);
-                    $jobs[] = new GenerateSceneAudio($scene->id);
-                }
+            // Attach hero image to the first content scene (image generation skips it).
+            if ($heroPath && isset($scenes[0])) {
+                $scenes[0]->update(['image_path' => $heroPath]);
             }
 
-            Bus::batch($jobs)
-                ->name("lesson:{$lesson->id}:scenes")
-                ->then(fn (Batch $batch) => GenerateLessonQuiz::dispatch($lesson->id))
-                ->dispatch();
+            // One whole-lesson script pass (story coherence + critique loop) — it fans out
+            // the per-scene image/audio batch and the quiz itself once scripts exist.
+            GenerateLessonScript::dispatch($lesson->id);
         } catch (Throwable $e) {
             $lesson->update([
                 'status' => LessonStatus::Failed,
