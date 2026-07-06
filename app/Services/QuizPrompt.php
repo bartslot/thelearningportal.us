@@ -45,6 +45,12 @@ TXT;
         };
     }
 
+    /** Per-segment scope: 'taught' (only preceding scenes) or 'full' (prior-knowledge check). */
+    public static function scopeFor(?\App\Models\Scene $quizScene): string
+    {
+        return (($quizScene?->config ?? [])['quiz_scope'] ?? 'taught') === 'full' ? 'full' : 'taught';
+    }
+
     /** The lesson's quiz difficulty (1-3 stars), stored on the quiz game scene's config. */
     public static function difficultyFor(Lesson $lesson): int
     {
@@ -75,6 +81,7 @@ Return JSON only:
       "question": string,
       "options": [string, string, string, string],
       "correct_index": integer (0-3),
+      "asks_ahead": boolean (true ONLY when the question tests narration listed under COMING LATER),
       "explanation": string (one sentence: why the correct answer is correct)
     }
   ]
@@ -106,10 +113,11 @@ SYS;
      * @param  \Illuminate\Support\Collection<int, \App\Models\Scene>|null  $scenes
      * @param  list<array{id?: string, text?: string}>|null  $objectives
      */
-    public static function user(Lesson $lesson, $scenes = null, ?array $objectives = null, string $focus = ''): string
+    public static function user(Lesson $lesson, $scenes = null, ?array $objectives = null, string $focus = '', $upcomingScenes = null): string
     {
         $scenes ??= $lesson->scenes;
         $combined = $scenes->pluck('script_segment')->filter()->implode("\n\n");
+        $upcoming = $upcomingScenes?->pluck('script_segment')->filter()->implode("\n\n") ?? '';
 
         $objectives ??= $lesson->outline['learning_objectives'] ?? [];
         $objectivesList = collect($objectives)
@@ -121,12 +129,24 @@ SYS;
 
         $focusBlock = $focus !== '' ? "{$focus}\n\n" : '';
 
+        // Prior-knowledge mode ("what do you already know?"): the teacher deliberately allows
+        // questions about upcoming narration — those must be flagged asks_ahead so the editor
+        // can warn and the player can soften wrong-answer feedback.
+        $upcomingBlock = $upcoming !== ''
+            ? "\n\nCOMING LATER in the lesson (the teacher runs this quiz as a prior-knowledge check: "
+              ."questions about this material ARE allowed, but every such question must set "
+              ."\"asks_ahead\": true):\n{$upcoming}"
+            : '';
+        $heardLabel = $upcoming !== ''
+            ? 'Narration the student has heard SO FAR:'
+            : 'Narration the student has heard SO FAR (test ONLY this — never ask about anything beyond it):';
+
         return <<<USR
 Lesson topic: {$lesson->topic}
 Grade: {$lesson->grade_level}
 
-{$objectivesBlock}{$focusBlock}Narration the student has heard SO FAR (test ONLY this — never ask about anything beyond it):
-{$combined}
+{$objectivesBlock}{$focusBlock}{$heardLabel}
+{$combined}{$upcomingBlock}
 USR;
     }
 

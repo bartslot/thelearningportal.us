@@ -16,6 +16,7 @@ class QuizQuestion extends Model
         'question',
         'options',
         'correct_index',
+        'asks_ahead',
         'explanation',
         'points',
     ];

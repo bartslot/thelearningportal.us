@@ -97,6 +97,46 @@ class GenerateLessonQuizTest extends TestCase
         $this->assertSame(2, QuizQuestion::where('scene_id', $quizScene->id)->count());
     }
 
+    public function test_full_scope_override_allows_asking_ahead_with_flagged_questions(): void
+    {
+        $teacher = User::factory()->create();
+        $lesson  = Lesson::create([
+            'teacher_id' => $teacher->id,
+            'topic' => 'Napoleon', 'subject' => 'history', 'grade_level' => '8',
+            'status' => LessonStatus::ScenesGenerating,
+        ]);
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Napoleon RISES to power.', 'status' => 'ready']);
+        $quizScene = Scene::create(['lesson_id' => $lesson->id, 'order' => 2, 'kind' => 'game',
+            'game_type' => 'quiz', 'quiz_question_count' => 2, 'status' => 'ready',
+            'config' => ['quiz_scope' => 'full']]);   // teacher override: prior-knowledge check
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 3, 'kind' => 'narration',
+            'script_segment' => 'Napoleon FALLS at Waterloo.', 'status' => 'ready']);
+
+        $capturedPrompt = '';
+        $this->mock(OpenAiLlmService::class, function ($mock) use (&$capturedPrompt): void {
+            $mock->shouldReceive('json')->once()
+                ->withArgs(function ($system, $user) use (&$capturedPrompt) {
+                    $capturedPrompt = $user;
+
+                    return true;
+                })
+                ->andReturn(['questions' => [
+                    ['order' => 1, 'question' => 'Where did Napoleon rise?', 'options' => ['France','Spain','Italy','Prussia'], 'correct_index' => 0, 'asks_ahead' => false],
+                    ['order' => 2, 'question' => 'Where will Napoleon fall?', 'options' => ['Waterloo','Moscow','Leipzig','Cairo'], 'correct_index' => 0, 'asks_ahead' => true],
+                ]]);
+        });
+
+        (new GenerateLessonQuiz($lesson->id))->handle(app(OpenAiLlmService::class));
+
+        // The prompt now includes the upcoming narration, clearly labelled.
+        $this->assertStringContainsString('Waterloo', $capturedPrompt);
+        $this->assertStringContainsString('COMING LATER', $capturedPrompt);
+        // Ahead-asking questions carry the flag for editor warnings + soft player feedback.
+        $flags = QuizQuestion::where('scene_id', $quizScene->id)->orderBy('order')->pluck('asks_ahead')->all();
+        $this->assertSame([false, true], $flags);
+    }
+
     public function test_retries_once_when_an_objective_is_left_untested(): void
     {
         $teacher = User::factory()->create();

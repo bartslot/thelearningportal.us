@@ -1,4 +1,4 @@
-@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false, 'quizDifficulty' => 2])
+@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false, 'quizDifficulty' => 2, 'quizScope' => 'taught'])
 
 @php
     $isGenerating = $scene->status === 'generating';
@@ -77,6 +77,21 @@
                     @endforeach
                     <span class="text-[11px] text-slate-500 ml-1">{{ [1 => __('Easy'), 2 => __('Medium'), 3 => __('Hard')][$quizDifficulty] ?? __('Medium') }}</span>
                 </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] text-slate-400">{{ __('Scope') }}</span>
+                    <div class="join">
+                        <button type="button" wire:click="setQuizScope('taught')"
+                                class="btn btn-xs join-item {{ $quizScope === 'taught' ? 'btn-warning text-slate-950' : 'btn-ghost border border-slate-600 text-slate-300' }}"
+                                title="{{ __('Only test what the story has covered so far') }}">
+                            {{ __('Taught so far') }}
+                        </button>
+                        <button type="button" wire:click="setQuizScope('full')"
+                                class="btn btn-xs join-item {{ $quizScope === 'full' ? 'btn-warning text-slate-950' : 'btn-ghost border border-slate-600 text-slate-300' }}"
+                                title="{{ __('Prior-knowledge check: questions may reach ahead of the story') }}">
+                            {{ __('Whole story') }}
+                        </button>
+                    </div>
+                </div>
                 <button type="button" wire:click="regenerateAllQuizQuestions"
                         wire:loading.attr="disabled" wire:target="regenerateAllQuizQuestions"
                         class="btn btn-xs btn-outline gap-1"
@@ -87,13 +102,27 @@
                 </button>
             </div>
 
+            @if ($quizScope === 'full')
+                <div class="alert py-2 px-3 bg-amber-500/10 border border-amber-500/40 text-xs text-amber-200">
+                    {{ __('Prior-knowledge mode: this quiz may ask about parts of the story the students haven\'t reached yet — great as a "what do you already know?" opener. Questions that reach ahead are marked, and students get gentle feedback instead of being graded on guesswork.') }}
+                </div>
+            @endif
+
             {{-- Two-up on the wide game workspace; stacks on small screens. --}}
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             @forelse ($quizDraft as $i => $q)
                 <div class="rounded-box border border-slate-700/70 bg-base-200/50 p-3 space-y-2"
                      wire:key="quiz-q-{{ $i }}">
                     <div class="flex items-center justify-between gap-2">
-                        <span class="text-[11px] font-semibold text-amber-300">{{ __('Question') }} {{ $i + 1 }}</span>
+                        <span class="flex items-center gap-2">
+                            <span class="text-[11px] font-semibold text-amber-300">{{ __('Question') }} {{ $i + 1 }}</span>
+                            @if (! empty($q['asks_ahead']))
+                                <span class="badge badge-xs bg-amber-500/20 border-amber-500/50 text-amber-300 gap-1"
+                                      title="{{ __('Tests material that comes later in the story — students will be guessing (that\'s the point of a prior-knowledge check).') }}">
+                                    ⤳ {{ __('asks ahead') }}
+                                </span>
+                            @endif
+                        </span>
                         <button type="button" wire:click="removeQuizQuestion({{ $i }})"
                                 class="text-rose-300 hover:text-rose-200 text-[11px] underline">{{ __('Remove') }}</button>
                     </div>

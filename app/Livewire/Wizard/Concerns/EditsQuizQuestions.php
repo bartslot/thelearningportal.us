@@ -77,6 +77,7 @@ trait EditsQuizQuestions
                 'question' => (string) $q->question,
                 'options' => $this->padOptions(is_array($q->options) ? $q->options : []),
                 'correct_index' => (int) $q->correct_index,
+                'asks_ahead' => (bool) $q->asks_ahead,
                 'explanation' => (string) ($q->explanation ?? ''),
             ])->values()->all();
     }
@@ -92,6 +93,7 @@ trait EditsQuizQuestions
             'question' => '',
             'options' => array_fill(0, self::QUIZ_OPTION_COUNT, ''),
             'correct_index' => 0,
+            'asks_ahead' => false,
             'explanation' => '',
         ];
     }
@@ -112,6 +114,30 @@ trait EditsQuizQuestions
         $scene = $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null;
 
         return (int) (($scene?->config['quiz_difficulty'] ?? null) ?: \App\Services\QuizPrompt::DIFFICULTY_MEDIUM);
+    }
+
+    /** Current scope for the inspector UI: 'taught' or 'full' (prior-knowledge check). */
+    public function quizScope(): string
+    {
+        return \App\Services\QuizPrompt::scopeFor(
+            $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null,
+        );
+    }
+
+    /**
+     * Teacher override: 'taught' quizzes only preceding scenes; 'full' turns the segment
+     * into a "what do you already know?" check that may ask ahead of the story.
+     */
+    public function setQuizScope(string $scope): void
+    {
+        if (! $this->quizDraftSceneId || ! in_array($scope, ['taught', 'full'], true)) {
+            return;
+        }
+
+        $scene = Scene::find($this->quizDraftSceneId);
+        if ($scene) {
+            $scene->update(['config' => array_merge($scene->config ?? [], ['quiz_scope' => $scope])]);
+        }
     }
 
     /**
@@ -335,6 +361,7 @@ trait EditsQuizQuestions
                 'question' => $question,
                 'options' => $filled,
                 'correct_index' => $newCorrect === false ? 0 : (int) $newCorrect,
+                'asks_ahead' => (bool) ($q['asks_ahead'] ?? false),
                 'explanation' => trim((string) ($q['explanation'] ?? '')) ?: null,
             ];
         }
@@ -352,6 +379,7 @@ trait EditsQuizQuestions
                     'question' => $row['question'],
                     'options' => $row['options'],
                     'correct_index' => $row['correct_index'],
+                    'asks_ahead' => $row['asks_ahead'],
                     'explanation' => $row['explanation'],
                     'points' => 10,
                 ]);
@@ -376,6 +404,11 @@ trait EditsQuizQuestions
     {
         $quizScene = $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null;
         if (! $quizScene) {
+            return null;
+        }
+
+        // Prior-knowledge override: the sparkle may draw from the whole story.
+        if (\App\Services\QuizPrompt::scopeFor($quizScene) === 'full') {
             return null;
         }
 

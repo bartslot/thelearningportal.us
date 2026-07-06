@@ -252,6 +252,26 @@ class Step3SceneConfiguratorTest extends TestCase
         \Illuminate\Support\Facades\Storage::disk('public')->assertMissing('lessons/x/shot_0.png');
     }
 
+    public function test_quiz_scope_override_persists_on_the_quiz_scene_config(): void
+    {
+        $this->s2->update(['game_type' => 'quiz']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizScope', 'full');
+
+        $this->assertSame('full', $this->s2->fresh()->config['quiz_scope']);
+
+        // Garbage scopes are ignored.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizScope', 'everything');
+
+        $this->assertSame('full', $this->s2->fresh()->config['quiz_scope']);
+    }
+
     public function test_difficulty_stars_persist_on_the_quiz_scene_config(): void
     {
         $this->s2->update(['game_type' => 'quiz']);

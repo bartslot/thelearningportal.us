@@ -123,7 +123,9 @@ export class QuizOverlay {
     let feedback = ''
     if (answered) {
       const word = effects?.word
-        ?? (wasCorrect ? PRAISE[this._index % PRAISE.length] : ENCOURAGE[this._index % ENCOURAGE.length])
+        ?? (wasCorrect
+          ? (q.asks_ahead ? 'You already knew this!' : PRAISE[this._index % PRAISE.length])
+          : (q.asks_ahead ? "No worries — you'll hear this later in the story!" : ENCOURAGE[this._index % ENCOURAGE.length]))
       const color = wasCorrect ? '#34d399' : '#fbbf24'
       feedback = `
         <div style="margin-top:14px; animation: qz-slide-in 0.25s ease-out;">
@@ -156,6 +158,10 @@ export class QuizOverlay {
               <span data-pager>${this._index + 1} / ${total}</span>
             </span>
           </div>
+          ${q.asks_ahead ? `<div style="display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; padding:4px 12px;
+                border-radius:999px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4);
+                color:#fbbf24; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
+                Sneak peek — this comes later in the story</div>` : ''}
           <div style="font-size:22px; font-weight:600; line-height:1.35; margin-bottom:20px;">${this._escape(q.question)}</div>
           <div style="display:flex; flex-direction:column; gap:10px;">${optionsHtml}</div>
           ${feedback}
@@ -208,7 +214,7 @@ export class QuizOverlay {
       const rect = buttonEl.getBoundingClientRect()
       this._render({ kind: 'correct', gained, from, at: { x: rect.left + rect.width / 2, y: rect.top } })
     } else {
-      this._streak = 0
+      if (!q.asks_ahead) this._streak = 0   // guessing ahead is never punished
       this._render({ kind: 'wrong' })
     }
   }

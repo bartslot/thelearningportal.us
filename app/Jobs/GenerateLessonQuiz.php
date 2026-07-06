@@ -68,8 +68,18 @@ class GenerateLessonQuiz implements ShouldQueue
                     ->sortBy('order')
                     ->values();
 
-                if ($taught->isEmpty() || $taught->pluck('script_segment')->filter()->isEmpty()) {
-                    Log::warning("GenerateLessonQuiz #{$lesson->id}: quiz scene {$quizScene->order} has no preceding narration — skipped.");
+                // Teacher override: scope 'full' turns this segment into a prior-knowledge
+                // check — upcoming narration is allowed, flagged asks_ahead per question.
+                $upcoming = QuizPrompt::scopeFor($quizScene) === 'full'
+                    ? $lesson->scenes
+                        ->filter(fn (Scene $scene) => $scene->kind === 'narration' && $scene->order > $quizScene->order)
+                        ->sortBy('order')
+                        ->values()
+                    : null;
+
+                if (($taught->isEmpty() || $taught->pluck('script_segment')->filter()->isEmpty())
+                    && ($upcoming === null || $upcoming->isEmpty())) {
+                    Log::warning("GenerateLessonQuiz #{$lesson->id}: quiz scene {$quizScene->order} has no narration in scope — skipped.");
                     $previousQuizOrder = $quizScene->order;
 
                     continue;
@@ -81,14 +91,19 @@ class GenerateLessonQuiz implements ShouldQueue
                       .'but reinforcing earlier material is allowed.'
                     : '';
 
+                $objectives = $upcoming !== null
+                    ? ($lesson->outline['learning_objectives'] ?? [])   // full-lesson scope
+                    : $this->objectivesFor($lesson, $taught);
+
                 $this->generateSet(
                     $llm,
                     $lesson,
                     $taught,
-                    $this->objectivesFor($lesson, $taught),
+                    $objectives,
                     $quizScene,
                     (int) ($quizScene->quiz_question_count ?: QuizPrompt::DEFAULT_QUESTION_COUNT),
                     $focus,
+                    $upcoming,
                 );
 
                 $previousQuizOrder = $quizScene->order;
@@ -112,6 +127,7 @@ class GenerateLessonQuiz implements ShouldQueue
         ?Scene $quizScene,
         ?int $count,
         string $focus = '',
+        ?Collection $upcoming = null,
     ): void {
         $count ??= max(QuizPrompt::DEFAULT_QUESTION_COUNT, count($objectives));
 
@@ -119,7 +135,7 @@ class GenerateLessonQuiz implements ShouldQueue
         foreach ([1, 2] as $attempt) {
             $result = $llm->json(
                 system: QuizPrompt::system($lesson, $count),
-                user:   QuizPrompt::user($lesson, $taught, $objectives, $focus),
+                user:   QuizPrompt::user($lesson, $taught, $objectives, $focus, $upcoming),
             );
 
             $questions = $this->validQuestions($result['questions'] ?? []);
@@ -146,6 +162,7 @@ class GenerateLessonQuiz implements ShouldQueue
                 'question'      => (string) $q['question'],
                 'options'       => $q['options'],
                 'correct_index' => (int) $q['correct_index'],
+                'asks_ahead'    => (bool) ($q['asks_ahead'] ?? false),
                 'explanation'   => isset($q['explanation']) ? (string) $q['explanation'] : null,
             ]);
         }

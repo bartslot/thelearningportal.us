@@ -140,7 +140,7 @@ class Step3SceneConfigurator extends Component
             'quizQuestions' => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
                 ? $this->lesson->quizQuestions->where('scene_id', $scene->id)->values()
                     ->whenEmpty(fn () => $this->lesson->quizQuestions->whereNull('scene_id')->values())
-                    ->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
+                    ->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values()->all()
                 : [],
             'quizTiming' => $scene->quiz_timing,
             'strategyGameId' => $scene->strategy_game_id,

@@ -80,13 +80,15 @@
 
     {{-- Scenes payload as inert JSON. Quiz scenes carry the lesson's questions so the
          preview sequencer can actually step through them. --}}
-    @php
-        $previewQuizQuestions = $lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values();
-    @endphp
     <script type="application/json" id="step4-scenes-data">
         {!! $this->scenes->map(fn ($s) => array_merge(
             $s->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction','config']),
-            ['quiz_questions' => $s->kind === 'game' && ($s->game_type ?? null) === 'quiz' ? $previewQuizQuestions : null],
+            {{-- Chronology-scoped: each quiz segment previews ITS question set (legacy pool fallback). --}}
+            ['quiz_questions' => $s->kind === 'game' && ($s->game_type ?? null) === 'quiz'
+                ? $lesson->quizQuestions->where('scene_id', $s->id)->values()
+                    ->whenEmpty(fn () => $lesson->quizQuestions->whereNull('scene_id')->values())
+                    ->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values()
+                : null],
         ))->toJson() !!}
     </script>
     {{-- Background music URL (empty string = none) --}}
