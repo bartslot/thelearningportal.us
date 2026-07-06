@@ -1,4 +1,4 @@
-@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false])
+@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false, 'quizDifficulty' => 2])
 
 @php
     $isGenerating = $scene->status === 'generating';
@@ -62,31 +62,104 @@
                 <span class="text-[11px] text-slate-500">{{ count($quizDraft) }} total</span>
             </div>
 
+            {{-- Difficulty (1-3 stars) + regenerate-all at that level. Difficulty applies to
+                 every AI generation: per-question sparkles and the full regenerate. --}}
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] text-slate-400">{{ __('Difficulty') }}</span>
+                    @foreach ([1 => __('Easy'), 2 => __('Medium'), 3 => __('Hard')] as $level => $label)
+                        <button type="button" wire:click="setQuizDifficulty({{ $level }})"
+                                class="transition {{ $quizDifficulty >= $level ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400' }}"
+                                title="{{ $label }}" aria-label="{{ __('Set difficulty to :label', ['label' => $label]) }}"
+                                aria-pressed="{{ $quizDifficulty === $level ? 'true' : 'false' }}">
+                            <x-icons.star />
+                        </button>
+                    @endforeach
+                    <span class="text-[11px] text-slate-500 ml-1">{{ [1 => __('Easy'), 2 => __('Medium'), 3 => __('Hard')][$quizDifficulty] ?? __('Medium') }}</span>
+                </div>
+                <button type="button" wire:click="regenerateAllQuizQuestions"
+                        wire:loading.attr="disabled" wire:target="regenerateAllQuizQuestions"
+                        class="btn btn-xs btn-outline gap-1"
+                        title="{{ __('Regenerate every question at the current difficulty') }}">
+                    <span wire:loading.remove wire:target="regenerateAllQuizQuestions"><x-icons.ai-generate class="w-3.5 h-3.5" /></span>
+                    <span wire:loading wire:target="regenerateAllQuizQuestions" class="loading loading-spinner loading-xs"></span>
+                    {{ __('Regenerate all') }}
+                </button>
+            </div>
+
+            {{-- Two-up on the wide game workspace; stacks on small screens. --}}
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             @forelse ($quizDraft as $i => $q)
-                <div class="rounded-box border border-slate-700/70 bg-base-200/50 p-3 space-y-2">
+                <div class="rounded-box border border-slate-700/70 bg-base-200/50 p-3 space-y-2"
+                     wire:key="quiz-q-{{ $i }}">
                     <div class="flex items-center justify-between gap-2">
-                        <span class="text-[11px] font-semibold text-amber-300">Question {{ $i + 1 }}</span>
+                        <span class="text-[11px] font-semibold text-amber-300">{{ __('Question') }} {{ $i + 1 }}</span>
                         <button type="button" wire:click="removeQuizQuestion({{ $i }})"
-                                class="text-rose-300 hover:text-rose-200 text-[11px] underline">Remove</button>
+                                class="text-rose-300 hover:text-rose-200 text-[11px] underline">{{ __('Remove') }}</button>
                     </div>
 
-                    <textarea wire:model.blur="quizDraft.{{ $i }}.question" rows="2"
-                              placeholder="Type the question…"
-                              class="textarea textarea-sm textarea-bordered bg-slate-900 w-full"></textarea>
+                    {{-- Question + AI-generate: drafts the question WITH its linked correct answer
+                         and three plausible distractors as one unit. --}}
+                    <div class="relative">
+                        <textarea wire:model.blur="quizDraft.{{ $i }}.question" rows="2" maxlength="140"
+                                  placeholder="{{ __('Type a question, or let AI draft one…') }}"
+                                  class="textarea textarea-sm textarea-bordered bg-slate-900 w-full pr-9"></textarea>
+                        <button type="button" wire:click="generateQuizQuestion({{ $i }})"
+                                wire:loading.attr="disabled" wire:target="generateQuizQuestion({{ $i }})"
+                                class="absolute right-1.5 top-1.5 btn btn-xs btn-square btn-ghost text-amber-300 hover:text-amber-200"
+                                title="{{ __('Generate question + answers with AI (replaces answers too)') }}"
+                                aria-label="{{ __('Generate question with AI') }}">
+                            <span wire:loading.remove wire:target="generateQuizQuestion({{ $i }})"><x-icons.ai-generate /></span>
+                            <span wire:loading wire:target="generateQuizQuestion({{ $i }})" class="loading loading-spinner loading-xs"></span>
+                        </button>
+                    </div>
 
-                    <div class="space-y-1.5">
+                    {{-- Answers: drag handle in front to reorder A/B/C/D (Sortable). The correct
+                         answer is locked (generated with the question, green) but still reorderable;
+                         distractors get their own AI-redraw button. --}}
+                    <div class="space-y-1.5"
+                         x-data
+                         x-init="window.Sortable && Sortable.create($el, {
+                             handle: '.quiz-drag-handle',
+                             animation: 150,
+                             onEnd: (evt) => {
+                                 const { oldIndex, newIndex } = evt
+                                 if (oldIndex === newIndex) return
+                                 // Revert the DOM move — Livewire owns the order and re-renders it,
+                                 // otherwise morph and Sortable fight over the same nodes.
+                                 evt.from.insertBefore(evt.item, evt.from.children[oldIndex + (newIndex < oldIndex ? 1 : 0)] ?? null)
+                                 $wire.moveQuizOption({{ $i }}, oldIndex, newIndex)
+                             },
+                         })">
                         @foreach ($letters as $oi => $letter)
                             @php $isCorrect = (int) ($q['correct_index'] ?? 0) === $oi; @endphp
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-1.5" wire:key="quiz-q-{{ $i }}-opt-{{ $oi }}">
+                                <span class="quiz-drag-handle cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 shrink-0"
+                                      title="{{ __('Drag to reorder') }}"><x-icons.reorder /></span>
                                 <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white"
                                       style="background-color: {{ $palette[$oi] }}">{{ $letter }}</span>
-                                <input type="text" wire:model.blur="quizDraft.{{ $i }}.options.{{ $oi }}"
-                                       placeholder="Answer {{ $letter }}"
-                                       class="input input-xs input-bordered bg-slate-900 flex-1" />
-                                <button type="button" wire:click="setQuizCorrect({{ $i }}, {{ $oi }})"
-                                        class="btn btn-xs btn-square {{ $isCorrect ? 'btn-success' : 'btn-ghost text-slate-500' }}"
-                                        title="Mark answer {{ $letter }} as correct"
-                                        aria-label="Mark answer {{ $letter }} as correct">{!! $isCorrect ? '✓' : '○' !!}</button>
+
+                                @if ($isCorrect)
+                                    <input type="text" value="{{ $q['options'][$oi] ?? '' }}" readonly
+                                           class="input input-xs input-bordered flex-1 bg-emerald-950/60 border-emerald-500/50 text-emerald-200 cursor-not-allowed"
+                                           title="{{ __('Correct answer — generated with the question; regenerate the question to change it. Reordering is allowed.') }}" />
+                                    <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-400"
+                                          title="{{ __('Correct answer (locked — linked to the question)') }}" aria-label="{{ __('Correct answer, locked') }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    </span>
+                                @else
+                                    <input type="text" wire:model.blur="quizDraft.{{ $i }}.options.{{ $oi }}" maxlength="60"
+                                           placeholder="{{ __('Answer') }} {{ $letter }}"
+                                           class="input input-xs input-bordered bg-slate-900 flex-1" />
+                                    <button type="button" wire:click="regenerateQuizOption({{ $i }}, {{ $oi }})"
+                                            wire:loading.attr="disabled" wire:target="regenerateQuizOption({{ $i }}, {{ $oi }})"
+                                            class="btn btn-xs btn-square btn-ghost text-slate-400 hover:text-amber-300"
+                                            title="{{ __('Redraw this wrong answer with AI') }}"
+                                            aria-label="{{ __('Redraw answer :letter with AI', ['letter' => $letter]) }}">
+                                        <span wire:loading.remove wire:target="regenerateQuizOption({{ $i }}, {{ $oi }})"><x-icons.ai-generate /></span>
+                                        <span wire:loading wire:target="regenerateQuizOption({{ $i }}, {{ $oi }})" class="loading loading-spinner loading-xs"></span>
+                                    </button>
+                                @endif
                             </div>
                         @endforeach
                     </div>
@@ -98,15 +171,20 @@
                     @endif
                 </div>
             @empty
-                <p class="text-xs text-slate-500">No questions yet — add one below.</p>
+                <p class="text-xs text-slate-500 md:col-span-2">{{ __('No questions yet — add one below and hit the sparkle to draft it.') }}</p>
             @endforelse
+            </div>
 
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" wire:click="addQuizQuestion" class="btn btn-xs btn-outline">+ Add question</button>
-                <button type="button" wire:click="saveQuiz"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">Save questions</button>
+                {{-- Edits autosave — no manual save button. --}}
+                <span wire:loading wire:target="autosaveQuiz, updatedQuizDraft, removeQuizQuestion, moveQuizOption"
+                      class="text-[11px] text-slate-400 inline-flex items-center gap-1">
+                    <span class="loading loading-spinner loading-xs"></span> {{ __('Saving…') }}
+                </span>
                 @if ($quizSaved)
-                    <span class="text-[11px] text-emerald-400">✓ Saved</span>
+                    <span wire:loading.remove wire:target="autosaveQuiz, updatedQuizDraft"
+                          class="text-[11px] text-emerald-400">✓ {{ __('Saved automatically') }}</span>
                 @endif
             </div>
         </div>
@@ -176,25 +254,9 @@
 
     <div class="space-y-1">
         <p class="text-xs uppercase tracking-wider text-slate-400">Background image</p>
-        <div class="flex items-center gap-3">
-            @if ($scene->image_path)
-                <img src="{{ asset('storage/' . $scene->image_path) }}" class="w-20 h-12 rounded object-cover" />
-            @endif
-            <button type="button"
-                    wire:click="regenerate({{ $scene->id }}, 'image')"
-                    wire:loading.attr="disabled" wire:target="regenerate"
-                    @disabled($isGenerating)
-                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                @if ($isGenerating)
-                    <x-icons.spinner class="w-3 h-3 animate-spin" />
-                    <span>Generating…</span>
-                @else
-                    <x-icons.regenerate class="w-3 h-3" />
-                    <span>Regenerate</span>
-                @endif
-            </button>
-        </div>
-
+        {{-- Image thumbnail, regenerate/delete, and motion controls all live in the shared
+             skybox-controls slideshow tab — the old duplicate block here showed a second
+             Regenerate button and confused teachers. --}}
         <x-lesson.skybox-controls :scene="$scene" />
     </div>
 

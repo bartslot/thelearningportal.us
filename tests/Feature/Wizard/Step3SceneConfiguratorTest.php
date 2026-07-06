@@ -86,7 +86,7 @@ class Step3SceneConfiguratorTest extends TestCase
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('regenerate', $this->s1->id, 'image');
-        Bus::assertDispatched(GenerateSceneImage::class, fn ($j) => $j->sceneId === $this->s1->id);
+        Bus::assertDispatched(\App\Jobs\GenerateSceneShots::class, fn ($j) => $j->sceneId === $this->s1->id);
 
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
@@ -138,6 +138,209 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame(4, $scene->quiz_question_count);
         $this->assertSame('after', $scene->quiz_timing);
         $this->assertNull($scene->strategy_game_id);
+    }
+
+    public function test_ai_generates_a_question_with_linked_correct_answer_and_distractors(): void
+    {
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('json')->once()->andReturn([
+                'question' => 'Why did Napoleon invade Russia?',
+                'correct_answer' => 'To force the Tsar back into the Continental System.',
+                'distractors' => ['To conquer Siberia.', 'To free the serfs.', 'To find a warm-water port.'],
+                'explanation' => 'The invasion aimed to enforce the blockade of Britain.',
+            ]));
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addQuizQuestion')
+            ->call('generateQuizQuestion', 0);
+
+        $draft = $component->get('quizDraft')[0];
+        $this->assertSame('Why did Napoleon invade Russia?', $draft['question']);
+        $this->assertCount(4, array_filter($draft['options']));
+        // The correct answer sits at correct_index — linked and pinned.
+        $this->assertSame(
+            'To force the Tsar back into the Continental System.',
+            $draft['options'][$draft['correct_index']],
+        );
+    }
+
+    public function test_correct_answer_cannot_be_redrawn_but_distractors_can(): void
+    {
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('json')->once()->andReturn(['distractor' => 'A fresh plausible wrong answer.']));
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.question', 'Q?')
+            ->set('quizDraft.0.options', ['Correct', 'Wrong A', 'Wrong B', 'Wrong C'])
+            ->set('quizDraft.0.correct_index', 0)
+            // Slot 0 is the correct answer: redraw must be a no-op (no LLM call).
+            ->call('regenerateQuizOption', 0, 0)
+            // Slot 2 is a distractor: redraw replaces it.
+            ->call('regenerateQuizOption', 0, 2);
+
+        $draft = $component->get('quizDraft')[0];
+        $this->assertSame('Correct', $draft['options'][0]);
+        $this->assertSame('A fresh plausible wrong answer.', $draft['options'][2]);
+    }
+
+    public function test_reordering_answers_moves_the_correct_answer_but_keeps_it_pinned(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.options', ['Correct', 'Wrong A', 'Wrong B', 'Wrong C'])
+            ->set('quizDraft.0.correct_index', 0)
+            // Drag the correct answer from slot 0 to slot 3 (A → D).
+            ->call('moveQuizOption', 0, 0, 3);
+
+        $draft = $component->get('quizDraft')[0];
+        $this->assertSame(['Wrong A', 'Wrong B', 'Wrong C', 'Correct'], $draft['options']);
+        $this->assertSame(3, $draft['correct_index']);
+
+        // Drag a distractor over the correct answer: correctness shifts with its option.
+        $component->call('moveQuizOption', 0, 0, 3);
+        $draft = $component->get('quizDraft')[0];
+        $this->assertSame(['Wrong B', 'Wrong C', 'Correct', 'Wrong A'], $draft['options']);
+        $this->assertSame(2, $draft['correct_index']);
+    }
+
+    public function test_quiz_edits_autosave_complete_questions_and_keep_incomplete_drafts(): void
+    {
+        $this->s2->update(['game_type' => 'quiz']);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('addQuizQuestion')
+            ->call('addQuizQuestion')
+            // Question 0 complete; question 1 only half-typed.
+            ->set('quizDraft.0.question', 'Why did the empire fall?')
+            ->set('quizDraft.0.options', ['Overexpansion', 'A lost bet', 'Bad weather', 'Alien invasion'])
+            ->set('quizDraft.1.question', 'Unfinished question…');
+
+        // The complete question persisted without any Save click; the half one stayed draft-only.
+        $saved = $this->lesson->quizQuestions()->get();
+        $this->assertCount(1, $saved);
+        $this->assertSame('Why did the empire fall?', $saved->first()->question);
+        $this->assertTrue($component->get('quizSaved'));
+        $this->assertNotEmpty($component->get('quizErrors')[1] ?? null, 'Half-typed question shows inline errors');
+        $this->assertCount(2, $component->get('quizDraft'), 'Draft keeps the incomplete question');
+    }
+
+    public function test_deleting_the_scene_image_falls_back_to_brand_navy(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        \Illuminate\Support\Facades\Storage::disk('public')->put('lessons/x/scene.png', 'png');
+        \Illuminate\Support\Facades\Storage::disk('public')->put('lessons/x/shot_0.png', 'png');
+        $this->s1->update([
+            'image_path' => 'lessons/x/scene.png',
+            'shots' => [['order' => 1, 'image_path' => 'lessons/x/shot_0.png', 'anchor_sentence' => 'x']],
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('deleteSceneImage', $this->s1->id);
+
+        $scene = $this->s1->fresh();
+        $this->assertNull($scene->image_path);
+        $this->assertNull($scene->shots);
+        $this->assertSame(Step3SceneConfigurator::BRAND_BACKGROUND, $scene->background_color);
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing('lessons/x/scene.png');
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing('lessons/x/shot_0.png');
+    }
+
+    public function test_difficulty_stars_persist_on_the_quiz_scene_config(): void
+    {
+        $this->s2->update(['game_type' => 'quiz']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizDifficulty', 3);
+
+        $this->assertSame(3, $this->s2->fresh()->config['quiz_difficulty']);
+
+        // Out-of-range levels are ignored.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizDifficulty', 7);
+
+        $this->assertSame(3, $this->s2->fresh()->config['quiz_difficulty']);
+    }
+
+    public function test_regenerate_all_replaces_the_question_pool_and_reloads_the_draft(): void
+    {
+        $this->lesson->quizQuestions()->create([
+            'order' => 1, 'question' => 'Old question?',
+            'options' => ['a', 'b', 'c', 'd'], 'correct_index' => 0,
+        ]);
+
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('json')->once()->andReturn(['questions' => [
+                ['order' => 1, 'question' => 'Why did the war start?', 'options' => ['Trade dispute', 'Royal marriage', 'Border raid', 'Famine'], 'correct_index' => 0],
+                ['order' => 2, 'question' => 'What ended the siege?', 'options' => ['Winter', 'Treaty', 'Betrayal', 'Plague'], 'correct_index' => 1],
+            ]]));
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('regenerateAllQuizQuestions');
+
+        $draft = $component->get('quizDraft');
+        $this->assertCount(2, $draft);
+        $this->assertSame('Why did the war start?', $draft[0]['question']);
+        $this->assertSame(1, $draft[1]['correct_index']);
+    }
+
+    public function test_background_color_sets_and_persists_in_one_call(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('setSceneBackgroundColor', '#3f0d12');
+
+        $this->assertSame('#3f0d12', $this->s1->fresh()->background_color);
+
+        // Garbage input is rejected, color unchanged.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('setSceneBackgroundColor', 'javascript:alert(1)');
+
+        $this->assertSame('#3f0d12', $this->s1->fresh()->background_color);
+    }
+
+    public function test_scene_texts_with_null_scene_id_fall_back_to_the_selected_scene(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->dispatch('sceneTextsChanged', sceneId: null, texts: [
+                ['id' => 'txt_a', 'text' => 'Orphan text box', 'x' => 40, 'y' => 40],
+            ]);
+
+        $this->assertSame('Orphan text box', $this->s1->fresh()->config['texts'][0]['text']);
+    }
+
+    public function test_scene_texts_save_sanitized_and_clamped(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('sceneTextsChanged', sceneId: $this->s1->id, texts: [
+                ['id' => 'txt_a', 'text' => '  Napoleon crosses the Alps  ', 'x' => 120, 'y' => -5],
+                ['id' => 'txt_b', 'text' => 'https://en.wikipedia.org/wiki/Napoleon', 'x' => 10, 'y' => 20],
+                ['id' => 'txt_c', 'text' => '   ', 'x' => 50, 'y' => 50],   // empty → dropped
+            ]);
+
+        $texts = $this->s1->fresh()->config['texts'];
+        $this->assertCount(2, $texts);
+        $this->assertSame('Napoleon crosses the Alps', $texts[0]['text']);
+        $this->assertEquals(100, $texts[0]['x'], 'x clamps to 0-100');
+        $this->assertEquals(0, $texts[0]['y'], 'y clamps to 0-100');
+        $this->assertSame('https://en.wikipedia.org/wiki/Napoleon', $texts[1]['text']);
     }
 
     public function test_deletes_a_scene_and_reindexes_game_segments(): void

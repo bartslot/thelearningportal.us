@@ -94,25 +94,199 @@ trait EditsQuizQuestions
         }
         unset($this->quizDraft[$index]);
         $this->quizDraft = array_values($this->quizDraft);
-        $this->quizSaved = false;
+        $this->autosaveQuiz();
     }
 
-    public function setQuizCorrect(int $index, int $optionIndex): void
+    /** Current quiz difficulty (1-3 stars) for the inspector UI. */
+    public function quizDifficulty(): int
     {
-        if (array_key_exists($index, $this->quizDraft) && $optionIndex >= 0 && $optionIndex < self::QUIZ_OPTION_COUNT) {
-            $this->quizDraft[$index]['correct_index'] = $optionIndex;
-            $this->quizSaved = false;
+        $scene = $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null;
+
+        return (int) (($scene?->config['quiz_difficulty'] ?? null) ?: \App\Services\QuizPrompt::DIFFICULTY_MEDIUM);
+    }
+
+    /**
+     * Set the quiz difficulty (1-3 stars) on the quiz scene. Takes effect on the next
+     * generation — per-question sparkles or "Regenerate all".
+     */
+    public function setQuizDifficulty(int $level): void
+    {
+        if (! $this->quizDraftSceneId || $level < 1 || $level > 3) {
+            return;
+        }
+
+        $scene = Scene::find($this->quizDraftSceneId);
+        if ($scene) {
+            $scene->update(['config' => array_merge($scene->config ?? [], ['quiz_difficulty' => $level])]);
         }
     }
 
     /**
-     * Persist the draft to quiz_questions. Each question needs a prompt, at least two filled options,
-     * and a correct answer that points at a filled option. Empty option slots are dropped and the
-     * correct index is remapped to its position in the trimmed list, so saved data is always clean
-     * (no blank answer tiles, no dangling correct_index). Replaces the lesson's pool in one
-     * transaction — the same delete-then-recreate the generator uses, keeping `order` canonical.
+     * Regenerate the WHOLE question set at the current difficulty via the same job the
+     * pipeline uses (objective coverage + duplicate-stem validation included), then reload
+     * the draft. Runs inline — the teacher watches a spinner, not a queue.
      */
-    public function saveQuiz(): void
+    public function regenerateAllQuizQuestions(): void
+    {
+        try {
+            (new \App\Jobs\GenerateLessonQuiz($this->lesson->id))
+                ->handle(app(\App\Services\OpenAiLlmService::class));
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: 'Quiz regeneration failed — try again.', type: 'error');
+
+            return;
+        }
+
+        $this->loadQuizDraft();
+        $this->dispatch('toast', message: 'Quiz regenerated.', type: 'success');
+    }
+
+    /**
+     * AI-draft one question: question + linked correct answer + three plausible distractors,
+     * generated as ONE unit. If the teacher already typed a question, its intent is kept.
+     * The correct answer lands in a random slot; the teacher can reorder but never repoint
+     * correctness — regenerating the question is the only way to change the correct answer.
+     */
+    public function generateQuizQuestion(int $index): void
+    {
+        if (! array_key_exists($index, $this->quizDraft)) {
+            return;
+        }
+
+        $existing = collect($this->quizDraft)
+            ->reject(fn ($q, $i) => $i === $index)
+            ->pluck('question')
+            ->filter()
+            ->values()
+            ->all();
+
+        try {
+            $result = app(\App\Services\OpenAiLlmService::class)->json(
+                system: \App\Services\QuizQuestionDraftPrompt::questionSystem($this->lesson),
+                user: \App\Services\QuizQuestionDraftPrompt::questionUser(
+                    $this->lesson->load('scenes'),
+                    $existing,
+                    (string) ($this->quizDraft[$index]['question'] ?? ''),
+                ),
+            );
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: 'Question generation failed — try again.', type: 'error');
+
+            return;
+        }
+
+        $question = trim((string) ($result['question'] ?? ''));
+        $correct = trim((string) ($result['correct_answer'] ?? ''));
+        $distractors = array_values(array_filter(array_map(
+            fn ($d) => trim((string) $d),
+            (array) ($result['distractors'] ?? []),
+        )));
+
+        if ($question === '' || $correct === '' || count($distractors) < self::QUIZ_OPTION_COUNT - 1) {
+            $this->dispatch('toast', message: 'Question generation came back incomplete — try again.', type: 'error');
+
+            return;
+        }
+
+        $correctSlot = random_int(0, self::QUIZ_OPTION_COUNT - 1);
+        $options = array_slice($distractors, 0, self::QUIZ_OPTION_COUNT - 1);
+        array_splice($options, $correctSlot, 0, [$correct]);
+
+        $this->quizDraft[$index] = [
+            'id' => $this->quizDraft[$index]['id'] ?? null,
+            'question' => $question,
+            'options' => $this->padOptions($options),
+            'correct_index' => $correctSlot,
+            'explanation' => trim((string) ($result['explanation'] ?? '')),
+        ];
+        $this->autosaveQuiz();
+    }
+
+    /**
+     * AI-redraw ONE plausible wrong answer. The correct answer is never redrawable on its
+     * own — it only changes together with the question (generateQuizQuestion).
+     */
+    public function regenerateQuizOption(int $index, int $optionIndex): void
+    {
+        if (! array_key_exists($index, $this->quizDraft)
+            || $optionIndex < 0 || $optionIndex >= self::QUIZ_OPTION_COUNT
+            || $optionIndex === (int) $this->quizDraft[$index]['correct_index']) {
+            return;
+        }
+
+        $draft = $this->quizDraft[$index];
+        $question = trim((string) $draft['question']);
+        $correct = trim((string) ($draft['options'][$draft['correct_index']] ?? ''));
+        if ($question === '' || $correct === '') {
+            $this->dispatch('toast', message: 'Generate the question first — distractors need it.', type: 'warning');
+
+            return;
+        }
+
+        $others = collect($draft['options'])->forget($optionIndex)->filter()->values()->all();
+
+        try {
+            $result = app(\App\Services\OpenAiLlmService::class)->json(
+                system: \App\Services\QuizQuestionDraftPrompt::distractorSystem($this->lesson),
+                user: \App\Services\QuizQuestionDraftPrompt::distractorUser($this->lesson, $question, $correct, $others),
+            );
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: 'Answer generation failed — try again.', type: 'error');
+
+            return;
+        }
+
+        $distractor = trim((string) ($result['distractor'] ?? ''));
+        if ($distractor !== '') {
+            $this->quizDraft[$index]['options'][$optionIndex] = $distractor;
+            $this->autosaveQuiz();
+        }
+    }
+
+    /**
+     * Drag-reorder answers (A/B/C/D). The correct answer MOVES but its correctness is
+     * pinned — correct_index follows the option to its new slot.
+     */
+    public function moveQuizOption(int $index, int $from, int $to): void
+    {
+        $max = self::QUIZ_OPTION_COUNT - 1;
+        if (! array_key_exists($index, $this->quizDraft)
+            || $from < 0 || $from > $max || $to < 0 || $to > $max || $from === $to) {
+            return;
+        }
+
+        $options = $this->quizDraft[$index]['options'];
+        $moved = $options[$from];
+        array_splice($options, $from, 1);
+        array_splice($options, $to, 0, [$moved]);
+
+        $correct = (int) $this->quizDraft[$index]['correct_index'];
+        if ($correct === $from) {
+            $correct = $to;
+        } elseif ($from < $correct && $to >= $correct) {
+            $correct--;
+        } elseif ($from > $correct && $to <= $correct) {
+            $correct++;
+        }
+
+        $this->quizDraft[$index]['options'] = $options;
+        $this->quizDraft[$index]['correct_index'] = $correct;
+        $this->autosaveQuiz();
+    }
+
+    /** Livewire hook: any wire:model edit inside the draft autosaves — no Save button. */
+    public function updatedQuizDraft(): void
+    {
+        $this->autosaveQuiz();
+    }
+
+    /**
+     * Autosave: persist every COMPLETE question (prompt + ≥2 filled options + a filled correct
+     * answer), silently keep incomplete ones in the draft until they're finished. Empty option
+     * slots are dropped and the correct index remapped, so saved data is always clean. Replaces
+     * the lesson's pool in one transaction — the same delete-then-recreate the generator uses.
+     */
+    public function autosaveQuiz(): void
     {
         $this->quizErrors = [];
         $clean = [];
@@ -124,18 +298,24 @@ trait EditsQuizQuestions
             $correctValue = $rawOptions[$correct] ?? '';
             $filled = array_values(array_filter($rawOptions, fn ($o) => $o !== ''));
 
-            $errors = [];
-            if ($question === '') {
-                $errors[] = 'Question text is required.';
-            }
-            if (count($filled) < 2) {
-                $errors[] = 'Add at least two answer options.';
-            }
-            if ($correctValue === '') {
-                $errors[] = 'Pick which option is the correct answer.';
-            }
-            if ($errors !== []) {
-                $this->quizErrors[$i] = $errors;
+            $isUntouched = $question === '' && $filled === [];
+            $isComplete = $question !== '' && count($filled) >= 2 && $correctValue !== '';
+
+            if (! $isComplete) {
+                // Only nag about questions the teacher has actually started.
+                if (! $isUntouched) {
+                    $errors = [];
+                    if ($question === '') {
+                        $errors[] = 'Question text is required.';
+                    }
+                    if (count($filled) < 2) {
+                        $errors[] = 'Add at least two answer options.';
+                    }
+                    if ($correctValue === '') {
+                        $errors[] = 'The correct answer field is empty.';
+                    }
+                    $this->quizErrors[$i] = $errors;
+                }
 
                 continue;
             }
@@ -147,12 +327,6 @@ trait EditsQuizQuestions
                 'correct_index' => $newCorrect === false ? 0 : (int) $newCorrect,
                 'explanation' => trim((string) ($q['explanation'] ?? '')) ?: null,
             ];
-        }
-
-        if ($this->quizErrors !== []) {
-            $this->quizSaved = false;
-
-            return;
         }
 
         DB::transaction(function () use ($clean) {
@@ -169,9 +343,14 @@ trait EditsQuizQuestions
             }
         });
 
-        $this->loadQuizDraft();
+        // No draft reload: reloading would clobber half-typed questions mid-edit.
         $this->quizSaved = true;
-        $this->dispatch('toast', message: 'Quiz questions saved.', type: 'success');
+    }
+
+    /** @deprecated Autosave replaced the manual save — kept for any stray callers. */
+    public function saveQuiz(): void
+    {
+        $this->autosaveQuiz();
     }
 
     /** Pad/truncate an options list to exactly four slots so the editor always shows A/B/C/D. */
