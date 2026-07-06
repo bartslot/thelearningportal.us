@@ -162,6 +162,49 @@ final class ImageStyleTemplate
         return implode('. ', $parts);
     }
 
+    /**
+     * Storyboard-grid prompt: ONE generated image containing rows×cols distinct panels of
+     * the same scene, later sliced into per-shot cells by GridSlicer. Panel descriptions come
+     * from the ShotListPrompt storyboard; the validated visual/avoid data keeps them accurate.
+     *
+     * @param  list<string>  $panelDescriptions  ordered left-to-right, top-to-bottom
+     * @param  array<string, mixed>  $validation  HistoricalImageValidationPrompt output (or [])
+     */
+    public static function buildShotGrid(array $panelDescriptions, array $validation, string $style, int $rows, int $cols): string
+    {
+        $styleClause = self::STYLES[$style] ?? self::STYLES['realistic'];
+        $count = count($panelDescriptions);
+
+        $panels = implode(' ', array_map(
+            fn (string $description, int $index) => 'Panel '.($index + 1).': '.trim($description).'.',
+            $panelDescriptions,
+            array_keys($panelDescriptions),
+        ));
+
+        $avoidList = array_merge(
+            $validation['anachronismsToAvoid'] ?? [],
+            ['people in close-up', 'faces', 'readable text'],
+        );
+        $avoidStr = 'avoid: '.implode(', ', array_unique($avoidList));
+
+        $gridSpec = "A strict {$rows}x{$cols} storyboard grid of {$count} panels, equal-size cells, "
+            .'hard straight cell edges aligned to an exact grid, NO borders, NO gutters, NO frames, '
+            .'NO text, NO numbers. Every panel depicts the SAME historical scene in the same '
+            .'consistent art style, palette and lighting, each from a different composition.';
+
+        $parts = array_filter([
+            $gridSpec,
+            $panels,
+            $validation['recommendedScene'] ?? null,
+            $styleClause,
+            self::SAFETY_GUARDRAIL,
+            $avoidStr,
+            self::NEGATIVE_PROMPT,
+        ]);
+
+        return implode('. ', $parts);
+    }
+
     /** @return string[] */
     public static function styles(): array
     {

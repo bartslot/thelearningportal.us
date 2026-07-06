@@ -70,6 +70,15 @@ class OpenAiImageService
     }
 
     /**
+     * Storyboard-grid variant: NO black-bar trimming — cleanPanorama would shift the cell
+     * boundaries on dark grids and misalign every sliced shot.
+     */
+    public function generateGridBytesFromPrompt(string $prompt, ?string $size = null): string
+    {
+        return $this->requestOne($prompt, $size ?: $this->defaultOpenAiImageSize());
+    }
+
+    /**
      * Enhance an already-stored skybox using local Upscayl (Real-ESRGAN).
      * Called by EnhanceSkyboxImage job — takes raw image bytes and returns
      * enhanced bytes ready to overwrite the stored file.
@@ -314,8 +323,10 @@ class OpenAiImageService
         $key = (string) config('services.openai.image_api_key');
 
         try {
+            // Image generation regularly exceeds the chat timeout — storyboard-grid prompts
+            // at 1536x1024 can take well over a minute to render.
             $response = Http::withToken($key)
-                ->timeout((int) config('services.openai.timeout', 60))
+                ->timeout((int) config('services.openai.image_timeout', 180))
                 ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
                 ->post(rtrim($base, '/').'/images/generations', [
                     'model' => config('services.openai.image_model'),
