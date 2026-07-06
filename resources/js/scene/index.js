@@ -5,5 +5,7 @@ export { SkyboxSphere } from './SkyboxSphere.js';
 export { SceneOverlay } from './SceneOverlay.js';
 export { SceneTimelinePlayer } from './SceneTimelinePlayer.js';
 export { GameTimerOverlay } from './GameTimerOverlay.js';
+export { QuizOverlay } from './QuizOverlay.js';
+export { TextOverlayLayer } from './TextOverlayLayer.js';
 export { AmplitudeWaveform } from './AmplitudeWaveform.js';
 export { mountWizardScene } from './wizard-bridge.js';

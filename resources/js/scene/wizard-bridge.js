@@ -51,6 +51,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let activePlayer  = null
     let overlay       = null
     let timer         = null
+    let quizOverlay   = null
+    let readonlyTextLayer = null
     // Tracks a tab click that hasn't been confirmed by the DB yet.
     // Prevents wire:poll from snapping Three.js back to the old view.
     let _pendingView  = null
@@ -87,7 +89,11 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             try {
                 if (view === 'slideshow') {
                     applySlideshowCameraMode(activePlayer)
-                    await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10)
+                    await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10, {
+                        kbAnimated: payload.kbAnimated,
+                        kbDirection: payload.kbDirection,
+                        backgroundColor: payload.backgroundColor,
+                    })
                 } else if (view === 'world') {
                     applyWorldCameraMode(activePlayer)
                     if (payload.worldPanoUrl && payload.worldLabsStatus === 'ready') {
@@ -127,10 +133,28 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         }
         if (payload.audioUrl) preloadAudio(payload.audioUrl)
         overlay?.update({ year: payload.year, location: payload.location })
-        if (payload.kind === 'game') {
-            timer?.show({ durationSeconds: payload.duration || 0 })
+        // The challenge countdown belongs to the STUDENT run, not the editor — a frozen
+        // "0:00" in Configure only confuses teachers. Keep it hidden here.
+        timer?.hide()
+
+        // Selecting a quiz scene in Configure previews its questions right on the canvas
+        // (navigable, answerable). Any other selection clears the overlay.
+        if (payload.kind === 'game' && payload.gameType === 'quiz' && payload.quizQuestions?.length) {
+            quizOverlay?.show({ questions: payload.quizQuestions })
         } else {
-            timer?.hide()
+            quizOverlay?.hide()
+        }
+
+        // Preview playback: render teacher text annotations read-only. (Configure uses its
+        // own EDITABLE layer wired in the blade — that path never sets textsReadonly.)
+        if (payload.textsReadonly !== undefined) {
+            if (!readonlyTextLayer && canvasEl?.parentElement && Scene.TextOverlayLayer) {
+                const host = document.createElement('div')
+                host.style.cssText = 'position:absolute; inset:0; z-index:7; pointer-events:none;'
+                canvasEl.parentElement.appendChild(host)
+                readonlyTextLayer = new Scene.TextOverlayLayer(host, { editable: false })
+            }
+            readonlyTextLayer?.setTexts(payload.textsReadonly)
         }
     }
 
@@ -180,7 +204,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         _pendingView = view ?? null
         if (view === 'slideshow') {
             applySlideshowCameraMode(activePlayer)
-            if (imageUrl) await applySlideshowBackground(imageUrl, sceneId ?? 0, duration ?? 10)
+            await applySlideshowBackground(imageUrl, sceneId ?? 0, duration ?? 10, e.detail ?? {})
         } else if (view === 'skybox') {
             // Skybox sphere is already loaded — just restore camera + make it visible.
             kenBurnsState = null
@@ -310,11 +334,16 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // Slideshow mode: hide the inverted-sphere skybox and put the image directly
     // on the scene's clear color so it renders as a flat 2D backdrop.
     const slideshowTextureCache = new Map()
-    async function applySlideshowBackground(url, sceneId = 0, durationSec = 10) {
-        // A blank/map scene carries no image. Never hand the loader a null url — THREE fetches
-        // the literal string "null", which the browser resolves relative to the wizard page as
-        // /teacher/lessons/{id}/null and logs a stray 404.
-        if (!url) return
+    async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
+        // No image (deleted, or a blank/map scene): show the scene's solid backdrop instead of
+        // whatever texture happened to be on the canvas before. Also avoids handing the loader
+        // a null url — THREE would fetch the literal string "null" and log a stray 404.
+        if (!url) {
+            kenBurnsState = null
+            if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
+            activePlayer._scene.background = new THREE.Color(motion.backgroundColor || '#0f172a')
+            return
+        }
         try {
             let tex = slideshowTextureCache.get(url)
             if (!tex) {
@@ -331,7 +360,16 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             // Hide sphere only after texture is ready — avoids black flash.
             if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
             activePlayer._scene.background = tex
-            startKenBurns(tex, sceneId, Math.max(4, durationSec || 10))
+
+            if (motion.kbAnimated === false) {
+                // Motion off: freeze at a clean cover fit.
+                kenBurnsState = null
+                const cv = coverScale(tex)
+                tex.repeat.set(cv.rX, cv.rY)
+                tex.offset.set(cv.oX, cv.oY)
+            } else {
+                startKenBurns(tex, sceneId, Math.max(4, durationSec || 10), motion.kbDirection || null)
+            }
         } catch (err) {
             console.warn('[wizard-bridge] slideshow texture load failed', err)
         }
@@ -350,11 +388,19 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     ]
     const KEN_BURNS_PAUSE_MS = 2000
     let kenBurnsState = null
-    function startKenBurns(tex, sceneId, durationSec) {
+    // Teacher-selectable moves (scenes.kb_direction) — mirrors the player's KB_NAMED set.
+    const KEN_BURNS_NAMED = {
+        left_right: { from: { ox: 0.00, oy: 0.045, r: 0.91 }, to: { ox: 0.09, oy: 0.045, r: 0.91 } },
+        right_left: { from: { ox: 0.09, oy: 0.045, r: 0.91 }, to: { ox: 0.00, oy: 0.045, r: 0.91 } },
+        zoom_in:    { from: { ox: 0.045, oy: 0.045, r: 1.00 }, to: { ox: 0.045, oy: 0.045, r: 0.88 } },
+        zoom_out:   { from: { ox: 0.045, oy: 0.045, r: 0.88 }, to: { ox: 0.045, oy: 0.045, r: 1.00 } },
+    }
+
+    function startKenBurns(tex, sceneId, durationSec, direction = null) {
         const idx = ((Number(sceneId) || 0) % KEN_BURNS_VARIANTS.length + KEN_BURNS_VARIANTS.length) % KEN_BURNS_VARIANTS.length
         kenBurnsState = {
             tex,
-            variant:    KEN_BURNS_VARIANTS[idx],
+            variant:    KEN_BURNS_NAMED[direction] ?? KEN_BURNS_VARIANTS[idx],
             startedAt:  performance.now(),
             durationMs: durationSec * 1000,
         }
@@ -701,6 +747,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     const rootData = document.getElementById('lesson-canvas-root')?.dataset || {}
     overlay.setTerritory({ title: rootData.territory || '', flagUrl: rootData.flag || '' })
     timer        = new Scene.GameTimerOverlay(timerEl)
+    quizOverlay  = new Scene.QuizOverlay(timerEl)   // same full-bleed host layer as the timer
 
     // DB stores asset paths as relative (e.g. "lessons/31/scenes/241/narration.mp3").
     // The sequencer feeds these straight to the avatar player / skybox, where the
@@ -722,13 +769,19 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     if (pendingScene) {
         await applyScene(pendingScene)
-    } else if (normalizedScenes[0]?.image_path) {
+    } else if (normalizedScenes[0]) {
+        // Apply even without an image — an imageless scene must paint its solid brand
+        // backdrop instead of leaving the renderer's default (white) showing through.
         await applyScene({
-            imageUrl: normalizedScenes[0].image_path,
-            year:     normalizedScenes[0].year,
-            location: normalizedScenes[0].location,
-            kind:     normalizedScenes[0].kind,
-            duration: normalizedScenes[0].duration_seconds,
+            imageUrl:  normalizedScenes[0].image_path,
+            sceneView: normalizedScenes[0].scene_view ?? 'slideshow',
+            year:      normalizedScenes[0].year,
+            location:  normalizedScenes[0].location,
+            kind:      normalizedScenes[0].kind,
+            duration:  normalizedScenes[0].duration_seconds,
+            backgroundColor: normalizedScenes[0].background_color,
+            kbAnimated:  normalizedScenes[0].kb_animated,
+            kbDirection: normalizedScenes[0].kb_direction,
         })
     }
 
@@ -743,10 +796,15 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 year:       scene?.year,
                 location:   scene?.location,
                 kind:       scene?.kind,
+                backgroundColor: scene?.background_color,
+                kbAnimated:  scene?.kb_animated,
+                kbDirection: scene?.kb_direction,
+                textsReadonly: scene?.config?.texts || [],
             }),
         },
         overlay,
         timer,
+        quiz: quizOverlay,
         avatar: {
             setClip: () => { /* now handled by applyScene via animationClipUrl */ },
             // Tracks the resolver for the currently-running speak() so stop() can short-circuit it.

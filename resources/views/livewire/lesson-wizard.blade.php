@@ -1,5 +1,11 @@
 <div class="min-h-screen bg-base-200 text-base-content" wire:key="lesson-wizard-{{ $lesson?->id ?? 'new' }}">
 
+    {{-- Canvas steps (Configure/Preview) are fixed full-screen experiences: kill the page
+         scrollbar so the only scroll lives inside the inspector (no double scrollbars). --}}
+    @if (in_array((int) $step, [4, 5], true))
+        <style>body { overflow: hidden; }</style>
+    @endif
+
     <x-wizard.step-indicator :step="$step" :lesson="$lesson" />
 
     {{-- pt-14 leaves room under the fixed step indicator (~h-12 + border). --}}

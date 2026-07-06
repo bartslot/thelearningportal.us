@@ -15,10 +15,20 @@
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
 
-    {{-- Publish button --}}
-    <div class="fixed top-4 right-4 z-40 flex flex-col items-end gap-2">
+    {{-- Publish / published state — top-20 clears the fixed navbar (same offset as the
+         Step 3 inspector) so the buttons are never hidden underneath it. --}}
+    <div class="fixed top-20 right-4 z-40 flex flex-col items-end gap-2">
         @if ($lesson->status === \App\Enums\LessonStatus::Published)
-            <span class="px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs">Published ✓</span>
+            <div class="flex items-center gap-2">
+                <span class="badge badge-success gap-1 py-3 px-3 font-semibold shadow-lg">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    {{ __('Published') }}
+                </span>
+                <a href="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}"
+                   class="btn btn-sm bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 shadow-lg">
+                    {{ __('View lesson') }} →
+                </a>
+            </div>
         @else
             <button wire:click="publish"
                     @disabled(! $this->allReady)
@@ -30,6 +40,28 @@
             @endif
         @endif
     </div>
+
+    {{-- The big moment: full-screen splash after publishing, with the rating widget in its
+         natural place (right after the teacher finished creating). --}}
+    @if ($showPublishSplash)
+        <x-splash-screen :title="__('Your lesson is now live!')"
+                         :subtitle="$lesson->title ?? $lesson->topic">
+            <x-slot:actions>
+                <a href="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}"
+                   class="btn btn-lg bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 px-8">
+                    {{ __('View lesson') }} →
+                </a>
+                <button type="button" wire:click="dismissPublishSplash" class="btn btn-lg btn-ghost">
+                    {{ __('Keep editing') }}
+                </button>
+            </x-slot:actions>
+
+            <p class="mb-2 text-xs uppercase tracking-wider text-slate-400">{{ __('How was creating this lesson?') }}</p>
+            <div class="flex justify-center">
+                <livewire:lesson-feedback-widget :lesson="$lesson" />
+            </div>
+        </x-splash-screen>
+    @endif
 
     {{-- Play / Back floating --}}
     <div class="fixed bottom-28 inset-x-0 z-30 flex items-center justify-center gap-3">
@@ -46,9 +78,16 @@
     {{-- Read-only timeline — clickable to seek, highlights the playing scene --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" :editable="false" />
 
-    {{-- Scenes payload as inert JSON --}}
+    {{-- Scenes payload as inert JSON. Quiz scenes carry the lesson's questions so the
+         preview sequencer can actually step through them. --}}
+    @php
+        $previewQuizQuestions = $lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values();
+    @endphp
     <script type="application/json" id="step4-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
+        {!! $this->scenes->map(fn ($s) => array_merge(
+            $s->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction','config']),
+            ['quiz_questions' => $s->kind === 'game' && ($s->game_type ?? null) === 'quiz' ? $previewQuizQuestions : null],
+        ))->toJson() !!}
     </script>
     {{-- Background music URL (empty string = none) --}}
     @php

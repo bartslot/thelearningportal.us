@@ -34,9 +34,12 @@ class Step3SceneConfigurator extends Component
         'year', 'location', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
-        'skybox_blur', 'skybox_opacity', 'background_color', 'scene_view',
+        'skybox_blur', 'skybox_opacity', 'background_color', 'kb_animated', 'kb_direction', 'scene_view',
         'world_y_offset', 'world_scale', 'world_char_scale',
     ];
+
+    /** Brand deep-navy — the solid backdrop a scene falls back to when its image is removed. */
+    public const BRAND_BACKGROUND = '#0f172a';
 
     public Lesson $lesson;
 
@@ -119,6 +122,10 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('scene:load', payload: [
             'sceneId' => $scene->id,
             'imageUrl' => $imagePath ? asset('storage/'.$imagePath).'?v='.$ts : null,
+            'shots' => collect($scene->shots ?? [])->map(fn ($shot) => [
+                'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
+                'anchor_sentence' => $shot['anchor_sentence'] ?? null,
+            ])->filter(fn ($shot) => $shot['image_url'])->values()->all(),
             'hasSkyboxImage' => ! empty($scene->skybox_image_path),
             'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
             'animationClipId' => $scene->animation_clip_id,
@@ -129,6 +136,10 @@ class Step3SceneConfigurator extends Component
             'config' => $scene->config,
             'gameType' => $scene->game_type,
             'quizQuestionCount' => $scene->quiz_question_count,
+            // Quiz scenes preview their actual questions on the canvas.
+            'quizQuestions' => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
+                ? $this->lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
+                : [],
             'quizTiming' => $scene->quiz_timing,
             'strategyGameId' => $scene->strategy_game_id,
             'teamCount' => $scene->team_count,
@@ -136,6 +147,9 @@ class Step3SceneConfigurator extends Component
             'skyboxBlur' => (float) ($scene->skybox_blur ?? 0.5),
             'skyboxOpacity' => (float) ($scene->skybox_opacity ?? 1.0),
             'backgroundColor' => (string) ($scene->background_color ?? '#000000'),
+            'kbAnimated' => (bool) ($scene->kb_animated ?? true),
+            'kbDirection' => $scene->kb_direction,
+            'texts' => (array) (($scene->config ?? [])['texts'] ?? []),
             'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
             'worldPanoUrl' => $scene->world_pano_path ? asset('storage/'.$scene->world_pano_path) : null,
             'worldSpzUrl' => $scene->world_spz_path ? asset('storage/'.$scene->world_spz_path) : null,
@@ -207,6 +221,21 @@ class Step3SceneConfigurator extends Component
         return $snap;
     }
 
+    /**
+     * Set the solid backdrop color in ONE round trip. The old two-call flow
+     * ($wire.set + $wire.call) re-rendered between requests with the stale DB color,
+     * which snapped the picker back until a second click.
+     */
+    public function setSceneBackgroundColor(string $color): void
+    {
+        if (! $this->selectedSceneId || ! preg_match('/^#[0-9a-fA-F]{6}$/', $color)) {
+            return;
+        }
+
+        $this->selectedScene['background_color'] = $color;
+        $this->saveSelected();
+    }
+
     public function saveSelected(): void
     {
         if (! $this->selectedScene || ! $this->selectedSceneId) {
@@ -217,9 +246,9 @@ class Step3SceneConfigurator extends Component
             ->findOrFail($this->selectedSceneId);
 
         $payload = collect($this->selectedScene)->only(self::EDITABLE_FIELDS)->all();
-        foreach (['animation_clip_id', 'strategy_game_id'] as $nullableId) {
-            if (array_key_exists($nullableId, $payload) && $payload[$nullableId] === '') {
-                $payload[$nullableId] = null;
+        foreach (['animation_clip_id', 'strategy_game_id', 'kb_direction'] as $nullable) {
+            if (array_key_exists($nullable, $payload) && $payload[$nullable] === '') {
+                $payload[$nullable] = null;
             }
         }
         $scriptDirty = ($scene->script_segment ?? '') !== ($payload['script_segment'] ?? '');
@@ -228,7 +257,11 @@ class Step3SceneConfigurator extends Component
         $stageDirty = (int) ($payload['animation_clip_id'] ?? 0) !== (int) ($scene->animation_clip_id ?? 0)
             || ($payload['year'] ?? null) !== ($scene->year ?? null)
             || ($payload['location'] ?? null) !== ($scene->location ?? null)
-            || ($payload['scene_view'] ?? null) !== ($scene->scene_view ?? null);
+            || ($payload['scene_view'] ?? null) !== ($scene->scene_view ?? null)
+            // Motion + backdrop settings re-paint the canvas so the teacher SEES the change.
+            || (bool) ($payload['kb_animated'] ?? true) !== (bool) ($scene->kb_animated ?? true)
+            || ($payload['kb_direction'] ?? null) !== ($scene->kb_direction ?? null)
+            || ($payload['background_color'] ?? null) !== ($scene->background_color ?? null);
 
         $scene->update($payload);
 
@@ -492,6 +525,39 @@ class Step3SceneConfigurator extends Component
         $this->selectedScene['config']['annotations'] = array_values($annotations);
     }
 
+    /** Teacher text annotations ([T] tool) — persisted per scene in config['texts']. */
+    #[On('sceneTextsChanged')]
+    public function saveSceneTexts(?int $sceneId, array $texts): void
+    {
+        // Fall back to the open scene — the JS layer can fire before its first scene:load
+        // has stamped a scene id (e.g. [T] pressed right after page load).
+        $sceneId ??= $this->selectedSceneId;
+
+        $scene = $sceneId ? $this->lesson->scenes()->find($sceneId) : null;
+        if (! $scene) {
+            return;
+        }
+
+        $clean = collect($texts)
+            ->filter(fn ($t) => is_array($t) && trim((string) ($t['text'] ?? '')) !== '')
+            ->map(fn (array $t) => [
+                'id' => (string) ($t['id'] ?? uniqid('txt_')),
+                'text' => mb_substr(trim((string) $t['text']), 0, 300),
+                'x' => max(0, min(100, (float) ($t['x'] ?? 40))),
+                'y' => max(0, min(100, (float) ($t['y'] ?? 40))),
+            ])
+            ->take(12)
+            ->values()
+            ->all();
+
+        $scene->config = array_merge($scene->config ?? [], ['texts' => $clean]);
+        $scene->save();
+
+        if ($this->selectedSceneId === $sceneId && $this->selectedScene !== null) {
+            $this->selectedScene['config'] = array_merge($this->selectedScene['config'] ?? [], ['texts' => $clean]);
+        }
+    }
+
     #[On('annotationsChanged')]
     public function updateAnnotations(int $sceneId, array $annotations): void
     {
@@ -710,6 +776,33 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    /**
+     * Remove a scene's background image (and its shot storyboard). The scene falls back to
+     * the solid brand-navy backdrop; Regenerate brings an image back at any time.
+     */
+    public function deleteSceneImage(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        $paths = array_filter(array_merge(
+            [$scene->image_path],
+            array_column($scene->shots ?? [], 'image_path'),
+        ));
+        foreach ($paths as $path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
+        }
+
+        $scene->update([
+            'image_path' => null,
+            'shots' => null,
+            'background_color' => self::BRAND_BACKGROUND,
+        ]);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+    }
+
     public function regenerate(int $sceneId, string $asset): void
     {
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
@@ -717,7 +810,8 @@ class Step3SceneConfigurator extends Component
 
         match ($asset) {
             'script' => GenerateSceneScript::dispatch($scene->id),
-            'image' => GenerateSceneImage::dispatch($scene->id),
+            // Multi-shot storyboard when enabled; the job itself falls back to the single image.
+            'image' => \App\Jobs\GenerateSceneShots::dispatch($scene->id),
             'audio' => GenerateSceneAudio::dispatch($scene->id),
             'world' => $this->generateWorld($scene->id),
             default => null,

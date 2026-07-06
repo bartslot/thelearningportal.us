@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $lesson->title }} — The Learning Portal</title>
     {{-- lesson-map.js (+ the ~1 MB MapLibre/volcanoes chunk) is loaded on demand by
          lesson-player.js only when a lesson actually contains a map scene. --}}
@@ -37,6 +38,7 @@
         'region'                => $lesson->region,
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
+        'quiz_questions'        => $lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values(),
         'quiz_timing'           => $lesson->quiz_timing,
         'cover_image_url'       => $lesson->titleBgUrl() ?? $lesson->cardImageUrl(),
         'title_bg_url'          => $lesson->titleBgUrl(),
@@ -56,8 +58,15 @@
                 'audio_url'   => $s->audio_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->audio_path) : null,
                 'script'      => $s->script_segment,
                 'image_url'   => $s->image_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->image_path) : null,
+                'shots'       => collect($s->shots ?? [])->map(fn($shot) => [
+                    'image_url'       => !empty($shot['image_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['image_path']) : null,
+                    'anchor_sentence' => $shot['anchor_sentence'] ?? null,
+                ])->filter(fn($shot) => $shot['image_url'])->values()->all() ?: null,
                 'alignment'   => $s->audio_alignment ?: null,
                 'duration_seconds' => $s->duration_seconds,
+                'background_color' => $s->background_color,
+                'kb_animated' => (bool) ($s->kb_animated ?? true),
+                'kb_direction' => $s->kb_direction,
               ])->values()
             : [],
         'intel_drop_enabled'    => $lesson->intel_drop_enabled,
@@ -66,6 +75,8 @@
         'intel_drop_audio_url'  => $lesson->intel_drop_audio_path
             ? \Illuminate\Support\Facades\Storage::disk('public')->url($lesson->intel_drop_audio_path)
             : null,
+        'leaderboard_url'       => route('lesson.leaderboard', ['lessonCode' => $lesson->lesson_code]),
+        'quiz_score_url'        => route('lesson.quiz-score', ['lessonCode' => $lesson->lesson_code]),
     ];
 @endphp
 <script>
@@ -84,6 +95,12 @@
     <div id="background-layer" class="absolute inset-0 z-0" aria-hidden="true">
         {{-- Populated by lesson-player.js --}}
     </div>
+
+    {{-- Teacher text annotations per scene (links open an iframe modal). --}}
+    <div id="lesson-text-overlay" class="absolute inset-0 z-10 pointer-events-none"></div>
+
+    {{-- Quiz question cards (QuizOverlay mounts here during quiz segments). --}}
+    <div id="lesson-game-overlay" class="absolute inset-0 z-40 pointer-events-none"></div>
 
     {{-- ── LAYER 0b: Title-screen background (Wikipedia lead image) ──────────
          Pinned during TITLE_SCREEN so the catalog topic's image is the hero backdrop,

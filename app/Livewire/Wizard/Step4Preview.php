@@ -71,6 +71,14 @@ class Step4Preview extends Component
             'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
             'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
             'sceneView'         => (string) ($scene->scene_view ?? 'skybox'),
+            'kbAnimated'        => (bool) ($scene->kb_animated ?? true),
+            'kbDirection'       => $scene->kb_direction,
+            // Teacher text annotations — read-only here (editing lives in Configure).
+            'textsReadonly'     => (array) (($scene->config ?? [])['texts'] ?? []),
+            // Quiz scenes preview their questions on the canvas, same as Configure.
+            'quizQuestions'     => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
+                ? $this->lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
+                : [],
         ]);
     }
 
@@ -89,6 +97,9 @@ class Step4Preview extends Component
         return $idlePath ? asset($idlePath) : null;
     }
 
+    /** Shown right after a successful publish: the "your lesson is live" moment. */
+    public bool $showPublishSplash = false;
+
     public function publish(): void
     {
         if (! $this->allReady) {
@@ -98,7 +109,13 @@ class Step4Preview extends Component
 
         $this->lesson->update(['status' => LessonStatus::Published]);
         $this->publishError = '';
+        $this->showPublishSplash = true;
         $this->dispatch('lesson-published');
+    }
+
+    public function dismissPublishSplash(): void
+    {
+        $this->showPublishSplash = false;
     }
 
     public function render()

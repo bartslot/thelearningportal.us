@@ -14,15 +14,12 @@
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
         <div class="lp-grain pointer-events-none absolute inset-0 z-[3]"></div>
-        {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
-        @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
-            <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
-                 class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
-        @endif
         {{-- Scene overlay (flag + territory title). z-[6] so it sits ABOVE the map preview (z-[5]),
              not hidden behind the globe. pointer-events-none keeps the map interactive. --}}
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32 z-[6]"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
+        {{-- Teacher text annotations (Freeform-style, draggable). z-[7]: above scene art + map. --}}
+        <div id="lesson-text-overlay" class="absolute inset-0 z-[7]"></div>
         {{-- Map block preview — overlays the canvas when a map scene is selected. Uses fixed
              positioning (full viewport) because MapLibre relatively-positions its container, which
              would otherwise collapse an `absolute inset-0` host to height 0. --}}
@@ -101,6 +98,41 @@
             const p = Array.isArray(e) ? e[0] : e
             if (inst) inst.setAnnotations(p.annotations || [])
         })
+
+        // ── Teacher text annotations ([T] tool) ────────────────────────────
+        let textLayer = null
+        let textSceneId = null
+        let lastAppliedTexts = null
+        const ensureTextLayer = () => {
+            if (textLayer) return textLayer
+            const layerHost = document.getElementById('lesson-text-overlay')
+            if (!layerHost || !window.LessonScene?.TextOverlayLayer) return null
+            textLayer = new window.LessonScene.TextOverlayLayer(layerHost, {
+                editable: true,
+                onChange: (texts) => {
+                    lastAppliedTexts = JSON.stringify(texts)
+                    // sceneId may still be null before the first scene:load — the server
+                    // falls back to the currently selected scene in that case.
+                    window.Livewire.dispatch('sceneTextsChanged', { sceneId: textSceneId ?? null, texts })
+                },
+            })
+            return textLayer
+        }
+        window.Livewire.on('scene:load', (e) => {
+            const p = Array.isArray(e) ? e[0]?.payload : e?.payload
+            if (!p) return
+            const layer = ensureTextLayer()
+            if (!layer) return
+            const incoming = JSON.stringify(p.texts || [])
+            const layerHost = document.getElementById('lesson-text-overlay')
+            // scene:load re-fires every status poll — never nuke a box mid-typing, and skip
+            // no-op re-renders of the same content.
+            if (p.sceneId === textSceneId && (incoming === lastAppliedTexts || layerHost?.contains(document.activeElement))) return
+            textSceneId = p.sceneId
+            lastAppliedTexts = incoming
+            layer.setTexts(p.texts || [])
+        })
+        window.addEventListener('lesson:add-text', () => ensureTextLayer()?.addText())
     }
     // Livewire defers stacked scripts, so `livewire:initialized` has often ALREADY fired by the time
     // this runs — boot immediately in that case; otherwise wait for the event. (Same footgun the
@@ -111,11 +143,13 @@
     })()
     </script>
     @endpush
-    {{-- Draggable inspector --}}
+    {{-- Draggable inspector. Game/quiz scenes get a WIDE workspace (managing 5+ questions in a
+         24rem sidebar was unusable) — narration/map scenes keep the compact panel. --}}
+    @php $inspectorSceneModel = $this->selectedSceneModel; @endphp
     <aside x-cloak
            x-ref="inspectorPanel"
            :style="inspectorPanelStyle()"
-           :class="inspectorOpen ? 'w-[min(24rem,calc(100vw-1rem))]' : 'w-56'"
+           :class="inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(24rem,calc(100vw-1rem))]' }}' : 'w-56'"
            class="card card-compact fixed z-50 overflow-hidden border border-slate-700/70 bg-base-300/95 shadow-2xl backdrop-blur-xl">
         <header
             @pointerdown="startInspectorDrag($event)"
@@ -167,7 +201,8 @@
                                                  :city-query="$cityQuery" />
                 @elseif ($sceneModel->kind === 'game')
                     <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games"
-                                                  :quiz-draft="$quizDraft" :quiz-errors="$quizErrors" :quiz-saved="$quizSaved" />
+                                                  :quiz-draft="$quizDraft" :quiz-errors="$quizErrors" :quiz-saved="$quizSaved"
+                                                  :quiz-difficulty="$this->quizDifficulty()" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
                 @endif
@@ -222,12 +257,28 @@
         </div>
     </aside>
         
-    {{-- Step nav floating buttons --}}
-    <div class="fixed bottom-28 right-4 z-30 flex gap-2">
-        <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"
-           wire:navigate class="btn btn-sm btn-outline">← Back</a>
+    {{-- Step nav — the primary CTA of this screen. Full-width strip above the timeline so
+         teachers can't miss it (the old small button hid behind the narrator portrait). --}}
+    <div class="fixed bottom-28 inset-x-0 z-30 flex items-center justify-between px-4 pointer-events-none">
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"
+               wire:navigate class="btn btn-sm btn-ghost text-slate-300">← {{ __('Back') }}</a>
+            {{-- [T] text tool: adds a text box on the scene, focused and ready to type. --}}
+            <button type="button"
+                    onclick="window.dispatchEvent(new CustomEvent('lesson:add-text'))"
+                    class="btn btn-sm btn-square border border-slate-600 bg-base-300/80 text-slate-200 hover:border-amber-400 hover:text-amber-300 backdrop-blur"
+                    title="{{ __('Add text to this scene (drag to move; paste a link to embed a page)') }}"
+                    aria-label="{{ __('Add text to this scene') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="3" stroke-dasharray="3.5 2.5"/>
+                    <path stroke-linecap="round" d="M9 9.5h6M12 9.5v6"/>
+                </svg>
+            </button>
+        </div>
         <button wire:click="continueToPreview"
-                class="btn btn-sm bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">Continue to Preview →</button>
+                class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 shadow-xl px-6 pointer-events-auto">
+            {{ __('Continue to Preview') }} →
+        </button>
     </div>
 
     {{-- Bottom timeline --}}
@@ -278,7 +329,7 @@
 
     {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
     <script type="application/json" id="step3-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id'])->toJson() !!}
+        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction'])->toJson() !!}
     </script>
 </div>
 

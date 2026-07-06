@@ -47,7 +47,16 @@ const KB_DIRECTIONS = [
   { fromScale: 1.10, fromX:  0, fromY:  2, toScale: 1.05, toX:  0, toY: -2 }, // top-centre  → bottom-centre
 ]
 
-function pickKbDirection (index) {
+// Teacher-selectable Ken Burns moves (scenes.kb_direction). null/'auto' rotates the classic set.
+const KB_NAMED = {
+  left_right: { fromScale: 1.08, fromX: -2.5, fromY: 0, toScale: 1.08, toX:  2.5, toY: 0 },
+  right_left: { fromScale: 1.08, fromX:  2.5, fromY: 0, toScale: 1.08, toX: -2.5, toY: 0 },
+  zoom_in:    { fromScale: 1.02, fromX:  0,   fromY: 0, toScale: 1.12, toX:  0,   toY: 0 },
+  zoom_out:   { fromScale: 1.12, fromX:  0,   fromY: 0, toScale: 1.02, toX:  0,   toY: 0 },
+}
+
+function pickKbDirection (index, named = null) {
+  if (named && KB_NAMED[named]) return KB_NAMED[named]
   return KB_DIRECTIONS[index % KB_DIRECTIONS.length]
 }
 
@@ -382,13 +391,26 @@ Alpine.data('lessonGame', (lesson) => ({
       this._bgLayerB = b
     },
 
+    // Per-scene motion settings, set by _playScene before each _showFlatScene call.
+    _kbAnimated: true,
+    _kbNamedDirection: null,
+
     _showBgImage (img, layer) {
       const el = layer === 'A' ? this._bgLayerA : this._bgLayerB
       if (!el || !img?.url) return
 
-      const kbDir = pickKbDirection(this._kbIndex)
       el.style.backgroundImage = `url(${img.url})`
       el.style.backgroundSize  = 'cover'
+      el.style.backgroundColor = ''
+
+      // Motion off for this scene → a calm, static image.
+      if (this._kbAnimated === false) {
+        el.style.transition = `opacity ${this._bgFadeDuration}ms ease-in-out`
+        el.style.transform = 'none'
+        return
+      }
+
+      const kbDir = pickKbDirection(this._kbIndex, this._kbNamedDirection)
       el.style.transform = `scale(${kbDir.fromScale}) translate(${kbDir.fromX}%, ${kbDir.fromY}%)`
 
       // Animate Ken Burns — scale + pan simultaneously
@@ -396,6 +418,24 @@ Alpine.data('lessonGame', (lesson) => ({
         el.style.transition = `opacity ${this._bgFadeDuration}ms ease-in-out, transform ${this._bgSlideMax}ms linear`
         el.style.transform  = `scale(${kbDir.toScale}) translate(${kbDir.toX}%, ${kbDir.toY}%)`
       })
+    },
+
+    // No image on this scene: a solid brand-navy backdrop instead of a stale leftover photo.
+    _showFlatColor (color) {
+      if (_bgCanvas) _bgCanvas.style.opacity = '0'
+      const bgLayer = document.getElementById('background-layer')
+      if (bgLayer) { bgLayer.style.transition = 'opacity 1s ease-in-out'; bgLayer.style.opacity = '1' }
+      if (this._kbInterval) { clearInterval(this._kbInterval); this._kbInterval = null }
+
+      const el = this._bgActive === 'A' ? this._bgLayerB : this._bgLayerA
+      if (!el) return
+      el.style.backgroundImage = 'none'
+      el.style.backgroundColor = color || '#0f172a'
+      el.style.transform = 'none'
+      el.style.opacity = '1'
+      const other = this._bgActive === 'A' ? this._bgLayerA : this._bgLayerB
+      if (other) other.style.opacity = '0'
+      this._bgActive = this._bgActive === 'A' ? 'B' : 'A'
     },
 
     _startKenBurns () {
@@ -609,6 +649,67 @@ Alpine.data('lessonGame', (lesson) => ({
       }
     },
 
+    // ── Storyboard shots: switch the flat image exactly when the narration reaches
+    //    each shot's anchor sentence (via ElevenLabs character timings). ───────────
+    _shotPlan: null,
+    _shotCursor: 0,
+
+    _startShotPlayback (scene) {
+      const shots = scene.shots || []
+      this._showFlatScene(shots[0]?.image_url || scene.image_url)
+      this._shotCursor = 0
+      // time: seconds when the shot should appear; null = unresolved (even-split fallback).
+      this._shotPlan = shots.map((shot, i) => ({
+        url: shot.image_url,
+        time: i === 0 ? 0 : this._resolveAnchorTime(scene.alignment, shot.anchor_sentence)
+      }))
+    },
+
+    // Find the narration timestamp where the anchor sentence starts. The alignment is the
+    // TTS text itself (per-character timings), so matching against it is immune to any
+    // whitespace normalisation between the stored script and the spoken text.
+    _resolveAnchorTime (alignment, anchor) {
+      if (!alignment?.length || !anchor) return null
+      const normAnchor = anchor.toLowerCase().replace(/\s+/g, ' ').trim()
+      if (normAnchor.length < 10) return null
+
+      // Build the normalised transcript with a map back to alignment indices.
+      let norm = ''
+      const map = []
+      let lastWasSpace = true
+      for (let i = 0; i < alignment.length; i++) {
+        const ch = (alignment[i].character || '')
+        if (/\s/.test(ch)) {
+          if (!lastWasSpace) { norm += ' '; map.push(i); lastWasSpace = true }
+        } else {
+          norm += ch.toLowerCase(); map.push(i); lastWasSpace = false
+        }
+      }
+
+      const pos = norm.indexOf(normAnchor)
+      if (pos === -1) return null
+      return alignment[map[pos]]?.start_time ?? null
+    },
+
+    // Called on every audio timeupdate (piggybacks on _processScriptEvents).
+    _processShots () {
+      if (!this._shotPlan || this._shotPlan.length < 2 || !this._audio) return
+      const t = this._audio.currentTime
+      const duration = this._audio.duration || 0
+
+      let target = 0
+      for (let i = 1; i < this._shotPlan.length; i++) {
+        // Unresolved anchors fall back to an even split across the scene audio.
+        const at = this._shotPlan[i].time ?? (duration > 0 ? (i / this._shotPlan.length) * duration : Infinity)
+        if (t >= at) target = i
+      }
+
+      if (target !== this._shotCursor && this._shotPlan[target].url) {
+        this._shotCursor = target
+        this._showFlatScene(this._shotPlan[target].url)
+      }
+    },
+
     _moveAvatarTo (position) {
       const posKey = position in AVATAR_POSITIONS ? position : DEFAULT_POSITION
       if (posKey === this._currentPosition) return
@@ -641,7 +742,13 @@ Alpine.data('lessonGame', (lesson) => ({
         // Keep audio scenes AND map blocks (map blocks have no audio but are played as slides).
         _sceneQueue = lesson.scenes
           .filter(s => s.audio_url || s.kind === 'map')
-          .map(s => ({ kind: s.kind, config: s.config ?? null, scene_view: s.scene_view, audio_url: s.audio_url, script: s.script, image_url: s.image_url, alignment: s.alignment ?? null }))
+          .map(s => ({
+            kind: s.kind, game_type: s.game_type ?? null, config: s.config ?? null, scene_view: s.scene_view,
+            audio_url: s.audio_url, script: s.script, image_url: s.image_url,
+            shots: s.shots ?? null, alignment: s.alignment ?? null,
+            background_color: s.background_color ?? null,
+            kb_animated: s.kb_animated, kb_direction: s.kb_direction ?? null,
+          }))
       }
 
       if (!_sceneQueue.length) return
@@ -674,6 +781,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // ── Script event processing ────────────────────────────────────────
     _processScriptEvents () {
       if (!this._audio) return
+      this._processShots()
       const t = this._audio.currentTime
 
       while (this._lastEventIndex < this._scriptEvents.length) {
@@ -708,17 +816,34 @@ Alpine.data('lessonGame', (lesson) => ({
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
 
+      // Reset per-scene shot playback state (storyboard scenes rebuild it below).
+      this._shotPlan = null
+      this._shotCursor = 0
+
+      // Teacher text annotations for this scene (URLs render as link chips → iframe modal).
+      // Before the map early-return, so a map scene clears the previous scene's texts too.
+      this._renderSceneTexts(scene)
+
       // Map block — render the historical atlas as a slide (no audio).
       if (scene.kind === 'map') { this._playMapScene(index, scene); return }
 
-      // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per scene.
-      if (scene.image_url) {
+      // Per-scene background motion settings (Animated toggle + Ken Burns direction).
+      this._kbAnimated = scene.kb_animated !== false
+      this._kbNamedDirection = scene.kb_direction || null
+
+      // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per
+      // scene; no image at all = the scene's solid backdrop (brand navy by default).
+      if (scene.image_url || scene.shots?.length) {
         if (scene.scene_view === 'skybox' && _bgInstance) {
           this._showBgScene()                                   // reveal the 3D canvas, fade out the flat layer
           _bgInstance.setSkyboxFromUrl(scene.image_url, 0.3).catch(() => {})
+        } else if (scene.shots?.length > 1) {
+          this._startShotPlayback(scene)                        // storyboard: images follow the narration
         } else {
-          this._showFlatScene(scene.image_url)                  // flat 2D Ken Burns of the scene image
+          this._showFlatScene(scene.shots?.[0]?.image_url || scene.image_url)  // flat 2D Ken Burns
         }
+      } else if (scene.kind !== 'map') {
+        this._showFlatColor(scene.background_color)
       }
 
       if (_avatarInstance) {
@@ -941,10 +1066,51 @@ Alpine.data('lessonGame', (lesson) => ({
       if (scene && scene.kind === 'game') {
         this._gameResumeIndex = index + 1
         this.canResumeAfterGame = this._gameResumeIndex < _sceneQueue.length
+        // Quiz segments show the actual questions inline (navigable card overlay);
+        // the timer/teams flow below belongs to strategy games only.
+        if (scene.game_type === 'quiz' && lesson.quiz_questions?.length) {
+          this._beginQuizFlow()
+          return
+        }
         this._beginGameFlow(scene)
         return
       }
       const next = index + 1
+      if (next < _sceneQueue.length) {
+        this._sceneIndex = next
+        this._playScene(next)
+      } else {
+        this._onAudioEnded()
+      }
+    },
+
+    async _renderSceneTexts (scene) {
+      const host = document.getElementById('lesson-text-overlay')
+      if (!host) return
+      const texts = scene?.config?.texts || []
+      if (!texts.length && !this._textLayer) return
+      const { TextOverlayLayer } = await import('./scene/TextOverlayLayer.js')
+      this._textLayer = this._textLayer || new TextOverlayLayer(host, { editable: false })
+      this._textLayer.setTexts(texts)
+    },
+
+    // Quiz segment: step through the lesson's questions in the card overlay, then
+    // resume the story where it left off.
+    async _beginQuizFlow () {
+      const host = document.getElementById('lesson-game-overlay')
+      if (!host) { this._resumeAfterQuiz(); return }
+      const { QuizOverlay } = await import('./scene/QuizOverlay.js')
+      this._quizOverlay = this._quizOverlay || new QuizOverlay(host)
+      this._quizOverlay.show({
+        questions: lesson.quiz_questions,
+        submitUrl: lesson.quiz_score_url || null,
+        leaderboardUrl: lesson.leaderboard_url || null,
+        onComplete: () => this._resumeAfterQuiz(),
+      })
+    },
+
+    _resumeAfterQuiz () {
+      const next = this._gameResumeIndex ?? this._sceneIndex + 1
       if (next < _sceneQueue.length) {
         this._sceneIndex = next
         this._playScene(next)

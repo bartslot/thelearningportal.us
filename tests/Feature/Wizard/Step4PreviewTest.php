@@ -68,7 +68,13 @@ class Step4PreviewTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(Step4Preview::class, ['lesson' => $this->lesson])
-            ->call('publish');
+            ->call('publish')
+            // The "your lesson is live" splash with the View-lesson link appears on success.
+            ->assertSet('showPublishSplash', true)
+            ->assertSee('Your lesson is now live!')
+            ->assertSee(route('lesson.play', ['lessonCode' => $this->lesson->fresh()->lesson_code]))
+            ->call('dismissPublishSplash')
+            ->assertSet('showPublishSplash', false);
 
         $this->assertSame(LessonStatus::Published, $this->lesson->fresh()->status);
     }

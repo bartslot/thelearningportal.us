@@ -15,10 +15,9 @@
         if ($statusValue && $statusValue !== 'draft') {
             $maxStep = 3;
         }
+        // Configure and Preview unlock together: once scenes exist the teacher may always
+        // peek at the preview (entering it flips the lesson to Previewable anyway).
         if (in_array($statusValue, ['scenes_ready', 'configuring', 'previewable', 'published'], true)) {
-            $maxStep = 4;
-        }
-        if (in_array($statusValue, ['previewable', 'published'], true)) {
             $maxStep = 5;
         }
     }

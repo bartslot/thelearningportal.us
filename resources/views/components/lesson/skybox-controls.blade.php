@@ -95,21 +95,97 @@
             @if ($scene->image_path)
                 <img src="{{ asset('storage/' . $scene->image_path) }}"
                      class="w-20 h-12 rounded object-cover shrink-0" />
+            @else
+                {{-- No image: solid backdrop. Click the swatch → hue picker + dark presets. --}}
+                <div class="relative shrink-0"
+                     x-data="{ pickerOpen: false, solidColor: @js($scene->background_color ?? '#0f172a') }">
+                    <button type="button" @click="pickerOpen = !pickerOpen"
+                            class="w-20 h-12 rounded ring-1 ring-slate-700 hover:ring-amber-400 flex items-center justify-center transition"
+                            :style="'background-color:' + solidColor"
+                            title="{{ __('Solid background — click to change color') }}">
+                        <span class="text-[9px] uppercase tracking-wider text-slate-400">{{ __('solid') }}</span>
+                    </button>
+
+                    <div x-show="pickerOpen" x-cloak @click.outside="pickerOpen = false"
+                         x-transition.opacity.duration.150ms
+                         class="absolute left-0 top-14 z-30 rounded-xl border border-slate-700 bg-base-300 p-3 shadow-2xl space-y-2 w-52">
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500 block">{{ __('Background color') }}</span>
+                        <div class="flex items-center gap-1.5">
+                            @foreach (['#0f172a' => 'Dark blue', '#3f0d12' => 'Dark red', '#052e16' => 'Dark green', '#2e1065' => 'Dark purple', '#1c1917' => 'Charcoal'] as $preset => $presetLabel)
+                                <button type="button"
+                                        @click="solidColor = '{{ $preset }}';
+                                                $wire.setSceneBackgroundColor('{{ $preset }}')"
+                                        class="h-7 w-7 rounded-lg ring-1 transition"
+                                        :class="solidColor === '{{ $preset }}' ? 'ring-2 ring-amber-400' : 'ring-slate-600 hover:ring-slate-400'"
+                                        style="background-color: {{ $preset }}"
+                                        title="{{ __($presetLabel) }}"></button>
+                            @endforeach
+                        </div>
+                        <label class="flex items-center gap-2 cursor-pointer pt-1">
+                            <span class="w-7 h-7 rounded-lg border border-slate-600 overflow-hidden relative shrink-0"
+                                  :style="'background:' + solidColor">
+                                <input type="color" x-model="solidColor"
+                                       @change="$wire.setSceneBackgroundColor(String(solidColor))"
+                                       class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+                            </span>
+                            <span class="text-xs text-slate-400">{{ __('Custom…') }}</span>
+                            <span class="text-[10px] font-mono text-amber-300 ml-auto" x-text="solidColor"></span>
+                        </label>
+                    </div>
+                </div>
             @endif
-            <button type="button"
-                    wire:click="regenerate({{ $scene->id }}, 'image')"
-                    wire:loading.attr="disabled" wire:target="regenerate"
-                    @disabled($isBusy)
-                    class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                @if ($isGenerating)
-                    <x-icons.spinner class="w-3 h-3 animate-spin" />
-                    <span>Generating…</span>
-                @else
-                    <x-icons.regenerate class="w-3 h-3" />
-                    <span>Regenerate</span>
+            <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button"
+                        wire:click="regenerate({{ $scene->id }}, 'image')"
+                        wire:loading.attr="disabled" wire:target="regenerate"
+                        @disabled($isBusy)
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                    @if ($isGenerating)
+                        <x-icons.spinner class="w-3 h-3 animate-spin" />
+                        <span>Generating…</span>
+                    @else
+                        <x-icons.regenerate class="w-3 h-3" />
+                        <span>{{ $scene->image_path ? __('Regenerate') : __('Generate image') }}</span>
+                    @endif
+                </button>
+                @if ($scene->image_path)
+                    <button type="button"
+                            wire:click="deleteSceneImage({{ $scene->id }})"
+                            wire:confirm="{{ __('Remove this image? The scene will use a solid dark background instead.') }}"
+                            @disabled($isBusy)
+                            class="btn btn-xs btn-ghost text-rose-300 hover:text-rose-200"
+                            title="{{ __('Remove image — use solid background') }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
+                    </button>
                 @endif
-            </button>
+            </div>
         </div>
+
+        {{-- Background motion: Animated toggle + Ken Burns direction. Alpine mirrors the
+             toggle locally so the dropdown hides INSTANTLY (this component can't read the
+             Livewire $selectedScene array, and a server round-trip felt laggy anyway). --}}
+        @if ($scene->image_path)
+            <div class="flex flex-wrap items-center gap-3 pt-1"
+                 x-data="{ animated: @js((bool) ($scene->kb_animated ?? true)) }">
+                <label class="flex cursor-pointer items-center gap-2">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Animated') }}</span>
+                    <input type="checkbox" class="toggle toggle-sm toggle-warning"
+                           x-on:change="animated = $el.checked"
+                           wire:model.live="selectedScene.kb_animated"
+                           wire:change="saveSelected" />
+                </label>
+                <select x-show="animated" x-transition.opacity.duration.150ms
+                        wire:model.live="selectedScene.kb_direction" wire:change="saveSelected"
+                        class="select select-xs select-bordered bg-slate-900">
+                    <option value="">{{ __('Auto (varied pans)') }}</option>
+                    <option value="left_right">{{ __('Moving left → right') }}</option>
+                    <option value="right_left">{{ __('Moving right → left') }}</option>
+                    <option value="zoom_in">{{ __('Slow zoom in') }}</option>
+                    <option value="zoom_out">{{ __('Slow zoom out') }}</option>
+                </select>
+            </div>
+        @endif
+
         <details class="text-xs">
             <summary class="cursor-pointer text-slate-400">Prompt</summary>
             <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
