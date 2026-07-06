@@ -5,8 +5,48 @@
     ════════════════════════════════════════════════ --}}
     <div class="bg-base-300 rounded-2xl p-6 space-y-3">
 
+        {{-- Curated STORY catalog — the preferred path: human-reviewed stories with
+             learning objectives and real narrative sources. --}}
+        @if ($storyId)
+            @php $chosen = collect($this->storyChoices)->firstWhere('id', $storyId); @endphp
+            <div class="alert bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-between">
+                <div class="flex flex-col gap-0.5">
+                    <span class="text-sm text-emerald-300 font-semibold">{{ __('Story') }}: {{ $chosen['title'] ?? $topic }}</span>
+                    <span class="text-xs text-slate-400">
+                        {{ collect([$chosen['era'] ?? null, $chosen['region'] ?? null, $chosen['grade_band'] ?? null])->filter()->implode(' · ') }}
+                        · {{ __('curated — objectives & sources included') }}
+                    </span>
+                </div>
+                <button type="button" wire:click="clearStory" class="btn btn-xs btn-ghost">{{ __('Change') }}</button>
+            </div>
+        @elseif (count($this->storyChoices) > 0)
+            <div class="form-control space-y-2">
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400">
+                    {{ __('Pick a story') }} <span class="text-amber-400/70 normal-case tracking-normal">· {{ __('curated, with learning goals') }}</span>
+                </span>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                    @foreach ($this->storyChoices as $choice)
+                        <button type="button" wire:click="selectStory({{ $choice['id'] }})"
+                                class="card bg-slate-900 hover:bg-slate-800 border border-white/10 hover:border-amber-500/50 text-left transition">
+                            <div class="card-body p-3 gap-1">
+                                <span class="text-sm text-white font-medium leading-tight">{{ $choice['title'] }}</span>
+                                @if ($choice['subtitle'])
+                                    <span class="text-xs text-slate-400 leading-tight">{{ $choice['subtitle'] }}</span>
+                                @endif
+                                <span class="text-[11px] text-slate-500">
+                                    {{ collect([$choice['era'], $choice['region'], $choice['grade_band']])->filter()->implode(' · ') }}
+                                </span>
+                            </div>
+                        </button>
+                    @endforeach
+                </div>
+                <span class="text-xs text-slate-500">{{ __('Nothing that fits? Search a free topic below — we\'ll ground it in Wikipedia.') }}</span>
+            </div>
+            <div class="divider my-1 text-xs text-slate-500">{{ __('or free topic') }}</div>
+        @endif
+
         {{-- Topic — locked to the curated, Wikipedia-grounded catalog (A1) --}}
-        <div x-data="{ open: false }" class="relative form-control">
+        <div x-data="{ open: false }" class="relative form-control" @if($storyId) style="display:none" @endif>
             <span class="label-text text-xs uppercase tracking-wider text-slate-400">
                 Topic <span class="text-amber-400/70 normal-case tracking-normal">· pick from the catalog</span>
             </span>

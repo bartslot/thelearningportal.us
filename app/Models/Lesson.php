@@ -34,6 +34,7 @@ class Lesson extends Model
         'title',
         'topic',
         'topic_id',
+        'story_id',
         'focus',
         'title_bg_path',
         'subject',
@@ -120,6 +121,11 @@ class Lesson extends Model
      */
     public function sourceAttribution(): ?string
     {
+        // Catalog stories cite their curated sources (Gutenberg book, author, license).
+        if ($this->story_id && ($line = $this->story?->attributionLine())) {
+            return $line;
+        }
+
         if (str_starts_with((string) $this->topic_id, 'figure:')) {
             return 'Sources: Wikidata (CC0) · Wikipedia (CC BY-SA)';
         }
@@ -158,6 +164,12 @@ class Lesson extends Model
     public function avatar(): BelongsTo
     {
         return $this->belongsTo(Avatar::class);
+    }
+
+    /** Curated catalog story this lesson is grounded in (null for free-topic lessons). */
+    public function story(): BelongsTo
+    {
+        return $this->belongsTo(Story::class);
     }
 
     public function strategyGame(): BelongsTo

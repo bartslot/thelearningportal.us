@@ -52,6 +52,45 @@ class Step1SettingsTest extends TestCase
         $this->mock(WikipediaService::class, fn ($m) => $m->shouldReceive('fetchFacts')->andReturn('wiki text'));
     }
 
+    public function test_selecting_a_catalog_story_locks_topic_and_persists_story_link(): void
+    {
+        $story = \App\Models\Story::create([
+            'slug' => 'willem-van-oranje',
+            'title' => 'Willem van Oranje',
+            'status' => 'published',
+            'narrative_framework' => 'heros_journey',
+            'protagonist_name' => 'Willem van Oranje',
+        ]);
+
+        Bus::fake();
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->call('selectStory', $story->id)
+            ->assertSet('topic', 'Willem van Oranje')
+            ->set('grade_level', '7th grade')
+            ->set('source_mode', 'internet')
+            ->set('image_style', 'painted')
+            ->set('avatar_id', $this->avatar->id)
+            ->call('saveDraft')
+            ->assertHasNoErrors();
+
+        $lesson = Lesson::where('teacher_id', $this->teacher->id)->sole();
+        $this->assertSame($story->id, $lesson->story_id);
+        $this->assertSame('Willem van Oranje', $lesson->protagonist_name);
+    }
+
+    public function test_draft_stories_are_not_selectable(): void
+    {
+        $story = \App\Models\Story::create(['slug' => 'unreviewed', 'title' => 'Unreviewed', 'status' => 'draft']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step1Settings::class, ['lesson' => null])
+            ->call('selectStory', $story->id)
+            ->assertHasErrors('topic')
+            ->assertSet('storyId', null);
+    }
+
     public function test_audience_grade_mode_sets_grade_level_from_dropdown(): void
     {
         Livewire::actingAs($this->teacher)

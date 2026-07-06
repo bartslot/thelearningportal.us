@@ -25,6 +25,9 @@ class Step1Settings extends Component
 
     public ?Lesson $lesson = null;
 
+    // Curated story catalog pick — the preferred path. Null = free topic ("request new story").
+    public ?int $storyId = null;
+
     // Display name of the chosen catalog topic (set on select; also the search box value).
     public string $topic = '';
 
@@ -104,6 +107,7 @@ class Step1Settings extends Component
     {
         if ($lesson?->exists) {
             $this->lesson = $lesson;
+            $this->storyId = $lesson->story_id;
             $this->topic = $lesson->topic ?? '';
             $this->topicId = $lesson->topic_id;
             $this->lockedTopicName = $lesson->topic_id ? ($lesson->topic ?? '') : '';
@@ -287,9 +291,83 @@ class Step1Settings extends Component
         ])->all();
     }
 
+    /**
+     * Published catalog stories for the picker, current locale first. This is the
+     * "limited set of possible stories" — each is human-reviewed with objectives + real sources.
+     *
+     * @return list<array{id:int,title:string,subtitle:?string,era:?string,region:?string,grade_band:?string,protagonist:?string}>
+     */
+    #[Computed]
+    public function storyChoices(): array
+    {
+        $locale = app()->getLocale();
+
+        return \App\Models\Story::published()
+            ->orderByRaw('CASE WHEN locale = ? THEN 0 ELSE 1 END', [$locale])
+            ->orderBy('era_start')
+            ->limit(60)
+            ->get()
+            ->map(fn (\App\Models\Story $story) => [
+                'id' => $story->id,
+                'title' => $story->title,
+                'subtitle' => $story->subtitle,
+                'era' => $story->era_start !== null ? self::formatEra($story->era_start, $story->era_end) : null,
+                'region' => $story->region,
+                'grade_band' => $story->grade_band,
+                'protagonist' => $story->protagonist_name,
+            ])->all();
+    }
+
+    /** Pick a curated story: locks topic + source and prefills the narrative arc. */
+    public function selectStory(int $id): void
+    {
+        $story = \App\Models\Story::published()->find($id);
+        if (! $story) {
+            $this->addError('topic', 'That story is no longer available.');
+
+            return;
+        }
+
+        $this->storyId = $story->id;
+        $this->topic = $story->title;
+        $this->lockedTopicName = $story->title;
+
+        // Reuse the corpus topic link when the story has one (map block, figures, flag).
+        if ($story->topic_id) {
+            $topic = \App\Models\Corpus\Topic::resilient(fn () => \App\Models\Corpus\Topic::find($story->topic_id));
+            if ($topic) {
+                $this->topicId = $topic->id;
+                $this->topicWikipediaUrl = $topic->wikipedia_url;
+                $this->region = $topic->region_label ?: $this->region;
+                $this->era = $topic->eraLabel() ?: $this->era;
+            }
+        }
+    }
+
+    /** Back to free-topic mode ("request a new story"). */
+    public function clearStory(): void
+    {
+        $this->storyId = null;
+        $this->topic = '';
+        $this->topicId = null;
+        $this->topicWikipediaUrl = null;
+        $this->lockedTopicName = '';
+    }
+
+    private static function formatEra(int $start, ?int $end): string
+    {
+        $format = fn (int $year) => $year < 0 ? abs($year).' BC' : (string) $year;
+
+        return $end !== null && $end !== $start
+            ? $format($start).'–'.$format($end)
+            : $format($start);
+    }
+
     /** Select a catalog topic by its id — locks the lesson to a grounded source (A1). */
     public function selectTopic(string $id): void
     {
+        $this->storyId = null;   // typing/picking a raw topic leaves story mode
+
         $topic = \App\Models\Corpus\Topic::resilient(fn () => \App\Models\Corpus\Topic::find($id));
         if (! $topic) {
             $this->addError('topic', 'That topic is not in the catalog. Pick one from the list.');
@@ -400,6 +478,11 @@ class Step1Settings extends Component
      */
     private function validateTopicCatalog(): void
     {
+        // A published catalog story is the strongest grounding — no corpus topic required.
+        if ($this->storyId && \App\Models\Story::published()->whereKey($this->storyId)->exists()) {
+            return;
+        }
+
         $exists = $this->topicId
             && \App\Models\Corpus\Topic::resilient(
                 fn () => \App\Models\Corpus\Topic::whereKey($this->topicId)->exists()
@@ -440,10 +523,23 @@ class Step1Settings extends Component
     {
         $lesson = $this->lesson ?? new Lesson;
 
+        $story = $this->storyId ? \App\Models\Story::published()->find($this->storyId) : null;
+
+        // Story picks pre-seed the narrative arc; Step 2 lets the teacher override. Never
+        // write explicit nulls here — the column defaults must win for free-topic lessons.
+        if ($story) {
+            $lesson->fill(array_filter([
+                'narrative_framework' => $story->narrative_framework,
+                'protagonist_qid' => $story->protagonist_qid,
+                'protagonist_name' => $story->protagonist_name,
+            ], fn ($value) => $value !== null));
+        }
+
         $lesson->fill([
             'teacher_id' => auth()->id(),
             'topic' => trim($this->topic),
             'topic_id' => $this->topicId,
+            'story_id' => $story?->id,
             'focus' => trim($this->focus) ?: null,
             'wikipedia_source' => $this->topicWikipediaUrl,
             'subject' => 'history',
