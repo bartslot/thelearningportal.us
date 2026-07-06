@@ -1,10 +1,11 @@
 export class SceneTimelinePlayer {
-  constructor({ scenes, skybox, overlay, timer, avatar }) {
+  constructor({ scenes, skybox, overlay, timer, avatar, quiz = null }) {
     this.scenes  = scenes
     this.skybox  = skybox
     this.overlay = overlay
     this.timer   = timer
     this.avatar  = avatar
+    this.quiz    = quiz
 
     this._listeners = new Map()
     this._isPlaying = false
@@ -59,6 +60,7 @@ export class SceneTimelinePlayer {
   pause() {
     this._isPlaying = false
     this.timer.pause()
+    this.quiz?.hide()
     // Stop the currently-playing speech: audio, visemes, body anim — and resolve
     // the pending speak() promise so playFrom()'s while-loop can exit immediately.
     this.avatar?.stop?.()
@@ -83,6 +85,20 @@ export class SceneTimelinePlayer {
     }
 
     if (scene.kind === 'game') {
+      // Quiz segments: play the spoken intro, then step through the actual questions.
+      if (scene.game_type === 'quiz' && this.quiz && scene.quiz_questions?.length) {
+        if (scene.audio_path) {
+          await this.avatar.speak({
+            audioUrl:  scene.audio_path,
+            alignment: scene.audio_alignment,
+            text:      scene.script_segment,
+          })
+        }
+        await new Promise(resolve => {
+          this.quiz.show({ questions: scene.quiz_questions, onComplete: resolve })
+        })
+        return
+      }
       this.timer.show({ durationSeconds: scene.duration_seconds || 0 })
       this.timer.start()
       await this._waitForGameEnd()

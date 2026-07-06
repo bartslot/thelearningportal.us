@@ -4,7 +4,6 @@ use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
-use App\Jobs\GenerateLesson;
 use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\LessonWizard;
 use App\Models\Avatar;
@@ -52,6 +51,12 @@ Route::get('/about', function () {
 
 // Student lesson player — public, no auth required
 Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
+
+// Quiz leaderboard (Kahoot-style, anonymous nicknames) — public like the player, throttled.
+Route::get('/lesson/{lessonCode}/leaderboard', [\App\Http\Controllers\QuizLeaderboardController::class, 'index'])
+    ->middleware('throttle:60,1')->name('lesson.leaderboard');
+Route::post('/lesson/{lessonCode}/quiz-score', [\App\Http\Controllers\QuizLeaderboardController::class, 'store'])
+    ->middleware('throttle:10,1')->name('lesson.quiz-score');
 
 // Curated historical cities as GeoJSON — public reference data for the lesson-atlas overlay
 // (labelled "Constantinople (Istanbul)" markers). No auth: shared by the composer preview and
@@ -229,6 +234,9 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Avatar Studio (Livewire component)
     Route::get('/avatars/{avatar}', AvatarStudio::class)->name('avatars.studio');
+
+    // Story catalog review queue (draft → reviewed → published)
+    Route::get('/stories', \App\Livewire\Admin\StoryReview::class)->name('stories.review');
 
     // Toggle active status
     Route::patch('/avatars/{avatar}/toggle', function (Avatar $avatar) {
