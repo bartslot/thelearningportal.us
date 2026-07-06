@@ -273,6 +273,9 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Title screen "Start lesson" button ─────────────────────────────
     async startLesson () {
+      // Locked-mode (best effort): go fullscreen on the user's play gesture so tab/app
+      // switching takes deliberate effort. Not supported on iPhone Safari — never block.
+      document.documentElement.requestFullscreen?.().catch(() => {})
       // Unlock browser audio NOW — must happen synchronously before any await breaks the gesture chain
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext

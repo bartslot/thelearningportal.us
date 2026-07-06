@@ -71,6 +71,33 @@ class QuizLeaderboardTest extends TestCase
             ->assertJsonPath('top.0.nickname', 'Emma');
     }
 
+    public function test_integrity_telemetry_is_stored_but_only_visible_to_the_owning_teacher(): void
+    {
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'Sofie', 'score' => 20, 'correct' => 2, 'total' => 5,
+            'integrity' => ['avg_ms' => 1400, 'rapid_guesses' => 3, 'same_letter_streak' => 4, 'focus_drops' => 2],
+        ])->assertCreated();
+
+        $this->assertSame(3, QuizScore::sole()->integrity['rapid_guesses']);
+
+        // Public (student) view: no integrity keys, ever.
+        $this->getJson("/lesson/{$this->lesson->lesson_code}/leaderboard")
+            ->assertOk()
+            ->assertJsonMissingPath('top.0.integrity');
+
+        // A different logged-in teacher is still "public".
+        $other = User::factory()->create();
+        $this->actingAs($other)
+            ->getJson("/lesson/{$this->lesson->lesson_code}/leaderboard")
+            ->assertJsonMissingPath('top.0.integrity');
+
+        // The lesson's own teacher sees the flags.
+        $this->actingAs($this->lesson->teacher)
+            ->getJson("/lesson/{$this->lesson->lesson_code}/leaderboard")
+            ->assertJsonPath('top.0.integrity.rapid_guesses', 3)
+            ->assertJsonPath('top.0.integrity.focus_drops', 2);
+    }
+
     public function test_draft_lessons_have_no_leaderboard(): void
     {
         $this->lesson->update(['status' => LessonStatus::Draft]);

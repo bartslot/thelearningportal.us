@@ -47,10 +47,36 @@ export class QuizOverlay {
     this.host = hostEl
     this._questions = []
     this._index = 0
-    this._answered = new Map()   // question index -> chosen option index
+    this._answered = new Map()   // question index -> chosen DISPLAY index
     this._score = 0
     this._streak = 0
     this._onComplete = null
+    // Integrity/engagement telemetry (reported to the teacher, invisible to students)
+    this._display = []           // per question: display position -> original option index
+    this._gateUntil = new Map()  // question index -> ts when answers unlock (read-gate)
+    this._openedAt = new Map()   // question index -> ts when answers became clickable
+    this._responses = []         // {ms, displayIndex} per answered question
+    this._focusDrops = 0
+    this._gateTimer = null
+    this._onVisibility = null
+  }
+
+  // Fisher-Yates: each player sees the options in a different order, so a photographed
+  // "the answer is B" (or a bored A-A-A-A) stops meaning anything.
+  static _shuffledIndices(n) {
+    const arr = Array.from({ length: n }, (_, i) => i)
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+  }
+
+  // Reading time before answers unlock: base 2s + ~55ms per character of question+options,
+  // capped at 7s. Kills the 1-second straight-line sprint without feeling like a punishment.
+  static _readGateMs(q) {
+    const text = String(q.question || '') + (q.options || []).join('')
+    return Math.min(7000, 2000 + Math.round(text.length * 55 / 10))
   }
 
   get isVisible() { return this._questions.length > 0 }
@@ -66,6 +92,14 @@ export class QuizOverlay {
     this._submitUrl = submitUrl
     this._leaderboardUrl = leaderboardUrl
     if (!this._questions.length) { this.hide(); return }
+    this._display = this._questions.map(q => QuizOverlay._shuffledIndices((q.options || []).length || 4))
+    this._gateUntil = new Map()
+    this._openedAt = new Map()
+    this._responses = []
+    this._focusDrops = 0
+    // Focus proctoring: leaving the tab/app pauses the quiz behind a veil and is counted.
+    this._onVisibility = () => { if (document.hidden && this.isVisible) this._showFocusVeil() }
+    document.addEventListener('visibilitychange', this._onVisibility)
     this.host.style.pointerEvents = 'auto'
     this._render()
   }
@@ -74,12 +108,43 @@ export class QuizOverlay {
     this._questions = []
     this.host.innerHTML = ''
     this.host.style.pointerEvents = 'none'
+    if (this._gateTimer) { clearTimeout(this._gateTimer); this._gateTimer = null }
+    if (this._onVisibility) { document.removeEventListener('visibilitychange', this._onVisibility); this._onVisibility = null }
+  }
+
+  _showFocusVeil() {
+    this._focusDrops++
+    if (this.host.querySelector('[data-focus-veil]')) return
+    const veil = document.createElement('div')
+    veil.dataset.focusVeil = '1'
+    veil.style.cssText = `position:absolute; inset:0; z-index:20; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:14px; background:rgba(2,6,23,0.94); color:white; cursor:pointer;`
+    veil.innerHTML = `
+      <div style="font-size:42px;">&#128064;</div>
+      <div style="font-size:22px; font-weight:800;">Quiz paused</div>
+      <div style="font-size:15px; color:#94a3b8;">Stay with the story — tap to continue.</div>`
+    veil.addEventListener('click', () => veil.remove())
+    this.host.firstElementChild?.appendChild(veil) || this.host.appendChild(veil)
+  }
+
+  _integritySummary() {
+    const times = this._responses.map(r => r.ms).filter(ms => ms >= 0)
+    const avg = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0
+    const rapid = times.filter(ms => ms < 2000).length
+    let maxRun = 0, run = 0, prev = null
+    for (const r of this._responses) {
+      run = r.displayIndex === prev ? run + 1 : 1
+      prev = r.displayIndex
+      maxRun = Math.max(maxRun, run)
+    }
+    return { avg_ms: avg, rapid_guesses: rapid, same_letter_streak: maxRun, focus_drops: this._focusDrops }
   }
 
   _correctCount() {
     let n = 0
-    this._answered.forEach((chosen, i) => {
-      if (chosen === Number(this._questions[i]?.correct_index)) n++
+    this._answered.forEach((chosenDisplay, i) => {
+      const mapping = this._display[i] || []
+      if (mapping[chosenDisplay] === Number(this._questions[i]?.correct_index)) n++
     })
     return n
   }
@@ -88,13 +153,29 @@ export class QuizOverlay {
     const q = this._questions[this._index]
     if (!q) return
     const total = this._questions.length
-    const chosen = this._answered.get(this._index)
+    const chosen = this._answered.get(this._index)   // DISPLAY index
     const answered = chosen !== undefined
-    const wasCorrect = answered && chosen === Number(q.correct_index)
-    const options = (q.options || []).slice(0, 4)
+    const mapping = this._display[this._index] || (q.options || []).map((_, i) => i)
+    const wasCorrect = answered && mapping[chosen] === Number(q.correct_index)
+
+    // Read-gate: answers unlock only after a reading delay (first arrival on the question).
+    if (!answered && !this._gateUntil.has(this._index)) {
+      this._gateUntil.set(this._index, performance.now() + QuizOverlay._readGateMs(q))
+    }
+    const gateLeft = answered ? 0 : Math.max(0, (this._gateUntil.get(this._index) ?? 0) - performance.now())
+    const gated = gateLeft > 50
+    if (!gated && !answered && !this._openedAt.has(this._index)) {
+      this._openedAt.set(this._index, performance.now())
+    }
+    if (gated) {
+      if (this._gateTimer) clearTimeout(this._gateTimer)
+      this._gateTimer = setTimeout(() => this._render(), Math.min(gateLeft + 30, 500))
+    }
+
+    const options = mapping.map(originalIndex => (q.options || [])[originalIndex]).slice(0, 4)
 
     const optionsHtml = options.map((opt, i) => {
-      const isCorrect = i === Number(q.correct_index)
+      const isCorrect = mapping[i] === Number(q.correct_index)
       let bg = 'rgba(255,255,255,0.06)', border = 'rgba(255,255,255,0.12)', anim = ''
       if (answered && isCorrect) {
         bg = 'rgba(16,185,129,0.28)'; border = '#10b981'
@@ -105,11 +186,12 @@ export class QuizOverlay {
         if (effects?.kind === 'wrong') anim = 'qz-wrong'
       }
       return `
-        <button data-opt="${i}" ${answered ? 'disabled' : ''} class="${anim}"
+        <button data-opt="${i}" ${answered || gated ? 'disabled' : ''} class="${anim}"
                 style="position:relative; display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-                       padding:12px 16px; border-radius:14px; cursor:${answered ? 'default' : 'pointer'};
+                       padding:12px 16px; border-radius:14px; cursor:${answered ? 'default' : (gated ? 'wait' : 'pointer')};
                        background:${bg}; border:1.5px solid ${border}; color:#f1f5f9; font-size:17px;
-                       transition:background 0.15s, border-color 0.15s, transform 0.1s;"
+                       opacity:${gated ? 0.45 : 1};
+                       transition:background 0.15s, border-color 0.15s, transform 0.1s, opacity 0.3s;"
                 onpointerdown="if(!this.disabled) this.style.transform='scale(0.985)'"
                 onpointerup="this.style.transform=''" onpointerleave="this.style.transform=''">
           <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;
@@ -163,6 +245,9 @@ export class QuizOverlay {
                 color:#fbbf24; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
                 Sneak peek — this comes later in the story</div>` : ''}
           <div style="font-size:22px; font-weight:600; line-height:1.35; margin-bottom:20px;">${this._escape(q.question)}</div>
+          ${gated ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; color:#94a3b8; font-size:13px;">
+              <span class="loading loading-ring loading-xs" style="color:#f59e0b;"></span>
+              Read the question&hellip; answers unlock in ${Math.ceil(gateLeft / 1000)}s</div>` : ''}
           <div style="display:flex; flex-direction:column; gap:10px;">${optionsHtml}</div>
           ${feedback}
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:24px;">
@@ -199,11 +284,18 @@ export class QuizOverlay {
     if (effects?.kind === 'correct') this._playCorrectEffects(effects)
   }
 
-  _answer(optionIndex, buttonEl) {
+  _answer(displayIndex, buttonEl) {
     if (this._answered.has(this._index)) return
+    if ((this._gateUntil.get(this._index) ?? 0) > performance.now() + 50) return   // still gated
     const q = this._questions[this._index]
-    const correct = optionIndex === Number(q.correct_index)
-    this._answered.set(this._index, optionIndex)
+    const mapping = this._display[this._index] || (q.options || []).map((_, i) => i)
+    const correct = mapping[displayIndex] === Number(q.correct_index)
+    this._answered.set(this._index, displayIndex)
+    const openedAt = this._openedAt.get(this._index)
+    this._responses.push({
+      ms: openedAt !== undefined ? Math.round(performance.now() - openedAt) : -1,
+      displayIndex,
+    })
 
     if (correct) {
       this._streak++
@@ -350,7 +442,7 @@ export class QuizOverlay {
         const res = await fetch(this._submitUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-          body: JSON.stringify({ nickname, score: this._score, correct, total }),
+          body: JSON.stringify({ nickname, score: this._score, correct, total, integrity: this._integritySummary() }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()

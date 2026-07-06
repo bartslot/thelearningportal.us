@@ -37,6 +37,11 @@ class QuizLeaderboardController extends Controller
             'score' => ['required', 'integer', 'min:0'],
             'correct' => ['required', 'integer', 'min:0', 'max:50'],
             'total' => ['required', 'integer', 'min:1', 'max:50'],
+            'integrity' => ['sometimes', 'array'],
+            'integrity.avg_ms' => ['sometimes', 'integer', 'min:0'],
+            'integrity.rapid_guesses' => ['sometimes', 'integer', 'min:0', 'max:50'],
+            'integrity.same_letter_streak' => ['sometimes', 'integer', 'min:0', 'max:50'],
+            'integrity.focus_drops' => ['sometimes', 'integer', 'min:0', 'max:500'],
         ]);
 
         // Sanity clamp — the client is untrusted; cap at the maximum theoretically earnable.
@@ -50,6 +55,10 @@ class QuizLeaderboardController extends Controller
             'score' => $score,
             'correct' => $correct,
             'total' => (int) $data['total'],
+            'integrity' => collect($data['integrity'] ?? [])
+                ->only(['avg_ms', 'rapid_guesses', 'same_letter_streak', 'focus_drops'])
+                ->map(fn ($value) => (int) $value)
+                ->all() ?: null,
         ]);
 
         // Rank = players strictly ahead + 1 (ties share the better rank; earlier entry wins).
@@ -72,20 +81,23 @@ class QuizLeaderboardController extends Controller
             ->firstOrFail();
     }
 
-    /** @return array{top: list<array{nickname: string, score: int, correct: int, total: int}>, players: int} */
+    /** @return array{top: list<array<string, mixed>>, players: int} */
     private function leaderboardPayload(Lesson $lesson): array
     {
+        // Integrity flags are teacher-eyes only: never on the public board, never to students.
+        $isOwningTeacher = auth()->id() !== null && auth()->id() === $lesson->teacher_id;
+
         $top = QuizScore::where('lesson_id', $lesson->id)
             ->orderByDesc('score')
             ->orderBy('id')
             ->limit(self::TOP_N)
-            ->get(['nickname', 'score', 'correct', 'total'])
+            ->get(['nickname', 'score', 'correct', 'total', 'integrity'])
             ->map(fn (QuizScore $row) => [
                 'nickname' => $row->nickname,
                 'score' => $row->score,
                 'correct' => $row->correct,
                 'total' => $row->total,
-            ])
+            ] + ($isOwningTeacher ? ['integrity' => $row->integrity] : []))
             ->all();
 
         return ['top' => $top, 'players' => QuizScore::where('lesson_id', $lesson->id)->count()];
