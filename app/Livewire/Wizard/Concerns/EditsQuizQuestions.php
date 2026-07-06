@@ -11,10 +11,11 @@ use Illuminate\Support\Facades\DB;
 /**
  * Quiz-question editing for the scene configurator's Quiz inspector.
  *
- * Questions are lesson-level (the quiz_questions table has no per-scene split), so the draft mirrors
- * the lesson's whole pool. Each question carries up to four options (A/B/C/D) and a 0-based
- * correct_index — the exact shape QuizPrompt writes and StudentLessonController reads. The teacher
- * previously only saw the intro narration script here, never the questions; this makes them editable.
+ * Questions belong to their quiz scene (quiz_questions.scene_id) because lessons are
+ * chronological: each segment may only test the narration BEFORE it. The draft mirrors the
+ * selected segment's set (legacy scene-less pools still load). Each question carries up to
+ * four options (A/B/C/D) and a 0-based correct_index — the shape QuizPrompt writes and
+ * StudentLessonController reads.
  */
 trait EditsQuizQuestions
 {
@@ -57,12 +58,20 @@ trait EditsQuizQuestions
         $this->loadQuizDraft();
     }
 
-    /** Pull the lesson's quiz questions into the draft, padded to four option slots each. */
+    /**
+     * Pull THIS quiz scene's questions into the draft (chronology-scoped per segment),
+     * padded to four option slots each. Legacy lessons keep a scene-less pool.
+     */
     public function loadQuizDraft(): void
     {
         $this->quizErrors = [];
         $this->quizSaved = false;
-        $this->quizDraft = $this->lesson->quizQuestions()->orderBy('order')->get()
+        $query = $this->lesson->quizQuestions();
+        if ($this->quizDraftSceneId) {
+            $scoped = (clone $query)->where('scene_id', $this->quizDraftSceneId);
+            $query = $scoped->exists() ? $scoped : $query->whereNull('scene_id');
+        }
+        $this->quizDraft = $query->orderBy('order')->get()
             ->map(fn (QuizQuestion $q) => [
                 'id' => $q->id,
                 'question' => (string) $q->question,
@@ -167,6 +176,7 @@ trait EditsQuizQuestions
                     $this->lesson->load('scenes'),
                     $existing,
                     (string) ($this->quizDraft[$index]['question'] ?? ''),
+                    $this->taughtScenesForQuiz(),
                 ),
             );
         } catch (\Throwable $e) {
@@ -330,9 +340,14 @@ trait EditsQuizQuestions
         }
 
         DB::transaction(function () use ($clean) {
-            $this->lesson->quizQuestions()->delete();
+            // Replace only THIS segment's questions — other quiz scenes keep theirs.
+            $this->lesson->quizQuestions()
+                ->when($this->quizDraftSceneId,
+                    fn ($q) => $q->where(fn ($w) => $w->where('scene_id', $this->quizDraftSceneId)->orWhereNull('scene_id')))
+                ->delete();
             foreach ($clean as $order => $row) {
                 $this->lesson->quizQuestions()->create([
+                    'scene_id' => $this->quizDraftSceneId,
                     'order' => $order,
                     'question' => $row['question'],
                     'options' => $row['options'],
@@ -351,6 +366,23 @@ trait EditsQuizQuestions
     public function saveQuiz(): void
     {
         $this->autosaveQuiz();
+    }
+
+    /**
+     * The narration the student has heard BEFORE this quiz segment — the only material a
+     * question may test. Null when no quiz scene is selected (fall back to the whole lesson).
+     */
+    private function taughtScenesForQuiz(): ?\Illuminate\Support\Collection
+    {
+        $quizScene = $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null;
+        if (! $quizScene) {
+            return null;
+        }
+
+        return $this->lesson->scenes
+            ->filter(fn (Scene $scene) => $scene->kind === 'narration' && $scene->order < $quizScene->order)
+            ->sortBy('order')
+            ->values();
     }
 
     /** Pad/truncate an options list to exactly four slots so the editor always shows A/B/C/D. */

@@ -38,7 +38,7 @@
         'region'                => $lesson->region,
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
-        'quiz_questions'        => $lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values(),
+        'quiz_questions'        => $lesson->quizQuestions->whereNull('scene_id')->map->only(['question', 'options', 'correct_index', 'explanation'])->values(),
         'quiz_timing'           => $lesson->quiz_timing,
         'cover_image_url'       => $lesson->titleBgUrl() ?? $lesson->cardImageUrl(),
         'title_bg_url'          => $lesson->titleBgUrl(),
@@ -65,6 +65,10 @@
                 'alignment'   => $s->audio_alignment ?: null,
                 'duration_seconds' => $s->duration_seconds,
                 'background_color' => $s->background_color,
+                'quiz_questions' => $s->kind === 'game'
+                    ? ($lesson->quizQuestions->where('scene_id', $s->id)->values()->whenEmpty(fn () => $lesson->quizQuestions->whereNull('scene_id')->values()))
+                        ->map->only(['question', 'options', 'correct_index', 'explanation'])->values()
+                    : null,
                 'kb_animated' => (bool) ($s->kb_animated ?? true),
                 'kb_direction' => $s->kb_direction,
               ])->values()

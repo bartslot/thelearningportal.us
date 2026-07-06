@@ -11,6 +11,7 @@ class QuizQuestion extends Model
 {
     protected $fillable = [
         'lesson_id',
+        'scene_id',
         'order',
         'question',
         'options',
@@ -31,6 +32,12 @@ class QuizQuestion extends Model
     public function lesson(): BelongsTo
     {
         return $this->belongsTo(Lesson::class);
+    }
+
+    /** The quiz segment (game scene) this question belongs to; null = legacy lesson-level pool. */
+    public function scene(): BelongsTo
+    {
+        return $this->belongsTo(Scene::class);
     }
 
     public function isCorrect(int $answerIndex): bool

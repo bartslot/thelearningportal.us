@@ -48,9 +48,10 @@ SYS;
     /**
      * @param  list<string>  $existingQuestions
      */
-    public static function questionUser(Lesson $lesson, array $existingQuestions, string $teacherQuestion = ''): string
+    public static function questionUser(Lesson $lesson, array $existingQuestions, string $teacherQuestion = '', $scenes = null): string
     {
-        $combined = $lesson->scenes->pluck('script_segment')->filter()->implode("\n\n");
+        // Chronology: only the narration the student has heard before this quiz segment.
+        $combined = ($scenes ?? $lesson->scenes)->pluck('script_segment')->filter()->implode("\n\n");
 
         $objectives = collect($lesson->outline['learning_objectives'] ?? [])
             ->map(fn (array $objective) => '- '.($objective['text'] ?? ''))
@@ -69,7 +70,7 @@ SYS;
 Lesson topic: {$lesson->topic}
 Grade: {$lesson->grade_level}
 
-{$objectivesBlock}{$existingBlock}{$teacherBlock}Narration:
+{$objectivesBlock}{$existingBlock}{$teacherBlock}Narration the student has heard so far (test ONLY this):
 {$combined}
 
 Write the question JSON now.

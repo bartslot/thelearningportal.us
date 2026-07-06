@@ -1068,8 +1068,9 @@ Alpine.data('lessonGame', (lesson) => ({
         this.canResumeAfterGame = this._gameResumeIndex < _sceneQueue.length
         // Quiz segments show the actual questions inline (navigable card overlay);
         // the timer/teams flow below belongs to strategy games only.
-        if (scene.game_type === 'quiz' && lesson.quiz_questions?.length) {
-          this._beginQuizFlow()
+        const segmentQuestions = scene.quiz_questions?.length ? scene.quiz_questions : lesson.quiz_questions
+        if (scene.game_type === 'quiz' && segmentQuestions?.length) {
+          this._beginQuizFlow(segmentQuestions)
           return
         }
         this._beginGameFlow(scene)
@@ -1096,13 +1097,13 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // Quiz segment: step through the lesson's questions in the card overlay, then
     // resume the story where it left off.
-    async _beginQuizFlow () {
+    async _beginQuizFlow (questions) {
       const host = document.getElementById('lesson-game-overlay')
       if (!host) { this._resumeAfterQuiz(); return }
       const { QuizOverlay } = await import('./scene/QuizOverlay.js')
       this._quizOverlay = this._quizOverlay || new QuizOverlay(host)
       this._quizOverlay.show({
-        questions: lesson.quiz_questions,
+        questions: questions || lesson.quiz_questions,
         submitUrl: lesson.quiz_score_url || null,
         leaderboardUrl: lesson.leaderboard_url || null,
         onComplete: () => this._resumeAfterQuiz(),

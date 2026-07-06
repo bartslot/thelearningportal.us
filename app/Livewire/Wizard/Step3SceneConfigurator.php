@@ -138,7 +138,9 @@ class Step3SceneConfigurator extends Component
             'quizQuestionCount' => $scene->quiz_question_count,
             // Quiz scenes preview their actual questions on the canvas.
             'quizQuestions' => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
-                ? $this->lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
+                ? $this->lesson->quizQuestions->where('scene_id', $scene->id)->values()
+                    ->whenEmpty(fn () => $this->lesson->quizQuestions->whereNull('scene_id')->values())
+                    ->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
                 : [],
             'quizTiming' => $scene->quiz_timing,
             'strategyGameId' => $scene->strategy_game_id,

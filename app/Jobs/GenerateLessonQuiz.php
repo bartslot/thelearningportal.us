@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\QuizQuestion;
+use App\Models\Scene;
 use App\Services\OpenAiLlmService;
 use App\Services\QuizPrompt;
 use Illuminate\Bus\Queueable;
@@ -14,15 +15,22 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * Chronology-aware quiz generation. Lessons play as a story, so each quiz segment may
+ * only test the narration that comes BEFORE it in the timeline — never facts the
+ * student hasn't heard yet. Questions are stored per quiz scene (scene_id); lessons
+ * without a quiz scene keep a lesson-level pool (scene_id null).
+ */
 class GenerateLessonQuiz implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries   = 3;
-    public int $timeout = 120;
+    public int $timeout = 240;
 
     /** Two stems whose first N chars match are near-duplicates (padding, not assessment). */
     private const DUPLICATE_STEM_PREFIX = 40;
@@ -42,23 +50,88 @@ class GenerateLessonQuiz implements ShouldQueue
         // the question set, not append duplicates on top of the previous run.
         QuizQuestion::where('lesson_id', $lesson->id)->delete();
 
-        // One validation retry: reject question sets with uncovered objectives, duplicate
-        // stems, or malformed entries before they ever reach a student.
+        $quizScenes = $lesson->scenes
+            ->filter(fn (Scene $scene) => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz')
+            ->sortBy('order')
+            ->values();
+
+        if ($quizScenes->isEmpty()) {
+            // No quiz segment in the timeline — lesson-level pool from the full story.
+            $narration = $lesson->scenes->where('kind', 'narration')->sortBy('order')->values();
+            $this->generateSet($llm, $lesson, $narration, $this->objectivesFor($lesson, $narration), null, null);
+        } else {
+            $previousQuizOrder = null;
+            foreach ($quizScenes as $quizScene) {
+                // Everything the student has heard by the time this quiz starts.
+                $taught = $lesson->scenes
+                    ->filter(fn (Scene $scene) => $scene->kind === 'narration' && $scene->order < $quizScene->order)
+                    ->sortBy('order')
+                    ->values();
+
+                if ($taught->isEmpty() || $taught->pluck('script_segment')->filter()->isEmpty()) {
+                    Log::warning("GenerateLessonQuiz #{$lesson->id}: quiz scene {$quizScene->order} has no preceding narration — skipped.");
+                    $previousQuizOrder = $quizScene->order;
+
+                    continue;
+                }
+
+                // Later segments prefer fresh material but may reinforce earlier content.
+                $focus = $previousQuizOrder !== null
+                    ? 'This is a later checkpoint: prefer the narration AFTER the previous quiz, '
+                      .'but reinforcing earlier material is allowed.'
+                    : '';
+
+                $this->generateSet(
+                    $llm,
+                    $lesson,
+                    $taught,
+                    $this->objectivesFor($lesson, $taught),
+                    $quizScene,
+                    (int) ($quizScene->quiz_question_count ?: QuizPrompt::DEFAULT_QUESTION_COUNT),
+                    $focus,
+                );
+
+                $previousQuizOrder = $quizScene->order;
+            }
+        }
+
+        $lesson->update(['status' => LessonStatus::ScenesReady]);
+    }
+
+    /**
+     * Generate + validate one question set (one validation retry), then persist it.
+     *
+     * @param  Collection<int, Scene>  $taught
+     * @param  list<array<string, mixed>>  $objectives
+     */
+    private function generateSet(
+        OpenAiLlmService $llm,
+        Lesson $lesson,
+        Collection $taught,
+        array $objectives,
+        ?Scene $quizScene,
+        ?int $count,
+        string $focus = '',
+    ): void {
+        $count ??= max(QuizPrompt::DEFAULT_QUESTION_COUNT, count($objectives));
+
         $questions = [];
         foreach ([1, 2] as $attempt) {
             $result = $llm->json(
-                system: QuizPrompt::system($lesson),
-                user:   QuizPrompt::user($lesson),
+                system: QuizPrompt::system($lesson, $count),
+                user:   QuizPrompt::user($lesson, $taught, $objectives, $focus),
             );
 
             $questions = $this->validQuestions($result['questions'] ?? []);
-            $problems = $this->problems($lesson, $questions);
+            $problems = $this->problems($questions, $objectives);
 
             if ($problems === []) {
                 break;
             }
 
-            Log::warning("GenerateLessonQuiz #{$lesson->id}: attempt {$attempt} rejected", ['problems' => $problems]);
+            Log::warning("GenerateLessonQuiz #{$lesson->id}: attempt {$attempt} rejected", [
+                'scene' => $quizScene?->order, 'problems' => $problems,
+            ]);
         }
 
         if ($questions === []) {
@@ -68,6 +141,7 @@ class GenerateLessonQuiz implements ShouldQueue
         foreach (array_values($questions) as $index => $q) {
             QuizQuestion::create([
                 'lesson_id'     => $lesson->id,
+                'scene_id'      => $quizScene?->id,
                 'order'         => $index + 1,
                 'question'      => (string) $q['question'],
                 'options'       => $q['options'],
@@ -75,8 +149,43 @@ class GenerateLessonQuiz implements ShouldQueue
                 'explanation'   => isset($q['explanation']) ? (string) $q['explanation'] : null,
             ]);
         }
+    }
 
-        $lesson->update(['status' => LessonStatus::ScenesReady]);
+    /**
+     * The learning objectives actually TAUGHT by the given scenes, resolved through the
+     * outline briefs' objective_ids (briefs align with non-map scenes by position). An
+     * objective introduced after the quiz must not be demanded by the coverage validator.
+     * Falls back to all objectives when briefs carry no objective_ids (older outlines).
+     *
+     * @param  Collection<int, Scene>  $scenes
+     * @return list<array<string, mixed>>
+     */
+    private function objectivesFor(Lesson $lesson, Collection $scenes): array
+    {
+        $allObjectives = collect($lesson->outline['learning_objectives'] ?? []);
+        if ($allObjectives->isEmpty()) {
+            return [];
+        }
+
+        $briefs = array_values($lesson->outline['scene_briefs'] ?? []);
+        $nonMap = $lesson->scenes->where('kind', '!=', 'map')->sortBy('order')->values();
+
+        $taughtIds = [];
+        foreach ($scenes as $scene) {
+            $position = $nonMap->search(fn (Scene $candidate) => $candidate->id === $scene->id);
+            foreach ((array) ($briefs[$position]['objective_ids'] ?? []) as $objectiveId) {
+                $taughtIds[$objectiveId] = true;
+            }
+        }
+
+        if ($taughtIds === []) {
+            return $allObjectives->all();
+        }
+
+        return $allObjectives
+            ->filter(fn (array $objective) => isset($taughtIds[$objective['id'] ?? '']))
+            ->values()
+            ->all();
     }
 
     /**
@@ -98,12 +207,13 @@ class GenerateLessonQuiz implements ShouldQueue
     }
 
     /**
-     * Pedagogical validation: every outline objective covered, no near-duplicate stems.
+     * Pedagogical validation: every TAUGHT objective covered, no near-duplicate stems.
      *
      * @param  list<array<string, mixed>>  $questions
+     * @param  list<array<string, mixed>>  $objectives
      * @return list<string>
      */
-    private function problems(Lesson $lesson, array $questions): array
+    private function problems(array $questions, array $objectives): array
     {
         $problems = [];
 
@@ -111,8 +221,7 @@ class GenerateLessonQuiz implements ShouldQueue
             return ['no structurally valid questions'];
         }
 
-        $objectiveIds = collect($lesson->outline['learning_objectives'] ?? [])
-            ->pluck('id')->filter()->all();
+        $objectiveIds = collect($objectives)->pluck('id')->filter()->all();
         if ($objectiveIds !== []) {
             $covered = collect($questions)->pluck('objective_id')->filter()->unique()->all();
             $uncovered = array_values(array_diff($objectiveIds, $covered));

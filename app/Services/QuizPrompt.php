@@ -55,9 +55,9 @@ TXT;
         return (int) ($config['quiz_difficulty'] ?? self::DIFFICULTY_MEDIUM);
     }
 
-    public static function system(Lesson $lesson): string
+    public static function system(Lesson $lesson, ?int $count = null): string
     {
-        $count = self::questionCount($lesson);
+        $count ??= self::questionCount($lesson);
         $language = LessonScriptPrompt::contentLanguage($lesson);
         $difficulty = self::difficultyClause(self::difficultyFor($lesson));
         $lengthRules = self::LENGTH_RULES;
@@ -97,22 +97,35 @@ Rules — all mandatory:
 SYS;
     }
 
-    public static function user(Lesson $lesson): string
+    /**
+     * Lessons are chronological stories: a quiz segment may ONLY test the narration the
+     * student has already heard. $scenes = the taught-so-far scenes (null = whole lesson);
+     * $objectives = the objectives those scenes teach; $focus = optional hint for later
+     * segments ("focus on the most recent part").
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Scene>|null  $scenes
+     * @param  list<array{id?: string, text?: string}>|null  $objectives
+     */
+    public static function user(Lesson $lesson, $scenes = null, ?array $objectives = null, string $focus = ''): string
     {
-        $combined = $lesson->scenes->pluck('script_segment')->filter()->implode("\n\n");
+        $scenes ??= $lesson->scenes;
+        $combined = $scenes->pluck('script_segment')->filter()->implode("\n\n");
 
-        $objectives = collect($lesson->outline['learning_objectives'] ?? [])
+        $objectives ??= $lesson->outline['learning_objectives'] ?? [];
+        $objectivesList = collect($objectives)
             ->map(fn (array $objective) => '- '.($objective['id'] ?? '?').': '.($objective['text'] ?? ''))
             ->implode("\n");
-        $objectivesBlock = $objectives !== ''
-            ? "Learning objectives (every one must be tested):\n{$objectives}\n\n"
+        $objectivesBlock = $objectivesList !== ''
+            ? "Learning objectives (every one must be tested):\n{$objectivesList}\n\n"
             : '';
+
+        $focusBlock = $focus !== '' ? "{$focus}\n\n" : '';
 
         return <<<USR
 Lesson topic: {$lesson->topic}
 Grade: {$lesson->grade_level}
 
-{$objectivesBlock}Combined narration:
+{$objectivesBlock}{$focusBlock}Narration the student has heard SO FAR (test ONLY this — never ask about anything beyond it):
 {$combined}
 USR;
     }

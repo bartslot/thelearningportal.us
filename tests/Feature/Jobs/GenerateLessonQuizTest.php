@@ -45,6 +45,58 @@ class GenerateLessonQuizTest extends TestCase
         $this->assertSame(LessonStatus::ScenesReady, $lesson->fresh()->status);
     }
 
+    public function test_mid_lesson_quiz_only_tests_scenes_that_came_before_it(): void
+    {
+        $teacher = User::factory()->create();
+        $lesson  = Lesson::create([
+            'teacher_id' => $teacher->id,
+            'topic' => 'Napoleon', 'subject' => 'history', 'grade_level' => '8',
+            'status' => LessonStatus::ScenesGenerating,
+            'outline' => [
+                'learning_objectives' => [
+                    ['id' => 'LO1', 'text' => 'Explain the rise.'],
+                    ['id' => 'LO2', 'text' => 'Explain the fall.'],
+                ],
+                'scene_briefs' => [
+                    ['order' => 1, 'kind' => 'narration', 'objective_ids' => ['LO1']],
+                    ['order' => 2, 'kind' => 'game'],
+                    ['order' => 3, 'kind' => 'narration', 'objective_ids' => ['LO2']],
+                ],
+            ],
+        ]);
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Napoleon RISES to power in France.', 'status' => 'ready']);
+        $quizScene = Scene::create(['lesson_id' => $lesson->id, 'order' => 2, 'kind' => 'game',
+            'game_type' => 'quiz', 'quiz_question_count' => 2, 'status' => 'ready']);
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 3, 'kind' => 'narration',
+            'script_segment' => 'Napoleon FALLS at Waterloo.', 'status' => 'ready']);
+
+        $capturedPrompt = '';
+        $this->mock(OpenAiLlmService::class, function ($mock) use (&$capturedPrompt): void {
+            $mock->shouldReceive('json')->once()
+                ->withArgs(function ($system, $user) use (&$capturedPrompt) {
+                    $capturedPrompt = $user;
+
+                    return true;
+                })
+                ->andReturn(['questions' => [
+                    ['order' => 1, 'objective_id' => 'LO1', 'question' => 'Where did Napoleon rise?', 'options' => ['France','Spain','Italy','Prussia'], 'correct_index' => 0],
+                    ['order' => 2, 'objective_id' => 'LO1', 'question' => 'What did he gain?', 'options' => ['Power','Peace','Land','Gold'], 'correct_index' => 0],
+                ]]);
+        });
+
+        (new GenerateLessonQuiz($lesson->id))->handle(app(OpenAiLlmService::class));
+
+        // The prompt sees only the PRE-quiz narration — never the Waterloo scene.
+        $this->assertStringContainsString('RISES to power', $capturedPrompt);
+        $this->assertStringNotContainsString('Waterloo', $capturedPrompt);
+        // Only the taught objective (LO1) is demanded; LO2 comes after the quiz.
+        $this->assertStringContainsString('LO1', $capturedPrompt);
+        $this->assertStringNotContainsString('LO2', $capturedPrompt);
+        // Questions belong to their segment.
+        $this->assertSame(2, QuizQuestion::where('scene_id', $quizScene->id)->count());
+    }
+
     public function test_retries_once_when_an_objective_is_left_untested(): void
     {
         $teacher = User::factory()->create();
