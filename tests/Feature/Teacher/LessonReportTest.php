@@ -68,4 +68,20 @@ class LessonReportTest extends TestCase
 
         $response->assertFileDownloaded();
     }
+
+    public function test_csv_export_neutralizes_formula_injection_in_nickname(): void
+    {
+        QuizScore::create([
+            'lesson_id' => $this->lesson->id, 'nickname' => '=1+1', 'score' => 10, 'correct' => 1, 'total' => 1,
+        ]);
+
+        $response = Livewire::actingAs($this->teacher)
+            ->test(LessonReport::class, ['lesson' => $this->lesson])
+            ->call('exportCsv');
+
+        $csv = base64_decode((string) data_get($response->effects, 'download.content'));
+
+        $this->assertStringContainsString("'=1+1", $csv);
+        $this->assertDoesNotMatchRegularExpression('/(?:^|,)=1\+1(?:,|$)/m', $csv);
+    }
 }

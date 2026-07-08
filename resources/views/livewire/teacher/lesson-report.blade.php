@@ -61,7 +61,7 @@
             </div>
             <div>
                 <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider opacity-60">{{ __('Difficult questions') }}</h2>
-                @php $difficult = collect($this->questionBreakdown)->filter(fn ($q) => $q['correct_pct'] < \App\Services\LessonResults::DIFFICULT_BELOW_PCT)->values(); @endphp
+                @php $difficult = collect($this->difficult); @endphp
                 <div class="space-y-2">
                     @forelse ($difficult as $q)
                         <div class="rounded-xl border border-base-300 p-3">

@@ -21,6 +21,10 @@ class LessonReport extends Component
 
     public ?int $openScoreId = null;           // players tab drill-down
 
+    private ?LessonResults $resultsCache = null;
+
+    private ?string $resultsCacheKey = null;
+
     public function mount(Lesson $lesson): void
     {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
@@ -29,12 +33,18 @@ class LessonReport extends Component
 
     private function results(): LessonResults
     {
-        return new LessonResults(
-            $this->lesson,
-            $this->classroomId,
-            $this->range === 'all' ? null : now()->subDays((int) $this->range),
-            null,
-        );
+        $key = $this->classroomId.'|'.$this->range;
+        if ($this->resultsCache === null || $this->resultsCacheKey !== $key) {
+            $this->resultsCache = new LessonResults(
+                $this->lesson,
+                $this->classroomId,
+                $this->range === 'all' ? null : now()->subDays((int) $this->range),
+                null,
+            );
+            $this->resultsCacheKey = $key;
+        }
+
+        return $this->resultsCache;
     }
 
     #[Computed]
@@ -47,6 +57,12 @@ class LessonReport extends Component
     public function questionBreakdown(): array
     {
         return $this->results()->questionBreakdown();
+    }
+
+    #[Computed]
+    public function difficult(): array
+    {
+        return $this->results()->difficultQuestions();
     }
 
     #[Computed]
@@ -78,6 +94,12 @@ class LessonReport extends Component
         $this->dispatch('toast', message: 'Re-quiz coming in the next task.', type: 'info');
     }
 
+    /** Neutralize spreadsheet formula-injection: a leading =,+,-,@ makes Excel/Sheets execute the cell. */
+    private static function csvSafe(string $value): string
+    {
+        return preg_match('/^[=+\-@]/', $value) ? "'".$value : $value;
+    }
+
     public function exportCsv(): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $players = $this->results()->players();
@@ -88,7 +110,7 @@ class LessonReport extends Component
             fputcsv($out, ['name', 'score', 'correct', 'total', 'correct_pct', 'needs_help', 'source', 'played_at']);
             foreach ($players as $row) {
                 fputcsv($out, [
-                    $row['name'], $row['score'], $row['correct'], $row['total'],
+                    self::csvSafe((string) $row['name']), $row['score'], $row['correct'], $row['total'],
                     $row['pct'], $row['needs_help'] ? 'yes' : 'no', $row['source'], $row['played_at'],
                 ]);
             }
