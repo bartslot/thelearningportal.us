@@ -72,4 +72,58 @@ class LessonResultsTest extends TestCase
         $this->assertTrue($daan['needs_help']);
         $this->assertCount(2, $results->drilldown($daan['score_id']));
     }
+
+    public function test_legacy_scores_without_answer_snapshots_fall_back_to_aggregate(): void
+    {
+        // total=0, no answers → gradableRate is null → excluded from needs_help.
+        $noTotal = QuizScore::create(['lesson_id' => $this->lesson->id, 'nickname' => 'Zero T.', 'score' => 0, 'correct' => 0, 'total' => 0]);
+
+        // total=2, correct=1, no answer snapshots → falls back to correct/total = 50%, not < 50 so NOT needs-help.
+        $legacy = QuizScore::create(['lesson_id' => $this->lesson->id, 'nickname' => 'Leg Acy.', 'score' => 10, 'correct' => 1, 'total' => 2]);
+
+        $results = new LessonResults($this->lesson);
+        $players = collect($results->players());
+
+        $zeroRow = $players->firstWhere('name', 'Zero T.');
+        $this->assertNull($zeroRow['pct']);
+        $this->assertFalse($zeroRow['needs_help']);
+
+        $legacyRow = $players->firstWhere('name', 'Leg Acy.');
+        $this->assertSame(50, $legacyRow['pct']);
+        $this->assertFalse($legacyRow['needs_help']);
+
+        $overviewNeedsHelp = array_column($results->overview()['needs_help'], 'name');
+        $this->assertNotContains('Zero T.', $overviewNeedsHelp);
+        $this->assertNotContains('Leg Acy.', $overviewNeedsHelp);
+    }
+
+    public function test_avg_correct_pct_is_answer_weighted_not_player_averaged(): void
+    {
+        $teacher = User::factory()->create();
+        $lesson = Lesson::create([
+            'teacher_id' => $teacher->id, 'topic' => 'Y', 'subject' => 'history',
+            'grade_level' => '8', 'status' => LessonStatus::Published,
+        ]);
+
+        // Player A: 4 non-ahead answers, 3 correct.
+        $a = QuizScore::create(['lesson_id' => $lesson->id, 'nickname' => 'A.', 'score' => 30, 'correct' => 3, 'total' => 4]);
+        foreach ([true, true, true, false] as $i => $correct) {
+            QuizAnswer::create([
+                'quiz_score_id' => $a->id, 'question_order' => $i + 1, 'question_text' => "A{$i}?",
+                'chosen_text' => 'x', 'correct_text' => 'x', 'was_correct' => $correct, 'asks_ahead' => false,
+            ]);
+        }
+
+        // Player B: 1 non-ahead answer, 0 correct.
+        $b = QuizScore::create(['lesson_id' => $lesson->id, 'nickname' => 'B.', 'score' => 0, 'correct' => 0, 'total' => 1]);
+        QuizAnswer::create([
+            'quiz_score_id' => $b->id, 'question_order' => 1, 'question_text' => 'B0?',
+            'chosen_text' => 'x', 'correct_text' => 'y', 'was_correct' => false, 'asks_ahead' => false,
+        ]);
+
+        $overview = (new LessonResults($lesson))->overview();
+
+        // 3 correct of 5 total answers → 60%, NOT mean(75%, 0%) = 38%.
+        $this->assertSame(60, $overview['avg_correct_pct']);
+    }
 }

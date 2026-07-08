@@ -28,10 +28,13 @@ final class LessonResults
         private readonly ?CarbonInterface $to = null,
     ) {}
 
+    /** @var \Illuminate\Support\Collection<int, QuizScore>|null */
+    private ?\Illuminate\Support\Collection $scoresCache = null;
+
     /** @return Collection<int, QuizScore> */
     private function scores(): Collection
     {
-        return QuizScore::with(['answers', 'member'])
+        return $this->scoresCache ??= QuizScore::with(['answers', 'member'])
             ->where('lesson_id', $this->lesson->id)
             ->when($this->classroomId, fn ($q) => $q->whereHas(
                 'member', fn ($m) => $m->where('classroom_id', $this->classroomId),
@@ -60,6 +63,8 @@ final class LessonResults
         $scores = $this->scores();
 
         $gradable = $scores->flatMap(fn (QuizScore $s) => $s->answers->where('asks_ahead', false));
+        // Answer-weighted, not player-averaged: correct answers ÷ total gradable answers across
+        // all players. Intentional — a strong minority should not get averaged away by weaker players.
         $avg = $gradable->isNotEmpty()
             ? (int) round($gradable->where('was_correct', true)->count() / $gradable->count() * 100)
             : 0;
