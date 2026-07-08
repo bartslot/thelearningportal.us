@@ -32,6 +32,11 @@
             'pattern' => 'teacher.dashboard',
         ];
         $items[] = [
+            'label' => 'Classes',
+            'route' => 'teacher.classes.index',
+            'pattern' => 'teacher.classes.*',
+        ];
+        $items[] = [
             'label' => 'Results',
             'route' => 'teacher.results.hub',
             // A lesson's report/answer-sheet are Results surfaces, though their route names live under lessons.*

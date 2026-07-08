@@ -192,6 +192,10 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     Route::get('/lessons/{lesson}/results', \App\Livewire\Teacher\LessonReport::class)->name('lessons.results');
     Route::get('/results', \App\Livewire\Teacher\ResultsHub::class)->name('results.hub');
 
+    // Class management — classes + account-less rosters + lesson assignment
+    Route::get('/classes', \App\Livewire\Teacher\Classrooms::class)->name('classes.index');
+    Route::get('/classes/{classroom}', \App\Livewire\Teacher\ClassroomManage::class)->name('classes.manage');
+
     Route::get('/lessons/{lesson}/results/answer-sheet', function (\App\Models\Lesson $lesson) {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
         $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
