@@ -26,4 +26,45 @@ final class NameMatcher
 
         return "{$first} {$initial}.";
     }
+
+    /**
+     * Find the roster entry for a handwritten name. Normalizes both sides to
+     * "first + initial", accepts Levenshtein ≤ 2 on the normalized form, and
+     * refuses ambiguous matches (two roster entries equally close).
+     *
+     * @param  list<string>  $roster
+     */
+    public static function match(string $raw, array $roster): ?string
+    {
+        $needle = mb_strtolower(self::canonical($raw));
+        if ($needle === '') {
+            return null;
+        }
+
+        $scored = [];
+        foreach ($roster as $entry) {
+            $candidate = mb_strtolower(self::canonical($entry));
+            $distance = levenshtein($needle, $candidate);
+            // A bare first name may not silently claim "First X." — require the initial
+            // unless exactly one roster entry starts with that first name.
+            $scored[$entry] = $distance;
+        }
+        asort($scored);
+        $best = array_key_first($scored);
+        $bestDistance = $scored[$best];
+
+        if ($bestDistance > 2) {
+            // Bare-first-name fallback: unique prefix match ("Daan" → "Daan K.").
+            $prefixMatches = array_values(array_filter($roster, fn (string $entry) => str_starts_with(
+                mb_strtolower(self::canonical($entry)), $needle.' ',
+            )));
+
+            return count($prefixMatches) === 1 ? $prefixMatches[0] : null;
+        }
+
+        // Ambiguity guard: another entry within the same distance → give up, let the teacher pick.
+        $ties = array_keys(array_filter($scored, fn (int $d) => $d === $bestDistance));
+
+        return count($ties) === 1 ? $best : null;
+    }
 }
