@@ -103,10 +103,14 @@ export class QuizOverlay {
     this._hasClassroom = hasClassroom
     this._classCode = (() => { try { return localStorage.getItem('lp_class_code') || '' } catch { return '' } })()
     if (!this._questions.length) { this.hide(); return }
+    // Stable per-quiz salt so 'once' order is consistent within a class but not a cross-lesson
+    // cheat sheet. Derived from the first question's text — deterministic (same salt → same
+    // order on every device/render), yet different across quizzes.
+    this._shuffleSalt = (questions?.[0]?.question || '').split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
     this._display = this._questions.map((q, qi) => {
       const n = (q.options || []).length || 4
       if (shuffleMode === 'off') return Array.from({ length: n }, (_, i) => i)
-      if (shuffleMode === 'once') return QuizOverlay._seededShuffle(n, qi + 1)   // same order for everyone
+      if (shuffleMode === 'once') return QuizOverlay._seededShuffle(n, qi + 1 + this._shuffleSalt)   // same order for everyone, salted per quiz
       return QuizOverlay._shuffledIndices(n)                                     // per player
     })
     this._gateUntil = new Map()
@@ -273,7 +277,11 @@ export class QuizOverlay {
             <div style="display:flex; gap:6px;">
               ${this._questions.map((_, i) => {
                 const done = this._answered.has(i)
-                const ok = done && this._answered.get(i) === Number(this._questions[i].correct_index)
+                // _answered holds a DISPLAY index — map it through _display[i] before comparing
+                // to the (unshuffled) correct_index, mirroring _correctCount. Without the mapping
+                // a correct answer in a shuffled position colours its dot wrong.
+                const mapping = this._display[i] || []
+                const ok = done && mapping[this._answered.get(i)] === Number(this._questions[i].correct_index)
                 const color = i === this._index ? AMBER : (done ? (ok ? '#10b981' : '#64748b') : 'rgba(255,255,255,0.15)')
                 return `<span style="width:8px; height:8px; border-radius:99px; background:${color};"></span>`
               }).join('')}

@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Livewire\Teacher;
 
+use App\Jobs\GenerateLessonQuiz;
 use App\Models\Lesson;
+use App\Models\Scene;
 use App\Services\LessonResults;
+use App\Services\OpenAiLlmService;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -102,7 +105,7 @@ class LessonReport extends Component
 
         // Append a NEW quiz scene at the end — the original segment and results stay untouched.
         $lastOrder = (int) $this->lesson->scenes()->max('order');
-        $scene = \App\Models\Scene::create([
+        $scene = Scene::create([
             'lesson_id' => $this->lesson->id,
             'order' => $lastOrder + 1,
             'kind' => 'game',
@@ -114,8 +117,8 @@ class LessonReport extends Component
         ]);
 
         try {
-            (new \App\Jobs\GenerateLessonQuiz($this->lesson->id, $difficult, $scene->id))
-                ->handle(app(\App\Services\OpenAiLlmService::class));
+            (new GenerateLessonQuiz($this->lesson->id, $difficult, $scene->id))
+                ->handle(app(OpenAiLlmService::class));
         } catch (\Throwable $e) {
             $scene->delete();
             $this->dispatch('toast', message: __('Re-quiz generation failed — try again.'), type: 'error');

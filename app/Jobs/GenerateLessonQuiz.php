@@ -16,6 +16,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -174,18 +175,23 @@ class GenerateLessonQuiz implements ShouldQueue
             throw new \RuntimeException('Quiz generation produced no valid questions after retry.');
         }
 
-        foreach (array_values($questions) as $index => $q) {
-            QuizQuestion::create([
-                'lesson_id'     => $lesson->id,
-                'scene_id'      => $quizScene?->id,
-                'order'         => $index + 1,
-                'question'      => (string) $q['question'],
-                'options'       => $q['options'],
-                'correct_index' => (int) $q['correct_index'],
-                'asks_ahead'    => (bool) ($q['asks_ahead'] ?? false),
-                'explanation'   => isset($q['explanation']) ? (string) $q['explanation'] : null,
-            ]);
-        }
+        // Persist atomically: a mid-loop create() failure must leave ZERO rows for this scene,
+        // never a partial set. Orphan rows (scene_id later nulled by a scene delete) would
+        // silently rejoin the legacy lesson-level pool — this transaction makes that impossible.
+        DB::transaction(function () use ($questions, $lesson, $quizScene): void {
+            foreach (array_values($questions) as $index => $q) {
+                QuizQuestion::create([
+                    'lesson_id'     => $lesson->id,
+                    'scene_id'      => $quizScene?->id,
+                    'order'         => $index + 1,
+                    'question'      => (string) $q['question'],
+                    'options'       => $q['options'],
+                    'correct_index' => (int) $q['correct_index'],
+                    'asks_ahead'    => (bool) ($q['asks_ahead'] ?? false),
+                    'explanation'   => isset($q['explanation']) ? (string) $q['explanation'] : null,
+                ]);
+            }
+        });
     }
 
     /**
