@@ -4,7 +4,7 @@
         <div class="flex gap-2">
         <select wire:model.live="lessonId" class="select select-sm select-bordered">
             <option value="">{{ __('All lessons') }}</option>
-            @foreach (\App\Models\Lesson::where('teacher_id', auth()->id())->orderBy('title')->get(['id','title','topic']) as $l)
+            @foreach ($this->lessons as $l)
                 <option value="{{ $l->id }}">{{ $l->title ?? $l->topic }}</option>
             @endforeach
         </select>
