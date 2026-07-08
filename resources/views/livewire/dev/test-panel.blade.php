@@ -46,6 +46,12 @@
                     👥 Seed + test class
                 </button>
 
+                <button type="button" wire:click="downloadPaperSheets"
+                        wire:loading.attr="disabled" wire:target="downloadPaperSheets"
+                        class="btn btn-sm btn-outline justify-start">
+                    📸 Download test answer sheets
+                </button>
+
                 <button type="button" wire:click="clearResults"
                         wire:confirm="Delete ALL results for this lesson?"
                         wire:loading.attr="disabled" wire:target="clearResults"
@@ -53,6 +59,10 @@
                     🗑 Clear results
                 </button>
             </div>
+            <p class="mt-2 text-[0.65rem] leading-snug text-slate-500">
+                Sheets are a PNG "photo" (Emma all-correct, Liam mixed) — upload it into
+                <span class="text-slate-400">Import paper answers</span> to test vision extraction.
+            </p>
         @else
             <div class="mb-3 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-400">
                 Open a lesson's Results page to seed data for it.

@@ -178,12 +178,16 @@ class DevSeeder
         return $out;
     }
 
-    /** Spread skill from struggling (~0.35) to strong (~0.95) so some students land below the 50% "needs help" line. */
+    /**
+     * Skill per student, shaped like a real class: most land 60–95%, with a short
+     * struggling tail below the 50% "needs help" line. Concave curve keeps the low
+     * scores few rather than a flat spread of half-failing students.
+     */
     private function skillFor(int $i, int $count): float
     {
         $t = $count <= 1 ? 0.7 : $i / ($count - 1);
 
-        return 0.35 + $t * 0.6;
+        return 0.45 + $t ** 0.55 * 0.5;
     }
 
     private function rollCorrect(float $skill): bool

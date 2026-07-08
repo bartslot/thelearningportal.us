@@ -6,6 +6,7 @@ namespace App\Livewire\Dev;
 
 use App\Models\Lesson;
 use App\Models\QuizScore;
+use App\Services\DevPaperSheet;
 use App\Services\DevSeeder;
 use Livewire\Component;
 
@@ -74,6 +75,46 @@ class TestPanel extends Component
         session()->flash('dev_status', "Cleared {$removed} results.");
 
         $this->reload();
+    }
+
+    /**
+     * Generate a fake "photo" of two filled answer sheets for this lesson's real
+     * quiz questions, so the paper-import (vision) flow can be tested end to end.
+     * One sheet answers everything correctly, the other is mixed — grading is
+     * therefore predictable after import.
+     */
+    public function downloadPaperSheets()
+    {
+        abort_unless(app()->environment('local'), 404);
+
+        $lesson = $this->lesson();
+        if (! $lesson) {
+            return null;
+        }
+
+        $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+        if ($questions->isEmpty()) {
+            session()->flash('dev_status', 'This lesson has no quiz questions — paper import grades against real questions, so generate a quiz first.');
+            $this->redirect($this->returnUrl);
+
+            return null;
+        }
+
+        $correct = $questions->map(fn ($q) => chr(65 + (int) $q->correct_index))->all();
+        $mixed = array_map(
+            fn (string $c, int $i) => $i % 2 === 0 ? $c : ($c === 'A' ? 'B' : 'A'),
+            $correct,
+            array_keys($correct),
+        );
+
+        $png = app(DevPaperSheet::class)->png([
+            ['name' => 'Emma V.', 'answers' => $correct],
+            ['name' => 'Liam B.', 'answers' => $mixed],
+        ], $questions->count());
+
+        $filename = 'test-sheets-'.($lesson->lesson_code ?? $lesson->id).'.png';
+
+        return response()->streamDownload(fn () => print($png), $filename, ['Content-Type' => 'image/png']);
     }
 
     /** Full-page reload of the host page so sibling Livewire components pick up the new data. */
