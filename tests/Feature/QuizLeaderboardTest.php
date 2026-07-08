@@ -155,4 +155,17 @@ class QuizLeaderboardTest extends TestCase
             'class_code' => 'WRONG1', 'member_name' => 'Emma V.',
         ])->assertUnprocessable()->assertJsonValidationErrors('class_code');
     }
+
+    public function test_member_name_that_sanitizes_to_empty_is_rejected(): void
+    {
+        $classroom = \App\Models\Classroom::create(['teacher_id' => $this->lesson->teacher_id, 'name' => '7B']);
+        $this->lesson->classrooms()->attach($classroom->id, ['assigned_at' => now()]);
+
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'X Y', 'score' => 10, 'correct' => 1, 'total' => 1,
+            'class_code' => $classroom->join_code, 'member_name' => '<<',
+        ])->assertUnprocessable()->assertJsonValidationErrors('member_name');
+
+        $this->assertSame(0, \App\Models\ClassroomMember::count());
+    }
 }

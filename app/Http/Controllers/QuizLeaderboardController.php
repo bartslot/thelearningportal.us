@@ -72,6 +72,11 @@ class QuizLeaderboardController extends Controller
                 ]);
             }
             $name = \App\Services\Support\NameMatcher::canonical((string) $data['member_name']);
+            if (mb_strlen($name) < 2) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'member_name' => 'Enter a real name (first name + first letter of last name).',
+                ]);
+            }
             $member = \App\Models\ClassroomMember::whereRaw(
                 'classroom_id = ? AND lower(display_name) = ?',
                 [$classroom->id, mb_strtolower($name)],
