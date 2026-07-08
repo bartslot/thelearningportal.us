@@ -107,4 +107,52 @@ class QuizLeaderboardTest extends TestCase
             'nickname' => 'Emma', 'score' => 10, 'correct' => 1, 'total' => 5,
         ])->assertNotFound();
     }
+
+    public function test_submit_stores_answer_snapshots(): void
+    {
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'Sofie', 'score' => 10, 'correct' => 1, 'total' => 2,
+            'answers' => [
+                ['question_order' => 1, 'question_text' => 'Why X?', 'chosen_text' => 'Y',
+                 'correct_text' => 'Y', 'was_correct' => true, 'response_ms' => 4100, 'asks_ahead' => false],
+                ['question_order' => 2, 'question_text' => 'Why Z?', 'chosen_text' => 'A',
+                 'correct_text' => 'B', 'was_correct' => false, 'response_ms' => 900, 'asks_ahead' => true],
+            ],
+        ])->assertCreated();
+
+        $score = \App\Models\QuizScore::sole();
+        $this->assertCount(2, $score->answers);
+        $this->assertFalse($score->answers[1]->was_correct);
+        $this->assertSame('web', $score->source);
+    }
+
+    public function test_valid_class_code_attaches_a_persistent_member(): void
+    {
+        $classroom = \App\Models\Classroom::create(['teacher_id' => $this->lesson->teacher_id, 'name' => '7B']);
+        $this->lesson->classrooms()->attach($classroom->id, ['assigned_at' => now()]);
+
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'Emma V.', 'score' => 10, 'correct' => 1, 'total' => 1,
+            'class_code' => $classroom->join_code, 'member_name' => 'Emma V.',
+        ])->assertCreated();
+
+        $member = \App\Models\ClassroomMember::sole();
+        $this->assertSame('Emma V.', $member->display_name);
+        $this->assertSame($member->id, \App\Models\QuizScore::sole()->classroom_member_id);
+
+        // Same name again → same member, no duplicate.
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'Emma V.', 'score' => 15, 'correct' => 1, 'total' => 1,
+            'class_code' => strtolower($classroom->join_code), 'member_name' => 'emma v.',
+        ])->assertCreated();
+        $this->assertSame(1, \App\Models\ClassroomMember::count());
+    }
+
+    public function test_invalid_class_code_is_rejected_with_422(): void
+    {
+        $this->postJson("/lesson/{$this->lesson->lesson_code}/quiz-score", [
+            'nickname' => 'Emma V.', 'score' => 10, 'correct' => 1, 'total' => 1,
+            'class_code' => 'WRONG1', 'member_name' => 'Emma V.',
+        ])->assertUnprocessable()->assertJsonValidationErrors('class_code');
+    }
 }

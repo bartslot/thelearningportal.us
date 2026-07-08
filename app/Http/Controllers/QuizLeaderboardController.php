@@ -42,6 +42,16 @@ class QuizLeaderboardController extends Controller
             'integrity.rapid_guesses' => ['sometimes', 'integer', 'min:0', 'max:50'],
             'integrity.same_letter_streak' => ['sometimes', 'integer', 'min:0', 'max:50'],
             'integrity.focus_drops' => ['sometimes', 'integer', 'min:0', 'max:500'],
+            'answers' => ['sometimes', 'array', 'max:50'],
+            'answers.*.question_order' => ['required_with:answers', 'integer', 'min:1', 'max:50'],
+            'answers.*.question_text' => ['required_with:answers', 'string', 'max:500'],
+            'answers.*.chosen_text' => ['required_with:answers', 'string', 'max:200'],
+            'answers.*.correct_text' => ['required_with:answers', 'string', 'max:200'],
+            'answers.*.was_correct' => ['required_with:answers', 'boolean'],
+            'answers.*.response_ms' => ['nullable', 'integer', 'min:0'],
+            'answers.*.asks_ahead' => ['sometimes', 'boolean'],
+            'class_code' => ['sometimes', 'nullable', 'string', 'max:12'],
+            'member_name' => ['required_with:class_code', 'nullable', 'string', 'min:2', 'max:40'],
         ]);
 
         // Sanity clamp — the client is untrusted; cap at the maximum theoretically earnable.
@@ -49,9 +59,32 @@ class QuizLeaderboardController extends Controller
         $score = min((int) $data['score'], $maxScore);
         $correct = min((int) $data['correct'], (int) $data['total']);
 
+        // Hybrid identity: a class code (from a lesson assigned to that classroom)
+        // attaches the run to a persistent, account-less roster member.
+        $memberId = null;
+        if (filled($data['class_code'] ?? null)) {
+            $classroom = $lesson->classrooms()
+                ->where('join_code', strtoupper(trim($data['class_code'])))
+                ->first();
+            if (! $classroom) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'class_code' => 'Unknown class code for this lesson.',
+                ]);
+            }
+            $name = \App\Services\Support\NameMatcher::canonical((string) $data['member_name']);
+            $member = \App\Models\ClassroomMember::whereRaw(
+                'classroom_id = ? AND lower(display_name) = ?',
+                [$classroom->id, mb_strtolower($name)],
+            )->first() ?? \App\Models\ClassroomMember::create([
+                'classroom_id' => $classroom->id, 'display_name' => $name,
+            ]);
+            $memberId = $member->id;
+        }
+
         $entry = QuizScore::create([
             'lesson_id' => $lesson->id,
             'nickname' => strip_tags(trim($data['nickname'])),
+            'classroom_member_id' => $memberId,
             'score' => $score,
             'correct' => $correct,
             'total' => (int) $data['total'],
@@ -60,6 +93,19 @@ class QuizLeaderboardController extends Controller
                 ->map(fn ($value) => (int) $value)
                 ->all() ?: null,
         ]);
+
+        foreach (array_values($data['answers'] ?? []) as $answer) {
+            \App\Models\QuizAnswer::create([
+                'quiz_score_id' => $entry->id,
+                'question_order' => (int) $answer['question_order'],
+                'question_text' => strip_tags((string) $answer['question_text']),
+                'chosen_text' => strip_tags((string) $answer['chosen_text']),
+                'correct_text' => strip_tags((string) $answer['correct_text']),
+                'was_correct' => (bool) $answer['was_correct'],
+                'response_ms' => isset($answer['response_ms']) ? (int) $answer['response_ms'] : null,
+                'asks_ahead' => (bool) ($answer['asks_ahead'] ?? false),
+            ]);
+        }
 
         // Rank = players strictly ahead + 1 (ties share the better rank; earlier entry wins).
         $rank = QuizScore::where('lesson_id', $lesson->id)
