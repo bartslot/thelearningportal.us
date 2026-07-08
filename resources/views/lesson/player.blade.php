@@ -81,6 +81,7 @@
             : null,
         'leaderboard_url'       => route('lesson.leaderboard', ['lessonCode' => $lesson->lesson_code]),
         'quiz_score_url'        => route('lesson.quiz-score', ['lessonCode' => $lesson->lesson_code]),
+        'has_classroom'         => $lesson->classrooms()->exists(),
     ];
 @endphp
 <script>

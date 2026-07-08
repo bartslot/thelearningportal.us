@@ -81,7 +81,7 @@ export class QuizOverlay {
 
   get isVisible() { return this._questions.length > 0 }
 
-  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null }) {
+  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false }) {
     injectStyles()
     this._questions = Array.isArray(questions) ? questions.filter(q => q?.question) : []
     this._index = 0
@@ -91,6 +91,8 @@ export class QuizOverlay {
     this._onComplete = onComplete
     this._submitUrl = submitUrl
     this._leaderboardUrl = leaderboardUrl
+    this._hasClassroom = hasClassroom
+    this._classCode = (() => { try { return localStorage.getItem('lp_class_code') || '' } catch { return '' } })()
     if (!this._questions.length) { this.hide(); return }
     this._display = this._questions.map(q => QuizOverlay._shuffledIndices((q.options || []).length || 4))
     this._gateUntil = new Map()
@@ -295,6 +297,15 @@ export class QuizOverlay {
     this._responses.push({
       ms: openedAt !== undefined ? Math.round(performance.now() - openedAt) : -1,
       displayIndex,
+      snapshot: {
+        question_order: this._index + 1,
+        question_text: String(q.question || ''),
+        chosen_text: String((q.options || [])[mapping[displayIndex]] ?? ''),
+        correct_text: String((q.options || [])[Number(q.correct_index)] ?? ''),
+        was_correct: correct,
+        response_ms: openedAt !== undefined ? Math.round(performance.now() - openedAt) : null,
+        asks_ahead: Boolean(q.asks_ahead),
+      },
     })
 
     if (correct) {
@@ -374,6 +385,12 @@ export class QuizOverlay {
         <div style="font-size:13px; letter-spacing:0.12em; text-transform:uppercase; color:#94a3b8; margin-bottom:10px;">
           Join the leaderboard
         </div>
+        ${this._hasClassroom ? `
+        <div style="display:flex; gap:8px; justify-content:center; margin-bottom:8px;">
+          <input data-class-code type="text" maxlength="8" placeholder="Class code…" value="${this._escape(this._classCode)}"
+                 style="width:130px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(255,255,255,0.2);
+                        background:rgba(255,255,255,0.06); color:white; font-size:15px; outline:none; text-transform:uppercase;" />
+        </div>` : ''}
         <div style="display:flex; gap:8px; justify-content:center;">
           <input data-nickname type="text" maxlength="24" placeholder="Your name…" value="${this._escape(savedName)}"
                  style="width:200px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(245,158,11,0.4);
@@ -431,6 +448,9 @@ export class QuizOverlay {
     const submitBtn = this.host.querySelector('[data-submit]')
     const nicknameEl = this.host.querySelector('[data-nickname]')
     const submit = async () => {
+      const classCodeEl = this.host.querySelector('[data-class-code]')
+      this._classCode = (classCodeEl?.value || '').trim().toUpperCase()
+      try { if (this._classCode) localStorage.setItem('lp_class_code', this._classCode) } catch { /* private mode */ }
       const nickname = (nicknameEl?.value || '').trim()
       const errorEl = this.host.querySelector('[data-join-error]')
       if (nickname.length < 2) { if (errorEl) errorEl.textContent = 'Pick a name (at least 2 letters).'; return }
@@ -442,7 +462,13 @@ export class QuizOverlay {
         const res = await fetch(this._submitUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-          body: JSON.stringify({ nickname, score: this._score, correct, total, integrity: this._integritySummary() }),
+          body: JSON.stringify({
+            nickname, score: this._score, correct, total,
+            integrity: this._integritySummary(),
+            answers: this._responses.map(r => r.snapshot).filter(Boolean),
+            class_code: this._classCode || null,
+            member_name: this._classCode ? nickname : null,
+          }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
@@ -450,7 +476,9 @@ export class QuizOverlay {
       } catch (err) {
         submitBtn.disabled = false
         submitBtn.textContent = 'Submit'
-        if (errorEl) errorEl.textContent = 'Could not submit — try again.'
+        if (errorEl) errorEl.textContent = err?.message === 'HTTP 422'
+          ? 'Check the class code — ask your teacher.'
+          : 'Could not submit — try again.'
       }
     }
     submitBtn?.addEventListener('click', submit)

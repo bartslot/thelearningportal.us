@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-Ch0zX5ho.css",
+    "file": "assets/app-kvG2dOqs.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-ZO2e22fi.js",
+    "file": "assets/app-BMtnOMAj.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-CNK6E2QX.js",
+    "file": "assets/lesson-player-C7PS7eg_.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -105,7 +105,7 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-    "file": "assets/QuizOverlay-Bo_s5LV1.js",
+    "file": "assets/QuizOverlay-B9QQme6B.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true
@@ -117,7 +117,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-NCCKlVn7.js",
+    "file": "assets/index-0ISAbrZ-.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

@@ -1109,6 +1109,7 @@ Alpine.data('lessonGame', (lesson) => ({
         questions: questions || lesson.quiz_questions,
         submitUrl: lesson.quiz_score_url || null,
         leaderboardUrl: lesson.leaderboard_url || null,
+        hasClassroom: Boolean(lesson.has_classroom),
         onComplete: () => this._resumeAfterQuiz(),
       })
     },
