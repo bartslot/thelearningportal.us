@@ -387,12 +387,12 @@ export class QuizOverlay {
         </div>
         ${this._hasClassroom ? `
         <div style="display:flex; gap:8px; justify-content:center; margin-bottom:8px;">
-          <input data-class-code type="text" maxlength="8" placeholder="Class code…" value="${this._escape(this._classCode)}"
+          <input data-class-code type="text" maxlength="8" placeholder="Class code…"
                  style="width:130px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(255,255,255,0.2);
                         background:rgba(255,255,255,0.06); color:white; font-size:15px; outline:none; text-transform:uppercase;" />
         </div>` : ''}
         <div style="display:flex; gap:8px; justify-content:center;">
-          <input data-nickname type="text" maxlength="24" placeholder="Your name…" value="${this._escape(savedName)}"
+          <input data-nickname type="text" maxlength="24" placeholder="Your name…"
                  style="width:200px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(245,158,11,0.4);
                         background:rgba(255,255,255,0.06); color:white; font-size:15px; outline:none;" />
           <button data-submit
@@ -426,6 +426,13 @@ export class QuizOverlay {
           </button>
         </div>
       </div>`
+
+    // Restore remembered values via property assignment (never string-interpolated into
+    // an attribute — a stored value containing a quote would otherwise break out and XSS).
+    const nickEl = this.host.querySelector('[data-nickname]')
+    if (nickEl) nickEl.value = savedName
+    const classEl = this.host.querySelector('[data-class-code]')
+    if (classEl) classEl.value = this._classCode
 
     // Count the final score up from 0 — the payoff moment.
     const el = this.host.querySelector('[data-final-score]')
@@ -541,6 +548,8 @@ export class QuizOverlay {
   _escape(text) {
     const div = document.createElement('div')
     div.textContent = String(text ?? '')
-    return div.innerHTML
+    // textContent→innerHTML encodes < > & but NOT " or ' — unsafe for attribute
+    // positions (e.g. value="${this._escape(x)}"). Encode those explicitly too.
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
   }
 }
