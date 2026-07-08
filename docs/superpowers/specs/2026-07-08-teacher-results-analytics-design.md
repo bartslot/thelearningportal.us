@@ -41,8 +41,9 @@ must stay readable after the source questions are gone.
 | asks_ahead | bool | copied from the question; excluded from needs-help math |
 
 ### New: `classroom_members`
-Account-less roster entry: `classroom_id` FK, `display_name` (unique per classroom on
-normalized name), timestamps. Deliberately NOT `users` — no school account provisioning.
+Account-less roster entry: `classroom_id` FK, `display_name` (convention "Emma V." —
+first name + last-name initial; unique per classroom on normalized name), timestamps.
+Deliberately NOT `users` — no school account provisioning.
 Existing `classroom_students`/`student_progress` (Flutter, real accounts) stay untouched.
 
 ### Extended: `quiz_scores`
@@ -97,7 +98,8 @@ sheets, since a shared screen/paper cannot vary per student).
 2. **Import:** photo upload (multiple sheets per photo OK) → queued `ExtractPaperAnswers`
    job → vision model (existing OpenAI vision pattern, strict JSON: name + choices per
    sheet, `null` for unreadable) → **review grid**: one row per sheet, green = roster
-   match (Levenshtein ≤ 2 on normalized name), amber = fix name / unreadable answer;
+   match (Levenshtein ≤ 2 on normalized name; "Emma Visser"/"emma v" both match "Emma V."
+   — normalization strips to first name + initial), amber = fix name / unreadable answer;
    every cell editable (manual entry = same grid) → Confirm → bulk insert `quiz_scores`
    (`source: paper`, no integrity telemetry) + `quiz_answers` (`response_ms` null).
 3. Paper runs appear everywhere with the 📄 marker; downstream analytics identical.
@@ -106,8 +108,10 @@ sheets, since a shared screen/paper cannot vary per student).
 
 - All report routes: `auth` + lesson ownership (`teacher_id`). Admins are not special-cased in v1.
 - Integrity chips remain teacher-eyes only (existing leaderboard endpoint behavior unchanged).
-- Class join codes are the existing `classrooms.join_code`; members carry first names only —
-  advise teachers against full surnames in the UI copy (AVG/GDPR-friendly).
+- Class join codes are the existing `classrooms.join_code`. Member naming convention:
+  **first name + first letter of last name** ("Emma V.") — disambiguates duplicate first
+  names (common in a class) while staying AVG/GDPR-friendly. The join form and the paper
+  sheet's name line both show this format as the placeholder/instruction; never full surnames.
 
 ## Explicit v1 cuts
 
