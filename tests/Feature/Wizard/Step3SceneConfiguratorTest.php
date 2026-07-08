@@ -379,4 +379,21 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame(1, $g2->fresh()->game_segment_index);
         $this->assertSame(1, $this->lesson->fresh()->game_split_count);
     }
+
+    public function test_quiz_shuffle_setting_persists_and_rejects_garbage(): void
+    {
+        $this->s2->update(['game_type' => 'quiz']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizShuffle', 'once');
+        $this->assertSame('once', $this->s2->fresh()->config['quiz_shuffle']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('setQuizShuffle', 'chaos');
+        $this->assertSame('once', $this->s2->fresh()->config['quiz_shuffle']);
+    }
 }

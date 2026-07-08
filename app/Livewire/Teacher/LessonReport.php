@@ -90,8 +90,40 @@ class LessonReport extends Component
 
     public function requiz(): void
     {
-        // Implemented in the re-quiz task; button hidden behind difficult-question presence.
-        $this->dispatch('toast', message: 'Re-quiz coming in the next task.', type: 'info');
+        $difficult = collect($this->results()->difficultQuestions())
+            ->reject(fn (array $q) => $q['asks_ahead'])
+            ->pluck('question_text')->take(8)->all();
+
+        if ($difficult === []) {
+            $this->dispatch('toast', message: __('No difficult questions to re-quiz.'), type: 'info');
+
+            return;
+        }
+
+        // Append a NEW quiz scene at the end — the original segment and results stay untouched.
+        $lastOrder = (int) $this->lesson->scenes()->max('order');
+        $scene = \App\Models\Scene::create([
+            'lesson_id' => $this->lesson->id,
+            'order' => $lastOrder + 1,
+            'kind' => 'game',
+            'game_type' => 'quiz',
+            'quiz_question_count' => count($difficult),
+            'quiz_timing' => 'after',
+            'status' => 'ready',
+            'config' => ['quiz_scope' => 'taught', 'requiz' => true],
+        ]);
+
+        try {
+            (new \App\Jobs\GenerateLessonQuiz($this->lesson->id, $difficult, $scene->id))
+                ->handle(app(\App\Services\OpenAiLlmService::class));
+        } catch (\Throwable $e) {
+            $scene->delete();
+            $this->dispatch('toast', message: __('Re-quiz generation failed — try again.'), type: 'error');
+
+            return;
+        }
+
+        $this->dispatch('toast', message: __('Re-quiz added to the end of the lesson.'), type: 'success');
     }
 
     /** Neutralize spreadsheet formula-injection: a leading =,+,-,@ makes Excel/Sheets execute the cell. */

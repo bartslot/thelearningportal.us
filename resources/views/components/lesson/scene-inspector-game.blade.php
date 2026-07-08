@@ -1,4 +1,4 @@
-@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false, 'quizDifficulty' => 2, 'quizScope' => 'taught'])
+@props(['scene' => null, 'games' => collect(), 'quizDraft' => [], 'quizErrors' => [], 'quizSaved' => false, 'quizDifficulty' => 2, 'quizScope' => 'taught', 'quizShuffle' => 'per_player'])
 
 @php
     $isGenerating = $scene->status === 'generating';
@@ -91,6 +91,14 @@
                             {{ __('Whole story') }}
                         </button>
                     </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] text-slate-400">{{ __('Shuffle') }}</span>
+                    <select wire:change="setQuizShuffle($event.target.value)" class="select select-xs select-bordered bg-slate-900">
+                        <option value="per_player" @selected($quizShuffle === 'per_player')>{{ __('Per player') }}</option>
+                        <option value="once" @selected($quizShuffle === 'once')>{{ __('Same for class (digibord/paper)') }}</option>
+                        <option value="off" @selected($quizShuffle === 'off')>{{ __('Off') }}</option>
+                    </select>
                 </div>
                 <button type="button" wire:click="regenerateAllQuizQuestions"
                         wire:loading.attr="disabled" wire:target="regenerateAllQuizQuestions"

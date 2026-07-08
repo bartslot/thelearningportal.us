@@ -69,6 +69,7 @@
                     ? ($lesson->quizQuestions->where('scene_id', $s->id)->values()->whenEmpty(fn () => $lesson->quizQuestions->whereNull('scene_id')->values()))
                         ->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values()
                     : null,
+                'quiz_shuffle' => $s->kind === 'game' ? (($s->config ?? [])['quiz_shuffle'] ?? 'per_player') : null,
                 'kb_animated' => (bool) ($s->kb_animated ?? true),
                 'kb_direction' => $s->kb_direction,
               ])->values()

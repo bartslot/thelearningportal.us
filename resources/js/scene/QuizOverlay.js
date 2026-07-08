@@ -72,6 +72,15 @@ export class QuizOverlay {
     return arr
   }
 
+  // Mulberry32-seeded Fisher-Yates: identical order on every device (digibord + paper safe).
+  static _seededShuffle(n, seed) {
+    let s = seed >>> 0
+    const rnd = () => { s = (s + 0x6D2B79F5) >>> 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+    const arr = Array.from({ length: n }, (_, i) => i)
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]] }
+    return arr
+  }
+
   // Reading time before answers unlock: base 2s + ~55ms per character of question+options,
   // capped at 7s. Kills the 1-second straight-line sprint without feeling like a punishment.
   static _readGateMs(q) {
@@ -81,7 +90,7 @@ export class QuizOverlay {
 
   get isVisible() { return this._questions.length > 0 }
 
-  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false }) {
+  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false, shuffleMode = 'per_player' }) {
     injectStyles()
     this._questions = Array.isArray(questions) ? questions.filter(q => q?.question) : []
     this._index = 0
@@ -94,7 +103,12 @@ export class QuizOverlay {
     this._hasClassroom = hasClassroom
     this._classCode = (() => { try { return localStorage.getItem('lp_class_code') || '' } catch { return '' } })()
     if (!this._questions.length) { this.hide(); return }
-    this._display = this._questions.map(q => QuizOverlay._shuffledIndices((q.options || []).length || 4))
+    this._display = this._questions.map((q, qi) => {
+      const n = (q.options || []).length || 4
+      if (shuffleMode === 'off') return Array.from({ length: n }, (_, i) => i)
+      if (shuffleMode === 'once') return QuizOverlay._seededShuffle(n, qi + 1)   // same order for everyone
+      return QuizOverlay._shuffledIndices(n)                                     // per player
+    })
     this._gateUntil = new Map()
     this._openedAt = new Map()
     this._responses = []

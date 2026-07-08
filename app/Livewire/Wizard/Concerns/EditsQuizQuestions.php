@@ -140,6 +140,26 @@ trait EditsQuizQuestions
         }
     }
 
+    /** off | once (same new order for the whole class) | per_player (digital only). */
+    public function quizShuffle(): string
+    {
+        $scene = $this->quizDraftSceneId ? Scene::find($this->quizDraftSceneId) : null;
+        $mode = ($scene?->config ?? [])['quiz_shuffle'] ?? 'per_player';
+
+        return in_array($mode, ['off', 'once', 'per_player'], true) ? $mode : 'per_player';
+    }
+
+    public function setQuizShuffle(string $mode): void
+    {
+        if (! $this->quizDraftSceneId || ! in_array($mode, ['off', 'once', 'per_player'], true)) {
+            return;
+        }
+        $scene = Scene::find($this->quizDraftSceneId);
+        if ($scene) {
+            $scene->update(['config' => array_merge($scene->config ?? [], ['quiz_shuffle' => $mode])]);
+        }
+    }
+
     /**
      * Set the quiz difficulty (1-3 stars) on the quiz scene. Takes effect on the next
      * generation — per-question sparkles or "Regenerate all".

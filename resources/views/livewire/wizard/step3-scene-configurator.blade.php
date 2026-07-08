@@ -202,7 +202,8 @@
                 @elseif ($sceneModel->kind === 'game')
                     <x-lesson.scene-inspector-game :scene="$sceneModel" :games="$this->games"
                                                   :quiz-draft="$quizDraft" :quiz-errors="$quizErrors" :quiz-saved="$quizSaved"
-                                                  :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()" />
+                                                  :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
+                                                  :quiz-shuffle="$this->quizShuffle()" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
                 @endif

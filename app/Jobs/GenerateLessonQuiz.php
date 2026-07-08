@@ -35,7 +35,15 @@ class GenerateLessonQuiz implements ShouldQueue
     /** Two stems whose first N chars match are near-duplicates (padding, not assessment). */
     private const DUPLICATE_STEM_PREFIX = 40;
 
-    public function __construct(public readonly int $lessonId) {}
+    /**
+     * @param  list<string>|null  $reinforceQuestions  difficult-question texts to re-ask (re-quiz)
+     * @param  int|null  $onlySceneId  restrict generation to ONE quiz scene (re-quiz target)
+     */
+    public function __construct(
+        public readonly int $lessonId,
+        public readonly ?array $reinforceQuestions = null,
+        public readonly ?int $onlySceneId = null,
+    ) {}
 
     public function backoff(): array
     {
@@ -48,12 +56,18 @@ class GenerateLessonQuiz implements ShouldQueue
 
         // Idempotent: a retry, a manual re-run, or a re-queued batch ->then() must regenerate
         // the question set, not append duplicates on top of the previous run.
-        QuizQuestion::where('lesson_id', $lesson->id)->delete();
+        QuizQuestion::where('lesson_id', $lesson->id)
+            ->when($this->onlySceneId, fn ($q) => $q->where('scene_id', $this->onlySceneId))
+            ->delete();
 
         $quizScenes = $lesson->scenes
             ->filter(fn (Scene $scene) => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz')
             ->sortBy('order')
             ->values();
+
+        if ($this->onlySceneId) {
+            $quizScenes = $quizScenes->where('id', $this->onlySceneId)->values();
+        }
 
         if ($quizScenes->isEmpty()) {
             // No quiz segment in the timeline — lesson-level pool from the full story.
@@ -90,6 +104,12 @@ class GenerateLessonQuiz implements ShouldQueue
                     ? 'This is a later checkpoint: prefer the narration AFTER the previous quiz, '
                       .'but reinforcing earlier material is allowed.'
                     : '';
+
+                if ($this->reinforceQuestions) {
+                    $focus .= "\nREINFORCE: the class struggled with these questions — write fresh variants "
+                        ."that test the SAME facts with different wording and different distractors:\n- "
+                        .implode("\n- ", $this->reinforceQuestions);
+                }
 
                 $objectives = $upcoming !== null
                     ? ($lesson->outline['learning_objectives'] ?? [])   // full-lesson scope

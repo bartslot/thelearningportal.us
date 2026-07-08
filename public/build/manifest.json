@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-CwYUEOmc.js",
+    "file": "assets/app-DsL31gET.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-CIihSDMq.js",
+    "file": "assets/lesson-player-Ldq3J4nK.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -105,7 +105,7 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-    "file": "assets/QuizOverlay-BO0RSpch.js",
+    "file": "assets/QuizOverlay-LXYZqX05.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true
@@ -117,7 +117,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-BEU3vOw6.js",
+    "file": "assets/index-Dh0-n0aT.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
