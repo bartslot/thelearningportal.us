@@ -20,6 +20,7 @@
                 <option value="all">{{ __('All time') }}</option>
             </select>
             <button wire:click="exportCsv" class="btn btn-sm btn-outline">⬇ CSV</button>
+            <a href="{{ route('teacher.lessons.answer-sheet', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">🖨 {{ __('Answer sheets') }}</a>
         </div>
     </div>
 

@@ -192,6 +192,13 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     Route::get('/lessons/{lesson}/results', \App\Livewire\Teacher\LessonReport::class)->name('lessons.results');
     Route::get('/results', \App\Livewire\Teacher\ResultsHub::class)->name('results.hub');
 
+    Route::get('/lessons/{lesson}/results/answer-sheet', function (\App\Models\Lesson $lesson) {
+        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+
+        return view('teacher.answer-sheet', compact('lesson', 'questions'));
+    })->name('lessons.answer-sheet');
+
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
