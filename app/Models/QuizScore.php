@@ -6,10 +6,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class QuizScore extends Model
 {
-    protected $fillable = ['lesson_id', 'nickname', 'score', 'correct', 'total', 'integrity'];
+    protected $fillable = [
+        'lesson_id', 'nickname', 'classroom_member_id', 'score',
+        'correct', 'total', 'integrity', 'source',
+    ];
 
     protected function casts(): array
     {
@@ -19,5 +23,15 @@ class QuizScore extends Model
     public function lesson(): BelongsTo
     {
         return $this->belongsTo(Lesson::class);
+    }
+
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(ClassroomMember::class, 'classroom_member_id');
+    }
+
+    public function answers(): HasMany
+    {
+        return $this->hasMany(QuizAnswer::class)->orderBy('question_order');
     }
 }
