@@ -170,9 +170,13 @@ class LessonReport extends Component
 
     public function extractPaper(): void
     {
-        $this->validate(['paperPhotos.*' => ['image', 'max:10240']]);
+        // Cap photos: each is a synchronous vision call; a class scan is a handful of photos, not dozens.
+        $this->validate([
+            'paperPhotos' => ['array', 'max:20'],
+            'paperPhotos.*' => ['image', 'max:10240'],
+        ]);
 
-        $questions = $this->lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+        $questions = $this->paperQuestions();
         if ($questions->isEmpty()) {
             $this->dispatch('toast', message: __('This lesson has no quiz questions.'), type: 'warning');
 
@@ -189,6 +193,11 @@ class LessonReport extends Component
         $this->paperModalOpen = true;
     }
 
+    private function paperQuestions(): \Illuminate\Support\Collection
+    {
+        return $this->lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+    }
+
     /** @return list<string> */
     private function rosterNames(): array
     {
@@ -199,13 +208,19 @@ class LessonReport extends Component
 
     public function confirmPaperImport(): void
     {
-        $questions = $this->lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get()->values();
+        $rows = $this->paperRows;
+        $this->paperRows = [];          // clear first: a double-click's second call imports nothing
+        if ($rows === []) {
+            return;
+        }
+
+        $questions = $this->paperQuestions()->values();
         $letters = ['A' => 0, 'B' => 1, 'C' => 2, 'D' => 3];
         $memberByName = ClassroomMember::whereIn(
             'classroom_id', $this->lesson->classrooms()->pluck('classrooms.id'),
         )->get()->keyBy(fn ($m) => mb_strtolower($m->display_name));
 
-        foreach ($this->paperRows as $row) {
+        foreach ($rows as $row) {
             $name = NameMatcher::canonical(
                 (string) ($row['matched_name'] ?: $row['raw_name']),
             );
@@ -247,7 +262,6 @@ class LessonReport extends Component
             $score->answers()->createMany($answers);
         }
 
-        $this->paperRows = [];
         $this->paperPhotos = [];
         $this->paperModalOpen = false;
         $this->dispatch('toast', message: __('Paper answers imported.'), type: 'success');

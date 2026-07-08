@@ -72,4 +72,44 @@ class PaperImportTest extends TestCase
         $this->assertCount(2, $emma->answers);
         $this->assertNull($emma->answers[0]->response_ms); // paper has no timing
     }
+
+    public function test_extract_rejects_more_than_twenty_photos(): void
+    {
+        $photos = [];
+        for ($i = 0; $i < 21; $i++) {
+            $photos[] = UploadedFile::fake()->image("s{$i}.jpg");
+        }
+        Livewire::actingAs($this->teacher)
+            ->test(LessonReport::class, ['lesson' => $this->lesson])
+            ->set('paperPhotos', $photos)
+            ->call('extractPaper')
+            ->assertHasErrors('paperPhotos');
+    }
+
+    public function test_confirm_is_not_double_imported_on_repeat_call(): void
+    {
+        $this->mock(OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('describeImage')->once()->andReturn(json_encode([
+                'sheets' => [
+                    ['name' => 'Emma Visser', 'answers' => ['A', 'B']],
+                    ['name' => 'Onbekend Kind', 'answers' => ['B', null]],
+                ],
+            ])));
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(LessonReport::class, ['lesson' => $this->lesson])
+            ->set('paperPhotos', [UploadedFile::fake()->image('sheets.jpg')])
+            ->call('extractPaper')
+            ->set('paperRows.1.matched_name', 'Daan K.')
+            ->set('paperRows.1.answers.1', 'C');
+
+        // Double-click: two confirms in a row. The guard snapshots-and-clears
+        // paperRows at the top of the method, so the second call early-returns
+        // and imports nothing. Two sheets → two scores, never four.
+        $component->call('confirmPaperImport')
+            ->call('confirmPaperImport');
+
+        $this->assertSame(2, QuizScore::where('source', 'paper')->count());
+        $this->assertSame([], $component->get('paperRows'), 'Rows cleared before writes, not after.');
+    }
 }

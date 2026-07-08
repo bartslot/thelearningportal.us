@@ -170,7 +170,8 @@
                         </div>
                     @endforeach
                 </div>
-                <button wire:click="confirmPaperImport" class="btn btn-warning mt-4">
+                <button wire:click="confirmPaperImport" wire:loading.attr="disabled" wire:target="confirmPaperImport" class="btn btn-warning mt-4">
+                    <span wire:loading wire:target="confirmPaperImport" class="loading loading-spinner loading-xs"></span>
                     {{ __('Confirm & import :n sheets', ['n' => count($paperRows)]) }}
                 </button>
             @endif
