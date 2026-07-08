@@ -21,6 +21,7 @@
             </select>
             <button wire:click="exportCsv" class="btn btn-sm btn-outline">⬇ CSV</button>
             <a href="{{ route('teacher.lessons.answer-sheet', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">🖨 {{ __('Answer sheets') }}</a>
+            <label for="paper-import" class="btn btn-sm btn-warning">📷 {{ __('Import paper answers') }}</label>
         </div>
     </div>
 
@@ -135,4 +136,47 @@
             @endforelse
         </div>
     @endif
+
+    {{-- Paper import: upload photos of filled answer sheets → review grid → confirm. --}}
+    <div class="modal {{ $paperModalOpen || $paperPhotos ? 'modal-open' : '' }}">
+        <div class="modal-box max-w-3xl">
+            <h3 class="mb-3 text-lg font-semibold">📷 {{ __('Import paper answers') }}</h3>
+            <input id="paper-import" type="file" wire:model="paperPhotos" multiple accept="image/*" class="file-input file-input-bordered w-full" />
+            <button wire:click="extractPaper" wire:loading.attr="disabled" class="btn btn-sm btn-warning mt-2">
+                <span wire:loading wire:target="extractPaper" class="loading loading-spinner loading-xs"></span>
+                {{ __('Read sheets') }}
+            </button>
+
+            @if ($paperRows)
+                <div class="mt-4 space-y-1.5">
+                    @foreach ($paperRows as $i => $row)
+                        <div class="flex items-center gap-2 rounded-xl border px-3 py-2
+                                    {{ $row['matched_name'] ? 'border-success/40' : 'border-warning/50' }}">
+                            <span>{{ $row['matched_name'] ? '✓' : '?' }}</span>
+                            <input type="text" wire:model.blur="paperRows.{{ $i }}.matched_name"
+                                   placeholder="{{ $row['raw_name'] ?: __('Name…') }}"
+                                   class="input input-xs input-bordered w-36" />
+                            <div class="flex flex-1 gap-1 font-mono">
+                                @foreach ($row['answers'] as $qi => $answer)
+                                    <select wire:model.blur="paperRows.{{ $i }}.answers.{{ $qi }}"
+                                            class="select select-xs {{ $answer === null ? 'select-warning' : 'select-bordered' }}">
+                                        <option value="">—</option>
+                                        @foreach (['A','B','C','D'] as $letter)
+                                            <option value="{{ $letter }}" @selected($answer === $letter)>{{ $letter }}</option>
+                                        @endforeach
+                                    </select>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                <button wire:click="confirmPaperImport" class="btn btn-warning mt-4">
+                    {{ __('Confirm & import :n sheets', ['n' => count($paperRows)]) }}
+                </button>
+            @endif
+            <div class="modal-action">
+                <button wire:click="$set('paperModalOpen', false)" class="btn btn-ghost btn-sm">{{ __('Close') }}</button>
+            </div>
+        </div>
+    </div>
 </div>

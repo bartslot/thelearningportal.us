@@ -5,15 +5,22 @@ declare(strict_types=1);
 namespace App\Livewire\Teacher;
 
 use App\Jobs\GenerateLessonQuiz;
+use App\Models\ClassroomMember;
 use App\Models\Lesson;
+use App\Models\QuizScore;
 use App\Models\Scene;
 use App\Services\LessonResults;
 use App\Services\OpenAiLlmService;
+use App\Services\PaperSheetExtractor;
+use App\Services\Support\NameMatcher;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class LessonReport extends Component
 {
+    use WithFileUploads;
+
     public Lesson $lesson;
 
     public string $tab = 'overview';           // overview | questions | players
@@ -23,6 +30,14 @@ class LessonReport extends Component
     public string $range = '30';               // days: 7 | 30 | 90 | all
 
     public ?int $openScoreId = null;           // players tab drill-down
+
+    /** @var array<int, \Livewire\Features\SupportFileUploads\TemporaryUploadedFile> */
+    public array $paperPhotos = [];
+
+    /** @var list<array{raw_name: string, matched_name: ?string, answers: list<?string>}> */
+    public array $paperRows = [];
+
+    public bool $paperModalOpen = false;
 
     private ?LessonResults $resultsCache = null;
 
@@ -151,6 +166,91 @@ class LessonReport extends Component
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    public function extractPaper(): void
+    {
+        $this->validate(['paperPhotos.*' => ['image', 'max:10240']]);
+
+        $questions = $this->lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+        if ($questions->isEmpty()) {
+            $this->dispatch('toast', message: __('This lesson has no quiz questions.'), type: 'warning');
+
+            return;
+        }
+
+        $dataUrls = array_map(
+            fn ($photo) => 'data:'.$photo->getMimeType().';base64,'.base64_encode($photo->get()),
+            $this->paperPhotos,
+        );
+
+        $this->paperRows = app(PaperSheetExtractor::class)
+            ->extract($dataUrls, $questions->count(), $this->rosterNames());
+        $this->paperModalOpen = true;
+    }
+
+    /** @return list<string> */
+    private function rosterNames(): array
+    {
+        return ClassroomMember::whereIn(
+            'classroom_id', $this->lesson->classrooms()->pluck('classrooms.id'),
+        )->pluck('display_name')->all();
+    }
+
+    public function confirmPaperImport(): void
+    {
+        $questions = $this->lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get()->values();
+        $letters = ['A' => 0, 'B' => 1, 'C' => 2, 'D' => 3];
+        $memberByName = ClassroomMember::whereIn(
+            'classroom_id', $this->lesson->classrooms()->pluck('classrooms.id'),
+        )->get()->keyBy(fn ($m) => mb_strtolower($m->display_name));
+
+        foreach ($this->paperRows as $row) {
+            $name = NameMatcher::canonical(
+                (string) ($row['matched_name'] ?: $row['raw_name']),
+            );
+            if ($name === '') {
+                continue;
+            }
+
+            $answers = [];
+            $correct = 0;
+            foreach ($questions as $index => $question) {
+                $letter = $row['answers'][$index] ?? null;
+                $chosenIndex = $letter !== null ? ($letters[$letter] ?? null) : null;
+                $chosenText = $chosenIndex !== null ? (string) ($question->options[$chosenIndex] ?? '') : '';
+                $wasCorrect = $chosenIndex !== null && $chosenIndex === (int) $question->correct_index;
+                if ($wasCorrect) {
+                    $correct++;
+                }
+                $answers[] = [
+                    'quiz_question_id' => $question->id,
+                    'question_order' => $index + 1,
+                    'question_text' => $question->question,
+                    'chosen_text' => $chosenText,
+                    'correct_text' => (string) ($question->options[$question->correct_index] ?? ''),
+                    'was_correct' => $wasCorrect,
+                    'response_ms' => null,
+                    'asks_ahead' => (bool) $question->asks_ahead,
+                ];
+            }
+
+            $score = QuizScore::create([
+                'lesson_id' => $this->lesson->id,
+                'nickname' => $name,
+                'classroom_member_id' => $memberByName[mb_strtolower($name)]->id ?? null,
+                'score' => $correct * 10,
+                'correct' => $correct,
+                'total' => $questions->count(),
+                'source' => 'paper',
+            ]);
+            $score->answers()->createMany($answers);
+        }
+
+        $this->paperRows = [];
+        $this->paperPhotos = [];
+        $this->paperModalOpen = false;
+        $this->dispatch('toast', message: __('Paper answers imported.'), type: 'success');
     }
 
     public function render()
