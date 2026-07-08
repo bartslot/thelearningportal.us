@@ -84,6 +84,13 @@ return [
         'tts_voice' => env('OPENAI_TTS_VOICE', 'alloy'),
     ],
 
+    'alerts' => [
+        // Where low-credit warnings are sent.
+        'email' => env('ADMIN_ALERT_EMAIL'),
+        // Warn when fewer ElevenLabs characters remain than roughly two lessons' worth of narration.
+        'elevenlabs_min_characters' => (int) env('ELEVENLABS_ALERT_MIN_CHARACTERS', 20000),
+    ],
+
     'elevenlabs' => [
         'api_key' => env('ELEVENLABS_API_KEY'),
         'base_url' => 'https://api.elevenlabs.io',

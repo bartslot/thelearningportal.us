@@ -18,3 +18,6 @@ Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=2')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Email the admin when AI provider credits run low (ElevenLabs narration quota).
+Schedule::command('tokens:check')->dailyAt('08:00');

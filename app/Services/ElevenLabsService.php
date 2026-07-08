@@ -52,6 +52,34 @@ class ElevenLabsService
         return $voices;
     }
 
+    /**
+     * Current subscription quota, or null when the API is unreachable.
+     *
+     * @return array{used: int, limit: int, remaining: int, resets_at: \Illuminate\Support\Carbon}|null
+     */
+    public function getSubscription(): ?array
+    {
+        $response = Http::withHeaders([
+            'xi-api-key' => $this->apiKey,
+        ])->get("{$this->baseUrl}/v1/user/subscription");
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $used  = (int) $response->json('character_count', 0);
+        $limit = (int) $response->json('character_limit', 0);
+
+        return [
+            'used'      => $used,
+            'limit'     => $limit,
+            'remaining' => max(0, $limit - $used),
+            'resets_at' => \Illuminate\Support\Carbon::createFromTimestamp(
+                (int) $response->json('next_character_count_reset_unix', 0)
+            ),
+        ];
+    }
+
     /** @return array{audio: string, alignment: array<mixed>}|null */
     public function generateWithTimestamps(
         string $text,

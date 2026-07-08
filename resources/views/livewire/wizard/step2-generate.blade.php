@@ -17,6 +17,13 @@ $currentStatus  = $lesson->status->value;
 $currentOrder   = $pipelineOrder[$currentStatus] ?? -1;
 $step           = $statusSteps[$currentStatus] ?? ['icon' => '⏳', 'label' => 'Processing…', 'pct' => 2];
 
+// The pipeline parks at ScenesReady after the quiz job finishes, and polling has stopped by
+// then — without this the page says "writing quiz questions… 95%" forever even though
+// everything is done. Once quiz questions exist, tell the teacher to continue.
+if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->exists()) {
+    $step = ['icon' => '✅', 'label' => 'Your lesson is ready — continue to configure it!', 'pct' => 100];
+}
+
 // Progress bar value — scenes phase maps scene progress into 20-94 range
 if ($step['pct'] !== null) {
     $displayPct = $step['pct'];
