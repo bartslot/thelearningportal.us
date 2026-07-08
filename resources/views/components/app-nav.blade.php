@@ -32,6 +32,11 @@
             'pattern' => 'teacher.dashboard',
         ];
         $items[] = [
+            'label' => 'Results',
+            'route' => 'teacher.results.hub',
+            'pattern' => 'teacher.results.*',
+        ];
+        $items[] = [
             'label' => 'New Lesson',
             'route' => 'teacher.lessons.create',
             'pattern' => 'teacher.lessons.*',

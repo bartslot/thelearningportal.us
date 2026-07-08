@@ -53,14 +53,19 @@
                     ]);
                 @endphp
 
-                <a href="{{ route('teacher.lessons.show', $lesson) }}"
-                   class="group relative block">
+                <div class="group relative block">
+                    <a href="{{ route('teacher.lessons.show', $lesson) }}" class="absolute inset-0 z-10" aria-label="{{ $lesson->title ?: $lesson->topic }}"></a>
+
+                    {{-- Results button — sits above the card-wide link so it stays independently clickable --}}
+                    <a href="{{ route('teacher.lessons.results', $lesson) }}"
+                       class="btn btn-xs btn-outline absolute left-3 top-3 z-20">📊 {{ __('Results') }}</a>
+
                     {{-- Card shell — 5:8 portrait ratio --}}
                     <div class="lp-grain-poster relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10
                                 bg-black/40 shadow-[0_16px_34px_rgba(0,0,0,0.35)]
                                 transition duration-300 ease-out
-                                hover:-translate-y-1 hover:border-sky-400/25
-                                hover:shadow-[0_24px_52px_rgba(0,0,0,0.5)]">
+                                group-hover:-translate-y-1 group-hover:border-sky-400/25
+                                group-hover:shadow-[0_24px_52px_rgba(0,0,0,0.5)]">
 
                         {{-- Background image --}}
                         @if($cardImage)
@@ -107,7 +112,7 @@
                             </div>
                         </div>
                     </div>
-                </a>
+                </div>
             @endforeach
         </div>
     @endif

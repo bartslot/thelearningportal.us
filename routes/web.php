@@ -188,6 +188,10 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/lessons/{lesson}/composer', \App\Livewire\LessonComposer::class)->name('lessons.composer');
 
+    // Results & analytics (spec: docs/superpowers/specs/2026-07-08-teacher-results-analytics-design.md)
+    Route::get('/lessons/{lesson}/results', \App\Livewire\Teacher\LessonReport::class)->name('lessons.results');
+    Route::get('/results', \App\Livewire\Teacher\ResultsHub::class)->name('results.hub');
+
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
