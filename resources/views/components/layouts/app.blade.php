@@ -33,6 +33,10 @@
         {{ $slot }}
     </main>
 
+    @if (app()->environment('local') && auth()->check())
+        @livewire('dev.test-panel')
+    @endif
+
     @livewireScripts
     <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js" data-wavesurfer-lib></script>
     <script>

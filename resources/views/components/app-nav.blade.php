@@ -34,12 +34,14 @@
         $items[] = [
             'label' => 'Results',
             'route' => 'teacher.results.hub',
-            'pattern' => 'teacher.results.*',
+            // A lesson's report/answer-sheet are Results surfaces, though their route names live under lessons.*
+            'pattern' => ['teacher.results.*', 'teacher.lessons.results', 'teacher.lessons.answer-sheet'],
         ];
         $items[] = [
             'label' => 'New Lesson',
             'route' => 'teacher.lessons.create',
-            'pattern' => 'teacher.lessons.*',
+            // Only the wizard — not every lessons.* route (results pages belong to Results, above)
+            'pattern' => ['teacher.lessons.create', 'teacher.lessons.wizard', 'teacher.lessons.show', 'teacher.lessons.composer'],
         ];
     }
 
@@ -66,7 +68,7 @@
                     {{-- Desktop: inline nav links --}}
                     <div class="hidden items-center gap-6 sm:flex">
                         @foreach ($items as $item)
-                            @php $active = request()->routeIs($item['pattern']); @endphp
+                            @php $active = request()->routeIs(...(array) $item['pattern']); @endphp
                             <a href="{{ route($item['route']) }}"
                                class="text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
                                 <span>{{ __($item['label']) }}</span>
@@ -90,7 +92,7 @@
                         <ul tabindex="0"
                             class="dropdown-content menu menu-sm mt-3 w-56 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-[60]">
                             @foreach ($items as $item)
-                                @php $active = request()->routeIs($item['pattern']); @endphp
+                                @php $active = request()->routeIs(...(array) $item['pattern']); @endphp
                                 <li>
                                     <a href="{{ route($item['route']) }}"
                                        class="text-sm {{ $active ? 'text-amber-400' : 'text-slate-300 hover:text-white' }}">
