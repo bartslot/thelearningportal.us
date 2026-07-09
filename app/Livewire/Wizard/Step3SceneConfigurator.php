@@ -470,6 +470,10 @@ class Step3SceneConfigurator extends Component
     // older data is never destroyed; phase 1 only coerces 'focus' items.
     private const FOCUS_LABEL_MAX = 80;
 
+    /** Hard cap on persisted annotations — the array arrives from the browser unauthenticated
+     *  by anything but the session, so it must not be a vector for unbounded config growth. */
+    private const ANNOTATIONS_MAX = 50;
+
     /**
      * Typeahead over the cities corpus: matches modern OR historical name, well-known cities
      * first (scalerank). Returns nothing under 2 chars so we don't run a wildcard on a single
@@ -592,8 +596,11 @@ class Step3SceneConfigurator extends Component
                 $font = $t['font'] ?? 'sans';
                 $size = $t['size'] ?? 'md';
 
+                // The id is client-supplied — cap it so it can't be used to bloat scene config.
+                $id = mb_substr((string) ($t['id'] ?? ''), 0, 64);
+
                 return [
-                    'id' => (string) ($t['id'] ?? uniqid('txt_')),
+                    'id' => $id !== '' ? $id : uniqid('txt_'),
                     'text' => mb_substr(trim((string) $t['text']), 0, 300),
                     'x' => max(0, min(100, (float) ($t['x'] ?? 40))),
                     'y' => max(0, min(100, (float) ($t['y'] ?? 40))),
@@ -691,6 +698,9 @@ class Step3SceneConfigurator extends Component
     {
         $clean = [];
         foreach ($annotations as $a) {
+            if (count($clean) >= self::ANNOTATIONS_MAX) {
+                break;
+            }
             if (! is_array($a)) {
                 continue;
             }

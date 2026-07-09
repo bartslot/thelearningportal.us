@@ -253,6 +253,10 @@ trait EditsQuizQuestions
             'question' => $question,
             'options' => $this->padOptions($options),
             'correct_index' => $correctSlot,
+            // Keep the prior-knowledge flag: dropping it here silently reset it to false on
+            // autosave, so a redrawn asks-ahead question wrongly counted toward the class's
+            // "difficult questions" stats (the exact mis-blame asks_ahead exists to prevent).
+            'asks_ahead' => (bool) ($this->quizDraft[$index]['asks_ahead'] ?? false),
             'explanation' => trim((string) ($result['explanation'] ?? '')),
         ];
         $this->autosaveQuiz();

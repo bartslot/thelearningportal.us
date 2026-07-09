@@ -380,6 +380,34 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame(1, $this->lesson->fresh()->game_split_count);
     }
 
+    public function test_generating_a_question_preserves_the_asks_ahead_flag(): void
+    {
+        $this->s2->update(['game_type' => 'quiz']);
+        // A prior-knowledge question flagged by the pipeline: excluded from difficulty stats.
+        $this->lesson->quizQuestions()->create([
+            'scene_id' => $this->s2->id, 'order' => 0, 'question' => 'What comes later?',
+            'options' => ['a', 'b', 'c', 'd'], 'correct_index' => 0, 'asks_ahead' => true,
+        ]);
+
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('json')->once()->andReturn([
+                'question' => 'What will Napoleon do at Waterloo?',
+                'correct_answer' => 'Lose.',
+                'distractors' => ['Win.', 'Flee to Egypt.', 'Abdicate twice.'],
+                'explanation' => 'x',
+            ]));
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('generateQuizQuestion', 0);
+
+        // Redrawing the text must not silently reset the flag — a prior-knowledge question
+        // that loses it would wrongly count toward the class's "difficult questions".
+        $this->assertTrue((bool) $component->get('quizDraft')[0]['asks_ahead']);
+        $this->assertTrue((bool) $this->lesson->quizQuestions()->first()->asks_ahead);
+    }
+
     public function test_quiz_shuffle_setting_persists_and_rejects_garbage(): void
     {
         $this->s2->update(['game_type' => 'quiz']);
