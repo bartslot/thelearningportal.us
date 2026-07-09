@@ -21,6 +21,7 @@
             </select>
             <button wire:click="exportCsv" class="btn btn-sm btn-outline">⬇ CSV</button>
             <a href="{{ route('teacher.lessons.answer-sheet', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">🖨 {{ __('Answer sheets') }}</a>
+            <a href="{{ route('teacher.lessons.print.handout', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">📄 {{ __('Print handout') }}</a>
             <label for="paper-import" class="btn btn-sm btn-warning">📷 {{ __('Import paper answers') }}</label>
         </div>
     </div>

@@ -60,6 +60,10 @@
                     <a href="{{ route('teacher.lessons.results', $lesson) }}"
                        class="btn btn-xs btn-outline absolute left-3 top-3 z-20">📊 {{ __('Results') }}</a>
 
+                    {{-- Print handout — same z-layer trick as the results button --}}
+                    <a href="{{ route('teacher.lessons.print.handout', $lesson) }}" target="_blank"
+                       class="btn btn-xs btn-outline absolute left-3 top-10 z-20">🖨️ {{ __('Print') }}</a>
+
                     {{-- Card shell — 5:8 portrait ratio --}}
                     <div class="lp-grain-poster relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10
                                 bg-black/40 shadow-[0_16px_34px_rgba(0,0,0,0.35)]
