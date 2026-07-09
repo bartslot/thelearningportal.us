@@ -368,6 +368,26 @@ Alpine.data('lessonGame', (lesson) => ({
         this._showBgScene()
       }
 
+      // Story game (Spel-verhaal): lazy-load the branch/meter engine once. Without
+      // meters the engine never constructs — plain branching keeps its pre-existing
+      // behaviour (both options play sequentially; branching was never wired before).
+      if (lesson.game_type === 'story_game' && lesson.game_config?.meters?.length && !this._storyGame) {
+        try {
+          const { StoryGameEngine } = await import('./scene/StoryGameEngine.js')
+          const host = document.createElement('div')
+          host.id = 'story-game-overlay'
+          host.className = 'absolute inset-0 z-40 pointer-events-none'
+          document.getElementById('lesson-stage')?.appendChild(host)
+          this._storyGame = new StoryGameEngine(host, {
+            meters: lesson.game_config.meters,
+            failThreshold: lesson.game_config.fail_threshold ?? 0,
+            scenes: _sceneQueue,
+            onAdvanceTo: (i) => { this._sceneIndex = i; this._playScene(i) },
+            onOverrideContinue: () => this._advanceScene(this._sceneIndex),
+          })
+        } catch (e) { console.warn('lesson-player: story game engine failed to load', e) }
+      }
+
       this.phase = 'INTRO'
       this._playIntro()
     },
@@ -747,6 +767,8 @@ Alpine.data('lessonGame', (lesson) => ({
           .filter(s => s.audio_url || s.kind === 'map')
           .map(s => ({
             kind: s.kind, game_type: s.game_type ?? null, config: s.config ?? null, scene_view: s.scene_view,
+            branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
+            branch_choice_label: s.branch_choice_label ?? null,
             audio_url: s.audio_url, script: s.script, image_url: s.image_url,
             shots: s.shots ?? null, alignment: s.alignment ?? null,
             background_color: s.background_color ?? null,
@@ -820,6 +842,14 @@ Alpine.data('lessonGame', (lesson) => ({
     _playScene (index) {
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
+
+      // Story game: 'hold' = engine shows its choice overlay and resumes via onAdvanceTo;
+      // a number = skip a non-chosen branch option to the reconvergence index.
+      if (this._storyGame) {
+        const redirect = this._storyGame.beforePlay(index, scene)
+        if (redirect === 'hold') return
+        if (redirect != null && redirect !== index) { this._sceneIndex = redirect; return this._playScene(redirect) }
+      }
 
       // Reset per-scene shot playback state (storyboard scenes rebuild it below).
       this._shotPlan = null
@@ -1076,6 +1106,9 @@ Alpine.data('lessonGame', (lesson) => ({
     // story-aligned challenge brief. The teacher taps "Begin the challenge" to start
     // the timer and "Continue the lesson" afterwards to return to the narrative.
     _afterSceneAudio (index, scene) {
+      // Story game: branch scenes hand control to the engine (choice overlay after a
+      // question, delta/consequence/game-over flow after a chosen option).
+      if (this._storyGame?.handleSceneEnd(index, scene)) return
       if (scene && scene.kind === 'game') {
         this._gameResumeIndex = index + 1
         this.canResumeAfterGame = this._gameResumeIndex < _sceneQueue.length
@@ -1169,6 +1202,9 @@ Alpine.data('lessonGame', (lesson) => ({
       if (this._timerInterval) clearInterval(this._timerInterval)
       this.phase = 'ENDED'
       this.audioPlaying = false
+      // Story game: the blade has no ENDED markup (everything x-hides), so the run
+      // summary rendered into the engine's overlay host IS the finale screen.
+      if (this._storyGame) this._storyGame.showSummaryInto(document.getElementById('story-game-overlay'))
     },
 
     // ── Timer ──────────────────────────────────────────────────────────
