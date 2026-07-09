@@ -203,6 +203,15 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         return view('teacher.answer-sheet', compact('lesson', 'questions'));
     })->name('lessons.answer-sheet');
 
+    Route::get('/lessons/{lesson}/print/handout', function (\App\Models\Lesson $lesson, \App\Services\LessonPdfService $pdf) {
+        abort_unless($lesson->teacher_id === auth()->id(), 403);
+
+        return response($pdf->handout($lesson), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="handout-'.$lesson->lesson_code.'.pdf"',
+        ]);
+    })->name('lessons.print.handout');
+
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
