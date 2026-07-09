@@ -10,7 +10,7 @@ use App\Models\StrategyGame;
 
 final class LessonOutlinePrompt
 {
-    public static function system(bool $hasGame = false): string
+    public static function system(bool $hasGame = false, ?string $gameType = null): string
     {
         $kindEnum   = $hasGame ? '"narration" | "game"' : '"narration"';
         $gameNote   = $hasGame
@@ -18,6 +18,7 @@ final class LessonOutlinePrompt
             : "\n- Do NOT include any scenes with kind=\"game\". Only narration scenes are allowed."
               ."\n- No scene may depict students, quizzes, tests, or classroom activities — every scene"
               .' stays inside the historical story itself.';
+        $storyGameBlock = $gameType === 'story_game' ? self::storyGameBlock() : '';
 
         return <<<SYS
 You are a K-12 curriculum writer producing structured lesson outlines.
@@ -77,8 +78,53 @@ Rules:
 - avoidList must include obvious anachronisms for the period (modern vehicles, electricity, etc.).{$gameNote}
 - Place game scenes at pedagogically sensible points (after a narration has introduced new content).
 - Follow the "Narrative arc" in the user message: map the scenes onto its beats in order, connect each
-  beat to the previous with "but"/"therefore" (never "and then"), and centre the story on the protagonist when one is named.
+  beat to the previous with "but"/"therefore" (never "and then"), and centre the story on the protagonist when one is named.{$storyGameBlock}
 SYS;
+    }
+
+    /**
+     * Story game ("spel-verhaal", Reigns-style class game): extra JSON the outline must carry —
+     * class meters, per-TEAM roles for the printed card pack, and 3 reconverging choice points
+     * (branch groups) whose options move the meters but never rewrite history.
+     * Spec: docs/superpowers/specs/2026-07-09-game-story-lesson-design.md §4, §7.
+     */
+    private static function storyGameBlock(): string
+    {
+        return <<<'SG'
+
+
+Story game additions — this lesson is a playable branching game ("spel-verhaal"). Extend the JSON object with:
+
+- top-level "meters": EXACTLY 3 or 4 objects, each:
+  { "key": string (snake_case ascii identifier, e.g. "morale"),
+    "label": string (short Dutch label, e.g. "Moreel"),
+    "icon": string (exactly ONE emoji),
+    "start": integer between 40 and 80 }
+  Meters must fit the topic (e.g. for Napoleon: Moreel, Manschappen, Voorraden, Steun).
+- top-level "roles": EXACTLY 5 objects, each:
+  { "title": string (Dutch role title, e.g. "Commandant"),
+    "flavor": string (1 sentence of in-world flavor text),
+    "power": string (1 sentence describing what the team may do) }
+  Roles are written for TEAMS of 3-4 students — address the team, never an individual child.
+- per scene brief, an optional "branch" object:
+  { "group": 1 | 2 | 3,
+    "role": "question" | "option_a" | "option_b",
+    "choice_label": string (short imperative Dutch label, ONLY on option briefs) }
+  There are EXACTLY 3 branch groups. Each group is ONE question brief IMMEDIATELY followed by its
+  TWO option briefs (option_a, then option_b). All other scene briefs omit "branch" entirely.
+- on each option brief additionally "branch_effects":
+  { "deltas": object mapping EVERY meter key to an integer between -25 and 25,
+    "consequence_line": string (1 dramatic Dutch sentence in the spoken voice of a game master),
+    "historical_note": string (1 sentence stating what really happened) }
+
+Story game rules:
+- The two options of a choice differ in APPROACH, never in OUTCOME — the story always reconverges
+  to what really happened. Never invent counterfactual history. Consequences are expressed in
+  meters and narration only.
+- Branch question and option scenes are kind "narration" — never kind "game".
+- Map each branch group onto a "Choice" beat of the narrative arc; its option briefs feed the
+  "Consequence" beat that follows.
+SG;
     }
 
     public static function user(Lesson $lesson, string $sourceText, ?\App\Models\Story $story = null): string
@@ -102,13 +148,16 @@ SYS;
             $gameClause = "Quiz game: insert one game scene as a {$count}-question checkpoint ({$timing}).";
         } elseif ($gameType === 'debate') {
             $gameClause = 'Debate game: insert one game scene where students defend opposing interpretations using evidence from the lesson.';
+        } elseif ($gameType === 'story_game') {
+            $gameClause = 'Game type: story game ("spel-verhaal") — include exactly 3 branch groups '
+                .'(question + two options each) as described in the system instructions, plus topic-fitting meters and 5 team roles.';
         }
 
         // Narrative arc (Spec 1): the chosen framework's dramatic spine shapes the beat structure.
         $framework = $lesson->narrative_framework instanceof NarrativeFramework
             ? $lesson->narrative_framework
             : (NarrativeFramework::tryFrom((string) $lesson->narrative_framework) ?? NarrativeFramework::default());
-        $spine = StorySpine::for($framework);
+        $spine = StorySpine::for($framework, $lesson->game_type);
 
         $arcLines = [
             "Narrative arc: \"{$framework->label()}\" — map the scenes onto these beats, in order: {$spine->beatsLine()}.",
@@ -117,7 +166,8 @@ SYS;
         if ($protagonistClause = $spine->protagonistClause($lesson->protagonist_name)) {
             $arcLines[] = $protagonistClause;
         }
-        if ($gameClause !== '') {
+        // Story game weaves choices through the whole arc — a single placement beat is meaningless.
+        if ($gameClause !== '' && $gameType !== 'story_game') {
             $arcLines[] = "Place the game at the \"{$spine->gamePlacementBeat}\" beat of the arc.";
         }
         $arcBlock = implode("\n", $arcLines);

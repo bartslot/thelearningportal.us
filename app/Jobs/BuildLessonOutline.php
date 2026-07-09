@@ -23,6 +23,28 @@ class BuildLessonOutline implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private const METER_DELTA_LIMIT = 25;
+
+    private const METER_START_MIN = 0;
+
+    private const METER_START_MAX = 100;
+
+    private const METER_COUNT_MIN = 3;
+
+    private const METER_COUNT_MAX = 4;
+
+    private const MAX_BRANCH_GROUPS = 3;
+
+    private const BRANCH_ROLES = ['question', 'option_a', 'option_b'];
+
+    /** Safety net when the LLM returns unusable meters — the pipeline must never fail on them. */
+    private const DEFAULT_METERS = [
+        ['key' => 'morale',   'label' => 'Moreel',      'icon' => '🔥', 'start' => 60],
+        ['key' => 'troops',   'label' => 'Manschappen', 'icon' => '👥', 'start' => 60],
+        ['key' => 'supplies', 'label' => 'Voorraden',   'icon' => '📦', 'start' => 60],
+        ['key' => 'support',  'label' => 'Steun',       'icon' => '❤️', 'start' => 60],
+    ];
+
     public int $tries = 3;
 
     public int $timeout = 120;
@@ -138,7 +160,7 @@ class BuildLessonOutline implements ShouldQueue
 
             $hasGame = (bool) $lesson->include_game;
             $outline = $llm->json(
-                system: LessonOutlinePrompt::system($hasGame),
+                system: LessonOutlinePrompt::system($hasGame, $lesson->game_type),
                 user: LessonOutlinePrompt::user($lesson, $sourceText, $story),
             );
 
@@ -148,11 +170,25 @@ class BuildLessonOutline implements ShouldQueue
                 $outline['learning_objectives'] = $story->learning_objectives;
             }
 
-            $lesson->update([
+            // Story game (spel-verhaal): validate + persist meters/roles into lesson.game_config;
+            // the resulting meter keys drive per-option delta sanitizing below.
+            $isStoryGame = ($lesson->game_type ?? null) === 'story_game';
+            $meterKeys = [];
+            $updates = [
                 'title' => $outline['title'] ?? $lesson->topic,
                 'outline' => $outline,
                 'status' => LessonStatus::ScenesGenerating,
-            ]);
+            ];
+            if ($isStoryGame) {
+                $meters = $this->validatedMeters($lesson, $outline['meters'] ?? null);
+                $meterKeys = array_column($meters, 'key');
+                $updates['game_config'] = array_merge($lesson->game_config ?? [], [
+                    'meters' => $meters,
+                    'roles' => $this->sanitizedRoles($outline['roles'] ?? null),
+                    'fail_threshold' => 0,
+                ]);
+            }
+            $lesson->update($updates);
 
             // Defensive: the outline prompt tells the model to omit game scenes when games are
             // disabled, but LLMs don't reliably obey a negative instruction. Drop any game briefs
@@ -169,7 +205,8 @@ class BuildLessonOutline implements ShouldQueue
             // we never trip the (lesson_id, order) unique index when the model repeats numbers.
             $scenes = [];
             foreach ($briefs as $idx => $brief) {
-                $scenes[] = Scene::create([
+                $branchAttributes = $isStoryGame ? $this->branchAttributes($brief, $meterKeys) : [];
+                $scenes[] = Scene::create($branchAttributes + [
                     'lesson_id' => $lesson->id,
                     'order' => $idx + 1,
                     'kind' => $brief['kind'] ?? 'narration',
@@ -251,5 +288,125 @@ class BuildLessonOutline implements ShouldQueue
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Validate the LLM's meters (3-4 items, key/label/start required, start clamped 0-100).
+     * Garbage meters fall back to the default set — the pipeline never fails on them.
+     *
+     * @return list<array{key: string, label: string, icon: string, start: int}>
+     */
+    private function validatedMeters(Lesson $lesson, mixed $raw): array
+    {
+        $meters = [];
+        foreach (is_array($raw) ? $raw : [] as $meter) {
+            if (! is_array($meter)) {
+                continue;
+            }
+            $key = is_string($meter['key'] ?? null) ? trim($meter['key']) : '';
+            $label = is_string($meter['label'] ?? null) ? trim($meter['label']) : '';
+            if ($key === '' || $label === '' || ! is_numeric($meter['start'] ?? null)) {
+                continue;
+            }
+            $meters[] = [
+                'key' => $key,
+                'label' => $label,
+                'icon' => is_string($meter['icon'] ?? null) ? trim($meter['icon']) : '',
+                'start' => max(self::METER_START_MIN, min(self::METER_START_MAX, (int) $meter['start'])),
+            ];
+        }
+
+        $count = count($meters);
+        if ($count < self::METER_COUNT_MIN || $count > self::METER_COUNT_MAX) {
+            Log::warning("BuildLessonOutline #{$lesson->id}: LLM meters unusable ({$count} valid) — using default meter set");
+
+            return self::DEFAULT_METERS;
+        }
+
+        return $meters;
+    }
+
+    /**
+     * Keep only roles with a title; coerce flavor/power to trimmed strings.
+     *
+     * @return list<array{title: string, flavor: string, power: string}>
+     */
+    private function sanitizedRoles(mixed $raw): array
+    {
+        $roles = [];
+        foreach (is_array($raw) ? $raw : [] as $role) {
+            $title = is_array($role) && is_string($role['title'] ?? null) ? trim($role['title']) : '';
+            if ($title === '') {
+                continue;
+            }
+            $roles[] = [
+                'title' => $title,
+                'flavor' => trim((string) ($role['flavor'] ?? '')),
+                'power' => trim((string) ($role['power'] ?? '')),
+            ];
+        }
+
+        return $roles;
+    }
+
+    /**
+     * Scene attributes for a story-game brief's branch marker: branch columns for valid
+     * question/option briefs, plus sanitized branch_effects in scene.config on options.
+     *
+     * @param  array<string, mixed>  $brief
+     * @param  list<string>  $meterKeys
+     * @return array<string, mixed>
+     */
+    private function branchAttributes(array $brief, array $meterKeys): array
+    {
+        $branch = $brief['branch'] ?? null;
+        if (! is_array($branch)) {
+            return [];
+        }
+
+        $group = is_numeric($branch['group'] ?? null) ? (int) $branch['group'] : 0;
+        $role = $branch['role'] ?? null;
+        if ($group < 1 || $group > self::MAX_BRANCH_GROUPS || ! in_array($role, self::BRANCH_ROLES, true)) {
+            return [];
+        }
+
+        $isOption = $role !== 'question';
+        $choiceLabel = is_string($branch['choice_label'] ?? null) ? trim($branch['choice_label']) : '';
+        $attributes = [
+            'branch_group' => $group,
+            'branch_role' => $role,
+            'branch_choice_label' => $isOption && $choiceLabel !== '' ? $choiceLabel : null,
+        ];
+
+        if ($isOption && is_array($brief['branch_effects'] ?? null)) {
+            $attributes['config'] = [
+                'branch_effects' => $this->sanitizedBranchEffects($brief['branch_effects'], $meterKeys),
+            ];
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Clamp deltas to ±METER_DELTA_LIMIT, drop unknown meter keys, default missing keys to 0.
+     *
+     * @param  array<string, mixed>  $effects
+     * @param  list<string>  $meterKeys
+     * @return array{deltas: array<string, int>, consequence_line: string, historical_note: string}
+     */
+    private function sanitizedBranchEffects(array $effects, array $meterKeys): array
+    {
+        $rawDeltas = is_array($effects['deltas'] ?? null) ? $effects['deltas'] : [];
+        $deltas = [];
+        foreach ($meterKeys as $key) {
+            $value = is_numeric($rawDeltas[$key] ?? null) ? (int) $rawDeltas[$key] : 0;
+            $deltas[$key] = max(-self::METER_DELTA_LIMIT, min(self::METER_DELTA_LIMIT, $value));
+        }
+
+        return [
+            'deltas' => $deltas,
+            'consequence_line' => trim((string) ($effects['consequence_line'] ?? '')),
+            'historical_note' => trim((string) ($effects['historical_note'] ?? '')),
+        ];
     }
 }
