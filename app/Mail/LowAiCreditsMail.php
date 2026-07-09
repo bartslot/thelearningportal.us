@@ -29,7 +29,7 @@ class LowAiCreditsMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.low-ai-credits',
+            view: 'emails.low-ai-credits',
         );
     }
 }
