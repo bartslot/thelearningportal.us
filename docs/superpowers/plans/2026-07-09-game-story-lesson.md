@@ -1,5 +1,14 @@
 # Game Story Lesson (Spel-verhaal) — Implementation Plan
 
+> **STATUS 2026-07-09: ALL 5 SEGMENTS SHIPPED.** Playable + authorable + printable end-to-end.
+> Seg1 d679c75 (schema/spine/Step2/payload) · Seg2 067ebc7 (outline: meters/roles/3 choice groups) ·
+> script-spine 9ab8419 · Seg3 dd78b18 (player: choice overlay, meter HUD, consequences, game-over,
+> summary; StoryGameEngine.js + 49 vitest) · Seg4 fa9ed4e (Step3 game-effects + meters panels +
+> publish guard; EditsStoryGame trait) · Seg5 1ed44a6 (game pack PDF) · 71692b4 (fix: pack renders
+> after scripts exist). Example PDFs: storage/app/examples/game-pack-example.pdf (gitignored, local).
+> Manual verification of the live player flow (browser) still pending — do this before enabling in prod.
+
+
 > Executes `docs/superpowers/specs/2026-07-09-game-story-lesson-design.md`.
 > **Reality check that reshaped this plan:** branching-lite was never wired — `scenes.branch_group/branch_role/branch_choice_label`
 > columns, the `Branching` enum value and spine beats exist, but there is NO branch generation, NO player
