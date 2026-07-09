@@ -27,8 +27,18 @@ final class StorySpine
         public readonly string $abtRule = self::ABT_RULE,
     ) {}
 
-    public static function for(NarrativeFramework $framework): self
+    public static function for(NarrativeFramework $framework, ?string $gameType = null): self
     {
+        // Spel-verhaal: the game is woven through the whole arc (3 reconverging choice points),
+        // so the spine repeats Choice→Consequence and gamePlacementBeat loses its meaning.
+        // Spec: docs/superpowers/specs/2026-07-09-game-story-lesson-design.md §7.1
+        if ($framework === NarrativeFramework::Branching && $gameType === 'story_game') {
+            return new self(
+                ['Setup', 'Choice', 'Consequence', 'Choice', 'Consequence', 'Choice', 'Climax', 'End'],
+                'Choice',
+            );
+        }
+
         return match ($framework) {
             NarrativeFramework::HerosJourney => new self(['Before', 'Call', 'Trials', 'Crisis', 'Return'], 'Crisis'),
             NarrativeFramework::InMediasRes  => new self(['Cold open', 'Rewind', 'Build', 'Catch-up', 'Aftermath'], 'Catch-up'),

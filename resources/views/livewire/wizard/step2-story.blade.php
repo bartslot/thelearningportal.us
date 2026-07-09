@@ -80,11 +80,23 @@
             </div>
         </div>
     @elseif ($narrative_framework === 'branching')
-        <div class="bg-base-300/60 rounded-2xl px-6 py-4">
+        <div class="bg-base-300/60 rounded-2xl px-6 py-4 space-y-3">
             <p class="text-sm text-slate-300 flex items-center gap-2">
                 <i class="ti ti-git-branch text-amber-300"></i>
-                The AI adds one choice point mid-lesson — you can edit both paths in Configure.
+                {{ $story_game
+                    ? __('Spel-verhaal: 3 choice points, class meters and a game master — the class survives the story together. History stays true.')
+                    : __('The AI adds one choice point mid-lesson — you can edit both paths in Configure.') }}
             </p>
+            <label class="label cursor-pointer justify-start gap-3 py-0">
+                <input type="checkbox" wire:model.live="story_game" class="toggle toggle-sm toggle-primary" />
+                <span class="label-text text-sm">{{ __('Spel-verhaal (full game story)') }}</span>
+            </label>
+            @if ($story_game)
+                <label class="label cursor-pointer justify-start gap-3 py-0 pl-1">
+                    <input type="checkbox" wire:model.live="print_pack" class="checkbox checkbox-sm checkbox-primary" />
+                    <span class="label-text text-xs opacity-80">{{ __('Also generate a printable game pack (role cards, tokens, meter poster)') }}</span>
+                </label>
+            @endif
         </div>
     @endif
 

@@ -45,6 +45,11 @@ class Step2Story extends Component
 
     public int $game_split_count = 1;
 
+    // ── Spel-verhaal (game story) — only for the branching arc ────────────────
+    public bool $story_game = false;
+
+    public bool $print_pack = false;
+
     public function mount(Lesson $lesson): void
     {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
@@ -64,6 +69,8 @@ class Step2Story extends Component
         $this->strategy_game_id = $lesson->strategy_game_id;
         $this->team_count = $lesson->team_count;
         $this->game_split_count = (int) ($lesson->game_split_count ?? 1);
+        $this->story_game = $lesson->game_type === 'story_game';
+        $this->print_pack = (bool) (($lesson->game_config ?? [])['print_pack'] ?? false);
 
         // First visit with no choice yet → apply the default arc's paired game.
         if (! $lesson->narrative_framework) {
@@ -123,9 +130,27 @@ class Step2Story extends Component
         $this->applyArcDefaults($framework);
     }
 
+    /** Spel-verhaal toggle: full game story (3 choice points + meters) vs. single choice point. */
+    public function updatedStoryGame(): void
+    {
+        if ($this->story_game) {
+            $this->include_game = true;
+            $this->game_type = 'story_game';
+
+            return;
+        }
+
+        $this->print_pack = false;
+        $this->applyArcDefaults($this->framework());
+    }
+
     /** Pre-pair the arc's suggested game (teacher can still override below). */
     private function applyArcDefaults(NarrativeFramework $framework): void
     {
+        // Spel-verhaal is branching-only; switching arcs always drops back to the paired game.
+        $this->story_game = false;
+        $this->print_pack = false;
+
         $paired = $framework->defaultGameType();
 
         if ($paired === null) {
@@ -186,12 +211,18 @@ class Step2Story extends Component
     /** Persist the story + game choices, start generation, advance to the Generate step. */
     public function generate(): void
     {
+        // Spel-verhaal only exists on the branching arc; guard against stale toggle state.
+        $isStoryGame = $this->story_game && $this->narrative_framework === 'branching';
+
         $this->lesson->fill([
             'narrative_framework' => $this->narrative_framework,
             'protagonist_qid' => $this->protagonist_qid,
             'protagonist_name' => trim((string) $this->protagonist_name) ?: null,
-            'include_game' => $this->include_game,
-            'game_type' => $this->include_game ? $this->game_type : null,
+            'include_game' => $isStoryGame ? true : $this->include_game,
+            'game_type' => $isStoryGame ? 'story_game' : ($this->include_game ? $this->game_type : null),
+            'game_config' => $isStoryGame
+                ? array_merge($this->lesson->game_config ?? [], ['print_pack' => $this->print_pack])
+                : null,
             'quiz_question_count' => $this->include_game && $this->game_type === 'quiz' ? $this->quiz_question_count : null,
             'quiz_timing' => $this->include_game && $this->game_type === 'quiz' ? $this->quiz_timing : null,
             'strategy_game' => $this->include_game && $this->game_type === 'strategy' ? $this->strategy_game : null,
