@@ -17,6 +17,18 @@ use Livewire\Component;
  */
 class LessonComposer extends Component
 {
+    /** Line-list config fields (seed terms, takeaways) are capped at this many items. */
+    private const MAX_LIST_ITEMS = 5;
+
+    /**
+     * Which `config` keys each module type lets the teacher edit inline.
+     * `text` fields take a single string; `lines` fields take newline-separated lists.
+     * Keys not listed here are rejected — never write unvalidated input into config.
+     */
+    private const EDITABLE_CONFIG_FIELDS = [
+        'prior_knowledge' => ['text' => ['question'], 'lines' => ['seed_terms']],
+    ];
+
     public Lesson $lesson;
 
     public bool $addModuleOpen = false;
@@ -52,11 +64,13 @@ class LessonComposer extends Component
 
         $implementation = ModuleRegistry::for($moduleType);
 
+        $config = $implementation::defaultConfig();
+
         $this->lesson->modules()->create([
             'type' => $moduleType,
             'title' => null,
             'order' => $nextOrder,
-            'config' => $implementation::defaultConfig(),
+            'config' => $config,
             'estimated_duration_seconds' => $implementation->estimatedDuration(
                 new LessonModule(['estimated_duration_seconds' => 0])
             ),
@@ -179,6 +193,58 @@ class LessonComposer extends Component
     {
         $this->lesson->reorderModules($orderedIds);
         $this->reloadModules();
+    }
+
+    /**
+     * Update a single-string config field on a module (e.g. the prior-knowledge question).
+     * Only keys allowlisted per type in EDITABLE_CONFIG_FIELDS are accepted.
+     */
+    public function updateModuleText(int $moduleId, string $key, string $value): void
+    {
+        $module = $this->lesson->modules()->findOrFail($moduleId);
+
+        if (! $this->isEditableField($module, 'text', $key)) {
+            return;
+        }
+
+        $module->update([
+            'config' => array_merge($module->config ?? [], [$key => trim($value)]),
+        ]);
+
+        $this->reloadModules();
+    }
+
+    /**
+     * Update a line-list config field (one item per line, e.g. seed terms, takeaways).
+     * Blank lines are dropped and the list is capped at MAX_LIST_ITEMS.
+     */
+    public function updateModuleLines(int $moduleId, string $key, string $value): void
+    {
+        $module = $this->lesson->modules()->findOrFail($moduleId);
+
+        if (! $this->isEditableField($module, 'lines', $key)) {
+            return;
+        }
+
+        $lines = collect(preg_split('/\R/', $value) ?: [])
+            ->map(static fn (string $line): string => trim($line))
+            ->filter(static fn (string $line): bool => $line !== '')
+            ->take(self::MAX_LIST_ITEMS)
+            ->values()
+            ->all();
+
+        $module->update([
+            'config' => array_merge($module->config ?? [], [$key => $lines]),
+        ]);
+
+        $this->reloadModules();
+    }
+
+    private function isEditableField(LessonModule $module, string $kind, string $key): bool
+    {
+        $fields = self::EDITABLE_CONFIG_FIELDS[$module->type->value][$kind] ?? [];
+
+        return in_array($key, $fields, true);
     }
 
     public function render(): View
