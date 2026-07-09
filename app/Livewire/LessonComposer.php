@@ -6,6 +6,7 @@ namespace App\Livewire;
 
 use App\Enums\ModuleType;
 use App\Lessons\Modules\ModuleRegistry;
+use App\Lessons\Modules\Types\ConclusionModule;
 use App\Models\Lesson;
 use App\Models\LessonModule;
 use Illuminate\Contracts\View\View;
@@ -27,6 +28,7 @@ class LessonComposer extends Component
      */
     private const EDITABLE_CONFIG_FIELDS = [
         'prior_knowledge' => ['text' => ['question'], 'lines' => ['seed_terms']],
+        'conclusion' => ['text' => ['heading', 'whats_next'], 'lines' => ['takeaways']],
     ];
 
     public Lesson $lesson;
@@ -64,7 +66,10 @@ class LessonComposer extends Component
 
         $implementation = ModuleRegistry::for($moduleType);
 
-        $config = $implementation::defaultConfig();
+        // Conclusion takeaways default from the lesson's learning objectives (K-6).
+        $config = $moduleType === ModuleType::Conclusion
+            ? ConclusionModule::configWithLessonDefaults($this->lesson)
+            : $implementation::defaultConfig();
 
         $this->lesson->modules()->create([
             'type' => $moduleType,
