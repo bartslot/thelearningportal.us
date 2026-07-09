@@ -29,6 +29,10 @@
                     {{ __('View lesson') }} →
                 </a>
             </div>
+            @if ($lesson->game_pack_path)
+                <a href="{{ route('teacher.lessons.print.game-pack', $lesson) }}" target="_blank"
+                   class="btn btn-sm btn-outline shadow-lg">🎲 {{ __('Download spelpakket (PDF)') }}</a>
+            @endif
         @else
             <button wire:click="publish"
                     @disabled(! $this->allReady)

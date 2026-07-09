@@ -281,6 +281,13 @@ class BuildLessonOutline implements ShouldQueue
             // One whole-lesson script pass (story coherence + critique loop) — it fans out
             // the per-scene image/audio batch and the quiz itself once scripts exist.
             GenerateLessonScript::dispatch($lesson->id);
+
+            // Story game with a print pack requested → render the physical spelpakket PDF.
+            // Fire-and-forget: GenerateGamePack never fails the lesson (see its failed()).
+            // Dispatched here, where the outline (meters/roles + branch scenes) is finalized.
+            if ($isStoryGame && ! empty($lesson->game_config['print_pack'])) {
+                GenerateGamePack::dispatch($lesson->id);
+            }
         } catch (Throwable $e) {
             $lesson->update([
                 'status' => LessonStatus::Failed,

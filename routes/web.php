@@ -212,6 +212,17 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         ]);
     })->name('lessons.print.handout');
 
+    Route::get('/lessons/{lesson}/print/game-pack', function (\App\Models\Lesson $lesson) {
+        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(filled($lesson->game_pack_path)
+            && \Illuminate\Support\Facades\Storage::disk('public')->exists($lesson->game_pack_path), 404);
+
+        return response(\Illuminate\Support\Facades\Storage::disk('public')->get($lesson->game_pack_path), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="spelpakket-'.$lesson->lesson_code.'.pdf"',
+        ]);
+    })->name('lessons.print.game-pack');
+
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 

@@ -28,6 +28,7 @@ class Lesson extends Model
         'include_game',
         'game_type',
         'game_config',
+        'game_pack_path',
         'quiz_question_count',
         'quiz_timing',
         'strategy_game',
