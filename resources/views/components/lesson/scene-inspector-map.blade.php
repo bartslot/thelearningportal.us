@@ -143,6 +143,7 @@
                    placeholder="Search an empire/kingdom — e.g. Byzantine Empire"
                    class="input input-sm input-bordered bg-slate-900 mt-1" />
             <p class="mt-1 text-[10px] text-amber-400/70">No territory linked — search a polity (cities: link the empire that ruled it).</p>
+            <p class="mt-1 text-[10px] text-sky-300/80">Don't know its name? Hover the map to see territory names, then click one to link it.</p>
 
             @if (filled($territoryQuery) && $territoryResults && $territoryResults->isNotEmpty())
                 <ul class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-700/60 divide-y divide-slate-800 bg-slate-900/95">

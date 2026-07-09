@@ -3,17 +3,41 @@
  *
  * Editable (Configure): the [T] tool adds a text box that is focused immediately;
  * drag to reposition (pointer moves > 4px = drag, otherwise it's a click-to-edit).
- * Blur with empty text removes the box. Positions are stored as percentages so they
- * survive any viewport size.
+ * Focusing a box shows a small toolbar: font style, size, and — on map scenes —
+ * whether the label is pinned to the map (moves with pan/zoom) or stuck to the
+ * screen. Positions are stored as percentages so they survive any viewport size.
  *
  * Readonly (player/preview): plain labels; a text that IS a URL renders as a link
  * chip that opens the page in an iframe modal (with an "open in new tab" escape
  * hatch for sites that refuse to be framed).
  *
- * texts: [{ id, text, x, y }] — x/y are 0-100 percentages of the host.
+ * texts: [{ id, text, x, y, font, size, anchor, lng, lat }]
+ *   x/y    — 0-100 percentages of the host (always kept; the screen position).
+ *   font   — 'sans' (Inter) | 'history' (brand serif) | 'cinzel' (classical caps).
+ *   size   — 'sm' | 'md' | 'lg' | 'xl'.
+ *   anchor — 'screen' (default) or 'map': pinned to a lng/lat, repositioned on
+ *            every map move via the host-provided projector.
+ *
+ * Map pinning: the host calls setProjector({ project, unproject }) when a map is
+ * live (and setProjector(null) when it's gone), plus refreshPositions() on map
+ * move. Without a projector, map-anchored labels fall back to their stored x/y.
  */
 const URL_PATTERN = /^https?:\/\/\S+$/i
 const DRAG_THRESHOLD_PX = 4
+
+const FONTS = {
+  sans:    { label: 'Clean',   stack: "'Inter', ui-sans-serif, sans-serif", weight: 600 },
+  history: { label: 'History', stack: "'History', serif",                   weight: 700 },
+  cinzel:  { label: 'Classic', stack: "'Cinzel', serif",                    weight: 700 },
+}
+const SIZES = {
+  sm: { label: 'S',  css: 'clamp(12px, 1.4vw, 18px)' },
+  md: { label: 'M',  css: 'clamp(16px, 2.2vw, 28px)' },
+  lg: { label: 'L',  css: 'clamp(22px, 3.2vw, 40px)' },
+  xl: { label: 'XL', css: 'clamp(30px, 4.6vw, 58px)' },
+}
+const fontOf = (item) => FONTS[item.font] || FONTS.sans
+const sizeOf = (item) => SIZES[item.size] || SIZES.md
 
 export class TextOverlayLayer {
   constructor(hostEl, { editable = false, onChange = null } = {}) {
@@ -21,6 +45,7 @@ export class TextOverlayLayer {
     this.editable = editable
     this.onChange = onChange
     this._texts = []
+    this._projector = null
     this.host.style.pointerEvents = 'none'
   }
 
@@ -31,6 +56,30 @@ export class TextOverlayLayer {
     this._render()
   }
 
+  /**
+   * Wire (or clear, with null) the map projector used by map-anchored labels:
+   *   { project(lng, lat) → {x, y} host-percentages or null,
+   *     unproject(xPct, yPct) → {lng, lat} or null }
+   */
+  setProjector(projector) {
+    this._projector = projector || null
+    this._render()
+  }
+
+  /** Reposition map-anchored labels — call on every map move/zoom. */
+  refreshPositions() {
+    if (!this._projector) return
+    for (const item of this._texts) {
+      if (item.anchor !== 'map' || !Number.isFinite(item.lng) || !Number.isFinite(item.lat)) continue
+      const pos = this._projector.project(item.lng, item.lat)
+      if (!pos) continue
+      item.x = pos.x
+      item.y = pos.y
+      const node = this.host.querySelector(`[data-text-id="${item.id}"]`)
+      if (node) { node.style.left = `${pos.x}%`; node.style.top = `${pos.y}%` }
+    }
+  }
+
   addText() {
     if (!this.editable) return
     const item = {
@@ -38,6 +87,9 @@ export class TextOverlayLayer {
       text: '',
       x: 38 + Math.random() * 6,   // roughly centred, slightly varied so stacks don't overlap
       y: 38 + Math.random() * 6,
+      font: 'sans',
+      size: 'md',
+      anchor: 'screen',
     }
     this._texts.push(item)
     this._render()
@@ -58,6 +110,7 @@ export class TextOverlayLayer {
     for (const item of this._texts) {
       this.host.appendChild(this.editable ? this._editableNode(item) : this._readonlyNode(item))
     }
+    this.refreshPositions()
     // The iframe modal outlives re-renders; it's appended to <body> on demand.
   }
 
@@ -65,9 +118,16 @@ export class TextOverlayLayer {
     const node = document.createElement('div')
     node.dataset.textId = item.id
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; max-width:46%;
-      pointer-events:auto; color:#f8fafc; font-size:clamp(16px, 2.2vw, 28px); font-weight:600;
+      pointer-events:auto; color:#f8fafc; font-size:${sizeOf(item).css};
+      font-family:${fontOf(item).stack}; font-weight:${fontOf(item).weight};
       line-height:1.3; text-shadow:0 2px 12px rgba(0,0,0,0.75);`
     return node
+  }
+
+  _applyStyle(item, node) {
+    node.style.fontSize = sizeOf(item).css
+    node.style.fontFamily = fontOf(item).stack
+    node.style.fontWeight = fontOf(item).weight
   }
 
   // ── Editable (Configure) ─────────────────────────────────────────────────
@@ -97,6 +157,14 @@ export class TextOverlayLayer {
     })
     node.appendChild(edit)
 
+    // Options toolbar (font / size / pin) — appears while the box has focus.
+    const toolbar = this._toolbarNode(item, node)
+    node.appendChild(toolbar)
+    node.addEventListener('focusin', () => { toolbar.style.display = 'flex' })
+    node.addEventListener('focusout', (e) => {
+      if (!node.contains(e.relatedTarget)) toolbar.style.display = 'none'
+    })
+
     // Small × top-right to delete the box (pointerdown so it beats the blur/drag handlers).
     const remove = document.createElement('button')
     remove.type = 'button'
@@ -120,6 +188,7 @@ export class TextOverlayLayer {
 
     // Drag anywhere on the box; a press that doesn't move stays a click-to-edit.
     node.addEventListener('pointerdown', (e) => {
+      if (toolbar.contains(e.target)) return                              // toolbar clicks aren't drags
       if (e.target === edit && document.activeElement === edit) return  // typing — don't hijack
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
@@ -138,14 +207,102 @@ export class TextOverlayLayer {
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
-        if (dragging) this._emitChange()
-        else edit.focus()
+        if (dragging) {
+          // A map-pinned label dragged to a new spot is pinned to the NEW place.
+          if (item.anchor === 'map' && this._projector) {
+            const ll = this._projector.unproject(item.x, item.y)
+            if (ll) { item.lng = ll.lng; item.lat = ll.lat }
+          }
+          this._emitChange()
+        } else edit.focus()
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     })
 
     return node
+  }
+
+  // Font / size / pin controls shown while a text box is focused.
+  _toolbarNode(item, node) {
+    const bar = document.createElement('div')
+    bar.style.cssText = `position:absolute; bottom:calc(100% + 8px); left:0; display:none;
+      align-items:center; gap:6px; padding:5px 8px; border-radius:10px;
+      background:#0f172a; border:1px solid rgba(245,158,11,0.45); box-shadow:0 6px 20px rgba(0,0,0,0.5);
+      font-family:'Inter', sans-serif; font-size:12px; font-weight:500; white-space:nowrap; z-index:5;`
+    // Keep the box focused while using the toolbar (pointerdown would otherwise blur + drag).
+    bar.addEventListener('pointerdown', (e) => e.stopPropagation())
+
+    const selectCss = `background:#1e293b; color:#e2e8f0; border:1px solid rgba(255,255,255,0.15);
+      border-radius:7px; padding:3px 6px; font-size:12px; outline:none; cursor:pointer;`
+
+    const fontSel = document.createElement('select')
+    fontSel.title = 'Font style'
+    fontSel.style.cssText = selectCss
+    for (const [key, f] of Object.entries(FONTS)) {
+      const o = document.createElement('option')
+      o.value = key
+      o.textContent = f.label
+      fontSel.appendChild(o)
+    }
+    fontSel.value = FONTS[item.font] ? item.font : 'sans'
+    fontSel.addEventListener('change', () => {
+      item.font = fontSel.value
+      this._applyStyle(item, node)
+      this._emitChange()
+    })
+    bar.appendChild(fontSel)
+
+    const sizeSel = document.createElement('select')
+    sizeSel.title = 'Text size'
+    sizeSel.style.cssText = selectCss
+    for (const [key, s] of Object.entries(SIZES)) {
+      const o = document.createElement('option')
+      o.value = key
+      o.textContent = s.label
+      sizeSel.appendChild(o)
+    }
+    sizeSel.value = SIZES[item.size] ? item.size : 'md'
+    sizeSel.addEventListener('change', () => {
+      item.size = sizeSel.value
+      this._applyStyle(item, node)
+      this._emitChange()
+    })
+    bar.appendChild(sizeSel)
+
+    // Pin toggle — only meaningful when a map is live under the overlay.
+    if (this._projector) {
+      const pin = document.createElement('button')
+      pin.type = 'button'
+      const paint = () => {
+        const pinned = item.anchor === 'map'
+        pin.textContent = pinned ? '📌 Map' : '🖥 Screen'
+        pin.title = pinned
+          ? 'Pinned to the map — moves with pan/zoom. Click to stick to the screen instead.'
+          : 'Stuck to the screen. Click to pin to the map at this spot.'
+        pin.style.cssText = `${selectCss} background:${pinned ? 'rgba(245,158,11,0.2)' : '#1e293b'};
+          border-color:${pinned ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.15)'};`
+      }
+      paint()
+      pin.addEventListener('click', () => {
+        if (item.anchor === 'map') {
+          item.anchor = 'screen'
+          delete item.lng
+          delete item.lat
+        } else {
+          const ll = this._projector.unproject(item.x, item.y)
+          if (!ll) return
+          item.anchor = 'map'
+          item.lng = ll.lng
+          item.lat = ll.lat
+        }
+        paint()
+        this._emitChange()
+      })
+      bar.appendChild(pin)
+    }
+
+    return bar
   }
 
   // ── Readonly (player / preview) ──────────────────────────────────────────

@@ -372,7 +372,33 @@ class Step3SceneConfigurator extends Component
         }) ?? collect();
     }
 
-    public function linkTerritory(string $qid): void
+    /**
+     * Map preview click → link the clicked Cliopatria polity as this block's territory.
+     * The QID comes straight from the tile feature, so it may not exist in the topic
+     * catalog — linkTerritory()'s $fallbackName covers that case.
+     */
+    #[On('mapTerritoryClicked')]
+    public function linkTerritoryFromMap(?int $sceneId = null, ?string $qid = null, ?string $name = null): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        if ($sceneId !== null && $sceneId !== $this->selectedSceneId) {
+            return; // stale click from a previously selected scene's map
+        }
+        if (! is_string($qid) || ! preg_match('/^Q\d+$/', $qid)) {
+            return;
+        }
+
+        $fallback = is_string($name) && trim($name) !== '' ? mb_substr(trim($name), 0, 120) : null;
+        $this->linkTerritory($qid, $fallback);
+
+        // A qid change alone isn't "stage dirty" (see unlinkTerritory) — re-fire scene:load so
+        // the preview re-mounts with the new QID even when the location string didn't change.
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    public function linkTerritory(string $qid, ?string $fallbackName = null): void
     {
         if (! $this->selectedScene) {
             return;
@@ -385,6 +411,18 @@ class Step3SceneConfigurator extends Component
                 ->first()
         );
         if (! $topic) {
+            if ($fallbackName === null) {
+                return;
+            }
+            // Clicked polity isn't in the curated catalog — link the raw QID with the
+            // tile feature's name. No era seeding (the tiles don't define one canonical span).
+            $this->selectedScene['config']['qid'] = $qid;
+            $this->selectedScene['location'] = $fallbackName;
+            $this->applyCapitalFocus($qid);
+            $this->territoryQuery = '';
+            $this->saveSelected();
+            $this->dispatch('focusAnnotationsRefresh', annotations: $this->selectedScene['config']['annotations'] ?? []);
+
             return;
         }
 
@@ -542,12 +580,30 @@ class Step3SceneConfigurator extends Component
 
         $clean = collect($texts)
             ->filter(fn ($t) => is_array($t) && trim((string) ($t['text'] ?? '')) !== '')
-            ->map(fn (array $t) => [
-                'id' => (string) ($t['id'] ?? uniqid('txt_')),
-                'text' => mb_substr(trim((string) $t['text']), 0, 300),
-                'x' => max(0, min(100, (float) ($t['x'] ?? 40))),
-                'y' => max(0, min(100, (float) ($t['y'] ?? 40))),
-            ])
+            ->map(function (array $t) {
+                // Map-pinned labels carry a lng/lat; anything malformed falls back to screen.
+                $anchor = ($t['anchor'] ?? 'screen') === 'map' ? 'map' : 'screen';
+                $lng = isset($t['lng']) && is_numeric($t['lng']) ? max(-180.0, min(180.0, (float) $t['lng'])) : null;
+                $lat = isset($t['lat']) && is_numeric($t['lat']) ? max(-85.0, min(85.0, (float) $t['lat'])) : null;
+                if ($anchor === 'map' && ($lng === null || $lat === null)) {
+                    $anchor = 'screen';
+                    $lng = $lat = null;
+                }
+                $font = $t['font'] ?? 'sans';
+                $size = $t['size'] ?? 'md';
+
+                return [
+                    'id' => (string) ($t['id'] ?? uniqid('txt_')),
+                    'text' => mb_substr(trim((string) $t['text']), 0, 300),
+                    'x' => max(0, min(100, (float) ($t['x'] ?? 40))),
+                    'y' => max(0, min(100, (float) ($t['y'] ?? 40))),
+                    'font' => in_array($font, ['sans', 'history', 'cinzel'], true) ? $font : 'sans',
+                    'size' => in_array($size, ['sm', 'md', 'lg', 'xl'], true) ? $size : 'md',
+                    'anchor' => $anchor,
+                    'lng' => $anchor === 'map' ? $lng : null,
+                    'lat' => $anchor === 'map' ? $lat : null,
+                ];
+            })
             ->take(12)
             ->values()
             ->all();

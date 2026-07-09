@@ -923,6 +923,13 @@ Alpine.data('lessonGame', (lesson) => ({
           interactive: mode === 'interactive',
           annotations: cfg.annotations || [],   // read-only focus cities for students
         })
+
+        // Map-pinned text labels follow the map as the student pans/zooms.
+        const textHost = document.getElementById('lesson-text-overlay')
+        if (this._textLayer && textHost) {
+          this._textLayer.setProjector(_mapInstance.textProjector(textHost))
+          _mapInstance.map.on('move', () => this._textLayer?.refreshPositions())
+        }
       }
 
       this.showMapContinue = (mode === 'interactive')
@@ -941,6 +948,7 @@ Alpine.data('lessonGame', (lesson) => ({
     _advanceFromMap (index) {
       clearTimeout(_mapTimer)
       _mapTimer = null
+      this._textLayer?.setProjector(null)   // map gone — pinned labels fall back to screen spots
       if (_mapInstance) { try { _mapInstance.destroy() } catch (_) {} _mapInstance = null }
       const stage = document.getElementById('lesson-map-stage')
       if (stage) { stage.style.display = 'none'; stage.innerHTML = '' }
@@ -1098,6 +1106,11 @@ Alpine.data('lessonGame', (lesson) => ({
       const { TextOverlayLayer } = await import('./scene/TextOverlayLayer.js')
       this._textLayer = this._textLayer || new TextOverlayLayer(host, { editable: false })
       this._textLayer.setTexts(texts)
+      // The map block may already be up (this import is async) — pin labels to it now.
+      if (_mapInstance) {
+        this._textLayer.setProjector(_mapInstance.textProjector(host))
+        _mapInstance.map.on('move', () => this._textLayer?.refreshPositions())
+      }
     },
 
     // Quiz segment: step through the lesson's questions in the card overlay, then

@@ -189,7 +189,9 @@ export class QuizOverlay {
     }
     if (gated) {
       if (this._gateTimer) clearTimeout(this._gateTimer)
-      this._gateTimer = setTimeout(() => this._render(), Math.min(gateLeft + 30, 500))
+      // Tick in place — a full _render() would rebuild the card and replay its qz-slide-in
+      // entrance every 500ms, making the whole modal flash until the gate opens.
+      this._gateTimer = setTimeout(() => this._gateTick(), Math.min(gateLeft + 30, 250))
     }
 
     const options = mapping.map(originalIndex => (q.options || [])[originalIndex]).slice(0, 4)
@@ -265,9 +267,9 @@ export class QuizOverlay {
                 color:#fbbf24; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
                 Sneak peek — this comes later in the story</div>` : ''}
           <div style="font-size:22px; font-weight:600; line-height:1.35; margin-bottom:20px;">${this._escape(q.question)}</div>
-          ${gated ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; color:#94a3b8; font-size:13px;">
+          ${gated ? `<div data-gate-note style="display:flex; align-items:center; gap:8px; margin-bottom:10px; color:#94a3b8; font-size:13px;">
               <span class="loading loading-ring loading-xs" style="color:#f59e0b;"></span>
-              Read the question&hellip; answers unlock in ${Math.ceil(gateLeft / 1000)}s</div>` : ''}
+              Read the question&hellip; answers unlock in <span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s</div>` : ''}
           <div style="display:flex; flex-direction:column; gap:10px;">${optionsHtml}</div>
           ${feedback}
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:24px;">
@@ -306,6 +308,31 @@ export class QuizOverlay {
     })
 
     if (effects?.kind === 'correct') this._playCorrectEffects(effects)
+  }
+
+  // Read-gate countdown tick: updates the seconds label and, when the gate opens, enables
+  // the answers in place. Never re-renders the card, so its entrance animation plays once.
+  _gateTick() {
+    this._gateTimer = null
+    if (!this.isVisible || this._answered.has(this._index)) return
+    const gateLeft = Math.max(0, (this._gateUntil.get(this._index) ?? 0) - performance.now())
+    const note = this.host.querySelector('[data-gate-note]')
+
+    if (gateLeft > 50) {
+      const secs = note?.querySelector('[data-gate-secs]')
+      if (secs) secs.textContent = Math.ceil(gateLeft / 1000)
+      this._gateTimer = setTimeout(() => this._gateTick(), Math.min(gateLeft + 30, 250))
+      return
+    }
+
+    // Gate open — unlock the options without a rebuild.
+    if (!this._openedAt.has(this._index)) this._openedAt.set(this._index, performance.now())
+    note?.remove()
+    this.host.querySelectorAll('[data-opt]').forEach(btn => {
+      btn.disabled = false
+      btn.style.opacity = '1'
+      btn.style.cursor = 'pointer'
+    })
   }
 
   _answer(displayIndex, buttonEl) {

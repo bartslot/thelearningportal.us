@@ -45,9 +45,20 @@
             lastKey = null
         }
 
+        // Text labels can be pinned to the live map — wire the projector whenever both the
+        // map instance and the text layer exist (either can be created first).
+        const wireTextProjector = () => {
+            const layer = window.__lessonTextLayer
+            const overlayHost = document.getElementById('lesson-text-overlay')
+            if (!layer) return
+            if (!inst || !overlayHost) { layer.setProjector(null); return }
+            layer.setProjector(inst.textProjector(overlayHost))
+            inst.map.on('move', () => layer.refreshPositions())
+        }
+
         window.Livewire.on('scene:load', (e) => {
             const p = Array.isArray(e) ? e[0]?.payload : e?.payload
-            if (!p || p.kind !== 'map') { destroy(); return }
+            if (!p || p.kind !== 'map') { destroy(); wireTextProjector(); return }
             const cfg = p.config || {}
             const year = cfg.year ?? p.year ?? 1600
             // Only the scene-defining bits decide a re-mount. scene:load re-fires constantly (status
@@ -79,7 +90,10 @@
                     annotations: cfg.annotations || [],
                     editable: true,
                     onAnnotationsChange: (a) => window.Livewire.dispatch('annotationsChanged', { sceneId: p.sceneId, annotations: a }),
+                    // Click a polity on the map → link it as this block's territory (hover shows its name).
+                    onPolityClick: (t) => window.Livewire.dispatch('mapTerritoryClicked', { sceneId: p.sceneId, qid: t.qid, name: t.name }),
                 })
+                wireTextProjector()
             } else {
                 // lesson-map.js failed to load — surface it instead of silently leaving an empty host,
                 // which reveals the 3D canvas (narration art) behind and reads as "the map didn't open".
@@ -116,6 +130,8 @@
                     window.Livewire.dispatch('sceneTextsChanged', { sceneId: textSceneId ?? null, texts })
                 },
             })
+            window.__lessonTextLayer = textLayer
+            wireTextProjector()   // a map block may already be live — pin labels to it now
             return textLayer
         }
         window.Livewire.on('scene:load', (e) => {

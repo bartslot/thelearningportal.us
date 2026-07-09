@@ -47,7 +47,9 @@
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
                     .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); window.__timemapSpeak && window.__timemapSpeak($event.detail.id, d.summary); });
            "
-           class="absolute left-4 top-4 z-20 max-h-[calc(100%-7rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl"
+           {{-- Mobile: start below the settings cog (right-4 top-4, z-30) — at w-80 on a phone the
+                cog lands exactly on the panel's ✕ close button and steals its taps. --}}
+           class="absolute left-4 top-[4.5rem] z-20 max-h-[calc(100%-10.5rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl sm:top-4 sm:max-h-[calc(100%-7rem)]"
            style="display:none">
         <template x-if="loading">
             <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}</p>
@@ -93,10 +95,12 @@
                     <span x-text="selected.length ? '{{ __('Create lesson with') }} ' + selected[0].name + (selected.length > 1 ? ' +' + (selected.length - 1) : '') : '{{ __('Create lesson') }}'"></span>
                 </a>
 
+                {{-- flex-1/px-1: the three labels (esp. Dutch "Samenvatting/Personen/Door de tijd")
+                     overflow the 320px panel with default tab padding and wrap onto the content. --}}
                 <div role="tablist" class="tabs tabs-bordered mt-3">
-                    <a role="tab" class="tab" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
-                    <a role="tab" class="tab" :class="tab==='people' && 'tab-active'" x-on:click="tab='people'">{{ __('People') }}</a>
-                    <a role="tab" class="tab" :class="tab==='overtime' && 'tab-active'" x-on:click="tab='overtime'">{{ __('Over Time') }}</a>
+                    <a role="tab" class="tab flex-1 whitespace-nowrap px-1" :class="tab==='summary' && 'tab-active'" x-on:click="tab='summary'">{{ __('Summary') }}</a>
+                    <a role="tab" class="tab flex-1 whitespace-nowrap px-1" :class="tab==='people' && 'tab-active'" x-on:click="tab='people'">{{ __('People') }}</a>
+                    <a role="tab" class="tab flex-1 whitespace-nowrap px-1" :class="tab==='overtime' && 'tab-active'" x-on:click="tab='overtime'">{{ __('Over Time') }}</a>
                 </div>
 
                 <div class="mt-3 text-sm">
@@ -134,7 +138,8 @@
                                     </template>
                                 </div>
                                 <div class="min-w-0 flex-1">
-                                    <p class="truncate font-semibold leading-tight" x-text="f.name"></p>
+                                    {{-- Full name, wrapping — truncation made most figures unidentifiable in the 320px panel. --}}
+                                    <p class="break-words font-semibold leading-tight" :title="f.name" x-text="f.name"></p>
                                     <p class="truncate text-xs capitalize opacity-60" x-text="[f.kind, f.era].filter(Boolean).join(' · ')"></p>
                                 </div>
                                 <button type="button"

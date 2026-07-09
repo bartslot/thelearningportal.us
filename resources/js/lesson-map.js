@@ -49,7 +49,7 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, projection = 'mercator' } = opts
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator' } = opts
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -208,6 +208,54 @@ export function renderLessonMap (el, opts = {}) {
     didFit = true
   }
 
+  // Click-to-link territory (configurator only — the host passes onPolityClick; the player never
+  // does). Hover shows a name tag + soft wash so the teacher can identify a polity without knowing
+  // its name; click hands { qid, name } to the host, which links it and re-mounts with the red fit.
+  const fmtEraYear = (y) => (y < 0 ? `${Math.abs(y)} BCE` : `${y}`)
+  const wirePolityPicking = () => {
+    if (!onPolityClick) return
+    let hoverId = null
+    const hoverState = (id, on) => {
+      if (id === undefined || id === null) return
+      map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on })
+    }
+    const tag = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 })
+    map.on('mousemove', 'boundaries-fill', (e) => {
+      const f = e.features && e.features[0]
+      if (!f) return
+      map.getCanvas().style.cursor = 'pointer'
+      if (hoverId !== f.id) {
+        hoverState(hoverId, false)
+        hoverId = f.id
+        hoverState(hoverId, true)
+      }
+      const p = f.properties || {}
+      const from = Number(p.FromYear); const to = Number(p.ToYear)
+      const era = Number.isFinite(from) && Number.isFinite(to) ? ` · ${fmtEraYear(from)}–${fmtEraYear(to)}` : ''
+      tag.setLngLat(e.lngLat).setText(`${p.Name || ''}${era}`).addTo(map)
+    })
+    map.on('mouseleave', 'boundaries-fill', () => {
+      map.getCanvas().style.cursor = ''
+      hoverState(hoverId, false)
+      hoverId = null
+      tag.remove()
+    })
+    map.on('click', (e) => {
+      // A pending pin-drop owns this click; and a click on an existing focus dot is a
+      // marker interaction, not a territory pick.
+      if (anno && anno.isAddingFocus && anno.isAddingFocus()) return
+      if (map.getLayer('focus-dot') && map.queryRenderedFeatures(e.point, { layers: ['focus-dot'] }).length) return
+      const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0]
+      const clicked = hit && hit.properties && hit.properties.Wikidata
+      if (!clicked) return
+      // Instant feedback — move the red highlight now; the host's save re-mounts with this QID.
+      setHighlight(highlighted, false)
+      setHighlight(clicked, true)
+      highlighted = clicked
+      onPolityClick({ qid: clicked, name: (hit.properties.Name || '').trim() })
+    })
+  }
+
   map.on('load', () => {
     setYear(year)
     requestAfterTiles(fitToPolity)
@@ -228,9 +276,15 @@ export function renderLessonMap (el, opts = {}) {
           filter: polityFilter(year),
           paint: {
             'fill-color': PALETTE.highlightFill,
-            'fill-opacity': ['case', ['boolean', ['feature-state', 'highlight'], false], 0.32, 0],
+            // hover = the soft pre-selection wash used by the configurator's click-to-link
+            // (nothing ever sets `hover` in the player, so it stays invisible there).
+            'fill-opacity': ['case',
+              ['boolean', ['feature-state', 'highlight'], false], 0.32,
+              ['boolean', ['feature-state', 'hover'], false], 0.12,
+              0],
           },
         }, map.getLayer('city-dots') ? 'city-dots' : undefined)
+        wirePolityPicking()
       })
   })
   // Labelled overlay of the curated HISTORICAL cities (e.g. "Constantinople (Istanbul)"), fetched
@@ -351,10 +405,41 @@ export function renderLessonMap (el, opts = {}) {
     }
   }
 
+  window.__lessonMap = map // debugging + test assertions (same idea as the Time-Map's __tmMap)
+
   return {
     map,
     setYear,
     flyToPolity: fitToPolity,
+    /**
+     * Projector for map-pinned text labels: converts lng/lat ⇄ percentages of `hostEl`
+     * (the text-overlay host, which may not share the map container's box).
+     */
+    textProjector: (hostEl) => ({
+      project: (lng, lat) => {
+        try {
+          const pt = map.project([lng, lat])
+          const mr = map.getContainer().getBoundingClientRect()
+          const hr = hostEl.getBoundingClientRect()
+          if (!hr.width || !hr.height) return null
+          return {
+            x: ((mr.left + pt.x - hr.left) / hr.width) * 100,
+            y: ((mr.top + pt.y - hr.top) / hr.height) * 100,
+          }
+        } catch (_) { return null }
+      },
+      unproject: (xPct, yPct) => {
+        try {
+          const mr = map.getContainer().getBoundingClientRect()
+          const hr = hostEl.getBoundingClientRect()
+          const ll = map.unproject([
+            hr.left + (xPct / 100) * hr.width - mr.left,
+            hr.top + (yPct / 100) * hr.height - mr.top,
+          ])
+          return { lng: ll.lng, lat: ll.lat }
+        } catch (_) { return null }
+      },
+    }),
     setAnnotations: (a) => anno?.update(a),
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),

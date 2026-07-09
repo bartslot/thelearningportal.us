@@ -223,6 +223,11 @@ export function renderAnnotations (map, annotations, { editable = false, onChang
       return focusNames.slice()
     },
 
+    /** True while a pin-drop click is pending — lets other click handlers stand down. */
+    isAddingFocus () {
+      return addPending
+    },
+
     /** Remove the focus layers + source (call before discarding the map). */
     destroy () {
       [FOCUS_DOT_LAYER, FOCUS_LABEL_LAYER, FOCUS_SHADOW_LAYER].forEach((id) => {
