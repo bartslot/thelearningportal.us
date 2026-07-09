@@ -13,9 +13,11 @@ use Livewire\Component;
 
 class Step4Preview extends Component
 {
-    public Lesson  $lesson;
-    public ?int    $selectedSceneId = null;
-    public string  $publishError    = '';
+    public Lesson $lesson;
+
+    public ?int $selectedSceneId = null;
+
+    public string $publishError = '';
 
     public function mount(Lesson $lesson): void
     {
@@ -58,25 +60,25 @@ class Step4Preview extends Component
         }
         $this->selectedSceneId = $id;
         $this->dispatch('scene:load', payload: [
-            'sceneId'           => $scene->id,
-            'imageUrl'          => $scene->image_path ? asset('storage/' . $scene->image_path) : null,
-            'audioUrl'          => $scene->audio_path ? asset('storage/' . $scene->audio_path) : null,
-            'animationClipUrl'  => $this->animationGlbUrlFor($scene),
-            'year'              => $scene->year,
-            'location'          => $scene->location,
-            'kind'              => $scene->kind,
-            'gameType'          => $scene->game_type,
-            'duration'          => $scene->duration_seconds,
-            'skyboxBlur'        => (float) ($scene->skybox_blur    ?? 0.5),
-            'skyboxOpacity'     => (float) ($scene->skybox_opacity ?? 1.0),
-            'backgroundColor'   => (string) ($scene->background_color ?? '#000000'),
-            'sceneView'         => (string) ($scene->scene_view ?? 'skybox'),
-            'kbAnimated'        => (bool) ($scene->kb_animated ?? true),
-            'kbDirection'       => $scene->kb_direction,
+            'sceneId' => $scene->id,
+            'imageUrl' => $scene->image_path ? asset('storage/'.$scene->image_path) : null,
+            'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
+            'animationClipUrl' => $this->animationGlbUrlFor($scene),
+            'year' => $scene->year,
+            'location' => $scene->location,
+            'kind' => $scene->kind,
+            'gameType' => $scene->game_type,
+            'duration' => $scene->duration_seconds,
+            'skyboxBlur' => (float) ($scene->skybox_blur ?? 0.5),
+            'skyboxOpacity' => (float) ($scene->skybox_opacity ?? 1.0),
+            'backgroundColor' => (string) ($scene->background_color ?? '#000000'),
+            'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
+            'kbAnimated' => (bool) ($scene->kb_animated ?? true),
+            'kbDirection' => $scene->kb_direction,
             // Teacher text annotations — read-only here (editing lives in Configure).
-            'textsReadonly'     => (array) (($scene->config ?? [])['texts'] ?? []),
+            'textsReadonly' => (array) (($scene->config ?? [])['texts'] ?? []),
             // Quiz scenes preview their questions on the canvas, same as Configure.
-            'quizQuestions'     => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
+            'quizQuestions' => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
                 ? $this->lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
                 : [],
         ]);
@@ -94,6 +96,7 @@ class Step4Preview extends Component
             ->whereNotNull('glb_path')
             ->orderBy('sort_order')
             ->value('glb_path');
+
         return $idlePath ? asset($idlePath) : null;
     }
 
@@ -104,6 +107,16 @@ class Step4Preview extends Component
     {
         if (! $this->allReady) {
             $this->publishError = 'All scenes must be in "ready" status before publishing.';
+
+            return;
+        }
+
+        $incompleteGroups = $this->incompleteStoryGameGroups();
+        if ($incompleteGroups !== []) {
+            $this->publishError = __('Story game incomplete — choice :groups still missing game effects on an option. Open Configure and fill both options\' meter effects first.', [
+                'groups' => implode(', ', $incompleteGroups),
+            ]);
+
             return;
         }
 
@@ -111,6 +124,30 @@ class Step4Preview extends Component
         $this->publishError = '';
         $this->showPublishSplash = true;
         $this->dispatch('lesson-published');
+    }
+
+    /**
+     * Story-game publish gate: every branch OPTION scene must carry meter deltas
+     * (config.branch_effects.deltas) before the lesson can go live — otherwise the
+     * player would show a choice with no consequences. Non-story_game lessons pass.
+     *
+     * @return list<int> incomplete branch group numbers, ascending
+     */
+    private function incompleteStoryGameGroups(): array
+    {
+        if ($this->lesson->game_type !== 'story_game') {
+            return [];
+        }
+
+        return $this->lesson->scenes()
+            ->whereIn('branch_role', ['option_a', 'option_b'])
+            ->get()
+            ->filter(fn (Scene $s) => empty((($s->config ?? [])['branch_effects']['deltas'] ?? null)))
+            ->map(fn (Scene $s) => (int) ($s->branch_group ?? 0))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
     }
 
     public function dismissPublishSplash(): void

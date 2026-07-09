@@ -223,8 +223,18 @@
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
                 @endif
+
+                {{-- Story-game: branch OPTION scenes get the "Game effects" editor. --}}
+                @if ($this->showsGameEffectsPanel($sceneModel))
+                    <x-lesson.scene-inspector-story-effects :scene="$sceneModel" :meters="$this->storyMeters()" />
+                @endif
             @else
                 <p class="text-sm text-slate-400">No scene selected.</p>
+            @endif
+
+            {{-- ── Class meters (story_game, lesson-level) ────── --}}
+            @if ($this->showsMetersPanel())
+                <x-lesson.story-meters-panel :meters-draft="$metersDraft" />
             @endif
 
             {{-- ── Background Music ──────────────────────────── --}}

@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace App\Livewire\Wizard;
 
 use App\Enums\LessonStatus;
-use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
 use App\Jobs\EnhanceSkyboxImage;
 use App\Jobs\GenerateSceneAudio;
-use App\Jobs\GenerateSceneImage;
 use App\Jobs\GenerateSceneScript;
 use App\Jobs\GenerateSkyboxCandidates;
 use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
+use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
+use App\Livewire\Wizard\Concerns\EditsStoryGame;
 use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
 use App\Models\City;
@@ -28,6 +28,7 @@ use Livewire\Component;
 class Step3SceneConfigurator extends Component
 {
     use EditsQuizQuestions;
+    use EditsStoryGame;
 
     private const EDITABLE_FIELDS = [
         'config',
@@ -170,6 +171,8 @@ class Step3SceneConfigurator extends Component
         // Keep the quiz-question draft in step with the selected scene: loads on a real switch,
         // preserved across status-poll re-selects so unsaved edits aren't wiped mid-typing.
         $this->syncQuizDraftFor($scene);
+        // Same discipline for the story-game effects draft (branch option scenes).
+        $this->syncStoryGameDraftFor($scene);
     }
 
     /**
@@ -298,7 +301,7 @@ class Step3SceneConfigurator extends Component
      * the first focus city placed on the map. Lets neighbours of what's on screen rank above far-off
      * homonyms.
      *
-     * @return array{0: float, 1: float}|null  [lat, lng]
+     * @return array{0: float, 1: float}|null [lat, lng]
      */
     private function territoryRefPoint(): ?array
     {
@@ -333,7 +336,7 @@ class Step3SceneConfigurator extends Component
         $year = $this->sceneYear();
         $ref = $this->territoryRefPoint();
         $tol = 10; // small slack only — a polity must be ACTIVE at the year; one that ended decades
-                   // earlier (e.g. Kingdom of Hungary †1546 for a 1614 scene) must not appear
+        // earlier (e.g. Kingdom of Hungary †1546 for a 1614 scene) must not appear
 
         // Pull a wider set, then rank in PHP by name match + proximity (surrounding) + era closeness.
         $fetch = fn (bool $byYear) => \App\Models\Corpus\Topic::query()
