@@ -49,7 +49,8 @@ EXAMPLE;
         $framework = $lesson->narrative_framework instanceof NarrativeFramework
             ? $lesson->narrative_framework
             : (NarrativeFramework::tryFrom((string) $lesson->narrative_framework) ?? NarrativeFramework::default());
-        $spine = StorySpine::for($framework);
+        // Spel-verhaal lessons write scripts against the Choice→Consequence spine, not plain branching.
+        $spine = StorySpine::for($framework, $lesson->game_type);
 
         $exemplar = self::EXEMPLAR;
 
