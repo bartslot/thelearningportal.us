@@ -28,7 +28,7 @@ class ElevenLabsService
 
         $response = Http::withHeaders([
             'xi-api-key' => $this->apiKey,
-        ])->get("{$this->baseUrl}/v1/voices");
+        ])->timeout(25)->connectTimeout(3)->get("{$this->baseUrl}/v1/voices");
 
         if (! $response->successful()) {
             return [];
@@ -61,7 +61,7 @@ class ElevenLabsService
     {
         $response = Http::withHeaders([
             'xi-api-key' => $this->apiKey,
-        ])->get("{$this->baseUrl}/v1/user/subscription");
+        ])->timeout(25)->connectTimeout(3)->get("{$this->baseUrl}/v1/user/subscription");
 
         if (! $response->successful()) {
             return null;
