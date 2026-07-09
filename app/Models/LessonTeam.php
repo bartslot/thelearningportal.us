@@ -29,8 +29,11 @@ class LessonTeam extends Model
     }
 
     /**
-     * Auto-form teams by dividing classroom students evenly.
-     * Creates $teamCount teams (or one team per $studentsPerTeam if provided).
+     * Auto-form teams by dividing the classroom roster evenly.
+     *
+     * The roster is the account-less classroom_members list ("Emma V."), NOT the
+     * classroom_student pivot — K-12 students never get user accounts here, so
+     * members are stored by display name (student_name) with a null student_id.
      *
      * @return Collection<int, LessonTeam>
      */
@@ -40,22 +43,27 @@ class LessonTeam extends Model
         static::where('lesson_id', $lesson->id)->delete();
 
         $classrooms = $lesson->classrooms;
-        $students   = collect();
 
-        foreach ($classrooms as $classroom) {
-            $students = $students->concat($classroom->students()->get());
+        $memberNames = $classrooms
+            ->flatMap(fn (Classroom $classroom) => $classroom->members()->pluck('display_name'))
+            ->filter(fn (?string $name) => filled($name))
+            ->unique(fn (string $name) => mb_strtolower($name))
+            ->shuffle()
+            ->values();
+
+        if ($memberNames->isEmpty()) {
+            return collect();
         }
 
-        $students   = $students->unique('id')->shuffle();
-        $teamCount  = max(1, min($teamCount, $students->count()));
-        $chunks     = $students->chunk((int) ceil($students->count() / $teamCount));
+        $teamCount = max(1, min($teamCount, $memberNames->count()));
+        $chunks    = $memberNames->chunk((int) ceil($memberNames->count() / $teamCount));
 
         $colors = ['amber', 'sky', 'emerald', 'rose', 'violet', 'orange'];
         $names  = ['Robespierre', 'Napoleon', 'Danton', 'Mirabeau', 'Marat', 'Lafayette'];
 
         $teams = collect();
 
-        foreach ($chunks as $i => $chunk) {
+        foreach ($chunks->values() as $i => $chunk) {
             $team = static::create([
                 'lesson_id'    => $lesson->id,
                 'classroom_id' => $classrooms->first()?->id,
@@ -63,10 +71,11 @@ class LessonTeam extends Model
                 'color'        => $colors[$i % count($colors)],
             ]);
 
-            foreach ($chunk as $student) {
+            foreach ($chunk as $displayName) {
                 LessonTeamMember::create([
-                    'team_id'    => $team->id,
-                    'student_id' => $student->id,
+                    'team_id'      => $team->id,
+                    'student_id'   => null,
+                    'student_name' => $displayName,
                 ]);
             }
 

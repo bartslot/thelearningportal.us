@@ -1038,18 +1038,27 @@ Alpine.data('lessonGame', (lesson) => ({
 
       const TEAM_COLORS = ['amber', 'sky', 'emerald', 'rose', 'violet', 'orange']
 
+      // Team + member names are user-supplied — build with textContent, never innerHTML.
       this.teams.forEach((team, i) => {
         const color = TEAM_COLORS[i % TEAM_COLORS.length]
         const card = document.createElement('div')
         card.className = `rounded-2xl border border-${color}-500/30 bg-slate-900/80 backdrop-blur-sm p-5`
-        card.innerHTML = `
-          <p class="font-history text-xl font-bold text-${color}-400 mb-3">${team.name}</p>
-          <ul class="space-y-1">
-            ${(team.members ?? []).map(m =>
-              `<li class="text-sm text-slate-300">${m.name ?? m}</li>`
-            ).join('')}
-          </ul>
-        `
+
+        const title = document.createElement('p')
+        title.className = `font-history text-xl font-bold text-${color}-400 mb-3`
+        title.textContent = team.name ?? ''
+        card.appendChild(title)
+
+        const list = document.createElement('ul')
+        list.className = 'space-y-1'
+        for (const m of team.members ?? []) {
+          const item = document.createElement('li')
+          item.className = 'text-sm text-slate-300'
+          item.textContent = m?.name ?? (typeof m === 'string' ? m : '')
+          list.appendChild(item)
+        }
+        card.appendChild(list)
+
         grid.appendChild(card)
       })
     },
