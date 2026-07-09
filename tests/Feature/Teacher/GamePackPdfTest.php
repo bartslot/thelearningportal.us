@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Teacher;
 
 use App\Enums\LessonStatus;
-use App\Jobs\BuildLessonOutline;
 use App\Jobs\GenerateGamePack;
+use App\Jobs\GenerateLessonScript;
 use App\Models\Lesson;
 use App\Models\LessonSource;
 use App\Models\Scene;
@@ -152,77 +152,71 @@ class GamePackPdfTest extends TestCase
         $this->assertStringStartsWith('%PDF', Storage::disk('public')->get($path));
     }
 
-    public function test_pipeline_dispatches_game_pack_when_print_pack_true(): void
+    public function test_script_job_dispatches_game_pack_when_print_pack_true(): void
     {
-        $lesson = $this->makeOutlineLesson(['print_pack' => true]);
-
-        $this->mockOutline();
+        // The pack renders at the END of GenerateLessonScript, once scene scripts exist
+        // (event cards quote them) — NOT from BuildLessonOutline, where scripts are still empty.
+        $lesson = $this->makeScriptStageLesson(['print_pack' => true]);
+        $this->mockScriptGeneration();
         Bus::fake();
 
-        (new BuildLessonOutline($lesson->id))->handle(app(OpenAiLlmService::class));
+        (new GenerateLessonScript($lesson->id))->handle(app(OpenAiLlmService::class));
 
         Bus::assertDispatched(GenerateGamePack::class);
     }
 
-    public function test_pipeline_does_not_dispatch_game_pack_when_print_pack_false(): void
+    public function test_script_job_does_not_dispatch_game_pack_when_print_pack_false(): void
     {
-        $lesson = $this->makeOutlineLesson(['print_pack' => false]);
-
-        $this->mockOutline();
+        $lesson = $this->makeScriptStageLesson(['print_pack' => false]);
+        $this->mockScriptGeneration();
         Bus::fake();
 
-        (new BuildLessonOutline($lesson->id))->handle(app(OpenAiLlmService::class));
+        (new GenerateLessonScript($lesson->id))->handle(app(OpenAiLlmService::class));
 
         Bus::assertNotDispatched(GenerateGamePack::class);
     }
 
-    private function makeOutlineLesson(array $gameConfig): Lesson
+    private function makeScriptStageLesson(array $gameConfig): Lesson
     {
         $lesson = Lesson::create([
             'teacher_id' => User::factory()->create()->id,
             'topic' => 'Napoleonic Campaigns',
             'subject' => 'history',
             'grade_level' => '9th grade',
-            'image_style' => 'painted',
-            'source_mode' => 'wikipedia',
-            'status' => LessonStatus::SourceReady,
+            'status' => LessonStatus::ScenesGenerating,
             'include_game' => true,
             'game_type' => 'story_game',
             'narrative_framework' => 'branching',
             'game_config' => $gameConfig,
+            'outline' => [
+                'learning_objectives' => [['id' => 'LO1', 'text' => 'Explain Waterloo.', 'bloom' => 'understand']],
+                'scene_briefs' => [
+                    ['order' => 1, 'kind' => 'narration', 'beat' => 'setup'],
+                    ['order' => 2, 'kind' => 'narration', 'beat' => 'choice'],
+                ],
+            ],
         ]);
         LessonSource::create([
-            'lesson_id' => $lesson->id,
-            'kind' => 'wikipedia',
+            'lesson_id' => $lesson->id, 'kind' => 'wikipedia',
             'extracted_text' => 'Napoleon Bonaparte was a French statesman…',
         ]);
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration', 'status' => 'pending']);
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 2, 'kind' => 'narration', 'status' => 'pending']);
 
         return $lesson;
     }
 
-    private function mockOutline(): void
+    private function mockScriptGeneration(): void
     {
-        $briefs = [['kind' => 'narration', 'beat' => 'setup', 'image_prompt_seed' => 'Camp']];
-        foreach ([1, 2, 3] as $group) {
-            $briefs[] = ['kind' => 'narration', 'branch' => ['group' => $group, 'role' => 'question']];
-            $briefs[] = ['kind' => 'narration', 'branch' => ['group' => $group, 'role' => 'option_a', 'choice_label' => 'A'],
-                'branch_effects' => ['deltas' => ['morale' => 10], 'consequence_line' => 'x', 'historical_note' => 'y']];
-            $briefs[] = ['kind' => 'narration', 'branch' => ['group' => $group, 'role' => 'option_b', 'choice_label' => 'B'],
-                'branch_effects' => ['deltas' => ['troops' => -10], 'consequence_line' => 'x', 'historical_note' => 'y']];
-        }
-
-        $this->mock(OpenAiLlmService::class, function ($mock) use ($briefs): void {
-            $mock->shouldReceive('json')->once()->andReturn([
-                'title' => 'Napoleon',
-                'meters' => [
-                    ['key' => 'morale',   'label' => 'Moreel',      'icon' => '🔥', 'start' => 70],
-                    ['key' => 'troops',   'label' => 'Manschappen', 'icon' => '👥', 'start' => 80],
-                    ['key' => 'supplies', 'label' => 'Voorraden',   'icon' => '📦', 'start' => 60],
-                    ['key' => 'support',  'label' => 'Steun',       'icon' => '❤️', 'start' => 50],
-                ],
-                'roles' => [['title' => 'Commandant', 'flavor' => 'f', 'power' => 'p']],
-                'scene_briefs' => $briefs,
-            ]);
+        $this->mock(OpenAiLlmService::class, function ($mock): void {
+            $mock->shouldReceive('json')->twice()->andReturn(
+                ['scenes' => [
+                    ['order' => 1, 'script' => 'Napoleon returns from Elba.'],
+                    ['order' => 2, 'script' => 'He must choose: attack now or wait.'],
+                ]],
+                ['causality' => 4, 'character_agency' => 4, 'objective_coverage' => 4,
+                    'grade_fit' => 4, 'variety' => 4, 'issues' => []],
+            );
         });
     }
 }

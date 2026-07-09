@@ -83,6 +83,12 @@ class GenerateLessonScript implements ShouldQueue
             }
 
             $this->dispatchAssetJobs($lesson, $scenes);
+
+            // Story-game print pack: render now that script_segments exist (event cards quote them).
+            // Fire-and-forget — GenerateGamePack::failed() never fails the lesson.
+            if ($lesson->game_type === 'story_game' && ! empty(($lesson->game_config ?? [])['print_pack'])) {
+                \App\Jobs\GenerateGamePack::dispatch($lesson->id);
+            }
         } catch (Throwable $e) {
             $lesson->update([
                 'status' => LessonStatus::Failed,
