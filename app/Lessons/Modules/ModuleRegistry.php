@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Lessons\Modules;
 
 use App\Enums\ModuleType;
+use App\Lessons\Modules\Types\ConclusionModule;
 use App\Lessons\Modules\Types\IntroModule;
+use App\Lessons\Modules\Types\PriorKnowledgeModule;
 use App\Lessons\Modules\Types\QuizMcqModule;
 use InvalidArgumentException;
 
@@ -24,7 +26,9 @@ final class ModuleRegistry
     {
         return match ($type) {
             ModuleType::Intro => IntroModule::class,
+            ModuleType::PriorKnowledge => PriorKnowledgeModule::class,
             ModuleType::QuizMcq => QuizMcqModule::class,
+            ModuleType::Conclusion => ConclusionModule::class,
             default => null,
         };
     }
