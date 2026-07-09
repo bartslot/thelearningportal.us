@@ -125,6 +125,21 @@ class LessonTeamTest extends TestCase
         $this->postJson("/api/lesson/{$draft->lesson_code}/teams")->assertNotFound();
     }
 
+    public function test_member_names_are_stripped_of_markup_in_api_responses(): void
+    {
+        ['lesson' => $lesson] = $this->publishedLessonWithRoster(['<script>alert(1)</script>Emma', 'Liam K.']);
+
+        $response = $this->postJson("/api/lesson/{$lesson->lesson_code}/teams", ['team_count' => 2])
+            ->assertCreated();
+
+        $allNames = collect($response->json('teams'))
+            ->flatMap(fn (array $team) => collect($team['members'])->pluck('name'))
+            ->all();
+
+        $this->assertEqualsCanonicalizing(['alert(1)Emma', 'Liam K.'], $allNames);
+        $this->assertStringNotContainsString('<script>', json_encode($response->json()));
+    }
+
     public function test_team_routes_are_throttled(): void
     {
         ['lesson' => $lesson] = $this->publishedLessonWithRoster(['Emma V.', 'Liam K.']);

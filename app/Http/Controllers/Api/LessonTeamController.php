@@ -22,12 +22,7 @@ class LessonTeamController extends Controller
         $teams = LessonTeam::where('lesson_id', $lesson->id)
             ->with(['members.student:id,name'])
             ->get()
-            ->map(fn (LessonTeam $t) => [
-                'id'      => $t->id,
-                'name'    => $t->name,
-                'color'   => $t->color,
-                'members' => $t->members->map(fn ($m) => ['name' => $m->name]),
-            ]);
+            ->map(fn (LessonTeam $t) => $this->teamPayload($t));
 
         return response()->json([
             'teams'            => $teams,
@@ -49,12 +44,23 @@ class LessonTeamController extends Controller
         $teams = LessonTeam::autoForm($lesson, $validated['team_count'] ?? 4);
 
         return response()->json([
-            'teams' => $teams->map(fn (LessonTeam $t) => [
-                'id'      => $t->id,
-                'name'    => $t->name,
-                'color'   => $t->color,
-                'members' => $t->members->map(fn ($m) => ['name' => $m->name]),
-            ]),
+            'teams' => $teams->map(fn (LessonTeam $t) => $this->teamPayload($t)),
         ], 201);
+    }
+
+    /**
+     * Team + member names originate from teacher-entered rosters — strip any markup
+     * at the API boundary (defense-in-depth alongside the player's textContent rendering).
+     *
+     * @return array{id: int, name: string, color: string, members: \Illuminate\Support\Collection}
+     */
+    private function teamPayload(LessonTeam $team): array
+    {
+        return [
+            'id'      => $team->id,
+            'name'    => strip_tags((string) $team->name),
+            'color'   => $team->color,
+            'members' => $team->members->map(fn ($m) => ['name' => strip_tags((string) $m->name)]),
+        ];
     }
 }
