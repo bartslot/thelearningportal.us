@@ -54,6 +54,12 @@ class QuizLeaderboardController extends Controller
             'member_name' => ['required_with:class_code', 'nullable', 'string', 'min:2', 'max:40'],
         ]);
 
+        // DELIBERATE TRADE-OFF: quiz grading happens client-side — correct_index ships to the
+        // browser with the questions (see the quiz_questions payload in lesson/player.blade.php).
+        // This is a low-stakes, in-class K-12 quiz, so the mitigations are: the score clamp
+        // below, engagement/integrity telemetry, and teacher-eyes-only integrity flags.
+        // Server-side grading is the v2 path if stakes ever rise (grades, take-home, etc.).
+        //
         // Sanity clamp — the client is untrusted; cap at the maximum theoretically earnable.
         $maxScore = $data['total'] * self::MAX_POINTS_PER_QUESTION;
         $score = min((int) $data['score'], $maxScore);

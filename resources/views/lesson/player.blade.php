@@ -39,6 +39,10 @@
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
         'game_config'           => $lesson->game_config,
+        // DELIBERATE: correct_index ships to the client — grading is client-side by design
+        // (low-stakes in-class quiz; mitigations = server score clamp + integrity telemetry
+        // + teacher-eyes-only flags in QuizLeaderboardController). Server-side grading is
+        // the v2 path if stakes rise.
         'quiz_questions'        => $lesson->quizQuestions->whereNull('scene_id')->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values(),
         'quiz_timing'           => $lesson->quiz_timing,
         'cover_image_url'       => $lesson->titleBgUrl() ?? $lesson->cardImageUrl(),
@@ -69,6 +73,8 @@
                 'alignment'   => $s->audio_alignment ?: null,
                 'duration_seconds' => $s->duration_seconds,
                 'background_color' => $s->background_color,
+                // Same deliberate trade-off as lesson-level quiz_questions above:
+                // correct_index is client-visible; grading stays client-side for v1.
                 'quiz_questions' => $s->kind === 'game'
                     ? ($lesson->quizQuestions->where('scene_id', $s->id)->values()->whenEmpty(fn () => $lesson->quizQuestions->whereNull('scene_id')->values()))
                         ->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values()
