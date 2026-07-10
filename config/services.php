@@ -98,6 +98,17 @@ return [
         'voice_id' => env('ELEVENLABS_VOICE_ID', 'JBFqnCBsd6RMkjVDRZzb'),
     ],
 
+    'tts' => [
+        // TEMPORARY global override for lesson narration (GenerateSceneAudio). Leave blank for the
+        // normal per-avatar provider (ElevenLabs by default). Set to 'azure' (our backup) to route
+        // all narration off ElevenLabs without editing avatars — revert by clearing the env var.
+        // When the override is a non-ElevenLabs provider, the avatar's ElevenLabs voice_id is not
+        // valid for it, so override_voice supplies a provider-native voice (blank → provider default,
+        // e.g. Azure's en-US-GuyNeural).
+        'provider_override' => env('TTS_PROVIDER_OVERRIDE'),
+        'provider_override_voice' => env('TTS_PROVIDER_OVERRIDE_VOICE'),
+    ],
+
     'rhubarb' => [
         'binary' => env('RHUBARB_BINARY', '/Users/bartslot/bin/rhubarb'),
     ],

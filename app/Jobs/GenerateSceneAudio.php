@@ -39,12 +39,21 @@ class GenerateSceneAudio implements ShouldQueue
             $script  = (string) ($scene->script_segment ?? '');
             $text    = $tts->prepareSpeechText($script);
 
+            // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
+            // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so we
+            // pass the configured backup voice instead (blank → the provider's own default).
+            $override = (string) config('services.tts.provider_override', '');
+            $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
+            $voiceId  = ($override !== '' && $override !== 'elevenlabs')
+                ? (string) config('services.tts.provider_override_voice', '')
+                : ($avatar?->voice_id ?? '');
+
             $timing  = null;
             $audio   = $tts->generateAudioRaw(
                 $text,
-                $avatar?->voice_id ?? '',
+                $voiceId,
                 (float) ($avatar?->voice_speed ?? 1.0),
-                $avatar?->voice_provider ?? 'elevenlabs',
+                $provider,
                 $timing,
             );
             if ($audio === null) {
