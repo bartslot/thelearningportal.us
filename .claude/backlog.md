@@ -692,6 +692,29 @@ P1 · K · depends: J-3, K-1, A2
 - [ ] The draft opens in the composer (K-2) for editing.
 **Smoke:** (feature) `php artisan test --filter=LessonScaffolder` → scaffold for (rome, -50) → a draft lesson with the default ordered modules and non-empty content for each from the DB; assert no synchronous generation call on the request path.
 
+### K-12 Agentic (chat) lesson creation — "tell me your learning goal"
+P1 · K · depends: **scene-creation-engine overhaul complete (do NOT start before this)**, K-7 (scaffolder), K-13 (lesson-type presets)
+**Why:** The current 4-step wizard exposes too many options and is too slow. Teachers want to go from intent to a ready lesson in **1–2 minutes**. A guided chat that asks for the *learning goal* first and infers the rest is the fast path — options become questions the bot asks only when they matter, with smart defaults for everything else.
+**Scope — in:**
+- A conversational creation flow (Livewire chat UI): the bot opens by asking **what learning goal / competence** the lesson should hit (tie to B1/B3 competences when present), then asks a *short, adaptive* sequence (grade/age, topic or map selection, lesson type, tone) — one question at a time, each with a sensible default the teacher can accept with one tap.
+- **Normalized lesson types (presets)** drive the flow: the teacher picks (or the bot proposes) a type — e.g. *Story lesson*, *Spel-verhaal (game story)*, *Explore-the-map*, *Comprehension check* — and the preset supplies framework, module order, game config, and defaults, so the teacher configures **almost nothing**. (Presets themselves = ticket K-13.)
+- Ends by scaffolding a draft lesson (reuse **K-7 `LessonScaffolder`**) and dropping the teacher into the composer/preview to refine — "enough to make it their own," not a black box.
+**Scope — out:** replacing the full wizard on day one (ship the chat as a *second, default-forward* entry point beside the wizard; retire the wizard only once parity is proven); live free-form generation on the ask path (still pre-generated/cached per Epic K); voice input.
+**Approach:** thin Livewire chat component driving a small server-side "interview" state machine (questions + defaults come from the chosen preset, not hardcoded); the LLM is used only to (a) map the teacher's free-text learning goal → competence/topic candidates and (b) phrase confirmations — never to invent history/content (same no-hallucination guard as the pipeline). Each answered step writes to the draft `Lesson`; the final step calls `LessonScaffolder`. Keep it resumable.
+**AC:**
+- [ ] From an empty state, a teacher reaches a ready-to-refine draft in ≤ ~2 min by answering a short chat, starting from a learning goal.
+- [ ] Choosing a lesson type applies a preset so no per-field configuration is required to publish a sensible lesson.
+- [ ] The teacher can still override any inferred setting before/after scaffolding (composer).
+- [ ] No synchronous free-form generation on the chat path; content assembly reuses K-7.
+**Smoke:** (feature) `php artisan test --filter=AgenticLessonCreation` → simulate a full interview (goal → type → grade → topic) → asserts a draft Lesson with the preset's framework/module order and a `LessonScaffolder` call; (e2e) `php artisan dusk --filter=AgenticCreation` → chat completes and lands in the composer.
+
+### K-13 Normalized lesson-type presets
+P1 · K · depends: K-1 (module contract); enables K-12
+**Why:** So teachers (and the K-12 chat) don't configure everything from scratch — a lesson *type* should carry its own sensible defaults.
+**Scope — in:** a small catalog of named lesson types (Story, Spel-verhaal/game-story, Explore-the-map, Comprehension check, …), each a declarative preset: narrative_framework, default module order, game_type/game_config defaults, tone, duration target. A `LessonPreset` value object/config + a picker. **out:** unlimited custom teacher-defined presets (v2).
+**AC:** [ ] Applying a preset to a new lesson fills framework + module order + game defaults; [ ] the wizard and the K-12 chat both consume the same preset source (one source of truth).
+**Smoke:** (unit) `php artisan test --filter=LessonPreset` → each preset yields a valid framework + non-empty ordered module list + game defaults.
+
 ---
 
 ### Not building (decided against, with the reason)
