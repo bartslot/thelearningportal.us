@@ -40,11 +40,9 @@ final class GridSlicer
                 ob_start();
                 imagepng($cell);
                 $cells[] = (string) ob_get_clean();
-                imagedestroy($cell);
+                // No imagedestroy(): it is a deprecated no-op since PHP 8.0 (GdImage is GC'd).
             }
         }
-
-        imagedestroy($source);
 
         return $cells;
     }
