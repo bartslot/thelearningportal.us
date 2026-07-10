@@ -302,6 +302,22 @@ P1 · E · depends: E2
 - [ ] Adding a new asset to the catalog makes it usable without code changes.
 **Smoke:** render a comic lesson → network/log shows panels sourced from the catalog, **zero** generative-image calls. Drop a new background into the catalog → it can be selected.
 
+### E3b Layered scene shots: story asset packs + transparent heroes + parallax (founder direction 2026-07-10)
+P1 · E · depends: E3 (catalog), scene-engine rewrite (done)
+**Why:** Founder: per-scene grid generation (~$0.10–0.25 gpt-image-1) is too expensive at many-teachers scale; "reuse backgrounds, generate only the heroes with transparent backgrounds, parallax the layers, animate like a webcomic."
+**Provider probe results (2026-07-10, images in `storage/app/examples/shot-probe/`, gitignored):**
+- gpt-image-1 3×3 grid: PASSES the strict no-gutter contract (clean edges, consistent palette, era-accurate). Keep for any live-grid path.
+- fal FLUX schnell grid ($0.005) and dev grid ($0.04): both FAIL — drawn borders/gutters (GridSlicer would slice margins into every cell), duplicated panels, panel↔description mapping collapses (breaks anchor sync), anachronisms (smartphone, streetlights), watermark text.
+- fal FLUX schnell singles ($0.003/img, ~3s): great mood/cinematography, weak era-discipline (ballpoint pen + phone on an 1812 desk; power pole + headlights on the ridge). Usable ONLY where a human reviews the result before students see it.
+**Architecture (three moves, mostly independent):**
+1. **Story asset packs (the big lever).** The curated story catalog is deliberately LIMITED — so generate visuals ONCE per story at draft/review time with the good model (gpt-image-1), human-reviewed in the existing StoryReview flow, stored on the story: ~6–10 tagged backgrounds + 1 hero sheet (3–5 poses, transparent bg — gpt-image-1 native `background: transparent`). Lessons built from a catalog story consume the pack: **$0 marginal image cost, zero anachronism risk (human-reviewed once), consistent hero across scenes** (fixes the known character-consistency weakness). Free-topic (Wikipedia) lessons keep the live gpt-image-1 grid path unchanged.
+2. **Layered player rendering + parallax.** Scene = bg layer + optional hero layer (transparent PNG). Ken Burns already exists; add a second layer panning at ~0.6× rate (CSS transforms — NOT three.js, stays out of bundle per 3d-direction) + webcomic touches: shot fade-in, slow drift, subtle hero breathing sway. Anchor-sync survives: anchors trigger layer/pose swaps instead of full-image cuts; unresolved anchors already even-split (shipped fallback).
+3. **Draft-cheap / finalize-good.** Teacher "regenerate this shot" iterations use fal schnell (~$0.003, ~3s — teacher IS the reviewer, which covers schnell's weak era-discipline); on publish, the chosen compositions re-render once with gpt-image-1. Config: `services.image_draft_provider`.
+**Known risks:** (a) fg/bg lighting mismatch looks pasted — constrain packs to 2–3 lighting variants (day/dusk/night) and tag scenes to match; (b) scripts vary per lesson while pack visuals are fixed — anchor by scene beat (order) not sentence for pack-sourced shots, or rely on the even-split fallback.
+**Scope — in:** pack schema on `stories` (jsonb assets: backgrounds[], hero_sheet[]), pack generation command at story-draft time, StoryReview shows pack, player 2-layer parallax, draft-provider config. **out:** marketplace/manual asset upload UI (v2), animation editor.
+**AC:** [ ] publishing a catalog story yields a reviewed asset pack; [ ] a lesson from that story generates ZERO images; [ ] player renders bg+hero layers with parallax + Ken Burns; [ ] free-topic lessons unchanged; [ ] E4 telemetry shows pack lessons at ~$0 image cost.
+**Smoke:** build lesson from a packed story → log shows 0 image-gen calls; player shows layered parallax; `php artisan test --filter=StoryAssetPack`.
+
 ### E4 Per-lesson cost guardrails + telemetry
 P1 · E · depends: E2
 **Why:** You explicitly want to cut per-lesson cost and stop depending on skyboxes — you can't manage what you don't measure.
