@@ -15,6 +15,7 @@
 
 import Alpine from 'alpinejs'
 import QRCode from 'qrcode'
+import { resolveAnchorTime, pickShotIndex } from './scene/shot-sync.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -619,51 +620,18 @@ Alpine.data('lessonGame', (lesson) => ({
       this._showFlatScene(shots[0]?.image_url || scene.image_url)
       this._shotCursor = 0
       // time: seconds when the shot should appear; null = unresolved (even-split fallback).
+      // resolveAnchorTime / pickShotIndex are pure + unit-tested in scene/shot-sync.js.
       this._shotPlan = shots.map((shot, i) => ({
         url: shot.image_url,
-        time: i === 0 ? 0 : this._resolveAnchorTime(scene.alignment, shot.anchor_sentence)
+        time: i === 0 ? 0 : resolveAnchorTime(scene.alignment, shot.anchor_sentence)
       }))
-    },
-
-    // Find the narration timestamp where the anchor sentence starts. The alignment is the
-    // TTS text itself (per-character timings), so matching against it is immune to any
-    // whitespace normalisation between the stored script and the spoken text.
-    _resolveAnchorTime (alignment, anchor) {
-      if (!alignment?.length || !anchor) return null
-      const normAnchor = anchor.toLowerCase().replace(/\s+/g, ' ').trim()
-      if (normAnchor.length < 10) return null
-
-      // Build the normalised transcript with a map back to alignment indices.
-      let norm = ''
-      const map = []
-      let lastWasSpace = true
-      for (let i = 0; i < alignment.length; i++) {
-        const ch = (alignment[i].character || '')
-        if (/\s/.test(ch)) {
-          if (!lastWasSpace) { norm += ' '; map.push(i); lastWasSpace = true }
-        } else {
-          norm += ch.toLowerCase(); map.push(i); lastWasSpace = false
-        }
-      }
-
-      const pos = norm.indexOf(normAnchor)
-      if (pos === -1) return null
-      return alignment[map[pos]]?.start_time ?? null
     },
 
     // Called on every audio timeupdate (piggybacks on _processScriptEvents).
     _processShots () {
       if (!this._shotPlan || this._shotPlan.length < 2 || !this._audio) return
-      const t = this._audio.currentTime
-      const duration = this._audio.duration || 0
 
-      let target = 0
-      for (let i = 1; i < this._shotPlan.length; i++) {
-        // Unresolved anchors fall back to an even split across the scene audio.
-        const at = this._shotPlan[i].time ?? (duration > 0 ? (i / this._shotPlan.length) * duration : Infinity)
-        if (t >= at) target = i
-      }
-
+      const target = pickShotIndex(this._shotPlan, this._audio.currentTime, this._audio.duration || 0)
       if (target !== this._shotCursor && this._shotPlan[target].url) {
         this._shotCursor = target
         this._showFlatScene(this._shotPlan[target].url)
