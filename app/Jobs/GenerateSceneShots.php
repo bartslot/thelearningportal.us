@@ -76,8 +76,10 @@ class GenerateSceneShots implements ShouldQueue
                 size: (string) config('services.openai.scene_size', config('services.openai.image_size', '1536x1024')),
             );
 
-            // 3% inset verified to fully remove the paper gutters ink-style grids render.
-            $cells = GridSlicer::slice($bytes, $rows, $cols, (float) config('lessons.shot_grid_inset', 0.03));
+            // Gutter-aware: illustrated styles draw paper gutters AND unequal panels, so detect
+            // the real boundaries; photoreal grids fall back to uniform ninths. The inset is a
+            // safety trim on top (3% verified to remove residual margins).
+            $cells = GridSlicer::sliceDetect($bytes, $rows, $cols, (float) config('lessons.shot_grid_inset', 0.03));
 
             $baseDir = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/shots";
             foreach ($cells as $index => $cellBytes) {

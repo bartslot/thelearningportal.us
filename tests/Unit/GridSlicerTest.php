@@ -102,4 +102,61 @@ class GridSlicerTest extends TestCase
         $pixel = imagecolorat($cell, 0, 0);
         $this->assertSame(255, ($pixel >> 16) & 0xFF);
     }
+
+    /**
+     * Grid with UNEQUAL row heights separated by light gutter bands — what illustrated
+     * styles actually render (observed live: top row 40%, middle 35%, bottom 25%).
+     */
+    private function makeUnequalGutteredGrid(): string
+    {
+        $w = 300;
+        $h = 300;
+        $img = imagecreatetruecolor($w, $h);
+        imagefilledrectangle($img, 0, 0, $w, $h, imagecolorallocate($img, 245, 240, 225)); // paper
+        $dark = imagecolorallocate($img, 30, 25, 20);
+
+        // Rows: 0-115, 125-215, 225-300 (10px gutters at y=115..125 and y=215..225).
+        // Cols: 0-95, 105-195, 205-300 (10px gutters at x=95..105 and x=195..205).
+        $rowSpans = [[0, 115], [125, 215], [225, 300]];
+        $colSpans = [[0, 95], [105, 195], [205, 300]];
+        foreach ($rowSpans as [$y1, $y2]) {
+            foreach ($colSpans as [$x1, $x2]) {
+                imagefilledrectangle($img, $x1, $y1, $x2 - 1, $y2 - 1, $dark);
+            }
+        }
+        ob_start();
+        imagepng($img);
+
+        return (string) ob_get_clean();
+    }
+
+    public function test_slice_detect_finds_real_gutter_boundaries_on_unequal_rows(): void
+    {
+        $cells = GridSlicer::sliceDetect($this->makeUnequalGutteredGrid(), 3, 3);
+
+        $this->assertCount(9, $cells);
+        foreach ($cells as $i => $bytes) {
+            $cell = imagecreatefromstring($bytes);
+            // Every corner of every cell must be panel interior (dark), never gutter paper.
+            foreach ([[0, 0], [imagesx($cell) - 1, 0], [0, imagesy($cell) - 1], [imagesx($cell) - 1, imagesy($cell) - 1]] as [$x, $y]) {
+                $pixel = imagecolorat($cell, $x, $y);
+                $this->assertLessThan(120, ($pixel >> 16) & 0xFF, "Cell $i corner ($x,$y) contains gutter paper");
+            }
+        }
+        // Middle cell height matches its true span (~90px minus safety trim), NOT a uniform third (100px).
+        $mid = imagecreatefromstring($cells[4]);
+        $this->assertLessThan(95, imagesy($mid));
+        $this->assertGreaterThan(60, imagesy($mid));
+    }
+
+    public function test_slice_detect_falls_back_to_uniform_slicing_when_no_gutters(): void
+    {
+        // Solid photoreal-style grid: no light bands → identical to plain slice().
+        $cells = GridSlicer::sliceDetect($this->makeTestGrid(1536, 1023), 3, 3, inset: 0.0);
+
+        $this->assertCount(9, $cells);
+        $first = imagecreatefromstring($cells[0]);
+        $this->assertSame(512, imagesx($first));
+        $this->assertSame(341, imagesy($first));
+    }
 }

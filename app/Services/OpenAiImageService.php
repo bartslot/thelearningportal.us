@@ -93,13 +93,20 @@ class OpenAiImageService
      *
      * | Style / content                | Model                    |
      * |--------------------------------|--------------------------|
-     * | comic, animation, sketched     | realesrgan-x4plus-anime |
-     * | painted / nature / architecture| realesrgan-x4plus       |
-     * | everything else                | realesrgan-x4plus       |
+     * | ink, etching, sketched         | ultrasharp-4x (crisp hatching) |
+     * | comic, animation               | digital-art-4x          |
+     * | painted / nature / architecture| upscayl-standard-4x     |
+     * | everything else                | upscayl-standard-4x     |
      */
     public static function selectUpscaylModel(string $style, string $hint = ''): string
     {
-        if (in_array($style, ['comic', 'animation', 'sketched'], true)) {
+        // Hatch/line-art styles need edges kept crisp: ultrasharp-4x preserves hatching;
+        // digital-art-4x was probed 2026-07-10 and MELTS crosshatch lines into smears.
+        if (in_array($style, ['ink', 'etching', 'sketched'], true)) {
+            return 'ultrasharp-4x';
+        }
+
+        if (in_array($style, ['comic', 'animation'], true)) {
             return 'digital-art-4x';
         }
 

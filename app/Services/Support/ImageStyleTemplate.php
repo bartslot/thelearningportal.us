@@ -54,6 +54,11 @@ final class ImageStyleTemplate
             .'strokes for clothing, hair and large masses; thin precise fine-line work for faces, '
             .'hands and details; monochrome black ink on warm off-white paper, high contrast, '
             .'subtle paper grain, no color',
+        // Second founder identity candidate (2026-07-10, validated on gpt-image-1): copperplate
+        // engraving with dense crosshatching — pairs with the ultrasharp-4x upscale model.
+        'etching' => 'antique copperplate engraving, etching style: dense crosshatching, fine '
+            .'parallel hatch lines that curve with the form, deep tonal build-up from layered '
+            .'hatching, monochrome black ink on aged warm paper, no color',
         'animation' => 'stylized 3D animation, soft lighting, expressive characters',
     ];
 
@@ -196,7 +201,10 @@ final class ImageStyleTemplate
         $gridSpec = "A strict {$rows}x{$cols} storyboard grid of {$count} panels, equal-size cells, "
             .'hard straight cell edges aligned to an exact grid, NO borders, NO gutters, NO frames, '
             .'NO text, NO numbers. Every panel depicts the SAME historical scene in the same '
-            .'consistent art style, palette and lighting, each from a different composition.';
+            .'consistent art style, palette and lighting, each from a different composition. '
+            // Founder direction 2026-07-10: every focal point on a thirds intersection.
+            .'Compose EVERY panel on the rule of thirds: the focal subject sits on a third-line '
+            .'intersection (never centered), horizons lie on a horizontal third line.';
 
         $parts = array_filter([
             $gridSpec,
