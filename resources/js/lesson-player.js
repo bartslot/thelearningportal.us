@@ -1,7 +1,7 @@
 /**
  * lesson-player.js — Game loop engine for /lesson/{code}
  *
- * Phases:  LOADING → TITLE_SCREEN → INTRO → TEAM_REVEAL → GAME_BRIEF → GAME_ACTIVE → TIME_UP
+ * Phases:  LOADING → TITLE_SCREEN → INTRO → GAME_BRIEF → GAME_ACTIVE → TIME_UP
  * Special: INTEL_DROP overlays during GAME_ACTIVE and extends the timer.
  *
  * LLM script tags parsed from lesson.script:
@@ -9,7 +9,6 @@
  *   [position:left-centre]
  *   [position:middle]
  *   [position:right-centre]
- *   [teams]                  — transition to TEAM_REVEAL
  *   [game]                   — transition to GAME_BRIEF → GAME_ACTIVE
  *   [intel_drop]             — trigger INTEL_DROP mid-game
  */
@@ -21,7 +20,6 @@ import QRCode from 'qrcode'
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
 // the Three.js chunk (avatar-3d.js, via the dynamic import in _initBgScene) for the skybox; pure-2D
 // lessons never download it. `this._usesSkybox` (set in init from the scenes) is that runtime switch.
-const USE_3D_AVATAR = false
 
 // ── Avatar canvas position presets ───────────────────────────────────────────
 // Each preset is a CSS class set applied to the #avatar-wrap element.
@@ -82,8 +80,6 @@ function parseScriptTags (script, audioDuration) {
 
       if (inner.startsWith('position:')) {
         events.push({ time: estimatedTime, type: 'position', value: inner.replace('position:', '') })
-      } else if (inner === 'teams') {
-        events.push({ time: estimatedTime, type: 'teams', value: null })
       } else if (inner === 'game') {
         events.push({ time: estimatedTime, type: 'game', value: null })
       } else if (inner === 'intel_drop') {
@@ -116,7 +112,6 @@ function extractYearAndLocation (lesson) {
 // Three.js objects contain non-configurable properties (modelViewMatrix etc.) that
 // break when stored inside Alpine's reactive Proxy. Keep the instance here, outside
 // Alpine's data object, and access it via closure.
-let _avatarInstance = null
 let _bgInstance     = null   // background-only Avatar3DPlayer (skybox, no character)
 let _bgCanvas       = null   // module-level ref so both Alpine instances share it
 let _sceneQueue     = []   // [{kind, config, audio_url, script, image_url, alignment}] for scene-based playback
@@ -128,7 +123,7 @@ let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpin
 // Alpine is imported directly (no Livewire on this page) — register before start()
 Alpine.data('lessonGame', (lesson) => ({
     // ── State ──────────────────────────────────────────────────────────
-    phase:  'LOADING',          // LOADING | TITLE_SCREEN | WELCOME_VIDEO | INTRO | TEAM_REVEAL | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP | ENDED
+    phase:  'LOADING',          // LOADING | TITLE_SCREEN | WELCOME_VIDEO | INTRO | GAME_BRIEF | GAME_ACTIVE | TIME_UP | INTEL_DROP | ENDED
     canResumeAfterGame: false,  // shows the "Continue the lesson" button on the TIME_UP screen
     lesson: lesson,             // exposed to templates (title screen meta, etc.)
     prevPhase: null,            // phase before INTEL_DROP, to return to
@@ -144,11 +139,6 @@ Alpine.data('lessonGame', (lesson) => ({
     _timerInterval:     null,
     _gameDurationSecs:  600,    // 10 min default; overridden by strategy_game.duration_minutes
 
-    // Team reveal
-    teamRevealCountdown: 5,
-    _teamRevealInterval: null,
-    teams: [],
-
     // Intel drop
     intelDropMessage: '',
 
@@ -160,7 +150,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // Map block
     showMapContinue: false,  // interactive map slide → show the Continue button
 
-    // Internals  (_avatar lives outside Alpine proxy — see _avatarInstance module var)
+    // Internals
     _audio:             null,
     _intelAudio:        null,   // intel-drop sfx — tracked so teardown can stop it
     _kbHandler:         null,   // keydown listener ref — removed on destroy()
@@ -230,9 +220,8 @@ Alpine.data('lessonGame', (lesson) => ({
         }
       }
 
-      // Fire avatar + bg init in background — they should be ready by play time
-      // but do NOT block startLesson on them (GLB load has no timeout and can hang).
-      this._initAvatar()  // fire-and-forget
+      // Fire bg (skybox) init in background — should be ready by play time, but do
+      // NOT block startLesson on it (Three.js chunk load has no timeout and can hang).
       this._initBgScene() // fire-and-forget
 
       // Only audio metadata is strictly required before lesson can start
@@ -513,58 +502,6 @@ Alpine.data('lessonGame', (lesson) => ({
       this._avatarWrap = wrap
     },
 
-    async _initAvatar () {
-      // 3D avatar character retired — the narrator is a flat portrait badge (see player.blade.php).
-      if (!USE_3D_AVATAR) return
-
-      // Destroy any existing instance first — prevents dual RAF loops from Vite HMR
-      // or any re-init scenario where two Avatar3DPlayer instances fight over morph targets
-      if (_avatarInstance) {
-        try { _avatarInstance.destroy?.() } catch (_) {}
-        _avatarInstance = null
-        window._av = null
-      }
-
-      const canvas = document.getElementById('lesson-avatar-canvas')
-      if (!canvas) return
-
-      // Skip avatar entirely if no GLB is available
-      const avatarUrl = lesson.avatar_glb_url || null
-      if (!avatarUrl) {
-        console.info('lesson-player: no avatar GLB — skipping 3D avatar')
-        return
-      }
-
-      try {
-        // Dynamic import keeps the heavy Three.js avatar chunk out of the eager bundle.
-        const { Avatar3DPlayer } = await import('./avatar-3d.js')
-        _avatarInstance = new Avatar3DPlayer(canvas, { characterUrl: avatarUrl, alpha: true })
-        window._av = _avatarInstance
-        await _avatarInstance.init()
-
-        // Transparent background — 3D bg scene shows through the avatar canvas
-        if (_avatarInstance._scene) {
-          _avatarInstance._scene.background = null
-          _avatarInstance._renderer.setClearAlpha(0)
-        }
-
-        // Lock camera — no orbit so avatar always faces viewer front-on
-        if (_avatarInstance._controls) {
-          _avatarInstance._controls.enabled = false
-        }
-
-        // Auto-load idle animation so avatar stands naturally instead of T-pose
-        const gender      = (lesson.avatar_gender ?? 'male') === 'female' ? 'feminine' : 'masculine'
-        const genderShort = gender === 'feminine' ? 'F' : 'M'
-        const idleUrl     = `/avatars/animation-library/${gender}/glb/idle/${genderShort}_Standing_Idle_001.glb`
-        _avatarInstance.loadBodyAnimation(idleUrl).catch(e =>
-          console.warn('lesson-player: idle animation load failed', e)
-        )
-      } catch (e) {
-        console.warn('lesson-player: avatar init failed', e)
-      }
-    },
-
     // ── Background 3D scene (skybox only, no character) ────────────────
     async _initBgScene () {
       // Skybox is opt-in — only lessons with a scene_view:'skybox' scene load the Three.js skybox.
@@ -746,14 +683,6 @@ Alpine.data('lessonGame', (lesson) => ({
         cls.split(' ').forEach(c => wrap.classList.remove(c))
       )
       AVATAR_POSITIONS[posKey].split(' ').forEach(c => wrap.classList.add(c))
-
-      // After transition snaps, re-engage gaze/blink
-      setTimeout(() => {
-        if (_avatarInstance) {
-          _avatarInstance._gazeTimer = 0
-          _avatarInstance._blinkNext = 200
-        }
-      }, 750)
     },
 
     // ── Audio ──────────────────────────────────────────────────────────
@@ -818,8 +747,6 @@ Alpine.data('lessonGame', (lesson) => ({
 
         if (evt.type === 'position') {
           this._moveAvatarTo(evt.value)
-        } else if (evt.type === 'teams' && this.phase === 'INTRO') {
-          this._transitionToTeamReveal()
         } else if (evt.type === 'game' && this.phase === 'GAME_BRIEF') {
           this._transitionToGameActive()
         } else if (evt.type === 'intel_drop' && this.phase === 'GAME_ACTIVE') {
@@ -881,40 +808,16 @@ Alpine.data('lessonGame', (lesson) => ({
         this._showFlatColor(scene.background_color)
       }
 
-      if (_avatarInstance) {
-        // Use ElevenLabs alignment for precise phoneme visemes, fall back to amplitude jaw
-        if (scene.alignment?.length) {
-          _avatarInstance.speakWithElevenLabsAlignment(scene.audio_url, scene.alignment, { zoom: false, delay: 0 })
-        } else {
-          _avatarInstance.speakWithVisemes(scene.audio_url, { zoom: false, delay: 0 })
-        }
-
-        // Bridge avatar's internal audio to our event system
-        const bridgeAudio = () => {
-          if (_avatarInstance._audio) {
-            this._audio = _avatarInstance._audio
-            this._attachAudioListeners()
-            this._lastEventIndex = 0
-            this._scriptEvents = parseScriptTags(scene.script, this._audio.duration || 0)
-            this._audio.addEventListener('timeupdate', () => this._processScriptEvents(), { once: false })
-            this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
-          } else {
-            setTimeout(bridgeAudio, 50)
-          }
-        }
-        bridgeAudio()
-      } else {
-        // No avatar — plain audio fallback
-        this._audio = new Audio(scene.audio_url)
-        this._attachAudioListeners()
-        this._lastEventIndex = 0
-        this._audio.addEventListener('loadedmetadata', () => {
-          this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
-        })
-        this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
-        this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
-        this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
-      }
+      // Narrator is a flat 2D portrait badge — play the scene audio directly.
+      this._audio = new Audio(scene.audio_url)
+      this._attachAudioListeners()
+      this._lastEventIndex = 0
+      this._audio.addEventListener('loadedmetadata', () => {
+        this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
+      })
+      this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
+      this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
+      this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
     },
 
     // ── Map block slide ────────────────────────────────────────────────
@@ -1005,73 +908,6 @@ Alpine.data('lessonGame', (lesson) => ({
         // old end-of-narration team reveal is no longer the fallback — finish the lesson.
         this._endLesson()
       }
-    },
-
-    async _transitionToTeamReveal () {
-      if (this.phase !== 'INTRO') return
-      this.phase = 'TEAM_REVEAL'
-
-      if (this._audio && !this._audio.paused) this._audio.pause()
-      this._moveAvatarTo('left-centre')
-
-      await this._loadTeams()
-      this._renderTeamGrid()
-      this._startTeamRevealCountdown()
-    },
-
-    async _loadTeams () {
-      try {
-        const res = await fetch(`/api/lesson/${lesson.lesson_code}/teams`)
-        if (res.ok) {
-          const data = await res.json()
-          this.teams = data.teams ?? []
-        }
-      } catch (e) {
-        // Teams optional at this stage; game can proceed without
-      }
-    },
-
-    _renderTeamGrid () {
-      const grid = document.getElementById('team-list-grid')
-      if (!grid) return
-      grid.innerHTML = ''
-
-      const TEAM_COLORS = ['amber', 'sky', 'emerald', 'rose', 'violet', 'orange']
-
-      // Team + member names are user-supplied — build with textContent, never innerHTML.
-      this.teams.forEach((team, i) => {
-        const color = TEAM_COLORS[i % TEAM_COLORS.length]
-        const card = document.createElement('div')
-        card.className = `rounded-2xl border border-${color}-500/30 bg-slate-900/80 backdrop-blur-sm p-5`
-
-        const title = document.createElement('p')
-        title.className = `font-history text-xl font-bold text-${color}-400 mb-3`
-        title.textContent = team.name ?? ''
-        card.appendChild(title)
-
-        const list = document.createElement('ul')
-        list.className = 'space-y-1'
-        for (const m of team.members ?? []) {
-          const item = document.createElement('li')
-          item.className = 'text-sm text-slate-300'
-          item.textContent = m?.name ?? (typeof m === 'string' ? m : '')
-          list.appendChild(item)
-        }
-        card.appendChild(list)
-
-        grid.appendChild(card)
-      })
-    },
-
-    _startTeamRevealCountdown () {
-      this.teamRevealCountdown = 5
-      this._teamRevealInterval = setInterval(() => {
-        this.teamRevealCountdown--
-        if (this.teamRevealCountdown <= 0) {
-          clearInterval(this._teamRevealInterval)
-          this._transitionToGameBrief()
-        }
-      }, 1000)
     },
 
     _transitionToGameBrief () {
@@ -1348,13 +1184,10 @@ Alpine.data('lessonGame', (lesson) => ({
         document.removeEventListener('keydown', this._kbHandler)
         this._kbHandler = null
       }
-      clearInterval(this._timerInterval);      this._timerInterval = null
-      clearInterval(this._teamRevealInterval); this._teamRevealInterval = null
-      clearInterval(this._kbInterval);         this._kbInterval = null
-      try { _avatarInstance?.destroy?.() } catch (_) {}
+      clearInterval(this._timerInterval); this._timerInterval = null
+      clearInterval(this._kbInterval);    this._kbInterval = null
       try { _bgInstance?.destroy?.() } catch (_) {}
       try { _mapInstance?.destroy?.() } catch (_) {}
-      _avatarInstance = null
       _bgInstance = null
       _mapInstance = null
       _initDone = false  // allow a later mount (e.g. opening another lesson) to re-init

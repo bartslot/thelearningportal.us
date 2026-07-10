@@ -424,27 +424,6 @@
             </div>
         </div>
 
-        {{-- ── TEAM REVEAL screen ──────────────────────────────────────── --}}
-        <div
-            x-show="phase === 'TEAM_REVEAL'"
-            x-transition:enter="transition ease-out duration-500"
-            x-transition:enter-start="opacity-0 scale-95"
-            x-transition:enter-end="opacity-100 scale-100"
-            class="absolute inset-0 flex items-center justify-center pointer-events-auto"
-        >
-            <div class="w-full max-w-4xl px-8">
-                <h2 class="font-history text-4xl font-bold text-center text-[#E1EEF4] mb-10 drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]">
-                    Your Teams
-                </h2>
-                <div class="grid grid-cols-2 gap-6 md:grid-cols-3" id="team-list-grid">
-                    {{-- Populated by JS from /api/lesson/{code}/teams --}}
-                </div>
-                <p class="text-center text-slate-400 text-sm mt-8 animate-pulse">
-                    Game starts in <span x-text="teamRevealCountdown" class="text-amber-400 font-bold"></span>s…
-                </p>
-            </div>
-        </div>
-
         {{-- ── GAME BRIEF: the story-aligned challenge ─────────────────── --}}
         <div
             x-show="phase === 'GAME_BRIEF'"
