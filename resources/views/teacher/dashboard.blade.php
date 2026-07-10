@@ -8,10 +8,15 @@
             <h1 class="mt-2 text-3xl font-semibold text-slate-100">{{ __('Your lessons') }}</h1>
             <p class="mt-1 text-sm text-slate-400">{{ $lessons->total() }} {{ $lessons->total() === 1 ? __('lesson total') : __('lessons total') }}</p>
         </div>
-        <a href="{{ route('teacher.lessons.create') }}"
-           class="flex-shrink-0 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-colors">
-            {{ __('+ New lesson') }}
-        </a>
+        <div class="flex flex-shrink-0 items-center gap-3">
+            <a href="{{ route('teacher.lessons.chat') }}" class="btn btn-primary">
+                ✨ {{ __('Quick lesson (chat)') }}
+            </a>
+            <a href="{{ route('teacher.lessons.create') }}"
+               class="flex-shrink-0 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-colors">
+                {{ __('+ New lesson') }}
+            </a>
+        </div>
     </div>
 
     {{-- ── Meet your narrator (shown on first visit) ─────────────────────── --}}

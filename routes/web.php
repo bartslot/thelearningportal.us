@@ -184,6 +184,9 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
+    // K-12 agentic creation chat — goal → chips → configured lesson in ~1 min.
+    Route::get('/lessons/chat', \App\Livewire\Teacher\LessonChat::class)->name('lessons.chat');
+
     Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
 
     Route::get('/lessons/{lesson}/composer', \App\Livewire\LessonComposer::class)->name('lessons.composer');

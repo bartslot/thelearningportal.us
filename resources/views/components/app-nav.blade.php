@@ -46,7 +46,7 @@
             'label' => 'New Lesson',
             'route' => 'teacher.lessons.create',
             // Only the wizard — not every lessons.* route (results pages belong to Results, above)
-            'pattern' => ['teacher.lessons.create', 'teacher.lessons.wizard', 'teacher.lessons.show', 'teacher.lessons.composer'],
+            'pattern' => ['teacher.lessons.create', 'teacher.lessons.chat', 'teacher.lessons.wizard', 'teacher.lessons.show', 'teacher.lessons.composer'],
         ];
     }
 
