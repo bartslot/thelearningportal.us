@@ -12,6 +12,7 @@ use App\Services\OpenAiImageService;
 use App\Services\OpenAiLlmService;
 use App\Services\ShotListPrompt;
 use App\Services\Support\GridSlicer;
+use App\Services\Support\HatchEngraver;
 use App\Services\Support\ImageStyleTemplate;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -81,6 +82,14 @@ class GenerateSceneShots implements ShouldQueue
             // safety trim on top (3% verified to remove residual margins).
             $cells = GridSlicer::sliceDetect($bytes, $rows, $cols, (float) config('lessons.shot_grid_inset', 0.03));
 
+            // Two-pass engraving: model supplied figures/tone; we draw the hatching ourselves
+            // (deterministic, sharp, exact paper colour). Renders at 2× cell size, so these
+            // shots also skip the Upscayl pass below.
+            $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
+            if ($style === 'engraved') {
+                $cells = array_map(fn (string $cell) => HatchEngraver::render($cell, 1024), $cells);
+            }
+
             $baseDir = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/shots";
             foreach ($cells as $index => $cellBytes) {
                 if (! isset($shots[$index])) {
@@ -104,10 +113,13 @@ class GenerateSceneShots implements ShouldQueue
             $this->maybeMarkReady($scene->fresh());
 
             // Cells are small (~512px) — upscale each so full-screen Ken Burns stays sharp.
-            $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
-            $hint = (string) ($scene->image_prompt ?? $scene->location ?? $scene->lesson->topic ?? '');
-            foreach ($shots as $shot) {
-                UpscayleSceneImage::dispatchIfLocal($scene, $shot['image_path'], $style, $hint);
+            // Engraved shots skip this: HatchEngraver already rendered them at 2× with
+            // drawn (not upscaled) lines — Real-ESRGAN would only soften them.
+            if ($style !== 'engraved') {
+                $hint = (string) ($scene->image_prompt ?? $scene->location ?? $scene->lesson->topic ?? '');
+                foreach ($shots as $shot) {
+                    UpscayleSceneImage::dispatchIfLocal($scene, $shot['image_path'], $style, $hint);
+                }
             }
         } catch (Throwable $e) {
             $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);

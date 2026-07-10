@@ -59,6 +59,12 @@ final class ImageStyleTemplate
         'etching' => 'antique copperplate engraving, etching style: dense crosshatching, fine '
             .'parallel hatch lines that curve with the form, deep tonal build-up from layered '
             .'hatching, monochrome black ink on aged warm paper, no color',
+        // Two-pass engraving: the model draws figures/tone in ink style; HatchEngraver then
+        // draws the crosshatching deterministically (sharp lines, exact paper colour).
+        'engraved' => 'Japanese ink brush illustration, sumi-e manga style: rough expressive '
+            .'dry-brush strokes for clothing, hair and large masses; thin precise fine-line work '
+            .'for faces, hands and details; monochrome black ink on warm off-white paper, high '
+            .'contrast, subtle paper grain, no color',
         'animation' => 'stylized 3D animation, soft lighting, expressive characters',
     ];
 
