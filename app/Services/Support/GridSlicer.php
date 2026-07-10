@@ -13,13 +13,18 @@ use RuntimeException;
 final class GridSlicer
 {
     /**
+     * @param  float  $inset  fraction of each cell trimmed from EVERY side (0.0–0.2). Illustrated
+     *                        styles (ink/comic) tend to render paper gutters between panels despite
+     *                        the prompt ban — a small inset crops them off so full-screen shots
+     *                        never show neighbours' margins.
      * @return list<string> PNG bytes per cell, left-to-right, top-to-bottom
      */
-    public static function slice(string $imageBytes, int $rows, int $cols): array
+    public static function slice(string $imageBytes, int $rows, int $cols, float $inset = 0.0): array
     {
         if ($rows < 1 || $cols < 1) {
             throw new RuntimeException("Invalid grid {$rows}x{$cols}.");
         }
+        $inset = max(0.0, min(0.2, $inset));
 
         $source = @imagecreatefromstring($imageBytes);
         if ($source === false) {
@@ -30,12 +35,20 @@ final class GridSlicer
         $height = imagesy($source);
         $cellWidth = intdiv($width, $cols);
         $cellHeight = intdiv($height, $rows);
+        $marginX = (int) round($cellWidth * $inset);
+        $marginY = (int) round($cellHeight * $inset);
+        $cropWidth = $cellWidth - 2 * $marginX;
+        $cropHeight = $cellHeight - 2 * $marginY;
 
         $cells = [];
         for ($row = 0; $row < $rows; $row++) {
             for ($col = 0; $col < $cols; $col++) {
-                $cell = imagecreatetruecolor($cellWidth, $cellHeight);
-                imagecopy($cell, $source, 0, 0, $col * $cellWidth, $row * $cellHeight, $cellWidth, $cellHeight);
+                $cell = imagecreatetruecolor($cropWidth, $cropHeight);
+                imagecopy(
+                    $cell, $source, 0, 0,
+                    $col * $cellWidth + $marginX, $row * $cellHeight + $marginY,
+                    $cropWidth, $cropHeight,
+                );
 
                 ob_start();
                 imagepng($cell);

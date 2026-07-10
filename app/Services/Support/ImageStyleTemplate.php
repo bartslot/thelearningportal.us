@@ -48,6 +48,12 @@ final class ImageStyleTemplate
         'painted' => 'oil painting, romantic era, visible brushstrokes, dramatic light',
         'cinematic' => 'film still, anamorphic, dusk lighting, color graded',
         'comic' => 'bold ink outlines, flat color panels, halftone shading',
+        // Founder-picked identity style (2026-07-10, validated on gpt-image-1: era-accurate, no
+        // style→content bleed, upscales near-losslessly). Reference: Vagabond-like sumi-e manga.
+        'ink' => 'Japanese ink brush illustration, sumi-e manga style: rough expressive dry-brush '
+            .'strokes for clothing, hair and large masses; thin precise fine-line work for faces, '
+            .'hands and details; monochrome black ink on warm off-white paper, high contrast, '
+            .'subtle paper grain, no color',
         'animation' => 'stylized 3D animation, soft lighting, expressive characters',
     ];
 

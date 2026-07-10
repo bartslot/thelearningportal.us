@@ -76,7 +76,8 @@ class GenerateSceneShots implements ShouldQueue
                 size: (string) config('services.openai.scene_size', config('services.openai.image_size', '1536x1024')),
             );
 
-            $cells = GridSlicer::slice($bytes, $rows, $cols);
+            // 3% inset verified to fully remove the paper gutters ink-style grids render.
+            $cells = GridSlicer::slice($bytes, $rows, $cols, (float) config('lessons.shot_grid_inset', 0.03));
 
             $baseDir = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/shots";
             foreach ($cells as $index => $cellBytes) {
