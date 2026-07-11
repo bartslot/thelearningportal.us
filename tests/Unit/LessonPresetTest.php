@@ -160,7 +160,7 @@ class LessonPresetTest extends TestCase
             gameConfigDefaults: [],
             quizQuestionCount: 4,
             quizTiming: 'after',
-            imageStyle: 'ink',
+            imageStyle: 'engraved',
             tone: null,
             durationTargetMinutes: 10,
         );
@@ -202,7 +202,7 @@ class LessonPresetTest extends TestCase
             gameConfigDefaults: [],
             quizQuestionCount: 4,
             quizTiming: 'after',
-            imageStyle: 'ink',
+            imageStyle: 'engraved',
             tone: null,
             durationTargetMinutes: 10,
         );

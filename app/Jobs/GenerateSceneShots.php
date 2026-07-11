@@ -91,7 +91,9 @@ class GenerateSceneShots implements ShouldQueue
             // (deterministic, sharp, exact paper colour). Renders at 2× cell size, so these
             // shots also skip the Upscayl pass below.
             if ($style === 'engraved') {
-                $cells = array_map(fn (string $cell) => HatchEngraver::render($cell, 1024), $cells);
+                // 1536 wide: shots display full-screen (~2000px viewports); drawn lines stay
+                // crisp at this size where a 1024 upscale reads soft (founder catch 2026-07-11).
+                $cells = array_map(fn (string $cell) => HatchEngraver::render($cell, 1536), $cells);
             }
 
             $baseDir = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/shots";

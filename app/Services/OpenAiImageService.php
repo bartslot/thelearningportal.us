@@ -144,7 +144,11 @@ class OpenAiImageService
      */
     public function upscaleLocal(string $bytes, string $modelName): string
     {
-        return $this->upscaleWithUpscayl($bytes, scale: 2, modelName: $modelName);
+        // Line-art models get ×3 (512-class cells → ~1536): shots render full-screen, and
+        // hatch/ink lines expose softness at 1024 that photographic styles hide.
+        $scale = $modelName === 'ultrasharp-4x' ? 3 : 2;
+
+        return $this->upscaleWithUpscayl($bytes, scale: $scale, modelName: $modelName);
     }
 
     /**

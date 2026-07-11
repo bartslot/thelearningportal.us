@@ -19,15 +19,8 @@
                class="input input-sm input-bordered bg-slate-900 mt-1" />
     </label>
 
-    <label class="form-control">
-        <span class="text-xs uppercase tracking-wider text-slate-400">Style</span>
-        <select wire:model.live="selectedScene.image_style" wire:change="saveSelected"
-                class="select select-sm select-bordered bg-slate-900 mt-1">
-            @foreach (['realistic','sketched','painted','cinematic','comic','animation'] as $s)
-                <option value="{{ $s }}">{{ ucfirst($s) }}</option>
-            @endforeach
-        </select>
-    </label>
+    {{-- Style is a GLOBAL lesson setting (Step 1 / chat preset), set once — no per-scene
+         override (founder decision 2026-07-11; the old dropdown also showed stale options). --}}
 
     <label class="form-control">
         <span class="text-xs uppercase tracking-wider text-slate-400">Animation</span>
