@@ -77,15 +77,19 @@ class GenerateSceneShots implements ShouldQueue
                 size: (string) config('services.openai.scene_size', config('services.openai.image_size', '1536x1024')),
             );
 
-            // Gutter-aware: illustrated styles draw paper gutters AND unequal panels, so detect
-            // the real boundaries; photoreal grids fall back to uniform ninths. The inset is a
-            // safety trim on top (3% verified to remove residual margins).
-            $cells = GridSlicer::sliceDetect($bytes, $rows, $cols, (float) config('lessons.shot_grid_inset', 0.03));
+            // Gutter-aware slicing ONLY for illustrated styles — they draw paper gutters and
+            // unequal panels. Photoreal grids render edge-to-edge, where a bright sky band on
+            // a thirds horizon (which the prompt now asks for!) would false-positive as a
+            // gutter — so they always slice uniformly. Inset trims residual margins (3%).
+            $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
+            $inset = (float) config('lessons.shot_grid_inset', 0.03);
+            $cells = in_array($style, ['ink', 'etching', 'engraved', 'comic', 'sketched'], true)
+                ? GridSlicer::sliceDetect($bytes, $rows, $cols, $inset)
+                : GridSlicer::slice($bytes, $rows, $cols, $inset);
 
             // Two-pass engraving: model supplied figures/tone; we draw the hatching ourselves
             // (deterministic, sharp, exact paper colour). Renders at 2× cell size, so these
             // shots also skip the Upscayl pass below.
-            $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
             if ($style === 'engraved') {
                 $cells = array_map(fn (string $cell) => HatchEngraver::render($cell, 1024), $cells);
             }

@@ -159,4 +159,39 @@ class GridSlicerTest extends TestCase
         $this->assertSame(512, imagesx($first));
         $this->assertSame(341, imagesy($first));
     }
+
+    /**
+     * Review finding (2026-07-10): a photoreal scene with a BRIGHT SKY band on a thirds
+     * horizon (exactly what the shot prompt asks for) must not be mistaken for a gutter —
+     * real printed gutters are thin. Wide light bands must fall back to uniform slicing.
+     */
+    public function test_slice_detect_ignores_wide_bright_bands_like_sky_on_a_thirds_horizon(): void
+    {
+        $img = imagecreatetruecolor(300, 300);
+        imagefilledrectangle($img, 0, 0, 300, 300, imagecolorallocate($img, 30, 30, 30));
+        // A 60px-tall bright "sky" band straddling the 1/3 line (y=100) — 20% of the axis.
+        imagefilledrectangle($img, 0, 70, 299, 130, imagecolorallocate($img, 235, 240, 245));
+        // A legit thin gutter at the 2/3 line would still be missing → whole-axis fallback.
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+
+        $cells = GridSlicer::sliceDetect($bytes, 3, 3, inset: 0.0);
+
+        // Uniform fallback: exact 100px thirds, NOT sliced at the sky band edges.
+        $cell = imagecreatefromstring($cells[0]);
+        $this->assertSame(100, imagesx($cell));
+        $this->assertSame(100, imagesy($cell));
+    }
+
+    public function test_slice_throws_on_images_too_small_for_the_grid(): void
+    {
+        $img = imagecreatetruecolor(2, 2);
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+
+        $this->expectException(\RuntimeException::class);
+        GridSlicer::slice($bytes, 3, 3);
+    }
 }

@@ -33,6 +33,9 @@ final class GridSlicer
 
         $width = imagesx($source);
         $height = imagesy($source);
+        if (intdiv($width, $cols) < 4 || intdiv($height, $rows) < 4) {
+            throw new RuntimeException("GridSlicer: {$width}x{$height} image is too small for a {$rows}x{$cols} grid.");
+        }
         $cellWidth = intdiv($width, $cols);
         $cellHeight = intdiv($height, $rows);
         $marginX = (int) round($cellWidth * $inset);
@@ -164,6 +167,12 @@ final class GridSlicer
 
             // Require a real band (≥2 lines), not a stray light scanline.
             if ($bestStart === null || ($bestEnd - $bestStart) < 1) {
+                return null;
+            }
+            // Plausibility: printed gutters are THIN. A wide light region (bright sky on a
+            // thirds horizon — which the shot prompt explicitly asks for) is scene content,
+            // not a gutter; bail to uniform slicing rather than cut into a panel.
+            if (($bestEnd - $bestStart) > $length * 0.06) {
                 return null;
             }
             $bands[] = [$bestStart, $bestEnd];
