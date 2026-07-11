@@ -112,12 +112,15 @@ class TtsService
             return null;
         }
         $voice    = $candidateVoice;
+        // Document language follows the voice's own locale (nl-NL-FennaNeural → nl-NL), so
+        // locale-sensitive reading (years like "1566", dates) matches the narration language.
+        $lang     = implode('-', array_slice(explode('-', $voice), 0, 2));
         $ratePct  = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
         $rateAttr = ($ratePct >= 0 ? '+' : '') . $ratePct . '%';
         $escaped  = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         $ssml = <<<SSML
-<speak version="1.0" xml:lang="en-US">
+<speak version="1.0" xml:lang="{$lang}">
   <voice name="{$voice}">
     <prosody rate="{$rateAttr}">{$escaped}</prosody>
   </voice>
