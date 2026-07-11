@@ -121,6 +121,23 @@ class LessonChatTest extends TestCase
             ->assertDontSee('Willem de Draft');
     }
 
+    /** Caught in browser smoke: full-phrase queries missed shorter titles — matching is per word. */
+    public function test_story_matching_is_per_word_so_longer_queries_still_find_short_titles(): void
+    {
+        Story::create(['slug' => 'limes', 'title' => 'De Romeinse Limes', 'status' => 'published']);
+
+        $this->mockLlm([
+            'topic' => 'Romeinse limes en soldaten', 'age' => 12, 'preset_key' => 'story',
+            'story_query' => 'Romeinse limes en soldaten', 'language' => 'nl',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->set('goal', 'Waarom was de limes de noordgrens en hoe leefden soldaten daar')
+            ->call('submitGoal')
+            ->assertSee('De Romeinse Limes');
+    }
+
     public function test_confirm_and_create_builds_a_preset_configured_story_grounded_lesson(): void
     {
         $story = Story::create([

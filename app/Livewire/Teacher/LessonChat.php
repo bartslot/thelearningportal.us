@@ -93,8 +93,10 @@ class LessonChat extends Component
     }
 
     /**
-     * Published catalog stories matching the LLM's story_query (or the topic). Simple
-     * ILIKE on title/subtitle, top 3 — the "Ground in: <story>" chips.
+     * Published catalog stories matching the LLM's story_query (or the topic), top 3 —
+     * the "Ground in: <story>" chips. Matches PER WORD (≥4 chars), not the whole phrase:
+     * a goal like "Romeinse limes en soldaten" must still find the story titled
+     * "De Romeinse Limes" (whole-phrase ILIKE silently missed it — caught in smoke test).
      *
      * @return list<array{id: int, title: string, subtitle: ?string}>
      */
@@ -102,14 +104,21 @@ class LessonChat extends Component
     public function storyMatches(): array
     {
         $query = trim((string) ($this->storyQuery ?? $this->topic));
-        if ($query === '') {
+        $words = array_values(array_filter(
+            preg_split('/[^\p{L}\p{N}]+/u', $query) ?: [],
+            fn (string $w) => mb_strlen($w) >= 4,
+        ));
+        if ($words === []) {
             return [];
         }
 
-        $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $query).'%';
-
         return Story::published()
-            ->where(fn ($q) => $q->where('title', 'ilike', $like)->orWhere('subtitle', 'ilike', $like))
+            ->where(function ($q) use ($words): void {
+                foreach ($words as $word) {
+                    $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $word).'%';
+                    $q->orWhere('title', 'ilike', $like)->orWhere('subtitle', 'ilike', $like);
+                }
+            })
             ->limit(self::STORY_MATCH_LIMIT)
             ->get(['id', 'title', 'subtitle'])
             ->map(fn (Story $story): array => [
