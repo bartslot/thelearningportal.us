@@ -709,6 +709,7 @@ P1 · K · depends: J-3, K-1, A2
 **Smoke:** (feature) `php artisan test --filter=LessonScaffolder` → scaffold for (rome, -50) → a draft lesson with the default ordered modules and non-empty content for each from the DB; assert no synchronous generation call on the request path.
 
 ### K-12 Agentic (chat) lesson creation — "tell me your learning goal"
+> **SHIPPED 2026-07-10** (4de847d + 8d1f5f7): /teacher/lessons/chat, goal → LLM parse → chips → confirm → create → wizard progress. Browser-verified end-to-end incl. real LLM + story grounding. Built WITHOUT K-7 (map scaffolder still open).
 P1 · K · depends: **scene-creation-engine overhaul complete (do NOT start before this)**, K-7 (scaffolder), K-13 (lesson-type presets)
 **Why:** The current 4-step wizard exposes too many options and is too slow. Teachers want to go from intent to a ready lesson in **1–2 minutes**. A guided chat that asks for the *learning goal* first and infers the rest is the fast path — options become questions the bot asks only when they matter, with smart defaults for everything else.
 **Scope — in:**
@@ -725,6 +726,7 @@ P1 · K · depends: **scene-creation-engine overhaul complete (do NOT start befo
 **Smoke:** (feature) `php artisan test --filter=AgenticLessonCreation` → simulate a full interview (goal → type → grade → topic) → asserts a draft Lesson with the preset's framework/module order and a `LessonScaffolder` call; (e2e) `php artisan dusk --filter=AgenticCreation` → chat completes and lands in the composer.
 
 ### K-13 Normalized lesson-type presets
+> **SHIPPED 2026-07-10** (5343325): LessonPreset VO + 4-preset catalog (story/game_story/comprehension_check/deep_dive), consumed by the K-12 chat.
 P1 · K · depends: K-1 (module contract); enables K-12
 **Why:** So teachers (and the K-12 chat) don't configure everything from scratch — a lesson *type* should carry its own sensible defaults.
 **Scope — in:** a small catalog of named lesson types (Story, Spel-verhaal/game-story, Explore-the-map, Comprehension check, …), each a declarative preset: narrative_framework, default module order, game_type/game_config defaults, tone, duration target. A `LessonPreset` value object/config + a picker. **out:** unlimited custom teacher-defined presets (v2).
