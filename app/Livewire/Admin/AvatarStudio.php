@@ -95,7 +95,11 @@ class AvatarStudio extends Component
 
         $this->previewVoiceId    = $avatar->voice_id;
         $this->previewVoiceSpeed = $avatar->voice_speed;
-        $this->previewProvider   = $avatar->voice_provider;
+        // Provider tabs are full-page links (?provider=…) — see the blade comment.
+        $requested = (string) request()->query('provider', '');
+        $this->previewProvider = in_array($requested, ['elevenlabs', 'edge_tts', 'pocket_tts'], true)
+            ? $requested
+            : $avatar->voice_provider;
 
         $this->greetingScript = $avatar->greeting_text ?? '';
     }
@@ -117,6 +121,10 @@ class AvatarStudio extends Component
     {
         $this->voice_id       = $voiceId;
         $this->voice_provider = $this->previewProvider;
+
+        // The sample-generation controls read the preview fields — without this sync,
+        // "Generate" kept synthesizing with the previously selected voice.
+        $this->previewVoiceId = $voiceId;
     }
 
     #[Computed]
@@ -195,7 +203,9 @@ class AvatarStudio extends Component
                 'audio_path'      => $filename,
                 'audio_extension' => $ext,
                 'settings_snapshot' => [
-                    'provider'    => $this->voice_provider,
+                    // The provider that actually SYNTHESIZED this sample (the active tab),
+                    // not the avatar's saved provider — applyVoice() restores it from here.
+                    'provider'    => $this->previewProvider,
                     'voice_id'    => $voiceId,
                     'speed'       => $speed,
                     'voice_label' => $voiceLabel,
@@ -234,12 +244,18 @@ class AvatarStudio extends Component
     {
         $sample = AvatarVoiceSample::findOrFail($sampleId);
 
-        $this->voice_id    = $sample->voice_id;
-        $this->voice_speed = $sample->voice_speed;
+        // The provider MUST follow the voice: an edge-tts voice id on an avatar still set
+        // to elevenlabs breaks narration (was the bug — provider never updated here).
+        $provider = (string) ($sample->settings_snapshot['provider'] ?? $this->previewProvider);
+
+        $this->voice_id       = $sample->voice_id;
+        $this->voice_speed    = $sample->voice_speed;
+        $this->voice_provider = $provider;
 
         $this->avatar->update([
-            'voice_id'    => $sample->voice_id,
-            'voice_speed' => $sample->voice_speed,
+            'voice_provider' => $provider,
+            'voice_id'       => $sample->voice_id,
+            'voice_speed'    => $sample->voice_speed,
         ]);
 
         $this->flash("Voice set to: {$sample->label()}", false);

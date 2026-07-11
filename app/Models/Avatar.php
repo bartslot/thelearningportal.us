@@ -176,6 +176,13 @@ class Avatar extends Model
     public static function edgeTtsVoices(): array
     {
         return [
+            // ── Nederlands (Dutch pilot — same neural voices as Azure, free via edge-tts) ──
+            'nl-NL-FennaNeural'         => '🇳🇱 Nederlands Vrouw — Fenna (warm)',
+            'nl-NL-ColetteNeural'       => '🇳🇱 Nederlands Vrouw — Colette (helder)',
+            'nl-NL-MaartenNeural'       => '🇳🇱 Nederlands Man — Maarten (kalm)',
+            'nl-BE-DenaNeural'          => '🇧🇪 Vlaams Vrouw — Dena (zacht)',
+            'nl-BE-ArnaudNeural'        => '🇧🇪 Vlaams Man — Arnaud (natuurlijk)',
+
             // ── British Male ──────────────────────────────────────────────────
             'en-GB-RyanNeural'          => '🇬🇧 British Male — Ryan (professional)',
             'en-GB-ThomasNeural'        => '🇬🇧 British Male — Thomas (calm)',
@@ -327,6 +334,10 @@ class Avatar extends Model
      */
     private static function edgeTtsGradientClass(string $voiceId): string
     {
+        if (str_starts_with($voiceId, 'nl-')) {
+            return 'vg-amber';
+        }
+
         if (str_starts_with($voiceId, 'en-GB-')) {
             return 'vg-navy';
         }

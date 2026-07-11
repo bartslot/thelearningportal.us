@@ -42,13 +42,16 @@
         </div>
     </div>
     
-        {{-- ── Flash message ────────────────────────────────────────────────────── --}}
-        @if($flashMessage)
-            <div class="rounded-xl border px-4 py-3 text-sm
-                {{ $flashError ? 'border-rose-700 bg-rose-950/40 text-rose-300' : 'border-emerald-700 bg-emerald-950/40 text-emerald-300' }}">
-                {{ $flashMessage }}
-            </div>
-        @endif
+        {{-- ── Flash message (stable keyed wrapper: a conditional root-level sibling
+             without a key derails Livewire's morph and duplicates later sections) ── --}}
+        <div wire:key="studio-flash">
+            @if($flashMessage)
+                <div class="rounded-xl border px-4 py-3 text-sm
+                    {{ $flashError ? 'border-rose-700 bg-rose-950/40 text-rose-300' : 'border-emerald-700 bg-emerald-950/40 text-emerald-300' }}">
+                    {{ $flashMessage }}
+                </div>
+            @endif
+        </div>
 
         {{-- ── Tab bar ─────────────────────────────────────────────────────────── --}}
         <div class="flex gap-1 border-b border-slate-800">
@@ -100,20 +103,22 @@
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div x-show="activeTab === 'voice'" x-cloak class="space-y-8">
 
-            {{-- Provider toggle --}}
+            {{-- Provider toggle: REAL LINKS, not wire:click. Morphing the provider switch
+                 (a wholesale content swap around Alpine-managed trees) expelled the previous
+                 render's DOM below the page — a full render per provider kills that bug class. --}}
             <div class="join mb-3">
-                <button wire:click="$set('previewProvider', 'elevenlabs')"
-                        class="btn btn-sm join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
+                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'elevenlabs']) }}"
+                   class="btn btn-sm join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
                     ★ ElevenLabs
-                </button>
-                <button wire:click="$set('previewProvider', 'edge_tts')"
-                        class="btn btn-sm join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                </a>
+                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'edge_tts']) }}"
+                   class="btn btn-sm join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
                     edge-tts (free)
-                </button>
-                <button wire:click="$set('previewProvider', 'pocket_tts')"
-                        class="btn btn-sm join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
+                </a>
+                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'pocket_tts']) }}"
+                   class="btn btn-sm join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
                     Pocket TTS
-                </button>
+                </a>
             </div>
 
             {{-- Current active voice --}}
@@ -135,8 +140,11 @@
                     Pick a voice and speed, choose a phrase, then listen. Click "Use this voice" to make it active.
                 </p>
 
-                {{-- Voice card strip --}}
+                {{-- Voice card grid. wire:key on the CONTAINER: switching provider replaces
+                     the whole grid wholesale — morphing an Alpine-managed subtree across
+                     different voice sets duplicated DOM sections below the page. --}}
                 <div
+                    wire:key="voices-grid-{{ $previewProvider }}"
                     x-data="{
                         playingId: null,
                         audioEl: null,
@@ -150,55 +158,53 @@
                             this.audioEl.onended = () => { this.playingId = null; this.audioEl = null; };
                         }
                     }"
-                    class="flex gap-2 pb-2 overflow-x-auto scroll-smooth"
-                    style="scroll-snap-type: x mandatory; scrollbar-width: none;"
+                    class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1"
                 >
                     @foreach($this->voices() as $voice)
+                    {{-- wire:key includes the provider: switching tabs must REPLACE cards, not
+                         morph them — keyless morphing left orphaned cards strewn below the page. --}}
                     <button
+                        wire:key="voice-{{ $previewProvider }}-{{ $voice['id'] }}"
                         wire:click="selectVoice('{{ $voice['id'] }}')"
-                        class="vg-card {{ $voice['gradient_class'] }} shrink-0 w-18 rounded-xl p-2 border relative cursor-pointer transition-all
-                               {{ $voice_id === $voice['id'] ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
-                        style="scroll-snap-align: start; min-height: 80px;"
+                        class="vg-card {{ $voice['gradient_class'] ?? 'vg-base' }} rounded-xl px-3 py-2.5 border relative cursor-pointer transition-all text-left
+                               {{ $voice_id === $voice['id'] ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
                         title="{{ $voice['label'] }}"
                     >
-                        {{-- Play/selected button --}}
-                        <div class="absolute top-1 right-1 z-10">
-                            @if($voice_id === $voice['id'])
-                                {{-- Selected: amber checkmark --}}
-                                <span class="text-amber-400 text-xs">✓</span>
-                            @elseif($voice['preview_url'])
-                                {{-- Preview button --}}
-                                <button
-                                    x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
-                                    class="text-slate-400 hover:text-white text-xs leading-none"
-                                    :class="{ 'text-indigo-400': playingId === '{{ $voice['id'] }}' }"
-                                >
-                                    <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
-                                    {{-- Waveform bars when playing --}}
-                                    <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-400">
-                                        <span class="wave-bar h-3"></span>
-                                        <span class="wave-bar h-2"></span>
-                                        <span class="wave-bar h-3"></span>
-                                    </span>
-                                </button>
-                            @endif
-                        </div>
+                        @php
+                            // edge labels: "🇳🇱 Nederlands Vrouw — Fenna (warm)"; ElevenLabs: "Roger - … · american male"
+                            [$voiceName, $voiceMeta] = str_contains($voice['label'], '—')
+                                ? [Str::afterLast($voice['label'], '— '), trim(Str::before($voice['label'], '—'))]
+                                : [Str::before($voice['label'], ' · '), trim(Str::after($voice['label'], ' · '))];
+                        @endphp
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0 z-10 relative">
+                                <p class="text-xs font-semibold text-white/90 leading-snug">
+                                    {{ $voiceName }}
+                                </p>
+                                <p class="text-[0.65rem] text-white/60 leading-snug mt-0.5">
+                                    {{ $voiceMeta !== $voice['label'] ? $voiceMeta : '' }}
+                                </p>
+                            </div>
 
-                        {{-- Waveform icon center --}}
-                        <div class="flex items-center justify-center h-8 z-10 relative mt-1">
-                            <svg class="w-6 h-6 text-white/50" viewBox="0 0 24 24" fill="currentColor">
-                                <rect x="2" y="8" width="2" height="8" rx="1"/>
-                                <rect x="6" y="5" width="2" height="14" rx="1"/>
-                                <rect x="10" y="3" width="2" height="18" rx="1"/>
-                                <rect x="14" y="5" width="2" height="14" rx="1"/>
-                                <rect x="18" y="8" width="2" height="8" rx="1"/>
-                            </svg>
+                            <div class="shrink-0 z-10 relative">
+                                @if($voice_id === $voice['id'])
+                                    <span class="text-amber-400 text-sm">✓</span>
+                                @elseif(!empty($voice['preview_url']))
+                                    <button
+                                        x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
+                                        class="text-slate-300 hover:text-white text-xs leading-none"
+                                        :class="{ 'text-indigo-300': playingId === '{{ $voice['id'] }}' }"
+                                    >
+                                        <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
+                                        <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-300">
+                                            <span class="wave-bar h-3"></span>
+                                            <span class="wave-bar h-2"></span>
+                                            <span class="wave-bar h-3"></span>
+                                        </span>
+                                    </button>
+                                @endif
+                            </div>
                         </div>
-
-                        {{-- Voice name --}}
-                        <p class="text-xs text-white/80 text-center truncate z-10 relative mt-1 leading-tight">
-                            {{ Str::before($voice['label'], ' ·') ?: $voice['label'] }}
-                        </p>
                     </button>
                     @endforeach
                 </div>
