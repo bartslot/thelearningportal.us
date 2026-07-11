@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
+use App\Services\Support\NarrationVoice;
 use App\Services\TtsService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -40,12 +41,17 @@ class GenerateSceneAudio implements ShouldQueue
             $text    = $tts->prepareSpeechText($script);
 
             // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
-            // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so we
-            // pass the configured backup voice instead (blank → the provider's own default).
+            // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so the
+            // voice follows the LESSON'S CONTENT LANGUAGE (teacher locale — the same signal that
+            // makes the script prompt write Dutch): native narrator per language, multilingual
+            // fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE, when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
             $voiceId  = ($override !== '' && $override !== 'elevenlabs')
-                ? (string) config('services.tts.provider_override_voice', '')
+                ? NarrationVoice::azure(
+                    $scene->lesson->teacher?->locale,
+                    (string) config('services.tts.provider_override_voice', ''),
+                )
                 : ($avatar?->voice_id ?? '');
 
             $timing  = null;
