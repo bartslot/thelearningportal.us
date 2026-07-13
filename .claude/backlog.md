@@ -303,6 +303,7 @@ P1 · E · depends: E2
 **Smoke:** render a comic lesson → network/log shows panels sourced from the catalog, **zero** generative-image calls. Drop a new background into the catalog → it can be selected.
 
 ### E3b Layered scene shots: story asset packs + transparent heroes + parallax (founder direction 2026-07-10)
+> **SHIPPED 2026-07-13** (A: f7f2dc2 packs+generator+review UI · C: fa606c7 ParallaxScene 0.6× hero pan · B: 248849d zero-image pack lessons · 9bf6feb game-scene backdrops + tolerant briefs). Proven live: Limes pack generated (~$1, 6 bg + 4 hero poses, true alpha), lesson 16 built with **zero image-gen calls** (log-verified), parallax rendering in the player at /lesson/UD9KRN. Free-topic lessons unchanged.
 P1 · E · depends: E3 (catalog), scene-engine rewrite (done)
 **Why:** Founder: per-scene grid generation (~$0.10–0.25 gpt-image-1) is too expensive at many-teachers scale; "reuse backgrounds, generate only the heroes with transparent backgrounds, parallax the layers, animate like a webcomic."
 **Provider probe results (2026-07-10, images in `storage/app/examples/shot-probe/`, gitignored):**
