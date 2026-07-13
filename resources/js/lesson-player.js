@@ -119,6 +119,8 @@ let _sceneQueue     = []   // [{kind, config, audio_url, script, image_url, alig
 let _mapInstance    = null   // MapLibre map block instance (lives outside Alpine's proxy)
 let _mapTimer       = null   // timed-mode auto-advance timer
 let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
+let _parallax       = null   // live ParallaxScene instance (layered bg+hero shot, E3b)
+let _parallaxMod    = null   // cached ./scene/ParallaxScene.js module (lazy-loaded once)
 
 // ── Alpine component ──────────────────────────────────────────────────────────
 // Alpine is imported directly (no Livewire on this page) — register before start()
@@ -435,6 +437,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // No image on this scene: a solid brand-navy backdrop instead of a stale leftover photo.
     _showFlatColor (color) {
+      this._destroyParallax()
       if (_bgCanvas) _bgCanvas.style.opacity = '0'
       const bgLayer = document.getElementById('background-layer')
       if (bgLayer) { bgLayer.style.transition = 'opacity 1s ease-in-out'; bgLayer.style.opacity = '1' }
@@ -587,6 +590,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // This is the default per scene (skybox is opt-in via scene_view).
     _showFlatScene (url) {
       if (!url) return
+      this._destroyParallax()   // a flat shot replaces any live layered (parallax) scene
       if (_bgCanvas) _bgCanvas.style.opacity = '0'
       const bgLayer = document.getElementById('background-layer')
       if (bgLayer) {
@@ -614,27 +618,87 @@ Alpine.data('lessonGame', (lesson) => ({
     //    each shot's anchor sentence (via ElevenLabs character timings). ───────────
     _shotPlan: null,
     _shotCursor: 0,
+    _parallaxReq: 0,   // async guard: only the latest layered-shot request may render
+
+    // Route one shot to the right renderer: LAYERED (2-layer parallax) when it carries
+    // a bg_url, otherwise today's flat Ken Burns path — every existing lesson stays flat.
+    _showShot (shot, fallbackUrl = null) {
+      if (shot?.bg_url) { this._showLayeredShot(shot); return }
+      this._showFlatScene(shot?.image_url || shot?.url || fallbackUrl)
+    },
+
+    // Layered shot (E3b): bg layer + optional transparent hero PNG, hero panning at
+    // ~0.6× the background rate. Lazy-imports the ParallaxScene chunk once (same
+    // pattern as the story-game engine) so flat-only lessons never download it.
+    async _showLayeredShot (shot) {
+      const req = ++this._parallaxReq
+      try {
+        if (!_parallaxMod) _parallaxMod = await import('./scene/ParallaxScene.js')
+        if (req !== this._parallaxReq) return   // a newer shot superseded this one mid-import
+
+        const host = document.getElementById('background-layer')
+        if (!host) return
+
+        // Same reveal path as _showFlatScene: hide the 3D canvas, show the 2D layer host.
+        if (_bgCanvas) _bgCanvas.style.opacity = '0'
+        host.style.transition = 'opacity 1s ease-in-out'
+        host.style.opacity = '1'
+        if (this._kbInterval) { clearInterval(this._kbInterval); this._kbInterval = null }
+
+        // Derive pan/zoom from the same Ken Burns move a flat scene would have used.
+        this._kbIndex = (this._kbIndex || 0) + 1
+        let motion = { panX: 0, panY: 0, zoom: 1 }   // Motion off → calm static layers
+        if (this._kbAnimated !== false) {
+          const kb = pickKbDirection(this._kbIndex, this._kbNamedDirection)
+          motion = { panX: kb.toX - kb.fromX, panY: kb.toY - kb.fromY, zoom: 1 + (kb.toScale - kb.fromScale) }
+        }
+
+        this._destroyParallax()
+        _parallax = new _parallaxMod.ParallaxScene(host)
+        _parallax.show({ bgUrl: shot.bg_url, heroUrl: shot.hero_url || null, motion })
+      } catch (e) {
+        console.warn('lesson-player: parallax scene failed, falling back to flat', e)
+        this._showFlatScene(shot.image_url || shot.url || shot.bg_url)
+      }
+    },
+
+    _destroyParallax () {
+      if (!_parallax) return
+      try { _parallax.destroy() } catch (_) { /* already detached */ }
+      _parallax = null
+    },
 
     _startShotPlayback (scene) {
       const shots = scene.shots || []
-      this._showFlatScene(shots[0]?.image_url || scene.image_url)
+      this._showShot(shots[0], scene.image_url)
       this._shotCursor = 0
       // time: seconds when the shot should appear; null = unresolved (even-split fallback).
       // resolveAnchorTime / pickShotIndex are pure + unit-tested in scene/shot-sync.js.
+      // bg_url/hero_url (optional, E3b) mark a shot as layered — see _showShot.
       this._shotPlan = shots.map((shot, i) => ({
         url: shot.image_url,
+        bg_url: shot.bg_url ?? null,
+        hero_url: shot.hero_url ?? null,
         time: i === 0 ? 0 : resolveAnchorTime(scene.alignment, shot.anchor_sentence)
       }))
     },
 
     // Called on every audio timeupdate (piggybacks on _processScriptEvents).
     _processShots () {
-      if (!this._shotPlan || this._shotPlan.length < 2 || !this._audio) return
+      if (!this._audio) return
+
+      // Drive the layered-scene parallax from narration progress (same tick as anchors).
+      if (_parallax && this._audio.duration) {
+        _parallax.update(this._audio.currentTime / this._audio.duration)
+      }
+
+      if (!this._shotPlan || this._shotPlan.length < 2) return
 
       const target = pickShotIndex(this._shotPlan, this._audio.currentTime, this._audio.duration || 0)
-      if (target !== this._shotCursor && this._shotPlan[target].url) {
+      const next = this._shotPlan[target]
+      if (target !== this._shotCursor && (next.url || next.bg_url)) {
         this._shotCursor = target
-        this._showFlatScene(this._shotPlan[target].url)
+        this._showShot(next)
       }
     },
 
@@ -667,6 +731,8 @@ Alpine.data('lessonGame', (lesson) => ({
             branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
             branch_choice_label: s.branch_choice_label ?? null,
             audio_url: s.audio_url, script: s.script, image_url: s.image_url,
+            // shots entries carry image_url + anchor_sentence, plus optional bg_url/hero_url
+            // (layered parallax shots, E3b) — the whole array passes through untouched.
             shots: s.shots ?? null, alignment: s.alignment ?? null,
             background_color: s.background_color ?? null,
             kb_animated: s.kb_animated, kb_direction: s.kb_direction ?? null,
@@ -770,7 +836,7 @@ Alpine.data('lessonGame', (lesson) => ({
         } else if (scene.shots?.length > 1) {
           this._startShotPlayback(scene)                        // storyboard: images follow the narration
         } else {
-          this._showFlatScene(scene.shots?.[0]?.image_url || scene.image_url)  // flat 2D Ken Burns
+          this._showShot(scene.shots?.[0], scene.image_url)     // flat 2D Ken Burns, or layered when the shot has bg_url
         }
       } else if (scene.kind !== 'map') {
         this._showFlatColor(scene.background_color)
