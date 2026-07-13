@@ -142,10 +142,13 @@
 
                 {{-- Voice card grid. wire:key on the CONTAINER: switching provider replaces
                      the whole grid wholesale — morphing an Alpine-managed subtree across
-                     different voice sets duplicated DOM sections below the page. --}}
+                     different voice sets duplicated DOM sections below the page.
+                     Featured-first: only the per-language shortlist shows until "all" is
+                     ticked — a pure Alpine toggle, no server round-trip. --}}
                 <div
                     wire:key="voices-grid-{{ $previewProvider }}"
                     x-data="{
+                        showAll: false,
                         playingId: null,
                         audioEl: null,
                         playPreview(voiceId, previewUrl) {
@@ -158,14 +161,31 @@
                             this.audioEl.onended = () => { this.playingId = null; this.audioEl = null; };
                         }
                     }"
-                    class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1"
                 >
+                @if($previewProvider === 'edge_tts')
+                    {{-- Keyed so Livewire morphs REPLACE the checkbox: Alpine state resets on
+                         round-trips, and a morph-preserved checked box would lie about it. --}}
+                    <label wire:key="show-all-toggle-{{ $previewProvider }}"
+                           class="mb-2 flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                        <input type="checkbox" x-model="showAll" class="checkbox checkbox-xs checkbox-warning">
+                        {{ __('Show all voices') }}
+                        <span class="opacity-60" x-show="!showAll">— {{ __('featured: best voices per language') }}</span>
+                    </label>
+                @endif
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1">
                     @foreach($this->voices() as $voice)
-                    {{-- wire:key includes the provider: switching tabs must REPLACE cards, not
-                         morph them — keyless morphing left orphaned cards strewn below the page. --}}
-                    <button
+                    {{-- Card is a DIV, not a <button>: it CONTAINS the play button, and nested
+                         buttons are invalid HTML — the parser force-closes the outer one and
+                         reparents every later card below the page (the studio's original bug).
+                         wire:key includes the provider so tab switches replace, never morph.
+                         Click = hear the pre-generated sample AND select the voice. --}}
+                    <div
+                        role="button" tabindex="0"
                         wire:key="voice-{{ $previewProvider }}-{{ $voice['id'] }}"
                         wire:click="selectVoice('{{ $voice['id'] }}')"
+                        x-show="showAll || {{ ($voice['featured'] ?? true) ? 'true' : 'false' }}"
+                        x-on:click="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] ?? '' }}')"
+                        x-on:keydown.enter="$el.click()"
                         class="vg-card {{ $voice['gradient_class'] ?? 'vg-base' }} rounded-xl px-3 py-2.5 border relative cursor-pointer transition-all text-left
                                {{ $voice_id === $voice['id'] ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
                         title="{{ $voice['label'] }}"
@@ -205,8 +225,9 @@
                                 @endif
                             </div>
                         </div>
-                    </button>
+                    </div>
                     @endforeach
+                </div>
                 </div>
 
                 {{-- Voice selector + speed --}}
@@ -227,30 +248,9 @@
                     </div>
                 </div>
 
-                {{-- Standard phrases --}}
-                <div class="space-y-2">
-                    <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Standard phrases</p>
-                    @foreach($this->samplePhrases as $i => $phrase)
-                        <div class="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                            <p class="flex-1 text-sm text-slate-300 leading-5">{{ $phrase }}</p>
-                            <button
-                                wire:click="generateSample('{{ addslashes($phrase) }}', '{{ $previewVoiceId }}', {{ $previewVoiceSpeed }})"
-                                wire:loading.attr="disabled"
-                                class="flex-shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400
-                                    hover:border-amber-500 hover:text-amber-400 transition-colors disabled:opacity-40"
-                            >
-                                <span wire:loading.remove wire:target="generateSample">▶ Generate</span>
-                                <span wire:loading wire:target="generateSample" class="flex items-center gap-1">
-                                    <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                    </svg>
-                                    Working...
-                                </span>
-                            </button>
-                        </div>
-                    @endforeach
-                </div>
+                {{-- Standard phrases removed: auditioning uses PRE-GENERATED samples
+                     (voices:samples), played instantly on card click — no runtime TTS.
+                     The custom phrase below stays for hearing avatar-specific lines. --}}
 
                 {{-- Custom phrase --}}
                 <div class="border-t border-slate-800 pt-5 space-y-3">

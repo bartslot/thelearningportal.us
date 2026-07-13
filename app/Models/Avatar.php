@@ -186,26 +186,14 @@ class Avatar extends Model
             // ── British Male ──────────────────────────────────────────────────
             'en-GB-RyanNeural'          => '🇬🇧 British Male — Ryan (professional)',
             'en-GB-ThomasNeural'        => '🇬🇧 British Male — Thomas (calm)',
-            'en-GB-AlfieNeural'         => '🇬🇧 British Male — Alfie (friendly)',
-            'en-GB-ElliotNeural'        => '🇬🇧 British Male — Elliot (natural)',
-            'en-GB-EthanNeural'         => '🇬🇧 British Male — Ethan (clear)',
-            'en-GB-NoahNeural'          => '🇬🇧 British Male — Noah (warm)',
-            'en-GB-OliverNeural'        => '🇬🇧 British Male — Oliver (articulate)',
 
             // ── British Female ────────────────────────────────────────────────
             'en-GB-SoniaNeural'         => '🇬🇧 British Female — Sonia (clear)',
             'en-GB-MaisieNeural'        => '🇬🇧 British Female — Maisie (warm)',
-            'en-GB-AbbiNeural'          => '🇬🇧 British Female — Abbi (confident)',
-            'en-GB-BellaNeural'         => '🇬🇧 British Female — Bella (expressive)',
-            'en-GB-HollieNeural'        => '🇬🇧 British Female — Hollie (bright)',
             'en-GB-LibbyNeural'         => '🇬🇧 British Female — Libby (polished)',
-            'en-GB-OliviaNeural'        => '🇬🇧 British Female — Olivia (authoritative)',
 
             // ── American Male ─────────────────────────────────────────────────
             'en-US-GuyNeural'           => '🇺🇸 American Male — Guy (neutral)',
-            'en-US-DavisNeural'         => '🇺🇸 American Male — Davis (deep)',
-            'en-US-TonyNeural'          => '🇺🇸 American Male — Tony (natural)',
-            'en-US-JasonNeural'         => '🇺🇸 American Male — Jason (serious)',
             'en-US-AndrewNeural'        => '🇺🇸 American Male — Andrew (warm)',
             'en-US-BrianNeural'         => '🇺🇸 American Male — Brian (casual)',
             'en-US-ChristopherNeural'   => '🇺🇸 American Male — Christopher (authoritative)',
@@ -219,9 +207,6 @@ class Avatar extends Model
             'en-US-AnaNeural'           => '🇺🇸 American Female — Ana (cheerful)',
             'en-US-EmmaNeural'          => '🇺🇸 American Female — Emma (bright)',
             'en-US-MichelleNeural'      => '🇺🇸 American Female — Michelle (warm)',
-            'en-US-MonicaNeural'        => '🇺🇸 American Female — Monica (calm)',
-            'en-US-NancyNeural'         => '🇺🇸 American Female — Nancy (natural)',
-            'en-US-SaraNeural'          => '🇺🇸 American Female — Sara (gentle)',
 
             // ── Irish ─────────────────────────────────────────────────────────
             'en-IE-ConnorNeural'        => '🇮🇪 Irish Male — Connor (storyteller)',
@@ -229,17 +214,7 @@ class Avatar extends Model
 
             // ── Australian ───────────────────────────────────────────────────
             'en-AU-WilliamNeural'       => '🇦🇺 Australian Male — William (authoritative)',
-            'en-AU-DarrenNeural'        => '🇦🇺 Australian Male — Darren (casual)',
-            'en-AU-DuncanNeural'        => '🇦🇺 Australian Male — Duncan (relaxed)',
-            'en-AU-KenNeural'           => '🇦🇺 Australian Male — Ken (deep)',
-            'en-AU-NeilNeural'          => '🇦🇺 Australian Male — Neil (calm)',
-            'en-AU-TimNeural'           => '🇦🇺 Australian Male — Tim (natural)',
             'en-AU-NatashaNeural'       => '🇦🇺 Australian Female — Natasha (clear)',
-            'en-AU-AnnetteNeural'       => '🇦🇺 Australian Female — Annette (warm)',
-            'en-AU-CarlyNeural'         => '🇦🇺 Australian Female — Carly (bright)',
-            'en-AU-ElsieNeural'         => '🇦🇺 Australian Female — Elsie (gentle)',
-            'en-AU-FreyaNeural'         => '🇦🇺 Australian Female — Freya (expressive)',
-            'en-AU-JoanneNeural'        => '🇦🇺 Australian Female — Joanne (professional)',
 
             // ── Canadian ─────────────────────────────────────────────────────
             'en-CA-LiamNeural'          => '🇨🇦 Canadian Male — Liam (natural)',
@@ -247,8 +222,6 @@ class Avatar extends Model
 
             // ── Indian English ────────────────────────────────────────────────
             'en-IN-PrabhatNeural'       => '🇮🇳 Indian Male — Prabhat (authoritative)',
-            'en-IN-AaravNeural'         => '🇮🇳 Indian Male — Aarav (warm)',
-            'en-IN-AnanyaNeural'        => '🇮🇳 Indian Female — Ananya (bright)',
             'en-IN-NeerjaNeural'        => '🇮🇳 Indian Female — Neerja (professional)',
 
             // ── South African ────────────────────────────────────────────────
@@ -312,17 +285,37 @@ class Avatar extends Model
     /**
      * Edge TTS voices in card shape: [id, label, preview_url, gradient_class].
      */
+    /**
+     * The audition shortlist: the 2 best male + 2 best female voices per language.
+     * Everything else stays selectable behind the "show all" toggle in the studio.
+     */
+    public static function edgeTtsFeatured(): array
+    {
+        return [
+            // Nederlands (incl. Vlaams): 2 vrouwen + 2 mannen
+            'nl-NL-FennaNeural', 'nl-NL-ColetteNeural', 'nl-NL-MaartenNeural', 'nl-BE-ArnaudNeural',
+            // English: 2 male + 2 female
+            'en-GB-RyanNeural', 'en-US-AndrewNeural', 'en-GB-SoniaNeural', 'en-US-JennyNeural',
+        ];
+    }
+
     public static function edgeTtsVoicesForCards(): array
     {
         $voices = static::edgeTtsVoices();
+        $featured = static::edgeTtsFeatured();
         $cards  = [];
 
         foreach ($voices as $id => $label) {
+            // Pre-generated audition sample (voices:samples command) — played on click,
+            // served as a static asset so the host CDN caches it. No runtime TTS.
+            $samplePath = "voices/edge/{$id}.mp3";
+
             $cards[] = [
                 'id'             => $id,
                 'label'          => $label,
-                'preview_url'    => '',
+                'preview_url'    => is_file(public_path($samplePath)) ? asset($samplePath) : '',
                 'gradient_class' => static::edgeTtsGradientClass($id),
+                'featured'       => in_array($id, $featured, true),
             ];
         }
 

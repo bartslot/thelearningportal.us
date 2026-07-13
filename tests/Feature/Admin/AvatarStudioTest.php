@@ -41,7 +41,22 @@ class AvatarStudioTest extends TestCase
         $this->assertContains('nl-BE-ArnaudNeural', $voices);
     }
 
-    public function test_selecting_a_voice_syncs_provider_and_preview_state(): void
+    public function test_featured_shortlist_exists_in_catalog_with_pregenerated_samples(): void
+    {
+        $catalog = Avatar::edgeTtsVoices();
+        $cards = collect(Avatar::edgeTtsVoicesForCards());
+
+        foreach (Avatar::edgeTtsFeatured() as $id) {
+            $this->assertArrayHasKey($id, $catalog, "Featured voice {$id} missing from catalog");
+            $card = $cards->firstWhere('id', $id);
+            $this->assertTrue($card['featured']);
+            $this->assertNotSame('', $card['preview_url'], "Featured voice {$id} has no pre-generated sample (run voices:samples)");
+        }
+        // Non-featured voices exist and are marked so (the "show all" tier).
+        $this->assertTrue($cards->contains(fn ($c) => ! $c['featured']));
+    }
+
+    public function test_selecting_a_voice_persists_it_on_the_avatar_immediately(): void
     {
         Livewire::actingAs($this->admin)
             ->withQueryParams(['provider' => 'edge_tts'])
@@ -50,6 +65,10 @@ class AvatarStudioTest extends TestCase
             ->assertSet('voice_id', 'nl-NL-FennaNeural')
             ->assertSet('voice_provider', 'edge_tts')
             ->assertSet('previewVoiceId', 'nl-NL-FennaNeural');
+
+        $this->avatar->refresh();
+        $this->assertSame('edge_tts', $this->avatar->voice_provider);
+        $this->assertSame('nl-NL-FennaNeural', $this->avatar->voice_id);
     }
 
     public function test_apply_voice_updates_the_avatar_provider_too(): void

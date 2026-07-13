@@ -125,6 +125,15 @@ class AvatarStudio extends Component
         // The sample-generation controls read the preview fields — without this sync,
         // "Generate" kept synthesizing with the previously selected voice.
         $this->previewVoiceId = $voiceId;
+
+        // Clicking a card both auditions AND chooses: persist immediately so the
+        // studio needs no separate save step for the voice.
+        $this->avatar->update([
+            'voice_provider' => $this->voice_provider,
+            'voice_id'       => $voiceId,
+        ]);
+
+        $this->flash(__('Voice set to:').' '.(collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId), false);
     }
 
     #[Computed]
