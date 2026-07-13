@@ -208,7 +208,9 @@ class GenerateLessonScript implements ShouldQueue
             return collect();
         }
 
-        $narration = $scenes->filter(fn (Scene $scene) => $scene->kind === 'narration')->values();
+        // Game scenes get a pack background too (hero never assigned there) — their
+        // backdrop was the last remaining per-lesson image spend on packed lessons.
+        $narration = $scenes->filter(fn (Scene $scene) => in_array($scene->kind, ['narration', 'game'], true))->values();
         if ($narration->isEmpty()) {
             return collect();
         }

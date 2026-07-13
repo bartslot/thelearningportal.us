@@ -57,8 +57,11 @@ final class StoryPackShots
 
             // Whitelist: unknown/absent tag → deterministic round-robin over the pack.
             $background = $bgByTag[$choice['bg_tag'] ?? ''] ?? $backgrounds[$index % count($backgrounds)];
-            // Whitelist: unknown/absent pose → no hero layer.
-            $hero = $heroByPose[$choice['hero_pose'] ?? ''] ?? null;
+            // Whitelist: unknown/absent pose → no hero layer. Game scenes are backdrops
+            // for overlaid quiz/game UI — never composite the protagonist onto them.
+            $hero = $scene->kind === 'narration'
+                ? ($heroByPose[$choice['hero_pose'] ?? ''] ?? null)
+                : null;
 
             $scene->update([
                 'shots' => [[
@@ -160,7 +163,13 @@ SYS;
             : implode("\n", array_map(fn (array $hero) => "- {$hero['pose']}", $heroes));
 
         $sceneLines = $scenes->values()->map(function (Scene $scene): string {
-            $brief = ShotListPrompt::briefFor($scene);
+            // Scenes without an outline brief (game scenes, teacher-added, re-quiz appends)
+            // must not throw — that silently cost the whole lesson its art direction.
+            try {
+                $brief = ShotListPrompt::briefFor($scene);
+            } catch (\Throwable) {
+                $brief = ['beat' => $scene->kind === 'game' ? 'quiz/game backdrop' : 'narration'];
+            }
             $setting = trim(implode(' ', array_filter([
                 $scene->year !== null ? (string) $scene->year : null,
                 $scene->location,

@@ -261,4 +261,45 @@ class StoryPackLessonTest extends TestCase
         $response->assertSee('bg_city_square.png', false);
         $response->assertSee('hero_pointing.png', false);
     }
+
+    public function test_game_scenes_get_a_pack_background_but_never_a_hero(): void
+    {
+        // Add a game scene (order 4) next to the narration scenes from setUp.
+        $game = Scene::create(['lesson_id' => $this->lesson->id, 'order' => 4, 'kind' => 'game',
+            'game_type' => 'quiz', 'status' => 'ready']);
+
+        // Custom 3-call mock: scripts must cover the game scene too (order 4); the
+        // mapping gives the game scene a bg AND (wrongly) a hero — hero must be ignored.
+        $call = 0;
+        $this->mock(OpenAiLlmService::class, function ($mock) use (&$call): void {
+            $mock->shouldReceive('json')->times(3)->andReturnUsing(function () use (&$call) {
+                $call++;
+
+                return match ($call) {
+                    1 => ['scenes' => [
+                        ['order' => 2, 'script' => 'Horatius grips his sword at the bridge.'],
+                        ['order' => 3, 'script' => 'But the enemy keeps coming.'],
+                        ['order' => 4, 'script' => 'Time to test what you know.'],
+                    ]],
+                    2 => self::PASSING_CRITIQUE,
+                    default => ['scenes' => [
+                        ['order' => 2, 'bg_tag' => 'city_square', 'hero_pose' => 'pointing'],
+                        ['order' => 3, 'bg_tag' => 'night_camp', 'hero_pose' => null],
+                        ['order' => 4, 'bg_tag' => 'river_bridge', 'hero_pose' => 'pointing'],
+                    ]],
+                };
+            });
+        });
+        Bus::fake();
+
+        $this->runJob();
+
+        $shot = ($game->fresh()->shots ?? [])[0] ?? null;
+        $this->assertNotNull($shot, 'Game scene must get a pack shot');
+        $this->assertSame(self::BG_RIVER, $shot['bg_path']);
+        $this->assertNull($shot['hero_path'], 'Never composite the protagonist onto a game backdrop');
+        $this->assertSame('done', $game->fresh()->upscale_status);
+        Bus::assertNotDispatched(\App\Jobs\GenerateSceneShots::class);
+        Bus::assertNotDispatched(\App\Jobs\GenerateSceneImage::class);
+    }
 }
