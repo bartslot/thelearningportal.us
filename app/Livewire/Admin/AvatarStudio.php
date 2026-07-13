@@ -168,42 +168,59 @@ class AvatarStudio extends Component
         }, Avatar::edgeTtsCatalog());
     }
 
-    /** ElevenLabs / Pocket cards adapted to table rows (multilingual → lang 'multi'). */
+    /** Accent → display language + flag. ElevenLabs voices are all multilingual; the ACCENT is what matters. */
+    private const ACCENT_LANGUAGES = [
+        'french'     => ['Frans accent', '🇫🇷'],
+        'british'    => ['Brits accent', '🇬🇧'],
+        'american'   => ['Amerikaans accent', '🇺🇸'],
+        'australian' => ['Australisch accent', '🇦🇺'],
+        'irish'      => ['Iers accent', '🇮🇪'],
+        'german'     => ['Duits accent', '🇩🇪'],
+        'italian'    => ['Italiaans accent', '🇮🇹'],
+        'spanish'    => ['Spaans accent', '🇪🇸'],
+        'swedish'    => ['Zweeds accent', '🇸🇪'],
+        'dutch'      => ['Nederlands accent', '🇳🇱'],
+    ];
+
+    /** ElevenLabs / Pocket cards adapted to table rows — grouped by ACCENT, not "multilingual". */
     private function genericRows(): array
     {
         return array_map(function (array $card): array {
             $label = (string) ($card['label'] ?? $card['id']);
             // "Roger - Laid-Back, Casual, Resonant · american male"
             $name = trim(Str::before($label, ' - ')) ?: $label;
-            $meta = trim(Str::after($label, ' · '));
+            $meta = mb_strtolower(trim(Str::after($label, ' · ')));
             $note = trim(Str::between($label, ' - ', ' · '));
+
+            $accent = trim(str_replace(['female', 'male', 'neutral'], '', $meta === mb_strtolower($label) ? '' : $meta));
+            [$language, $flag] = self::ACCENT_LANGUAGES[$accent] ?? [$accent !== '' ? ucfirst($accent).' accent' : '—', '🌍'];
 
             return [
                 'id'          => $card['id'],
                 'name'        => $name,
-                'language'    => 'Multilingual',
-                'lang'        => 'multi',
+                'language'    => $language,
+                'lang'        => $accent !== '' ? $accent : 'other',
                 'gender'      => str_contains($meta, 'female') ? 'V' : (str_contains($meta, 'male') ? 'M' : ''),
-                'flag'        => '🌍',
-                'note'        => $note !== $label ? trim($note.' — '.$meta, ' —') : $meta,
+                'flag'        => $flag,
+                // The note repeats the name for custom voices without metadata — drop it then.
+                'note'        => ($note === $label || $note === $name) ? '' : $note,
                 'preview_url' => (string) ($card['preview_url'] ?? ''),
                 'featured'    => true, // curated lists are short — no featured tier needed
             ];
         }, $this->voices());
     }
 
-    /** Distinct languages for the filter select (edge only has real languages). */
+    /** Distinct languages (edge) or accents (ElevenLabs) for the filter select. */
     #[Computed]
     public function voiceLanguages(): array
     {
-        if ($this->previewProvider !== 'edge_tts') {
-            return [];
-        }
+        $rows = $this->previewProvider === 'edge_tts' ? $this->edgeRows() : $this->genericRows();
 
         $langs = [];
-        foreach (Avatar::edgeTtsCatalog() as $v) {
-            $langs[$v['lang']] = $v['language'];
+        foreach ($rows as $r) {
+            $langs[$r['lang']] = $r['language'];
         }
+        ksort($langs);
 
         return $langs;
     }

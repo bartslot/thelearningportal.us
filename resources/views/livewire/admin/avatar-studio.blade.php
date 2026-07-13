@@ -133,13 +133,8 @@
                 </div>
             </div>
 
-            {{-- Generate preview controls ---------------------------------------- --}}
+            {{-- Voice picker ------------------------------------------------------ --}}
             <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-                <h2 class="text-sm font-semibold text-slate-200">Generate voice samples</h2>
-                <p class="text-xs text-slate-500">
-                    Pick a voice and speed, choose a phrase, then listen. Click "Use this voice" to make it active.
-                </p>
-
                 {{-- Voice card grid. wire:key on the CONTAINER: switching provider replaces
                      the whole grid wholesale — morphing an Alpine-managed subtree across
                      different voice sets duplicated DOM sections below the page.
@@ -171,7 +166,6 @@
                             <option value="{{ $code }}">{{ $label }}</option>
                         @endforeach
                     </select>
-                    <span class="text-xs text-slate-500">{{ __('Click a row to hear and select the voice. Tick “preferred” to use it for lessons in that language.') }}</span>
                 </div>
 
                 {{-- Sortable voice table (DaisyUI). Rows keyed per provider; the play control
@@ -182,7 +176,7 @@
                         <thead>
                             <tr class="bg-slate-900 text-slate-400">
                                 <th class="w-10"></th>
-                                @foreach([['name', __('Voice')], ['language', __('Language')], ['gender', __('Gender')], ['note', __('Style')]] as [$col, $label])
+                                @foreach([['name', __('Voice')], ['language', __('Language')], ['gender', __('Gender')]] as [$col, $label])
                                     <th wire:click="sortTable('{{ $col }}')" class="cursor-pointer select-none whitespace-nowrap hover:text-slate-200">
                                         {{ $label }}
                                         @if($sortBy === $col)<span class="text-amber-400">{{ $sortDir === 'asc' ? '▲' : '▼' }}</span>@endif
@@ -213,9 +207,8 @@
                                     </td>
                                     <td class="whitespace-nowrap">{{ $row['flag'] }} {{ $row['language'] }}</td>
                                     <td>{{ $row['gender'] }}</td>
-                                    <td class="max-w-40 truncate text-xs text-slate-400">{{ $row['note'] }}</td>
                                     <td x-on:click.stop>
-                                        @if($row['lang'] !== 'multi')
+                                        @if($previewProvider === 'edge_tts')
                                             {{-- Edge voice: tick = preferred narrator for ITS language --}}
                                             <label class="flex items-center gap-1.5 cursor-pointer text-xs text-slate-400">
                                                 <input type="checkbox" class="checkbox checkbox-xs checkbox-warning"
@@ -241,7 +234,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7" class="py-8 text-center text-sm text-slate-500">{{ __('No voices for this filter.') }}</td></tr>
+                                <tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">{{ __('No voices for this filter.') }}</td></tr>
                             @endforelse
                         </tbody>
                     </table>
