@@ -650,7 +650,11 @@ Alpine.data('lessonGame', (lesson) => ({
         let motion = { panX: 0, panY: 0, zoom: 1 }   // Motion off → calm static layers
         if (this._kbAnimated !== false) {
           const kb = pickKbDirection(this._kbIndex, this._kbNamedDirection)
-          motion = { panX: kb.toX - kb.fromX, panY: kb.toY - kb.fromY, zoom: 1 + (kb.toScale - kb.fromScale) }
+          // Classic Ken Burns moves SHRINK (1.10 → 1.05); as a layer end-scale that would
+          // dip below 1 and expose edges past the 6% bleed. Layers start at scale 1, so
+          // express the move's zoom as magnitude-only, clamped to a gentle 1.0–1.12.
+          const zoom = Math.min(1.12, 1 + Math.abs(kb.toScale - kb.fromScale))
+          motion = { panX: kb.toX - kb.fromX, panY: kb.toY - kb.fromY, zoom }
         }
 
         this._destroyParallax()

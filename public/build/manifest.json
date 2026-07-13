@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BfRaDJeZ.css",
+    "file": "assets/app-DXai2o4d.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-6YHX6_NI.js",
+    "file": "assets/app-B3cKdzwN.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-BtGW0rMW.js",
+    "file": "assets/lesson-player-DtB9eqdS.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -98,11 +98,19 @@
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
+      "resources/js/scene/StoryGameEngine.js",
       "resources/js/avatar-3d.js",
+      "resources/js/scene/ParallaxScene.js",
       "resources/js/lesson-map.js",
       "resources/js/scene/TextOverlayLayer.js",
       "resources/js/scene/QuizOverlay.js"
     ]
+  },
+  "resources/js/scene/ParallaxScene.js": {
+    "file": "assets/ParallaxScene-DjdURjF0.js",
+    "name": "ParallaxScene",
+    "src": "resources/js/scene/ParallaxScene.js",
+    "isDynamicEntry": true
   },
   "resources/js/scene/QuizOverlay.js": {
     "file": "assets/QuizOverlay-DHScxKys.js",
@@ -110,14 +118,20 @@
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true
   },
+  "resources/js/scene/StoryGameEngine.js": {
+    "file": "assets/StoryGameEngine-B0M1DXDA.js",
+    "name": "StoryGameEngine",
+    "src": "resources/js/scene/StoryGameEngine.js",
+    "isDynamicEntry": true
+  },
   "resources/js/scene/TextOverlayLayer.js": {
-    "file": "assets/TextOverlayLayer-CpmHHp0L.js",
+    "file": "assets/TextOverlayLayer-bF4mVdC0.js",
     "name": "TextOverlayLayer",
     "src": "resources/js/scene/TextOverlayLayer.js",
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-CuRWyPUu.js",
+    "file": "assets/index-XqOv0Nzo.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
