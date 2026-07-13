@@ -51,6 +51,11 @@ class User extends Authenticatable
         return $this->role === 'student';
     }
 
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
     // ── Teacher relationships ───────────────────────────────────────────────
 
     public function lessons(): HasMany

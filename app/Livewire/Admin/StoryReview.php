@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Enums\StoryStatus;
 use App\Models\Story;
+use App\Services\StoryAssetPackGenerator;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -55,6 +56,30 @@ class StoryReview extends Component
             $story->transitionTo($status, auth()->id());
         } catch (\DomainException $e) {
             $this->addError('transition', $e->getMessage());
+        }
+    }
+
+    /**
+     * Generate (or with $force, regenerate) the story's one-time visual asset pack.
+     * Synchronous by design — this is a rare admin action reviewed on the spot; the
+     * button disables via wire:loading, and the !$force early-return absorbs a
+     * double-submit on first generation.
+     */
+    public function generatePack(int $storyId, bool $force = false): void
+    {
+        abort_unless(auth()->user()?->isAdmin() === true, 403);
+
+        $story = Story::findOrFail($storyId);
+
+        if (! empty($story->assets) && ! $force) {
+            return; // pack already exists — double-click / stale-UI guard
+        }
+
+        try {
+            $assets = app(StoryAssetPackGenerator::class)->generate($story);
+            $story->update(['assets' => $assets]);
+        } catch (\Throwable $e) {
+            $this->addError('assetPack', 'Asset pack generation failed: '.$e->getMessage());
         }
     }
 

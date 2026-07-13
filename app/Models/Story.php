@@ -28,6 +28,7 @@ class Story extends Model
         'topic_id', 'protagonist_qid', 'protagonist_name', 'narrative_framework',
         'era_start', 'era_end', 'region', 'grade_band', 'locale',
         'learning_objectives', 'key_facts', 'misconceptions', 'quiz_blueprint',
+        'assets',
         'status', 'created_by', 'reviewed_by',
     ];
 
@@ -41,6 +42,7 @@ class Story extends Model
             'key_facts' => 'array',
             'misconceptions' => 'array',
             'quiz_blueprint' => 'array',
+            'assets' => 'array',
         ];
     }
 

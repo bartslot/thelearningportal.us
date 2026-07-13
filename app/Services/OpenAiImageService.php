@@ -79,6 +79,20 @@ class OpenAiImageService
     }
 
     /**
+     * Single still image for story asset packs: raw PNG bytes, no panorama cleanup,
+     * no upscaling (packs are reviewed + stored once; keep the source pristine).
+     * Pass $transparent for gpt-image-1 native alpha — true transparency requires the
+     * API `background` param; prompting for it paints a fake checkerboard instead.
+     */
+    public function generateStillPngBytes(string $prompt, string $size, bool $transparent = false): string
+    {
+        return $this->requestOne($prompt, $size, array_filter([
+            'output_format' => 'png',
+            'background' => $transparent ? 'transparent' : null,
+        ]));
+    }
+
+    /**
      * Enhance an already-stored skybox using local Upscayl (Real-ESRGAN).
      * Called by EnhanceSkyboxImage job — takes raw image bytes and returns
      * enhanced bytes ready to overwrite the stored file.
@@ -327,11 +341,27 @@ class OpenAiImageService
 
     /**
      * Call the OpenAI images/generations endpoint once and return the raw image bytes.
+     *
+     * @param  array<string, string>  $extra  field overrides (e.g. output_format, background)
      */
-    private function requestOne(string $prompt, string $size): string
+    private function requestOne(string $prompt, string $size, array $extra = []): string
     {
         $base = (string) config('services.openai.base_url');
         $key = (string) config('services.openai.image_api_key');
+
+        $payload = array_merge([
+            'model' => config('services.openai.image_model'),
+            'prompt' => $prompt,
+            'size' => $size,
+            'output_format' => (string) config('services.openai.image_format', 'webp'),
+            'output_compression' => (int) config('services.openai.image_compression', 50),
+            'n' => 1,
+        ], $extra);
+
+        // output_compression is only valid for webp/jpeg — the API rejects it for png.
+        if (($payload['output_format'] ?? '') === 'png') {
+            unset($payload['output_compression']);
+        }
 
         try {
             // Image generation regularly exceeds the chat timeout — storyboard-grid prompts
@@ -339,14 +369,7 @@ class OpenAiImageService
             $response = Http::withToken($key)
                 ->timeout((int) config('services.openai.image_timeout', 180))
                 ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
-                ->post(rtrim($base, '/').'/images/generations', [
-                    'model' => config('services.openai.image_model'),
-                    'prompt' => $prompt,
-                    'size' => $size,
-                    'output_format' => (string) config('services.openai.image_format', 'webp'),
-                    'output_compression' => (int) config('services.openai.image_compression', 50),
-                    'n' => 1,
-                ]);
+                ->post(rtrim($base, '/').'/images/generations', $payload);
         } catch (\Throwable $e) {
             throw new RuntimeException('Image API request failed: '.$e->getMessage(), previous: $e);
         }

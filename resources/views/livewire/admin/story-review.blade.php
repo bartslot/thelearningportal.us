@@ -31,6 +31,11 @@
                             </div>
                         </button>
 
+                        @if (empty($story->assets) && in_array($story->status->value, ['reviewed', 'published'], true))
+                            {{-- Publishing is NOT blocked without a pack — lessons fall back to live shots. --}}
+                            <span class="badge badge-warning badge-sm" title="Lessons from this story fall back to live per-scene image generation">no asset pack</span>
+                        @endif
+
                         <span class="badge badge-sm
                             @if($story->status->value === 'published') badge-success
                             @elseif($story->status->value === 'reviewed') badge-info
@@ -78,6 +83,70 @@
                                 @empty
                                     <p class="opacity-50">No source excerpts yet.</p>
                                 @endforelse
+                            </div>
+
+                            <div class="md:col-span-2 border-t border-base-300 pt-3">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="font-semibold text-xs uppercase opacity-60">Asset pack</h3>
+                                    @if (! empty($this->openStory->assets))
+                                        <button wire:click="generatePack({{ $story->id }}, true)"
+                                                wire:loading.attr="disabled" wire:target="generatePack"
+                                                class="btn btn-xs btn-outline">
+                                            <span wire:loading wire:target="generatePack" class="loading loading-spinner loading-xs"></span>
+                                            Regenerate pack (~$1)
+                                        </button>
+                                    @else
+                                        <button wire:click="generatePack({{ $story->id }})"
+                                                wire:loading.attr="disabled" wire:target="generatePack"
+                                                class="btn btn-xs btn-primary">
+                                            <span wire:loading wire:target="generatePack" class="loading loading-spinner loading-xs"></span>
+                                            Generate asset pack (~$1)
+                                        </button>
+                                    @endif
+                                </div>
+
+                                @error('assetPack')
+                                    <div class="alert alert-error text-xs mb-2">{{ $message }}</div>
+                                @enderror
+
+                                @if ($assets = $this->openStory->assets)
+                                    <div class="text-xs opacity-50 mb-2">
+                                        style: {{ $assets['style'] ?? '?' }} · generated {{ $assets['generated_at'] ?? '?' }}
+                                        · {{ count($assets['backgrounds'] ?? []) }} backgrounds · {{ count($assets['hero'] ?? []) }} hero poses
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-3 mb-3">
+                                        @foreach ($assets['backgrounds'] ?? [] as $background)
+                                            <figure class="w-36">
+                                                <img src="{{ asset('storage/'.$background['image_path']) }}"
+                                                     alt="{{ $background['tag'] }}"
+                                                     class="w-36 h-24 object-cover rounded border border-base-300">
+                                                <figcaption class="flex flex-wrap gap-1 mt-1">
+                                                    <span class="badge badge-ghost badge-xs">{{ $background['tag'] }}</span>
+                                                    <span class="badge badge-outline badge-xs">{{ $background['lighting'] }}</span>
+                                                </figcaption>
+                                            </figure>
+                                        @endforeach
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-3 items-end">
+                                        @foreach ($assets['hero'] ?? [] as $pose)
+                                            <figure class="w-20">
+                                                <img src="{{ asset('storage/'.$pose['image_path']) }}"
+                                                     alt="{{ $pose['pose'] }}"
+                                                     class="w-20 h-28 object-contain rounded border border-base-300 bg-base-100">
+                                                <figcaption class="mt-1">
+                                                    <span class="badge badge-ghost badge-xs">{{ $pose['pose'] }}</span>
+                                                </figcaption>
+                                            </figure>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <p class="text-xs opacity-50">
+                                        No asset pack yet — lessons from this story fall back to live per-scene generation.
+                                        Generate once here (or <code>story:pack {{ $story->slug }}</code>), review, then publish.
+                                    </p>
+                                @endif
                             </div>
                         </div>
                     @endif

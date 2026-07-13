@@ -230,4 +230,10 @@ final class ImageStyleTemplate
     {
         return array_keys(self::STYLES);
     }
+
+    /** Bare style clause for callers that compose their own prompt (e.g. hero cut-outs). */
+    public static function styleClause(string $style): string
+    {
+        return self::STYLES[$style] ?? self::STYLES['realistic'];
+    }
 }
