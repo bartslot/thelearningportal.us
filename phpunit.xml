@@ -18,6 +18,8 @@
         </include>
     </source>
     <php>
+        <!-- dompdf (game-pack + handout tests) peaks past PHP's 128M default as the suite grows. -->
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
