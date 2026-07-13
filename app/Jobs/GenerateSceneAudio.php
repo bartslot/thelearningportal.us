@@ -52,7 +52,9 @@ class GenerateSceneAudio implements ShouldQueue
                     $scene->lesson->teacher?->locale,
                     (string) config('services.tts.provider_override_voice', ''),
                 )
-                : ($avatar?->voice_id ?? '');
+                // Avatar-driven: the studio's per-language preferred voice (voice_map)
+                // wins for the lesson's language; falls back to the avatar's base voice.
+                : ($avatar?->voiceFor($scene->lesson->teacher?->locale) ?? '');
 
             $timing  = null;
             $audio   = $tts->generateAudioRaw(

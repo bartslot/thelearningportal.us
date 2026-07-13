@@ -23,6 +23,7 @@ class Avatar extends Model
         'subject',
         'voice_provider',
         'voice_id',
+        'voice_map',
         'voice_speed',
         'voice_pitch',
         'voice_settings',
@@ -44,6 +45,7 @@ class Avatar extends Model
     protected function casts(): array
     {
         return [
+            'voice_map' => 'array',
             'voice_settings' => 'array',
             'voice_speed'    => 'float',
             'voice_pitch'    => 'float',
@@ -169,85 +171,133 @@ class Avatar extends Model
     }
 
     /**
-     * edge-tts voices (Microsoft neural TTS — FREE, no API key).
-     * Install: pip install edge-tts
-     * Key voice for The Professor: es-ES-AlvaroNeural (Spanish accent in English).
+     * Structured edge-tts catalog, EUROPEAN-focused (founder direction 2026-07-11).
+     * Built from real `edge-tts --list-voices` output — every entry verified
+     * synthesizable; voices:samples validates again on regeneration.
+     *
+     * @return list<array{id: string, name: string, language: string, lang: string, gender: string, flag: string, note: string}>
+     */
+    public static function edgeTtsCatalog(): array
+    {
+        $mk = fn (string $id, string $name, string $language, string $lang, string $gender, string $flag, string $note = ''): array =>
+            compact('id', 'name', 'language', 'lang', 'gender', 'flag', 'note');
+
+        return [
+            // ── Nederlands ──
+            $mk('nl-NL-FennaNeural', 'Fenna', 'Nederlands', 'nl', 'V', '🇳🇱', 'warm'),
+            $mk('nl-NL-ColetteNeural', 'Colette', 'Nederlands', 'nl', 'V', '🇳🇱', 'helder'),
+            $mk('nl-NL-MaartenNeural', 'Maarten', 'Nederlands', 'nl', 'M', '🇳🇱', 'kalm'),
+            $mk('nl-BE-DenaNeural', 'Dena', 'Nederlands', 'nl', 'V', '🇧🇪', 'Vlaams'),
+            $mk('nl-BE-ArnaudNeural', 'Arnaud', 'Nederlands', 'nl', 'M', '🇧🇪', 'Vlaams'),
+            // ── English ──
+            $mk('en-GB-RyanNeural', 'Ryan', 'English', 'en', 'M', '🇬🇧', 'professional'),
+            $mk('en-GB-ThomasNeural', 'Thomas', 'English', 'en', 'M', '🇬🇧', 'calm'),
+            $mk('en-GB-SoniaNeural', 'Sonia', 'English', 'en', 'V', '🇬🇧', 'clear'),
+            $mk('en-GB-MaisieNeural', 'Maisie', 'English', 'en', 'V', '🇬🇧', 'warm'),
+            $mk('en-GB-LibbyNeural', 'Libby', 'English', 'en', 'V', '🇬🇧', 'polished'),
+            $mk('en-IE-ConnorNeural', 'Connor', 'English', 'en', 'M', '🇮🇪', 'storyteller'),
+            $mk('en-IE-EmilyNeural', 'Emily', 'English', 'en', 'V', '🇮🇪', 'warm'),
+            $mk('en-US-AndrewNeural', 'Andrew', 'English', 'en', 'M', '🇺🇸', 'warm'),
+            $mk('en-US-JennyNeural', 'Jenny', 'English', 'en', 'V', '🇺🇸', 'friendly'),
+            // ── Deutsch ──
+            $mk('de-DE-ConradNeural', 'Conrad', 'Deutsch', 'de', 'M', '🇩🇪', 'ernst'),
+            $mk('de-DE-KillianNeural', 'Killian', 'Deutsch', 'de', 'M', '🇩🇪', ''),
+            $mk('de-DE-KatjaNeural', 'Katja', 'Deutsch', 'de', 'V', '🇩🇪', 'klar'),
+            $mk('de-DE-AmalaNeural', 'Amala', 'Deutsch', 'de', 'V', '🇩🇪', 'weich'),
+            $mk('de-AT-JonasNeural', 'Jonas', 'Deutsch', 'de', 'M', '🇦🇹', 'Österreich'),
+            $mk('de-AT-IngridNeural', 'Ingrid', 'Deutsch', 'de', 'V', '🇦🇹', 'Österreich'),
+            $mk('de-CH-JanNeural', 'Jan', 'Deutsch', 'de', 'M', '🇨🇭', 'Schweiz'),
+            $mk('de-CH-LeniNeural', 'Leni', 'Deutsch', 'de', 'V', '🇨🇭', 'Schweiz'),
+            // ── Français ──
+            $mk('fr-FR-HenriNeural', 'Henri', 'Français', 'fr', 'M', '🇫🇷', 'sophistiqué'),
+            $mk('fr-FR-RemyMultilingualNeural', 'Rémy', 'Français', 'fr', 'M', '🇫🇷', 'multilingual'),
+            $mk('fr-FR-DeniseNeural', 'Denise', 'Français', 'fr', 'V', '🇫🇷', 'élégante'),
+            $mk('fr-FR-EloiseNeural', 'Eloise', 'Français', 'fr', 'V', '🇫🇷', ''),
+            $mk('fr-BE-GerardNeural', 'Gérard', 'Français', 'fr', 'M', '🇧🇪', 'Belgique'),
+            $mk('fr-BE-CharlineNeural', 'Charline', 'Français', 'fr', 'V', '🇧🇪', 'Belgique'),
+            $mk('fr-CH-FabriceNeural', 'Fabrice', 'Français', 'fr', 'M', '🇨🇭', 'Suisse'),
+            $mk('fr-CH-ArianeNeural', 'Ariane', 'Français', 'fr', 'V', '🇨🇭', 'Suisse'),
+            // ── Italiano ──
+            $mk('it-IT-DiegoNeural', 'Diego', 'Italiano', 'it', 'M', '🇮🇹', 'espressivo'),
+            $mk('it-IT-GiuseppeMultilingualNeural', 'Giuseppe', 'Italiano', 'it', 'M', '🇮🇹', 'multilingual'),
+            $mk('it-IT-ElsaNeural', 'Elsa', 'Italiano', 'it', 'V', '🇮🇹', 'calda'),
+            $mk('it-IT-IsabellaNeural', 'Isabella', 'Italiano', 'it', 'V', '🇮🇹', ''),
+            // ── Español ──
+            $mk('es-ES-AlvaroNeural', 'Álvaro', 'Español', 'es', 'M', '🇪🇸', ''),
+            $mk('es-ES-ElviraNeural', 'Elvira', 'Español', 'es', 'V', '🇪🇸', ''),
+            $mk('es-ES-XimenaNeural', 'Ximena', 'Español', 'es', 'V', '🇪🇸', ''),
+            // ── Português ──
+            $mk('pt-PT-DuarteNeural', 'Duarte', 'Português', 'pt', 'M', '🇵🇹', ''),
+            $mk('pt-PT-RaquelNeural', 'Raquel', 'Português', 'pt', 'V', '🇵🇹', ''),
+            // ── Polski ──
+            $mk('pl-PL-MarekNeural', 'Marek', 'Polski', 'pl', 'M', '🇵🇱', ''),
+            $mk('pl-PL-ZofiaNeural', 'Zofia', 'Polski', 'pl', 'V', '🇵🇱', ''),
+            // ── Svenska ──
+            $mk('sv-SE-MattiasNeural', 'Mattias', 'Svenska', 'sv', 'M', '🇸🇪', ''),
+            $mk('sv-SE-SofieNeural', 'Sofie', 'Svenska', 'sv', 'V', '🇸🇪', ''),
+            // ── Dansk ──
+            $mk('da-DK-JeppeNeural', 'Jeppe', 'Dansk', 'da', 'M', '🇩🇰', ''),
+            $mk('da-DK-ChristelNeural', 'Christel', 'Dansk', 'da', 'V', '🇩🇰', ''),
+            // ── Norsk ──
+            $mk('nb-NO-FinnNeural', 'Finn', 'Norsk', 'nb', 'M', '🇳🇴', ''),
+            $mk('nb-NO-PernilleNeural', 'Pernille', 'Norsk', 'nb', 'V', '🇳🇴', ''),
+            // ── Suomi ──
+            $mk('fi-FI-HarriNeural', 'Harri', 'Suomi', 'fi', 'M', '🇫🇮', ''),
+            $mk('fi-FI-NooraNeural', 'Noora', 'Suomi', 'fi', 'V', '🇫🇮', ''),
+            // ── Ελληνικά ──
+            $mk('el-GR-NestorasNeural', 'Nestoras', 'Ελληνικά', 'el', 'M', '🇬🇷', ''),
+            $mk('el-GR-AthinaNeural', 'Athina', 'Ελληνικά', 'el', 'V', '🇬🇷', ''),
+            // ── Čeština ──
+            $mk('cs-CZ-AntoninNeural', 'Antonín', 'Čeština', 'cs', 'M', '🇨🇿', ''),
+            $mk('cs-CZ-VlastaNeural', 'Vlasta', 'Čeština', 'cs', 'V', '🇨🇿', ''),
+            // ── Magyar ──
+            $mk('hu-HU-TamasNeural', 'Tamás', 'Magyar', 'hu', 'M', '🇭🇺', ''),
+            $mk('hu-HU-NoemiNeural', 'Noémi', 'Magyar', 'hu', 'V', '🇭🇺', ''),
+            // ── Română ──
+            $mk('ro-RO-EmilNeural', 'Emil', 'Română', 'ro', 'M', '🇷🇴', ''),
+            $mk('ro-RO-AlinaNeural', 'Alina', 'Română', 'ro', 'V', '🇷🇴', ''),
+            // ── Українська ──
+            $mk('uk-UA-OstapNeural', 'Ostap', 'Українська', 'uk', 'M', '🇺🇦', ''),
+            $mk('uk-UA-PolinaNeural', 'Polina', 'Українська', 'uk', 'V', '🇺🇦', ''),
+            // ── Gaeilge ──
+            $mk('ga-IE-ColmNeural', 'Colm', 'Gaeilge', 'ga', 'M', '🇮🇪', ''),
+            $mk('ga-IE-OrlaNeural', 'Orla', 'Gaeilge', 'ga', 'V', '🇮🇪', ''),
+        ];
+    }
+
+    /**
+     * Back-compat flat map derived from the structured catalog.
+     *
+     * @return array<string, string> id => display label
      */
     public static function edgeTtsVoices(): array
     {
-        return [
-            // ── Nederlands (Dutch pilot — same neural voices as Azure, free via edge-tts) ──
-            'nl-NL-FennaNeural'         => '🇳🇱 Nederlands Vrouw — Fenna (warm)',
-            'nl-NL-ColetteNeural'       => '🇳🇱 Nederlands Vrouw — Colette (helder)',
-            'nl-NL-MaartenNeural'       => '🇳🇱 Nederlands Man — Maarten (kalm)',
-            'nl-BE-DenaNeural'          => '🇧🇪 Vlaams Vrouw — Dena (zacht)',
-            'nl-BE-ArnaudNeural'        => '🇧🇪 Vlaams Man — Arnaud (natuurlijk)',
+        $out = [];
+        foreach (static::edgeTtsCatalog() as $v) {
+            $note = $v['note'] !== '' ? " ({$v['note']})" : '';
+            $gender = $v['gender'] === 'M' ? 'Man' : 'Vrouw';
+            $out[$v['id']] = "{$v['flag']} {$v['language']} {$gender} — {$v['name']}{$note}";
+        }
 
-            // ── British Male ──────────────────────────────────────────────────
-            'en-GB-RyanNeural'          => '🇬🇧 British Male — Ryan (professional)',
-            'en-GB-ThomasNeural'        => '🇬🇧 British Male — Thomas (calm)',
+        return $out;
+    }
 
-            // ── British Female ────────────────────────────────────────────────
-            'en-GB-SoniaNeural'         => '🇬🇧 British Female — Sonia (clear)',
-            'en-GB-MaisieNeural'        => '🇬🇧 British Female — Maisie (warm)',
-            'en-GB-LibbyNeural'         => '🇬🇧 British Female — Libby (polished)',
+    /**
+     * Preferred narration voice for a lesson language: the ticked per-language
+     * voice when it matches the avatar's provider, else the avatar's base voice.
+     */
+    public function voiceFor(?string $locale): string
+    {
+        $mapped = (string) (($this->voice_map ?? [])[$locale ?? ''] ?? '');
+        if ($mapped === '') {
+            return (string) $this->voice_id;
+        }
 
-            // ── American Male ─────────────────────────────────────────────────
-            'en-US-GuyNeural'           => '🇺🇸 American Male — Guy (neutral)',
-            'en-US-AndrewNeural'        => '🇺🇸 American Male — Andrew (warm)',
-            'en-US-BrianNeural'         => '🇺🇸 American Male — Brian (casual)',
-            'en-US-ChristopherNeural'   => '🇺🇸 American Male — Christopher (authoritative)',
-            'en-US-EricNeural'          => '🇺🇸 American Male — Eric (rational)',
-            'en-US-RogerNeural'         => '🇺🇸 American Male — Roger (confident)',
-            'en-US-SteffanNeural'       => '🇺🇸 American Male — Steffan (clear)',
+        // An edge/azure voice id looks like xx-XX-NameNeural; ElevenLabs ids don't.
+        $looksNeural = (bool) preg_match('/^[a-z]{2}-[A-Z]{2}-.+Neural$/', $mapped);
+        $neuralProvider = in_array($this->voice_provider, ['edge_tts', 'azure'], true);
 
-            // ── American Female ───────────────────────────────────────────────
-            'en-US-JennyNeural'         => '🇺🇸 American Female — Jenny (friendly)',
-            'en-US-AriaNeural'          => '🇺🇸 American Female — Aria (expressive)',
-            'en-US-AnaNeural'           => '🇺🇸 American Female — Ana (cheerful)',
-            'en-US-EmmaNeural'          => '🇺🇸 American Female — Emma (bright)',
-            'en-US-MichelleNeural'      => '🇺🇸 American Female — Michelle (warm)',
-
-            // ── Irish ─────────────────────────────────────────────────────────
-            'en-IE-ConnorNeural'        => '🇮🇪 Irish Male — Connor (storyteller)',
-            'en-IE-EmilyNeural'         => '🇮🇪 Irish Female — Emily (warm)',
-
-            // ── Australian ───────────────────────────────────────────────────
-            'en-AU-WilliamNeural'       => '🇦🇺 Australian Male — William (authoritative)',
-            'en-AU-NatashaNeural'       => '🇦🇺 Australian Female — Natasha (clear)',
-
-            // ── Canadian ─────────────────────────────────────────────────────
-            'en-CA-LiamNeural'          => '🇨🇦 Canadian Male — Liam (natural)',
-            'en-CA-ClaraNeural'         => '🇨🇦 Canadian Female — Clara (clear)',
-
-            // ── Indian English ────────────────────────────────────────────────
-            'en-IN-PrabhatNeural'       => '🇮🇳 Indian Male — Prabhat (authoritative)',
-            'en-IN-NeerjaNeural'        => '🇮🇳 Indian Female — Neerja (professional)',
-
-            // ── South African ────────────────────────────────────────────────
-            'en-ZA-LukeNeural'          => '🇿🇦 South African Male — Luke (deep)',
-            'en-ZA-LeahNeural'          => '🇿🇦 South African Female — Leah (clear)',
-
-            // ── Nigerian ─────────────────────────────────────────────────────
-            'en-NG-AbeoNeural'          => '🇳🇬 Nigerian Male — Abeo (warm)',
-            'en-NG-EzinneNeural'        => '🇳🇬 Nigerian Female — Ezinne (expressive)',
-
-            // ── Spanish-accented English (great for historical figures) ───────
-            'es-ES-AlvaroNeural'        => '🇪🇸 Spanish Male — Alvaro (accent)',
-            'es-MX-JorgeNeural'         => '🇲🇽 Mexican Male — Jorge (warm)',
-
-            // ── French-accented English ───────────────────────────────────────
-            'fr-FR-HenriNeural'         => '🇫🇷 French Male — Henri (sophisticated)',
-            'fr-FR-DeniseNeural'        => '🇫🇷 French Female — Denise (elegant)',
-
-            // ── Italian-accented English ──────────────────────────────────────
-            'it-IT-DiegoNeural'         => '🇮🇹 Italian Male — Diego (expressive)',
-            'it-IT-ElsaNeural'          => '🇮🇹 Italian Female — Elsa (warm)',
-
-            // ── German-accented English ───────────────────────────────────────
-            'de-DE-ConradNeural'        => '🇩🇪 German Male — Conrad (serious)',
-            'de-DE-KatjaNeural'         => '🇩🇪 German Female — Katja (clear)',
-        ];
+        return $looksNeural === $neuralProvider ? $mapped : (string) $this->voice_id;
     }
 
     /**

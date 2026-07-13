@@ -162,71 +162,89 @@
                         }
                     }"
                 >
-                @if($previewProvider === 'edge_tts')
-                    {{-- Keyed so Livewire morphs REPLACE the checkbox: Alpine state resets on
-                         round-trips, and a morph-preserved checked box would lie about it. --}}
-                    <label wire:key="show-all-toggle-{{ $previewProvider }}"
-                           class="mb-2 flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
-                        <input type="checkbox" x-model="showAll" class="checkbox checkbox-xs checkbox-warning">
-                        {{ __('Show all voices') }}
-                        <span class="opacity-60" x-show="!showAll">— {{ __('featured: best voices per language') }}</span>
-                    </label>
-                @endif
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1">
-                    @foreach($this->voices() as $voice)
-                    {{-- Card is a DIV, not a <button>: it CONTAINS the play button, and nested
-                         buttons are invalid HTML — the parser force-closes the outer one and
-                         reparents every later card below the page (the studio's original bug).
-                         wire:key includes the provider so tab switches replace, never morph.
-                         Click = hear the pre-generated sample AND select the voice. --}}
-                    <div
-                        role="button" tabindex="0"
-                        wire:key="voice-{{ $previewProvider }}-{{ $voice['id'] }}"
-                        wire:click="selectVoice('{{ $voice['id'] }}')"
-                        x-show="showAll || {{ ($voice['featured'] ?? true) ? 'true' : 'false' }}"
-                        x-on:click="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] ?? '' }}')"
-                        x-on:keydown.enter="$el.click()"
-                        class="vg-card {{ $voice['gradient_class'] ?? 'vg-base' }} rounded-xl px-3 py-2.5 border relative cursor-pointer transition-all text-left
-                               {{ $voice_id === $voice['id'] ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-700/60 hover:border-indigo-500/50' }}"
-                        title="{{ $voice['label'] }}"
-                    >
-                        @php
-                            // edge labels: "🇳🇱 Nederlands Vrouw — Fenna (warm)"; ElevenLabs: "Roger - … · american male"
-                            [$voiceName, $voiceMeta] = str_contains($voice['label'], '—')
-                                ? [Str::afterLast($voice['label'], '— '), trim(Str::before($voice['label'], '—'))]
-                                : [Str::before($voice['label'], ' · '), trim(Str::after($voice['label'], ' · '))];
-                        @endphp
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="min-w-0 z-10 relative">
-                                <p class="text-xs font-semibold text-white/90 leading-snug">
-                                    {{ $voiceName }}
-                                </p>
-                                <p class="text-[0.65rem] text-white/60 leading-snug mt-0.5">
-                                    {{ $voiceMeta !== $voice['label'] ? $voiceMeta : '' }}
-                                </p>
-                            </div>
+                {{-- Language filter (edge has real languages; curated lists just get Featured/All) --}}
+                <div class="mb-2 flex flex-wrap items-center gap-3">
+                    <select wire:model.live="languageFilter" class="select select-sm select-bordered bg-slate-900 w-56">
+                        <option value="featured">⭐ {{ __('Featured — best per language') }}</option>
+                        <option value="all">{{ __('All languages') }}</option>
+                        @foreach($this->voiceLanguages as $code => $label)
+                            <option value="{{ $code }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <span class="text-xs text-slate-500">{{ __('Click a row to hear and select the voice. Tick “preferred” to use it for lessons in that language.') }}</span>
+                </div>
 
-                            <div class="shrink-0 z-10 relative">
-                                @if($voice_id === $voice['id'])
-                                    <span class="text-amber-400 text-sm">✓</span>
-                                @elseif(!empty($voice['preview_url']))
-                                    <button
-                                        x-on:click.stop="playPreview('{{ $voice['id'] }}', '{{ $voice['preview_url'] }}')"
-                                        class="text-slate-300 hover:text-white text-xs leading-none"
-                                        :class="{ 'text-indigo-300': playingId === '{{ $voice['id'] }}' }"
-                                    >
-                                        <span x-show="playingId !== '{{ $voice['id'] }}'">▶</span>
-                                        <span x-show="playingId === '{{ $voice['id'] }}'" class="flex gap-0.5 items-end h-3 text-indigo-300">
-                                            <span class="wave-bar h-3"></span>
-                                            <span class="wave-bar h-2"></span>
-                                            <span class="wave-bar h-3"></span>
-                                        </span>
-                                    </button>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-                    @endforeach
+                {{-- Sortable voice table (DaisyUI). Rows keyed per provider; the play control
+                     lives in a td (never a nested button — that was the studio's original bug). --}}
+                <div class="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-slate-800"
+                     wire:key="voice-table-{{ $previewProvider }}">
+                    <table class="table table-zebra table-sm table-pin-rows">
+                        <thead>
+                            <tr class="bg-slate-900 text-slate-400">
+                                <th class="w-10"></th>
+                                @foreach([['name', __('Voice')], ['language', __('Language')], ['gender', __('Gender')], ['note', __('Style')]] as [$col, $label])
+                                    <th wire:click="sortTable('{{ $col }}')" class="cursor-pointer select-none whitespace-nowrap hover:text-slate-200">
+                                        {{ $label }}
+                                        @if($sortBy === $col)<span class="text-amber-400">{{ $sortDir === 'asc' ? '▲' : '▼' }}</span>@endif
+                                    </th>
+                                @endforeach
+                                <th class="whitespace-nowrap">{{ __('Preferred') }}</th>
+                                <th class="w-16 text-right">{{ __('Active') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($this->voiceRows as $row)
+                                <tr wire:key="vrow-{{ $previewProvider }}-{{ $row['id'] }}"
+                                    wire:click="selectVoice('{{ $row['id'] }}')"
+                                    x-on:click="playPreview('{{ $row['id'] }}', '{{ $row['preview_url'] }}')"
+                                    class="cursor-pointer hover:bg-slate-800/60 {{ $voice_id === $row['id'] ? 'bg-amber-950/30' : '' }}">
+                                    <td x-on:click.stop>
+                                        @if($row['preview_url'])
+                                            <button x-on:click="playPreview('{{ $row['id'] }}', '{{ $row['preview_url'] }}')"
+                                                    class="btn btn-ghost btn-xs"
+                                                    :class="{ 'text-amber-400': playingId === '{{ $row['id'] }}' }">
+                                                <span x-show="playingId !== '{{ $row['id'] }}'">▶</span>
+                                                <span x-show="playingId === '{{ $row['id'] }}'">◼</span>
+                                            </button>
+                                        @endif
+                                    </td>
+                                    <td class="font-medium text-slate-100 whitespace-nowrap">{{ $row['name'] }}
+                                        @if($row['note'] !== '')<span class="ml-1 text-xs text-slate-500">{{ $row['note'] }}</span>@endif
+                                    </td>
+                                    <td class="whitespace-nowrap">{{ $row['flag'] }} {{ $row['language'] }}</td>
+                                    <td>{{ $row['gender'] }}</td>
+                                    <td class="max-w-40 truncate text-xs text-slate-400">{{ $row['note'] }}</td>
+                                    <td x-on:click.stop>
+                                        @if($row['lang'] !== 'multi')
+                                            {{-- Edge voice: tick = preferred narrator for ITS language --}}
+                                            <label class="flex items-center gap-1.5 cursor-pointer text-xs text-slate-400">
+                                                <input type="checkbox" class="checkbox checkbox-xs checkbox-warning"
+                                                       wire:click="setPreferred('{{ $row['lang'] }}', '{{ $row['id'] }}')"
+                                                       @checked(($avatar->voice_map[$row['lang']] ?? null) === $row['id'])>
+                                                {{ strtoupper($row['lang']) }}
+                                            </label>
+                                        @else
+                                            {{-- Multilingual voice: pick WHICH language it becomes preferred for --}}
+                                            <select wire:change="setPreferred($event.target.value, '{{ $row['id'] }}')"
+                                                    class="select select-xs select-bordered bg-slate-900 w-28">
+                                                <option value="">{{ __('Prefer for…') }}</option>
+                                                @foreach(['nl' => 'Nederlands', 'en' => 'English', 'de' => 'Deutsch', 'fr' => 'Français', 'it' => 'Italiano', 'es' => 'Español'] as $c => $l)
+                                                    <option value="{{ $c }}" @selected(($avatar->voice_map[$c] ?? null) === $row['id'])>
+                                                        {{ $l }}{{ ($avatar->voice_map[$c] ?? null) === $row['id'] ? ' ✓' : '' }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        @endif
+                                    </td>
+                                    <td class="text-right">
+                                        @if($voice_id === $row['id'])<span class="text-amber-400">✓</span>@endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="7" class="py-8 text-center text-sm text-slate-500">{{ __('No voices for this filter.') }}</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
                 </div>
 

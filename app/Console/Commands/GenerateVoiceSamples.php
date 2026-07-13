@@ -26,7 +26,22 @@ class GenerateVoiceSamples extends Command
     private const SAMPLE_TEXT = [
         'nl' => 'Welkom, leerlingen. Vandaag beginnen we aan een bijzondere reis door de geschiedenis.',
         'en' => 'Welcome, students. Today we embark on a remarkable journey through history.',
+        'de' => 'Willkommen, liebe Schüler. Heute beginnen wir eine besondere Reise durch die Geschichte.',
+        'fr' => 'Bienvenue, chers élèves. Aujourd\'hui, nous commençons un voyage remarquable à travers l\'histoire.',
+        'it' => 'Benvenuti, studenti. Oggi iniziamo un viaggio straordinario attraverso la storia.',
         'es' => 'Bienvenidos, estudiantes. Hoy comenzamos un viaje extraordinario por la historia.',
+        'pt' => 'Bem-vindos, estudantes. Hoje começamos uma viagem extraordinária pela história.',
+        'pl' => 'Witajcie, uczniowie. Dziś rozpoczynamy niezwykłą podróż przez historię.',
+        'sv' => 'Välkomna, elever. Idag börjar vi en märklig resa genom historien.',
+        'da' => 'Velkommen, elever. I dag begynder vi en bemærkelsesværdig rejse gennem historien.',
+        'nb' => 'Velkommen, elever. I dag begynner vi en bemerkelsesverdig reise gjennom historien.',
+        'fi' => 'Tervetuloa, oppilaat. Tänään aloitamme merkittävän matkan halki historian.',
+        'el' => 'Καλώς ήρθατε, μαθητές. Σήμερα ξεκινάμε ένα αξιοσημείωτο ταξίδι στην ιστορία.',
+        'cs' => 'Vítejte, žáci. Dnes se vydáme na pozoruhodnou cestu dějinami.',
+        'hu' => 'Üdvözöllek, diákok. Ma egy különleges utazásra indulunk a történelemben.',
+        'ro' => 'Bine ați venit, elevi. Astăzi începem o călătorie remarcabilă prin istorie.',
+        'uk' => 'Ласкаво просимо, учні. Сьогодні ми починаємо незвичайну подорож крізь історію.',
+        'ga' => 'Fáilte, a dhaltaí. Inniu tosaímid ar thuras iontach tríd an stair.',
     ];
 
     public function handle(): int

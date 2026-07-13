@@ -106,6 +106,14 @@ class AvatarStudio extends Component
 
     // ── Computed ──────────────────────────────────────────────────────────────
 
+    // ── Voice table state (sortable thead + per-language filter) ─────────────
+
+    public string $languageFilter = 'featured';
+
+    public string $sortBy = 'language';
+
+    public string $sortDir = 'asc';
+
     #[Computed]
     public function voices(): array
     {
@@ -115,6 +123,120 @@ class AvatarStudio extends Component
             'pocket_tts' => Avatar::pocketTtsVoices(),
             default      => app(ElevenLabsService::class)->getVoices(),
         };
+    }
+
+    /**
+     * Uniform rows for the voice table, both providers:
+     * {id, name, language, lang, gender, flag, note, preview_url, featured}.
+     *
+     * @return list<array<string, mixed>>
+     */
+    #[Computed]
+    public function voiceRows(): array
+    {
+        $rows = $this->previewProvider === 'edge_tts'
+            ? $this->edgeRows()
+            : $this->genericRows();
+
+        $rows = array_values(array_filter($rows, fn (array $r) => match ($this->languageFilter) {
+            'featured' => $r['featured'],
+            'all'      => true,
+            default    => $r['lang'] === $this->languageFilter,
+        }));
+
+        $key = in_array($this->sortBy, ['name', 'language', 'gender', 'note'], true) ? $this->sortBy : 'language';
+        usort($rows, fn (array $a, array $b) => $this->sortDir === 'desc'
+            ? strcasecmp((string) $b[$key], (string) $a[$key]) <=> 0
+            : strcasecmp((string) $a[$key], (string) $b[$key]) <=> 0);
+
+        return $rows;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function edgeRows(): array
+    {
+        $featured = Avatar::edgeTtsFeatured();
+
+        return array_map(function (array $v) use ($featured): array {
+            $samplePath = "voices/edge/{$v['id']}.mp3";
+
+            return [
+                ...$v,
+                'preview_url' => is_file(public_path($samplePath)) ? asset($samplePath) : '',
+                'featured'    => in_array($v['id'], $featured, true),
+            ];
+        }, Avatar::edgeTtsCatalog());
+    }
+
+    /** ElevenLabs / Pocket cards adapted to table rows (multilingual → lang 'multi'). */
+    private function genericRows(): array
+    {
+        return array_map(function (array $card): array {
+            $label = (string) ($card['label'] ?? $card['id']);
+            // "Roger - Laid-Back, Casual, Resonant · american male"
+            $name = trim(Str::before($label, ' - ')) ?: $label;
+            $meta = trim(Str::after($label, ' · '));
+            $note = trim(Str::between($label, ' - ', ' · '));
+
+            return [
+                'id'          => $card['id'],
+                'name'        => $name,
+                'language'    => 'Multilingual',
+                'lang'        => 'multi',
+                'gender'      => str_contains($meta, 'female') ? 'V' : (str_contains($meta, 'male') ? 'M' : ''),
+                'flag'        => '🌍',
+                'note'        => $note !== $label ? trim($note.' — '.$meta, ' —') : $meta,
+                'preview_url' => (string) ($card['preview_url'] ?? ''),
+                'featured'    => true, // curated lists are short — no featured tier needed
+            ];
+        }, $this->voices());
+    }
+
+    /** Distinct languages for the filter select (edge only has real languages). */
+    #[Computed]
+    public function voiceLanguages(): array
+    {
+        if ($this->previewProvider !== 'edge_tts') {
+            return [];
+        }
+
+        $langs = [];
+        foreach (Avatar::edgeTtsCatalog() as $v) {
+            $langs[$v['lang']] = $v['language'];
+        }
+
+        return $langs;
+    }
+
+    public function sortTable(string $column): void
+    {
+        if ($this->sortBy === $column) {
+            $this->sortDir = $this->sortDir === 'asc' ? 'desc' : 'asc';
+
+            return;
+        }
+        $this->sortBy = $column;
+        $this->sortDir = 'asc';
+    }
+
+    /**
+     * Tick a voice as the avatar's preferred narrator for a language.
+     * Narration resolves this via Avatar::voiceFor(lesson locale).
+     */
+    public function setPreferred(string $lang, string $voiceId): void
+    {
+        $known = collect($this->voiceRows())->pluck('id')->all();
+        if (! in_array($voiceId, $known, true) || mb_strlen($lang) > 8) {
+            return;
+        }
+
+        $map = $this->avatar->voice_map ?? [];
+        // Ticking the already-preferred voice unticks it.
+        $map[$lang] = ($map[$lang] ?? null) === $voiceId ? null : $voiceId;
+        $map = array_filter($map, fn ($v) => $v !== null);
+
+        $this->avatar->update(['voice_map' => $map]);
+        $this->flash(__('Preferred voices updated.'), false);
     }
 
     public function selectVoice(string $voiceId): void
