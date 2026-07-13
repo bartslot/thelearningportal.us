@@ -169,15 +169,21 @@ class GenerateLessonScript implements ShouldQueue
      * grid pipeline when enabled (config lessons.shot_grid); scenes that already carry an
      * image (worldhistory.org hero pre-assignment) skip visual generation entirely.
      *
+     * Pack-grounded lessons (story with an asset pack, E3b) assemble narration-scene
+     * shots from the pack instead — those scenes dispatch ONLY audio: zero image-gen
+     * calls. Non-narration scenes and pack-less lessons keep the live path unchanged.
+     *
      * @param  Collection<int, Scene>  $scenes
      */
     private function dispatchAssetJobs(Lesson $lesson, Collection $scenes): void
     {
         $useShots = \App\Services\Support\GridSlicer::parseGrid((string) config('lessons.shot_grid', '3x3')) !== null;
 
+        $packedSceneIds = $this->assignPackShots($lesson, $scenes);
+
         $jobs = [];
         foreach ($scenes as $scene) {
-            if ($scene->image_path === null) {
+            if (! $packedSceneIds->contains($scene->id) && $scene->image_path === null) {
                 $jobs[] = $useShots ? new GenerateSceneShots($scene->id) : new GenerateSceneImage($scene->id);
             }
             $jobs[] = new GenerateSceneAudio($scene->id);
@@ -187,5 +193,33 @@ class GenerateLessonScript implements ShouldQueue
             ->name("lesson:{$lesson->id}:scenes")
             ->then(fn (Batch $batch) => GenerateLessonQuiz::dispatch($lesson->id))
             ->dispatch();
+    }
+
+    /**
+     * E3b: when the lesson's story carries an asset pack, visualize narration scenes
+     * from the pack (one cheap LLM mapping call, zero image generation).
+     *
+     * @param  Collection<int, Scene>  $scenes
+     * @return Collection<int, int> ids of scenes whose visuals came from the pack
+     */
+    private function assignPackShots(Lesson $lesson, Collection $scenes): Collection
+    {
+        if (empty(((array) ($lesson->story?->assets ?? []))['backgrounds'] ?? null)) {
+            return collect();
+        }
+
+        $narration = $scenes->filter(fn (Scene $scene) => $scene->kind === 'narration')->values();
+        if ($narration->isEmpty()) {
+            return collect();
+        }
+
+        $count = app(\App\Services\StoryPackShots::class)->assign($lesson, $narration);
+        if ($count === 0) {
+            return collect();
+        }
+
+        Log::info("[pack] lesson {$lesson->id}: {$count} scenes visualized from story pack — 0 image-gen calls");
+
+        return $narration->pluck('id');
     }
 }

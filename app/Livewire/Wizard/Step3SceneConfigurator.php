@@ -125,6 +125,9 @@ class Step3SceneConfigurator extends Component
             'imageUrl' => $imagePath ? asset('storage/'.$imagePath).'?v='.$ts : null,
             'shots' => collect($scene->shots ?? [])->map(fn ($shot) => [
                 'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
+                // bg_url/hero_url (E3b story-pack shots) — parallax layers, see ParallaxScene.js.
+                'bg_url' => ! empty($shot['bg_path']) ? asset('storage/'.$shot['bg_path']).'?v='.$ts : null,
+                'hero_url' => ! empty($shot['hero_path']) ? asset('storage/'.$shot['hero_path']).'?v='.$ts : null,
                 'anchor_sentence' => $shot['anchor_sentence'] ?? null,
             ])->filter(fn ($shot) => $shot['image_url'])->values()->all(),
             'hasSkyboxImage' => ! empty($scene->skybox_image_path),

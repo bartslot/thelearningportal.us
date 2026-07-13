@@ -68,6 +68,10 @@
                 'image_url'   => $s->image_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->image_path) : null,
                 'shots'       => collect($s->shots ?? [])->map(fn($shot) => [
                     'image_url'       => !empty($shot['image_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['image_path']) : null,
+                    // bg_url/hero_url (E3b story-pack shots): the player renders these as
+                    // parallax layers when bg_url is present, flat image_url otherwise.
+                    'bg_url'          => !empty($shot['bg_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['bg_path']) : null,
+                    'hero_url'        => !empty($shot['hero_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['hero_path']) : null,
                     'anchor_sentence' => $shot['anchor_sentence'] ?? null,
                 ])->filter(fn($shot) => $shot['image_url'])->values()->all() ?: null,
                 'alignment'   => $s->audio_alignment ?: null,
