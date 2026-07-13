@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
 use App\Services\Support\NarrationVoice;
+use App\Services\Support\PronunciationLexicon;
 use App\Services\TtsService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -39,6 +40,9 @@ class GenerateSceneAudio implements ShouldQueue
             $avatar  = $scene->lesson->avatar;
             $script  = (string) ($scene->script_segment ?? '');
             $text    = $tts->prepareSpeechText($script);
+            // Spoken-form fixes only ("limes" → "liemes" for Dutch voices) — the on-screen
+            // script keeps the correct written form.
+            $text    = PronunciationLexicon::apply($text, $scene->lesson->teacher?->locale);
 
             // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
             // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so the
