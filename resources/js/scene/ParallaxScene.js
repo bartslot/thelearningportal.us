@@ -66,11 +66,18 @@ export function computeLayerTransforms (progress, opts = {}) {
   }
 }
 
-let stylesInjected = false
 function injectStyles () {
-  if (stylesInjected) return
-  stylesInjected = true
+  // Idempotence by DOM presence, not a module flag — test environments (and
+  // SPA navigations) can wipe the document while the module stays loaded.
+  // Head (styles) and body (SVG filter defs) are checked independently:
+  // some environments clear one but not the other.
+  if (! document.getElementById('px-scene-styles')) injectKeyframes()
+  if (! document.getElementById('px-wobble-defs')) injectWobbleDefs()
+}
+
+function injectKeyframes () {
   const style = document.createElement('style')
+  style.id = 'px-scene-styles'
   style.textContent = `
     @keyframes px-sway {
       0%, 100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
@@ -89,6 +96,24 @@ function injectStyles () {
   document.head.appendChild(style)
 }
 
+// Hand-drawn "wobbly line" filters (feTurbulence displaces edges). The seed
+  // animates at 3 steps/s — the "boiling line" of traditional ink animation.
+  // Referenced via CSS filter: url(#px-wobble-N); SMIL is dropped for reduced motion.
+  // Built through an HTML wrapper: the HTML parser handles inline-SVG content
+  // reliably everywhere (innerHTML on a namespaced <svg> does not).
+function injectWobbleDefs () {
+  const freeze = prefersReducedMotion()
+  const wrap = document.createElement('div')
+  wrap.innerHTML = `<svg id="px-wobble-defs" aria-hidden="true" style="position:absolute;width:0;height:0;">${[1, 2].map(level => `
+    <filter id="px-wobble-${level}" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="turbulence" baseFrequency="0.012" numOctaves="2" seed="1" result="n">
+        ${freeze ? '' : '<animate attributeName="seed" values="1;5;9;1" dur="1s" repeatCount="indefinite" calcMode="discrete"/>'}
+      </feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="${level * 4}" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>`).join('')}</svg>`
+  document.body.appendChild(wrap.firstElementChild)
+}
+
 function prefersReducedMotion () {
   return typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -102,6 +127,13 @@ function prefersReducedMotion () {
  * @property {number} [scale=1]      Constant "nearness" scale bump (hero: 1.03).
  * @property {number} [height]       figure/strip height in % of stage (figure 80, strip 28).
  * @property {boolean} [sway]        Breathing (figure) / breeze (strip) animation.
+ *
+ * Artistic controls (Photoshop-style, all GPU-cheap):
+ * @property {number} [z]            Explicit stacking override; default = array order.
+ * @property {number} [blur]         px. Overrides the dof-computed blur when set.
+ * @property {number} [opacity=1]    0..1.
+ * @property {string} [blend]        CSS mix-blend-mode ('multiply' suits stacked ink).
+ * @property {0|1|2}  [wobble=0]     Hand-drawn boiling-line displacement intensity.
  */
 
 export class ParallaxScene {
@@ -121,10 +153,14 @@ export class ParallaxScene {
    * Multiplane form: pass `layers` (back → front). Classic form: bgUrl (+ heroUrl)
    * maps to [{cover, depth 1}, {figure, depth 0.6, scale 1.03, sway}].
    *
+   * `dof` gives free depth-of-field: planes blur by their distance from the focus
+   * depth (blur = strength × |depth − focus|), unless a layer sets its own `blur`.
+   *
    * @param {{bgUrl?: string, heroUrl?: string|null, layers?: PlaneSpec[],
-   *          motion?: {panX?: number, panY?: number, zoom?: number}}} shot
+   *          motion?: {panX?: number, panY?: number, zoom?: number},
+   *          dof?: {focus?: number, strength?: number}}} shot
    */
-  show ({ bgUrl = null, heroUrl = null, layers = null, motion = null } = {}) {
+  show ({ bgUrl = null, heroUrl = null, layers = null, motion = null, dof = null } = {}) {
     // Classic form requires a background — a hero floating on nothing is never intended.
     const specs = Array.isArray(layers) && layers.length
       ? layers.filter(l => l && l.url)
@@ -146,7 +182,12 @@ export class ParallaxScene {
       + `transition:opacity ${FADE_IN_MS}ms ease-in-out;`
 
     this._planes = specs.map(spec => {
-      const el = this._buildPlane(spec)
+      // Depth-of-field: unfocused planes blur with distance, unless explicitly set.
+      // Rounded to 0.1px — clean CSS values, no float-noise like blur(1.9999px).
+      const blur = spec.blur ?? (dof
+        ? Math.round(Math.abs((spec.depth ?? 1) - (dof.focus ?? 1)) * (dof.strength ?? 3) * 10) / 10
+        : 0)
+      const el = this._buildPlane({ ...spec, blur })
       root.appendChild(el)
       return { el, depth: spec.depth ?? 1, baseScale: spec.scale ?? 1 }
     })
@@ -180,7 +221,7 @@ export class ParallaxScene {
       img.draggable = false
       img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
       layer.appendChild(img)
-      return layer
+      return this._applyArtisticProps(layer, spec)
     }
 
     layer.className = `px-layer ${kind === 'figure' ? 'px-layer-hero' : 'px-layer-strip'}`
@@ -207,6 +248,26 @@ export class ParallaxScene {
     }
 
     layer.appendChild(img)
+    return this._applyArtisticProps(layer, spec)
+  }
+
+  /**
+   * Photoshop-style per-layer settings, all compositor-cheap. The wobble filter
+   * and blur go on the layer's FILTER (displacement first, then blur); z overrides
+   * the natural array-order stacking; blend modes let ink layers multiply onto
+   * the paper tones beneath them.
+   * @param {HTMLElement} layer @param {PlaneSpec} spec
+   */
+  _applyArtisticProps (layer, { blur = 0, opacity = 1, blend = null, wobble = 0, z = null } = {}) {
+    const filters = []
+    const wobbleLevel = Math.min(2, Math.max(0, Math.round(wobble)))
+    if (wobbleLevel > 0) filters.push(`url(#px-wobble-${wobbleLevel})`)
+    if (blur > 0) filters.push(`blur(${Math.min(20, blur)}px)`)
+    if (filters.length) layer.style.filter = filters.join(' ')
+    if (opacity !== 1) layer.style.opacity = String(Math.min(1, Math.max(0, opacity)))
+    if (blend) layer.style.mixBlendMode = blend
+    if (z !== null && Number.isFinite(z)) layer.style.zIndex = String(z)
+
     return layer
   }
 

@@ -327,6 +327,11 @@ back→front; depth 0 = pinned sky, 1 = focal plane, >1 = foreground (moves more
 `strip` kind for full-width SVG vegetation bands with a breeze animation; bg/hero back-compat intact;
 shots carry optional `layers[]` end-to-end (blade serializes path→url); 82 vitest green; verified live
 (3 planes at 0.35/0.7/1.7 depth on the Limes lesson).
+**Also shipped (E3c-b, founder ask 2026-07-14):** per-layer artistic controls — `blur` (px), `dof: {focus, strength}`
+(auto depth-of-field: planes defocus by distance from the focus depth), `opacity`, `blend` (mix-blend-mode,
+multiply for stacked ink), `wobble: 0-2` (feTurbulence boiling-line, SMIL-animated seed, reduced-motion safe),
+`z` stacking override. All compositor-cheap CSS/SVG filters; 85 vitest green; verified live (fort wobble-1 +
+1.4px dof blur, hero sharp at focus, reeds wobble-2 + 4px).
 **Still open (the content + art-direction half):**
 - [ ] `svg_assets.tags` + a curated FOREGROUND set (trees/grass/reeds/rocks silhouettes per era/biome) — seed ~10
 - [ ] StoryPackShots emits `layers[]`: bg (depth ~0.4) + hero (0.7) + tagged foreground strip (1.5–1.8) chosen by scene location/biome

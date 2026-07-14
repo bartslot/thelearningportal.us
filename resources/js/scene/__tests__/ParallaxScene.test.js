@@ -253,3 +253,47 @@ describe('ParallaxScene multiplane rendering', () => {
     scene.destroy()
   })
 })
+
+describe('artistic layer controls (E3c-b)', () => {
+  it('applies blur, opacity, blend and z per layer', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({
+      layers: [
+        { url: 'bg.png', kind: 'cover', depth: 1, blur: 3, opacity: 0.8, blend: 'multiply', z: 40 },
+      ],
+    })
+    const layer = document.querySelector('.px-layer-bg')
+    expect(layer.style.filter).toBe('blur(3px)')
+    expect(layer.style.opacity).toBe('0.8')
+    expect(layer.style.mixBlendMode).toBe('multiply')
+    expect(layer.style.zIndex).toBe('40')
+    scene.destroy()
+  })
+
+  it('wobble adds the boiling-line displacement filter before the blur', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({ layers: [{ url: 'bg.png', kind: 'cover', wobble: 2, blur: 1 }] })
+    expect(document.querySelector('.px-layer-bg').style.filter)
+      .toBe('url(#px-wobble-2) blur(1px)')
+    // The SVG filter defs are injected once into the document.
+    expect(document.querySelector('filter#px-wobble-2')).toBeTruthy()
+    scene.destroy()
+  })
+
+  it('dof blurs planes by distance from the focus depth; explicit blur wins', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({
+      layers: [
+        { url: 'far.png', kind: 'cover', depth: 0.2 },              // |0.2-0.7|*4 = 2px
+        { url: 'focus.png', kind: 'cover', depth: 0.7 },            // 0 → no filter
+        { url: 'fg.svg', kind: 'strip', depth: 1.7, blur: 9 },      // explicit wins
+      ],
+      dof: { focus: 0.7, strength: 4 },
+    })
+    const layers = document.querySelectorAll('.px-scene > div')
+    expect(layers[0].style.filter).toBe('blur(2px)')
+    expect(layers[1].style.filter).toBe('')
+    expect(layers[2].style.filter).toBe('blur(9px)')
+    scene.destroy()
+  })
+})

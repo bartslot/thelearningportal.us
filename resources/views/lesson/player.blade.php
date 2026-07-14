@@ -80,6 +80,12 @@
                         'scale'  => (float) ($l['scale'] ?? 1),
                         'height' => isset($l['height']) ? (float) $l['height'] : null,
                         'sway'   => (bool) ($l['sway'] ?? false),
+                        // Artistic controls (E3c-b): blur px, opacity 0-1, blend mode, wobble 0-2, z override.
+                        'blur'    => isset($l['blur']) ? (float) $l['blur'] : null,
+                        'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
+                        'blend'   => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
+                        'wobble'  => isset($l['wobble']) ? (int) $l['wobble'] : null,
+                        'z'       => isset($l['z']) ? (int) $l['z'] : null,
                     ])->filter(fn($l) => $l['url'])->values()->all() ?: null,
                     'anchor_sentence' => $shot['anchor_sentence'] ?? null,
                 ])->filter(fn($shot) => $shot['image_url'])->values()->all() ?: null,
