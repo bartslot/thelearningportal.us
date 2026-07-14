@@ -478,8 +478,9 @@
         {{-- ── GAME ACTIVE: sidebar team list + timer HUD ──────────────── --}}
         <div x-show="phase === 'GAME_ACTIVE' || phase === 'TIME_UP'" class="absolute inset-0 pointer-events-none">
 
-            {{-- Timer HUD (top-right corner) --}}
-            <div class="absolute top-6 right-6 flex items-center gap-2">
+            {{-- Timer HUD — bottom-right: the top-right corner belongs to the audio
+                 controls (they overlapped there; founder annotation 2026-07-14). --}}
+            <div class="absolute bottom-6 right-6 flex items-center gap-2">
                 <span
                     x-text="timerDisplay"
                     :class="timerSeconds <= 120 ? 'text-red-400' : timerSeconds <= 300 ? 'text-amber-400' : 'text-[#E1EEF4]'"
