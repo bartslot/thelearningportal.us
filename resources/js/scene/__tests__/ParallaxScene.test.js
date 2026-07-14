@@ -180,3 +180,76 @@ describe('reduced motion', () => {
     expect(el.querySelector('.px-layer-hero img').classList.contains('px-sway')).toBe(true)
   })
 })
+
+// ── Multiplane (E3c) ─────────────────────────────────────────────────────────
+import { computePlaneTransform } from '../ParallaxScene.js'
+
+describe('computePlaneTransform (multiplane depth)', () => {
+  const motion = { panX: 4, panY: -4, zoom: 1.06 }
+
+  it('scales pan linearly with depth', () => {
+    const focal = computePlaneTransform(1, 1, motion)
+    const fg = computePlaneTransform(1, 1.5, motion)
+    const sky = computePlaneTransform(1, 0, motion)
+    expect(fg.translateX).toBeCloseTo(focal.translateX * 1.5, 5)
+    expect(fg.translateY).toBeCloseTo(focal.translateY * 1.5, 5)
+    expect(sky.translateX).toBe(0)
+    expect(sky.translateY).toBe(0)
+  })
+
+  it('back-compat: computeLayerTransforms equals plane math at depths 1 and 0.6', () => {
+    const both = computeLayerTransforms(0.7, motion)
+    expect(both.bg).toEqual(computePlaneTransform(0.7, 1, motion))
+    expect(both.hero).toEqual(computePlaneTransform(0.7, 0.6, motion, 1.03))
+  })
+
+  it('applies the constant base scale on top of the zoom interpolation', () => {
+    const t = computePlaneTransform(1, 1, motion, 1.1)
+    expect(t.scale).toBeCloseTo(1.06 * 1.1, 5)
+  })
+})
+
+describe('ParallaxScene multiplane rendering', () => {
+  it('renders N layers back-to-front with kind-specific markup', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({
+      layers: [
+        { url: 'sky.png', kind: 'cover', depth: 0 },
+        { url: 'fort.png', kind: 'cover', depth: 1 },
+        { url: 'hero.png', kind: 'figure', depth: 0.6, scale: 1.03, sway: true },
+        { url: 'grass.svg', kind: 'strip', depth: 1.6, height: 24 },
+      ],
+      motion: { panX: 4, panY: 0, zoom: 1 },
+    })
+    const root = document.querySelector('.px-scene')
+    expect(root.children).toHaveLength(4)
+    expect(root.children[0].className).toContain('px-layer-bg')
+    expect(root.children[2].className).toContain('px-layer-hero')
+    expect(root.children[3].className).toContain('px-layer-strip')
+
+    scene.update(1)
+    // sky pinned, strip moves 1.6× the focal pan
+    expect(root.children[0].style.transform).toContain('translate3d(0%, 0%')
+    expect(root.children[3].style.transform).toContain(`translate3d(${4 * 1.6}%`)
+    scene.destroy()
+  })
+
+  it('strip images tuck past both side edges (no exposed borders on fast planes)', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({ layers: [{ url: 'grass.svg', kind: 'strip', depth: 2 }] })
+    const img = document.querySelector('.px-layer-strip img')
+    expect(img.style.width).toBe('124%')   // 100 + 2 × (6 × 2)
+    expect(img.style.left).toBe('-12%')
+    scene.destroy()
+  })
+
+  it('classic bgUrl + heroUrl form still renders two layers (back-compat)', () => {
+    const scene = new ParallaxScene(host())
+    scene.show({ bgUrl: 'bg.png', heroUrl: 'hero.png' })
+    const root = document.querySelector('.px-scene')
+    expect(root.children).toHaveLength(2)
+    expect(root.children[0].className).toContain('px-layer-bg')
+    expect(root.children[1].className).toContain('px-layer-hero')
+    scene.destroy()
+  })
+})

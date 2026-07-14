@@ -1,16 +1,24 @@
 /**
- * ParallaxScene — 2-layer webcomic shot: background image + optional transparent-PNG hero.
+ * ParallaxScene — multiplane webcomic shot: N depth-sorted layers (E3c).
  *
- * A shot with `bg_url` renders as two absolutely-positioned layers inside the host:
- *   - background: oversized cover image, pans at the full Ken Burns rate
- *   - hero:       transparent PNG, centered + bottom-anchored (~80% height), pans at
- *                 ~0.6× the background rate and sits at a slightly nearer scale (1.03×)
+ * A shot renders as absolutely-positioned planes inside the host, back to front.
+ * Each plane has a DEPTH — how strongly it follows the camera pan:
+ *   0   = pinned (far sky / horizon)
+ *   1   = the focal background plane (reference Ken Burns rate)
+ *   >1  = foreground (trees, grass — nearest to the viewer, moves the most)
+ * and a KIND:
+ *   'cover'  — full-bleed image plane (backgrounds); bleed grows with depth so a
+ *              fast-moving foreground plane never reveals its edges
+ *   'figure' — centered, bottom-anchored transparent PNG (the hero)
+ *   'strip'  — full-width, bottom-anchored band (SVG/PNG foreground vegetation)
  *
- * The depth illusion comes from that rate difference (parallax). All motion is CSS
- * transform only (translate3d for GPU compositing) — no three.js, per 3d-direction.
- * A subtle "breathing" sway on the hero is skipped under prefers-reduced-motion.
+ * The classic 2-layer shot (bg_url + hero_url) still works unchanged: it maps to
+ * [{cover, depth 1}, {figure, depth 0.6, scale 1.03, sway}].
  *
- * `computeLayerTransforms` is pure and unit-tested; the class is thin DOM glue around it.
+ * All motion is CSS transform only (translate3d for GPU compositing) — no three.js,
+ * per 3d-direction. Sway/breeze animations are skipped under prefers-reduced-motion.
+ *
+ * `computePlaneTransform` is pure and unit-tested; the class is thin DOM glue.
  * No globals except the optional `window.__parallax` debug handle.
  */
 
@@ -19,38 +27,42 @@ const HERO_PAN_FACTOR = 0.6
 // Hero sits slightly nearer than the background — a touch larger at every progress point.
 const HERO_BASE_SCALE = 1.03
 // Layers bleed past every edge (%) so a full pan never reveals a raw layer edge.
+// Multiplied by a plane's depth (min 1) — faster planes need more headroom.
 const LAYER_BLEED_PCT = 6
 const FADE_IN_MS = 900
 
 /**
- * Pure transform math for both layers.
+ * Pure per-plane transform math.
  *
  * @param {number} progress  Playback progress 0..1 (clamped; non-finite → 0).
- * @param {{panX?: number, panY?: number, zoom?: number}} opts
- *        panX/panY: total background pan across the shot, in % (same unit the flat
- *        Ken Burns uses: end translate minus start translate). zoom: background scale
- *        at progress 1 (1 = none, mirrors toScale − fromScale of the Ken Burns move).
- * @returns {{bg: Transform, hero: Transform}} where Transform is
- *          {translateX: %, translateY: %, scale: number}. progress 0 → identity-ish
- *          (zero pan, bg scale 1, hero at its constant 1.03 base).
+ * @param {number} depth     Pan multiplier: 0 pinned, 1 focal plane, >1 foreground.
+ * @param {{panX?: number, panY?: number, zoom?: number}} motion
+ *        panX/panY: total focal-plane pan across the shot, in % (same unit the flat
+ *        Ken Burns uses). zoom: focal-plane scale at progress 1 (1 = none).
+ * @param {number} baseScale Constant scale bump for "nearer" planes (hero 1.03).
+ * @returns {{translateX: number, translateY: number, scale: number}}
  */
-export function computeLayerTransforms (progress, opts = {}) {
-  const { panX = 0, panY = 0, zoom = 1 } = opts || {}
+export function computePlaneTransform (progress, depth, motion = {}, baseScale = 1) {
+  const { panX = 0, panY = 0, zoom = 1 } = motion || {}
   const p = Number.isFinite(progress) ? Math.min(Math.max(progress, 0), 1) : 0
+  const d = Number.isFinite(depth) ? depth : 1
   const noNegZero = (n) => (n === 0 ? 0 : n)   // -4 * 0 → -0; keep CSS/asserts clean
 
-  const bgScale = 1 + (zoom - 1) * p
   return {
-    bg: {
-      translateX: noNegZero(panX * p),
-      translateY: noNegZero(panY * p),
-      scale: bgScale,
-    },
-    hero: {
-      translateX: noNegZero(panX * p * HERO_PAN_FACTOR),
-      translateY: noNegZero(panY * p * HERO_PAN_FACTOR),
-      scale: bgScale * HERO_BASE_SCALE,
-    },
+    translateX: noNegZero(panX * p * d),
+    translateY: noNegZero(panY * p * d),
+    scale: (1 + (zoom - 1) * p) * baseScale,
+  }
+}
+
+/**
+ * Back-compat wrapper: the classic bg/hero pair expressed through the plane math.
+ * @returns {{bg: Transform, hero: Transform}}
+ */
+export function computeLayerTransforms (progress, opts = {}) {
+  return {
+    bg: computePlaneTransform(progress, 1, opts),
+    hero: computePlaneTransform(progress, HERO_PAN_FACTOR, opts, HERO_BASE_SCALE),
   }
 }
 
@@ -65,8 +77,13 @@ function injectStyles () {
       50%      { transform: translateX(-50%) translateY(-0.6%) rotate(0.35deg); }
     }
     .px-sway { animation: px-sway 5.2s ease-in-out infinite; }
+    @keyframes px-breeze {
+      0%, 100% { transform: skewX(0deg); }
+      50%      { transform: skewX(0.6deg); }
+    }
+    .px-breeze { animation: px-breeze 7s ease-in-out infinite; transform-origin: bottom center; }
     @media (prefers-reduced-motion: reduce) {
-      .px-sway { animation: none; }
+      .px-sway, .px-breeze { animation: none; }
     }
   `
   document.head.appendChild(style)
@@ -77,6 +94,16 @@ function prefersReducedMotion () {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+/**
+ * @typedef {Object} PlaneSpec
+ * @property {string} url            Image/SVG URL.
+ * @property {number} [depth=1]      0 pinned … 1 focal … >1 foreground.
+ * @property {'cover'|'figure'|'strip'} [kind='cover']
+ * @property {number} [scale=1]      Constant "nearness" scale bump (hero: 1.03).
+ * @property {number} [height]       figure/strip height in % of stage (figure 80, strip 28).
+ * @property {boolean} [sway]        Breathing (figure) / breeze (strip) animation.
+ */
+
 export class ParallaxScene {
   /** @param {HTMLElement} host  Element the layered scene is appended into. */
   constructor (host) {
@@ -85,15 +112,30 @@ export class ParallaxScene {
     this._root = null
     this._bgLayer = null
     this._heroLayer = null
+    this._planes = []           // [{el, depth, baseScale}] back → front
     this._motion = { panX: 0, panY: 0, zoom: 1 }
   }
 
   /**
    * Build and fade in the layered shot. Re-showing replaces the previous layers.
-   * @param {{bgUrl: string, heroUrl?: string|null, motion?: {panX?: number, panY?: number, zoom?: number}}} shot
+   * Multiplane form: pass `layers` (back → front). Classic form: bgUrl (+ heroUrl)
+   * maps to [{cover, depth 1}, {figure, depth 0.6, scale 1.03, sway}].
+   *
+   * @param {{bgUrl?: string, heroUrl?: string|null, layers?: PlaneSpec[],
+   *          motion?: {panX?: number, panY?: number, zoom?: number}}} shot
    */
-  show ({ bgUrl, heroUrl = null, motion = null } = {}) {
-    if (!bgUrl) return
+  show ({ bgUrl = null, heroUrl = null, layers = null, motion = null } = {}) {
+    // Classic form requires a background — a hero floating on nothing is never intended.
+    const specs = Array.isArray(layers) && layers.length
+      ? layers.filter(l => l && l.url)
+      : (bgUrl
+          ? [
+              { url: bgUrl, kind: 'cover', depth: 1 },
+              ...(heroUrl ? [{ url: heroUrl, kind: 'figure', depth: HERO_PAN_FACTOR, scale: HERO_BASE_SCALE, sway: true }] : []),
+            ]
+          : [])
+    if (!specs.length) return
+
     injectStyles()
     this.destroy()
     if (motion) this._motion = { panX: 0, panY: 0, zoom: 1, ...motion }
@@ -103,8 +145,14 @@ export class ParallaxScene {
     root.style.cssText = 'position:absolute;inset:0;overflow:hidden;opacity:0;'
       + `transition:opacity ${FADE_IN_MS}ms ease-in-out;`
 
-    root.appendChild(this._buildBgLayer(bgUrl))
-    if (heroUrl) root.appendChild(this._buildHeroLayer(heroUrl))
+    this._planes = specs.map(spec => {
+      const el = this._buildPlane(spec)
+      root.appendChild(el)
+      return { el, depth: spec.depth ?? 1, baseScale: spec.scale ?? 1 }
+    })
+    // Debug/back-compat aliases: first cover plane + first figure plane.
+    this._bgLayer = this._planes.find(p => p.el.classList.contains('px-layer-bg'))?.el ?? null
+    this._heroLayer = this._planes.find(p => p.el.classList.contains('px-layer-hero'))?.el ?? null
 
     this.host.appendChild(root)
     this._root = root
@@ -115,48 +163,59 @@ export class ParallaxScene {
     window.__parallax = this
   }
 
-  _buildBgLayer (bgUrl) {
+  /** @param {PlaneSpec} spec */
+  _buildPlane (spec) {
+    const { url, kind = 'cover', depth = 1, height, sway } = spec
     const layer = document.createElement('div')
-    layer.className = 'px-layer px-layer-bg'
-    layer.style.cssText = `position:absolute;inset:-${LAYER_BLEED_PCT}%;will-change:transform;`
+    const animate = sway && ! prefersReducedMotion()
 
-    const img = document.createElement('img')
-    img.src = bgUrl
-    img.alt = ''
-    img.draggable = false
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
-    layer.appendChild(img)
+    if (kind === 'cover') {
+      // Bleed grows with depth: a foreground plane pans depth× as far.
+      const bleed = LAYER_BLEED_PCT * Math.max(1, depth)
+      layer.className = 'px-layer px-layer-bg'
+      layer.style.cssText = `position:absolute;inset:-${bleed}%;will-change:transform;`
+      const img = document.createElement('img')
+      img.src = url
+      img.alt = ''
+      img.draggable = false
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
+      layer.appendChild(img)
+      return layer
+    }
 
-    this._bgLayer = layer
-    return layer
-  }
-
-  _buildHeroLayer (heroUrl) {
-    const layer = document.createElement('div')
-    layer.className = 'px-layer px-layer-hero'
+    layer.className = `px-layer ${kind === 'figure' ? 'px-layer-hero' : 'px-layer-strip'}`
     layer.style.cssText = 'position:absolute;inset:0;will-change:transform;pointer-events:none;'
 
-    // Centered + bottom-anchored figure; translateX(-50%) lives in the sway keyframes
-    // too, so the breathing animation composes with the centering instead of fighting it.
     const img = document.createElement('img')
-    img.src = heroUrl
+    img.src = url
     img.alt = ''
     img.draggable = false
-    img.style.cssText = 'position:absolute;bottom:0;left:50%;transform:translateX(-50%);'
-      + 'height:80%;max-width:92%;object-fit:contain;object-position:bottom;'
-    if (!prefersReducedMotion()) img.classList.add('px-sway')
-    layer.appendChild(img)
 
-    this._heroLayer = layer
+    if (kind === 'figure') {
+      // Centered + bottom-anchored figure; translateX(-50%) lives in the sway keyframes
+      // too, so the breathing animation composes with the centering instead of fighting it.
+      img.style.cssText = 'position:absolute;bottom:0;left:50%;transform:translateX(-50%);'
+        + `height:${height ?? 80}%;max-width:92%;object-fit:contain;object-position:bottom;`
+      if (animate) img.classList.add('px-sway')
+    } else {
+      // strip: full-width foreground band (SVG trees/grass), tucked past both side
+      // edges + slightly below the bottom so its own pan never exposes a border.
+      const over = LAYER_BLEED_PCT * Math.max(1, depth)
+      img.style.cssText = `position:absolute;bottom:-2%;left:-${over}%;width:${100 + 2 * over}%;`
+        + `height:${height ?? 28}%;object-fit:cover;object-position:bottom;`
+      if (animate) img.classList.add('px-breeze')
+    }
+
+    layer.appendChild(img)
     return layer
   }
 
-  /** Drive both layers from playback progress 0..1 (called on every timeupdate tick). */
+  /** Drive all planes from playback progress 0..1 (called on every timeupdate tick). */
   update (progress) {
     if (!this._root) return
-    const t = computeLayerTransforms(progress, this._motion)
-    applyTransform(this._bgLayer, t.bg)
-    applyTransform(this._heroLayer, t.hero)
+    for (const plane of this._planes) {
+      applyTransform(plane.el, computePlaneTransform(progress, plane.depth, this._motion, plane.baseScale))
+    }
   }
 
   /** Remove all layer DOM. Safe to call twice. */
@@ -165,6 +224,7 @@ export class ParallaxScene {
     this._root = null
     this._bgLayer = null
     this._heroLayer = null
+    this._planes = []
     if (window.__parallax === this) delete window.__parallax
   }
 }

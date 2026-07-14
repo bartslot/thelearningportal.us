@@ -623,7 +623,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // Route one shot to the right renderer: LAYERED (2-layer parallax) when it carries
     // a bg_url, otherwise today's flat Ken Burns path — every existing lesson stays flat.
     _showShot (shot, fallbackUrl = null) {
-      if (shot?.bg_url) { this._showLayeredShot(shot); return }
+      if (shot?.bg_url || (Array.isArray(shot?.layers) && shot.layers.length)) { this._showLayeredShot(shot); return }
       this._showFlatScene(shot?.image_url || shot?.url || fallbackUrl)
     },
 
@@ -659,7 +659,13 @@ Alpine.data('lessonGame', (lesson) => ({
 
         this._destroyParallax()
         _parallax = new _parallaxMod.ParallaxScene(host)
-        _parallax.show({ bgUrl: shot.bg_url, heroUrl: shot.hero_url || null, motion })
+        _parallax.show({
+          bgUrl: shot.bg_url,
+          heroUrl: shot.hero_url || null,
+          // Multiplane shots (E3c): ordered back→front, each {url, depth, kind, …}.
+          layers: Array.isArray(shot.layers) && shot.layers.length ? shot.layers : null,
+          motion,
+        })
       } catch (e) {
         console.warn('lesson-player: parallax scene failed, falling back to flat', e)
         this._showFlatScene(shot.image_url || shot.url || shot.bg_url)
@@ -683,6 +689,7 @@ Alpine.data('lessonGame', (lesson) => ({
         url: shot.image_url,
         bg_url: shot.bg_url ?? null,
         hero_url: shot.hero_url ?? null,
+        layers: shot.layers ?? null,
         time: i === 0 ? 0 : resolveAnchorTime(scene.alignment, shot.anchor_sentence)
       }))
     },
@@ -700,7 +707,7 @@ Alpine.data('lessonGame', (lesson) => ({
 
       const target = pickShotIndex(this._shotPlan, this._audio.currentTime, this._audio.duration || 0)
       const next = this._shotPlan[target]
-      if (target !== this._shotCursor && (next.url || next.bg_url)) {
+      if (target !== this._shotCursor && (next.url || next.bg_url || next.layers?.length)) {
         this._shotCursor = target
         this._showShot(next)
       }

@@ -319,6 +319,21 @@ P1 · E · depends: E3 (catalog), scene-engine rewrite (done)
 **AC:** [ ] publishing a catalog story yields a reviewed asset pack; [ ] a lesson from that story generates ZERO images; [ ] player renders bg+hero layers with parallax + Ken Burns; [ ] free-topic lessons unchanged; [ ] E4 telemetry shows pack lessons at ~$0 image cost.
 **Smoke:** build lesson from a packed story → log shows 0 image-gen calls; player shows layered parallax; `php artisan test --filter=StoryAssetPack`.
 
+### E3c Multiplane parallax — N depth-sorted layers + SVG foregrounds (founder direction 2026-07-14)
+P1 · E · depends: E3b (shipped), SVG asset library (shipped 62631a7)
+**Why:** Founder: "more than 1 layer of SVGs, plus a foreground with trees/grass — scenes with moving images, in parallax."
+**Shipped in the first cut:** ParallaxScene v2 — `layers: [{url, depth, kind: cover|figure|strip, scale, height, sway}]`
+back→front; depth 0 = pinned sky, 1 = focal plane, >1 = foreground (moves more, bleed scales with depth);
+`strip` kind for full-width SVG vegetation bands with a breeze animation; bg/hero back-compat intact;
+shots carry optional `layers[]` end-to-end (blade serializes path→url); 82 vitest green; verified live
+(3 planes at 0.35/0.7/1.7 depth on the Limes lesson).
+**Still open (the content + art-direction half):**
+- [ ] `svg_assets.tags` + a curated FOREGROUND set (trees/grass/reeds/rocks silhouettes per era/biome) — seed ~10
+- [ ] StoryPackShots emits `layers[]`: bg (depth ~0.4) + hero (0.7) + tagged foreground strip (1.5–1.8) chosen by scene location/biome
+- [ ] Optional mid-plane from packs (e.g. second bg at depth 0.7 for buildings)
+- [ ] Step3 inspector: per-scene foreground picker from the SVG library
+**Smoke:** pack lesson scene renders ≥3 planes with a foreground strip; `npx vitest run` green.
+
 ### E4 Per-lesson cost guardrails + telemetry
 P1 · E · depends: E2
 **Why:** You explicitly want to cut per-lesson cost and stop depending on skyboxes — you can't manage what you don't measure.

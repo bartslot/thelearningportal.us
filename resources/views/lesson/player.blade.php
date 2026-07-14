@@ -72,6 +72,15 @@
                     // parallax layers when bg_url is present, flat image_url otherwise.
                     'bg_url'          => !empty($shot['bg_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['bg_path']) : null,
                     'hero_url'        => !empty($shot['hero_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['hero_path']) : null,
+                    // Multiplane layers (E3c): [{path|url, depth, kind, scale, height, sway}] back→front.
+                    'layers'          => collect($shot['layers'] ?? [])->map(fn($l) => [
+                        'url'    => !empty($l['path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($l['path']) : ($l['url'] ?? null),
+                        'depth'  => (float) ($l['depth'] ?? 1),
+                        'kind'   => in_array($l['kind'] ?? 'cover', ['cover', 'figure', 'strip'], true) ? ($l['kind'] ?? 'cover') : 'cover',
+                        'scale'  => (float) ($l['scale'] ?? 1),
+                        'height' => isset($l['height']) ? (float) $l['height'] : null,
+                        'sway'   => (bool) ($l['sway'] ?? false),
+                    ])->filter(fn($l) => $l['url'])->values()->all() ?: null,
                     'anchor_sentence' => $shot['anchor_sentence'] ?? null,
                 ])->filter(fn($shot) => $shot['image_url'])->values()->all() ?: null,
                 'alignment'   => $s->audio_alignment ?: null,
