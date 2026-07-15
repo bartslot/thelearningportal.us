@@ -7,45 +7,45 @@ namespace App\Services\Support;
 final class ToneRecommender
 {
     /**
-     * All available tones with emoji, label, and description.
+     * All available tones with icon component name, label, and description.
      *
-     * @return array<string, array{emoji: string, label: string, description: string}>
+     * @return array<string, array{icon: string, label: string, description: string}>
      */
     public static function tones(): array
     {
         return [
             'storytelling' => [
-                'emoji'       => '📖',
+                'icon'        => 'book-open',
                 'label'       => 'Storytelling',
                 'description' => 'Narrative-driven with characters and plot. Makes history feel like a film.',
             ],
             'dramatic' => [
-                'emoji'       => '🎭',
+                'icon'        => 'megaphone',
                 'label'       => 'Dramatic',
                 'description' => 'Epic, vivid, high-stakes delivery. Brings battles and turning points to life.',
             ],
             'humorous' => [
-                'emoji'       => '😄',
+                'icon'        => 'face-smile',
                 'label'       => 'Humorous',
                 'description' => 'Light and fun. Uses wit and playful comparisons to make facts stick.',
             ],
             'socratic' => [
-                'emoji'       => '🔍',
+                'icon'        => 'magnifying-glass',
                 'label'       => 'Socratic',
                 'description' => 'Question-led inquiry. The avatar poses questions to spark critical thinking.',
             ],
             'inspiring' => [
-                'emoji'       => '🌟',
+                'icon'        => 'sparkles',
                 'label'       => 'Inspiring',
                 'description' => 'Motivational and uplifting. Focuses on legacy, courage, and lessons for today.',
             ],
             'academic' => [
-                'emoji'       => '🧐',
+                'icon'        => 'academic-cap',
                 'label'       => 'Academic',
                 'description' => 'Formal and precise. Best for older students or exam prep contexts.',
             ],
             'casual' => [
-                'emoji'       => '💬',
+                'icon'        => 'chat-bubble-left-right',
                 'label'       => 'Casual',
                 'description' => 'Friendly and conversational. Feels like a knowledgeable friend explaining history.',
             ],

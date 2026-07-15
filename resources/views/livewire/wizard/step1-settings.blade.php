@@ -440,7 +440,7 @@
             <span class="text-slate-400 text-xs">
                 @php
                     $toneLabel = $tone && isset($this->tones[$tone])
-                        ? $this->tones[$tone]['emoji'] . ' ' . $this->tones[$tone]['label']
+                        ? $this->tones[$tone]['label']
                         : ($details ? 'Details added' : 'Optional');
                 @endphp
                 {{ $toneLabel }}
@@ -465,10 +465,10 @@
                                     'bg-slate-800 border border-slate-600 text-slate-400'            => $tone !== $key && !$isRec,
                                 ])
                             >
-                                <span>{{ $t['emoji'] }}</span>
+                                <x-dynamic-component :component="'icons.'.$t['icon']" class="w-3.5 h-3.5" />
                                 <span>{{ $t['label'] }}</span>
                                 @if ($isRec)
-                                    <span class="text-xs">⭐</span>
+                                    <x-icons.star class="w-3 h-3 text-amber-400" />
                                 @endif
                             </button>
 
@@ -509,7 +509,10 @@
                         </div>
                     </div>
                 </div>
-                <p class="text-xs text-amber-500 mt-2">⭐ Recommended for Age {{ $audience_age }}</p>
+                <p class="text-xs text-amber-500 mt-2 flex items-center gap-1">
+                    <x-icons.star class="w-3 h-3 inline-block text-amber-400" />
+                    <span>Recommended for Age {{ $audience_age }}</span>
+                </p>
             </div>
 
             {{-- Teacher details --}}

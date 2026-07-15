@@ -17,7 +17,7 @@
 </head>
 <body>
     <div class="no-print">
-        <button onclick="window.print()">🖨 {{ __('Print') }}</button>
+        <button onclick="window.print()">{{ __('Print') }}</button>
         {{ __('Tip: print one sheet per student. Show the answer options on the digibord.') }}
     </div>
     <div class="sheet">

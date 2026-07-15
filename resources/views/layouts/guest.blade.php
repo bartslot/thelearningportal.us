@@ -15,7 +15,7 @@
         {{-- Logo --}}
         <div class="text-center mb-8">
             <a href="{{ route('home') }}" class="inline-flex flex-col items-center gap-2">
-                <span class="text-5xl">🏛️</span>
+                <x-icons.building-library class="w-12 h-12 text-amber-400" />
                 <span class="font-cinzel text-2xl font-bold text-amber-400 tracking-wide">
                     The Learning Portal
                 </span>

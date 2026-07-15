@@ -6,7 +6,7 @@
     <button type="button" @click="open = !open"
             class="btn btn-circle btn-sm border-none bg-fuchsia-600 text-white shadow-lg hover:bg-fuchsia-500"
             title="Dev test tools (local only)">
-        <span x-show="!open">🧪</span>
+        <span x-show="!open"><x-icons.beaker class="w-5 h-5" /></span>
         <span x-show="open" x-cloak>✕</span>
     </button>
 
@@ -15,7 +15,7 @@
          class="absolute bottom-12 right-0 w-72 rounded-xl border border-fuchsia-700/60 bg-slate-900 p-4 shadow-2xl">
 
         <div class="mb-3 flex items-center gap-2">
-            <span class="text-lg">🧪</span>
+            <x-icons.beaker class="w-5 h-5 text-fuchsia-400" />
             <div class="text-sm font-semibold text-fuchsia-300">Test tools</div>
             <span class="badge badge-xs border-fuchsia-700 bg-fuchsia-900/50 text-fuchsia-200">local</span>
         </div>
@@ -36,27 +36,33 @@
                 <button type="button" wire:click="seedResults(false)"
                         wire:loading.attr="disabled" wire:target="seedResults"
                         class="btn btn-sm btn-primary justify-start">
-                    <span wire:loading.remove wire:target="seedResults">➕ Seed 12 results</span>
+                    <span wire:loading.remove wire:target="seedResults" class="flex items-center gap-2">
+                        <x-icons.plus class="w-4 h-4" />
+                        Seed 12 results
+                    </span>
                     <span wire:loading wire:target="seedResults" class="loading loading-spinner loading-xs"></span>
                 </button>
 
                 <button type="button" wire:click="seedResults(true)"
                         wire:loading.attr="disabled" wire:target="seedResults"
                         class="btn btn-sm btn-secondary justify-start">
-                    👥 Seed + test class
+                    <x-icons.users class="w-4 h-4" />
+                    Seed + test class
                 </button>
 
                 <button type="button" wire:click="downloadPaperSheets"
                         wire:loading.attr="disabled" wire:target="downloadPaperSheets"
                         class="btn btn-sm btn-outline justify-start">
-                    📸 Download test answer sheets
+                    <x-icons.camera class="w-4 h-4" />
+                    Download test answer sheets
                 </button>
 
                 <button type="button" wire:click="clearResults"
                         wire:confirm="Delete ALL results for this lesson?"
                         wire:loading.attr="disabled" wire:target="clearResults"
                         class="btn btn-sm btn-outline btn-error justify-start">
-                    🗑 Clear results
+                    <x-icons.trash class="w-4 h-4" />
+                    Clear results
                 </button>
             </div>
             <p class="mt-2 text-[0.65rem] leading-snug text-slate-500">

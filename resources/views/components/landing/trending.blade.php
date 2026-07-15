@@ -34,28 +34,28 @@
 
     $features = [
         [
-            'title' => 'Interactive Lessons',
-            'description' => 'Interaction energizes your class. Techniques that prompt students to respond in real time keep attention high and make the material easier to absorb.',
-            'image' => asset('history/6history.webp'),
-            'icon' => '📚',
+            ‘title’ => ‘Interactive Lessons’,
+            ‘description’ => ‘Interaction energizes your class. Techniques that prompt students to respond in real time keep attention high and make the material easier to absorb.’,
+            ‘image’ => asset(‘history/6history.webp’),
+            ‘icon’ => ‘book-open’,
         ],
         [
-            'title' => 'Engaged Students',
-            'description' => 'Learning can be fun. With gamification, lessons feel active and memorable, improving engagement and retention in class.',
-            'image' => asset('history/12history.webp'),
-            'icon' => '🎮',
+            ‘title’ => ‘Engaged Students’,
+            ‘description’ => ‘Learning can be fun. With gamification, lessons feel active and memorable, improving engagement and retention in class.’,
+            ‘image’ => asset(‘history/12history.webp’),
+            ‘icon’ => ‘puzzle-piece’,
         ],
         [
-            'title' => 'Track Progress',
-            'description' => 'Track each student’s progress and see how lessons perform through a clear dashboard built for teachers.',
-            'image' => asset('history/18history.webp'),
-            'icon' => '📊',
+            ‘title’ => ‘Track Progress’,
+            ‘description’ => ‘Track each student’s progress and see how lessons perform through a clear dashboard built for teachers.’,
+            ‘image’ => asset(‘history/18history.webp’),
+            ‘icon’ => ‘chart-bar’,
         ],
         [
-            'title' => 'Made for Teachers',
-            'description' => 'The editor helps teachers refine, adjust, and enhance content. Building a new lesson is faster and easier with the right tools.',
-            'image' => asset('history/24history.webp'),
-            'icon' => '👩‍🏫',
+            ‘title’ => ‘Made for Teachers’,
+            ‘description’ => ‘The editor helps teachers refine, adjust, and enhance content. Building a new lesson is faster and easier with the right tools.’,
+            ‘image’ => asset(‘history/24history.webp’),
+            ‘icon’ => ‘academic-cap’,
         ],
     ];
 @endphp
@@ -141,7 +141,10 @@
                                     </span>
                                     <div class="min-w-0">
                                         <p class="text-[9px] font-semibold uppercase tracking-[0.3em] text-sky-100/70">Tool</p>
-                                        <p class="truncate text-[10px] font-medium text-white/85">{{ $feature['icon'] }} {{ $feature['title'] }}</p>
+                                        <p class="truncate text-[10px] font-medium text-white/85 flex items-center gap-1">
+                                            <x-dynamic-component :component="'icons.'.$feature['icon']" class="w-4 h-4 flex-shrink-0" />
+                                            <span>{{ $feature['title'] }}</span>
+                                        </p>
                                     </div>
                                 </div>
                             </div>

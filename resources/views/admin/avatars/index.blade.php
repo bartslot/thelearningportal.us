@@ -19,7 +19,9 @@
                          alt="{{ $avatar->name }}"
                          class="h-16 w-16 flex-shrink-0 rounded-xl object-cover border border-slate-700">
                 @else
-                    <div class="h-16 w-16 flex-shrink-0 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl">🎭</div>
+                    <div class="h-16 w-16 flex-shrink-0 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+                        <x-icons.user-circle class="w-8 h-8 text-slate-500" />
+                    </div>
                 @endif
 
                 {{-- Info --}}
@@ -59,7 +61,9 @@
             </div>
         @empty
             <div class="rounded-2xl border border-dashed border-slate-700 p-10 text-center">
-                <p class="text-2xl mb-2">🎭</p>
+                <div class="mb-2 flex justify-center">
+                    <x-icons.user-circle class="w-8 h-8 text-slate-500" />
+                </div>
                 <p class="text-sm text-slate-400">No avatars yet. Run <code class="text-amber-400">php artisan db:seed --class=AvatarSeeder</code> to create The Professor.</p>
             </div>
         @endforelse

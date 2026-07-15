@@ -10,7 +10,8 @@
         </div>
         <div class="flex flex-shrink-0 items-center gap-3">
             <a href="{{ route('teacher.lessons.chat') }}" class="btn btn-primary">
-                ✨ {{ __('Quick lesson (chat)') }}
+                <x-icons.sparkles class="w-4 h-4" />
+                {{ __('Quick lesson (chat)') }}
             </a>
             <a href="{{ route('teacher.lessons.create') }}"
                class="flex-shrink-0 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-colors">
@@ -25,7 +26,9 @@
     {{-- ── Lesson card grid ────────────────────────────────────────────────── --}}
     @if($lessons->isEmpty())
         <div class="rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
-            <p class="text-2xl mb-3">🏛️</p>
+            <div class="mb-3 flex justify-center">
+                <x-icons.building-library class="w-8 h-8 text-slate-500" />
+            </div>
             <p class="text-sm font-medium text-slate-300">{{ __('No lessons yet') }}</p>
             <p class="mt-1 text-sm text-slate-400">{{ __('Create your first AI-generated history lesson to get started.') }}</p>
             <a href="{{ route('teacher.lessons.create') }}"
@@ -63,16 +66,25 @@
 
                     {{-- Results button — sits above the card-wide link so it stays independently clickable --}}
                     <a href="{{ route('teacher.lessons.results', $lesson) }}"
-                       class="btn btn-xs btn-outline absolute left-3 top-3 z-20">📊 {{ __('Results') }}</a>
+                       class="btn btn-xs btn-outline absolute left-3 top-3 z-20">
+                        <x-icons.chart-bar class="w-3.5 h-3.5" />
+                        {{ __('Results') }}
+                    </a>
 
                     {{-- Print handout — same z-layer trick as the results button --}}
                     <a href="{{ route('teacher.lessons.print.handout', $lesson) }}" target="_blank"
-                       class="btn btn-xs btn-outline absolute left-3 top-10 z-20">🖨️ {{ __('Print') }}</a>
+                       class="btn btn-xs btn-outline absolute left-3 top-10 z-20">
+                        <x-icons.printer class="w-3.5 h-3.5" />
+                        {{ __('Print') }}
+                    </a>
 
                     {{-- Game pack — only once GenerateGamePack has stored the PDF --}}
                     @if ($lesson->game_pack_path)
                         <a href="{{ route('teacher.lessons.print.game-pack', $lesson) }}" target="_blank"
-                           class="btn btn-xs btn-outline absolute left-3 top-[4.5rem] z-20">🎲 {{ __('Download spelpakket (PDF)') }}</a>
+                           class="btn btn-xs btn-outline absolute left-3 top-[4.5rem] z-20">
+                            <x-icons.cube class="w-3.5 h-3.5" />
+                            {{ __('Download spelpakket (PDF)') }}
+                        </a>
                     @endif
 
                     {{-- Card shell — 5:8 portrait ratio --}}
@@ -90,8 +102,8 @@
                                  class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]">
                         @else
                             {{-- Fallback gradient when no image yet --}}
-                            <div class="h-full w-full bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 flex items-center justify-center text-4xl opacity-40">
-                                🏛️
+                            <div class="h-full w-full bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 flex items-center justify-center opacity-40">
+                                <x-icons.building-library class="w-10 h-10" />
                             </div>
                         @endif
 

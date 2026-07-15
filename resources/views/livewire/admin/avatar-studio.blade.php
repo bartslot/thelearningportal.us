@@ -55,7 +55,7 @@
 
         {{-- ── Tab bar ─────────────────────────────────────────────────────────── --}}
         <div class="flex gap-1 border-b border-slate-800">
-            @foreach([['image', '🖼️ Image'], ['voice', '🎙️ Voice Studio'], ['settings', '⚙️ Settings'], ['samples', '🎧 All samples']] as [$tab, $label])
+            @foreach([['image', 'Image'], ['voice', 'Voice Studio'], ['settings', 'Settings'], ['samples', 'All samples']] as [$tab, $label])
                 <button
                     @click="activeTab = '{{ $tab }}'"
                     :class="activeTab === '{{ $tab }}'
@@ -123,7 +123,7 @@
 
             {{-- Current active voice --}}
             <div class="rounded-2xl border border-amber-800/40 bg-amber-950/20 p-5 flex items-center gap-4">
-                <span class="text-2xl">🎙️</span>
+                <x-icons.microphone class="w-8 h-8 text-amber-400 flex-shrink-0" />
                 <div>
                     <p class="text-xs text-amber-400 uppercase tracking-widest mb-0.5">Active voice</p>
                     <p class="text-sm font-medium text-slate-100">
@@ -160,7 +160,7 @@
                 {{-- Language filter (edge has real languages; curated lists just get Featured/All) --}}
                 <div class="mb-2 flex flex-wrap items-center gap-3">
                     <select wire:model.live="languageFilter" class="select select-sm select-bordered bg-slate-900 w-56">
-                        <option value="featured">⭐ {{ __('Featured — best per language') }}</option>
+                        <option value="featured">{{ __('Featured — best per language') }}</option>
                         <option value="all">{{ __('All languages') }}</option>
                         @foreach($this->voiceLanguages as $code => $label)
                             <option value="{{ $code }}">{{ $label }}</option>
@@ -182,16 +182,15 @@
                                         @if($sortBy === $col)<span class="text-amber-400">{{ $sortDir === 'asc' ? '▲' : '▼' }}</span>@endif
                                     </th>
                                 @endforeach
-                                <th class="whitespace-nowrap">{{ __('Preferred') }}</th>
-                                <th class="w-16 text-right">{{ __('Active') }}</th>
+                                <th class="whitespace-nowrap text-right">{{ __('Used') }}</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($this->voiceRows as $row)
                                 <tr wire:key="vrow-{{ $previewProvider }}-{{ $row['id'] }}"
-                                    wire:click="selectVoice('{{ $row['id'] }}')"
                                     x-on:click="playPreview('{{ $row['id'] }}', '{{ $row['preview_url'] }}')"
-                                    class="cursor-pointer hover:bg-slate-800/60 {{ $voice_id === $row['id'] ? 'bg-amber-950/30' : '' }}">
+                                    class="cursor-pointer hover:bg-slate-800/60 {{ $voice_id === $row['id'] ? 'bg-amber-950/30' : '' }}"
+                                    title="{{ __('Click to hear this voice') }}">
                                     <td x-on:click.stop>
                                         @if($row['preview_url'])
                                             <button x-on:click="playPreview('{{ $row['id'] }}', '{{ $row['preview_url'] }}')"
@@ -207,20 +206,22 @@
                                     </td>
                                     <td class="whitespace-nowrap">{{ $row['flag'] }} {{ $row['language'] }}</td>
                                     <td>{{ $row['gender'] }}</td>
-                                    <td x-on:click.stop>
+                                    {{-- USED: the single voice-selection control — sets this voice as the
+                                         narrator for its language AND the avatar's active base voice. --}}
+                                    <td x-on:click.stop class="text-right">
                                         @if($previewProvider === 'edge_tts')
-                                            {{-- Edge voice: tick = preferred narrator for ITS language --}}
-                                            <label class="flex items-center gap-1.5 cursor-pointer text-xs text-slate-400">
+                                            {{-- Edge voice: tick = use for ITS language --}}
+                                            <label class="flex items-center justify-end gap-1.5 cursor-pointer text-xs {{ ($avatar->voice_map[$row['lang']] ?? null) === $row['id'] ? 'text-amber-300 font-medium' : 'text-slate-400' }}">
                                                 <input type="checkbox" class="checkbox checkbox-xs checkbox-warning"
-                                                       wire:click="setPreferred('{{ $row['lang'] }}', '{{ $row['id'] }}')"
+                                                       wire:click="useVoice('{{ $row['lang'] }}', '{{ $row['id'] }}')"
                                                        @checked(($avatar->voice_map[$row['lang']] ?? null) === $row['id'])>
-                                                {{ strtoupper($row['lang']) }}
+                                                {{ __('Use for') }} {{ strtoupper($row['lang']) }}
                                             </label>
                                         @else
-                                            {{-- Multilingual voice: pick WHICH language it becomes preferred for --}}
-                                            <select wire:change="setPreferred($event.target.value, '{{ $row['id'] }}')"
-                                                    class="select select-xs select-bordered bg-slate-900 w-28">
-                                                <option value="">{{ __('Prefer for…') }}</option>
+                                            {{-- Multilingual voice: pick WHICH language it is used for --}}
+                                            <select wire:change="useVoice($event.target.value, '{{ $row['id'] }}')"
+                                                    class="select select-xs select-bordered bg-slate-900 w-32">
+                                                <option value="">{{ __('Use for…') }}</option>
                                                 @foreach(['nl' => 'Nederlands', 'en' => 'English', 'de' => 'Deutsch', 'fr' => 'Français', 'it' => 'Italiano', 'es' => 'Español'] as $c => $l)
                                                     <option value="{{ $c }}" @selected(($avatar->voice_map[$c] ?? null) === $row['id'])>
                                                         {{ $l }}{{ ($avatar->voice_map[$c] ?? null) === $row['id'] ? ' ✓' : '' }}
@@ -229,12 +230,9 @@
                                             </select>
                                         @endif
                                     </td>
-                                    <td class="text-right">
-                                        @if($voice_id === $row['id'])<span class="text-amber-400">✓</span>@endif
-                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">{{ __('No voices for this filter.') }}</td></tr>
+                                <tr><td colspan="5" class="py-8 text-center text-sm text-slate-500">{{ __('No voices for this filter.') }}</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -332,7 +330,9 @@
                 </div>
             @else
                 <div class="rounded-2xl border border-dashed border-slate-700 p-8 text-center">
-                    <p class="text-2xl mb-2">🎙️</p>
+                    <div class="mb-2 flex justify-center">
+                        <x-icons.microphone class="w-8 h-8 text-slate-500" />
+                    </div>
                     <p class="text-sm text-slate-400">No samples yet — generate one above to start auditioning voices.</p>
                 </div>
             @endif

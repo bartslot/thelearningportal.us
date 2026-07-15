@@ -3,25 +3,25 @@ use App\Enums\LessonStatus;
 
 // Per-status config: icon, message, base progress pct (null = use scene progress)
 $statusSteps = [
-    LessonStatus::SourceReady->value      => ['icon' => '⏳', 'label' => 'Your lesson is in the queue — starting up…',                         'pct' =>  2],
-    LessonStatus::FetchingSources->value  => ['icon' => '📡', 'label' => 'Reading up on the topic — looking it up on Wikipedia…',              'pct' =>  8],
-    LessonStatus::Outlining->value        => ['icon' => '🧠', 'label' => 'Planning the story — deciding what to cover and in what order…',     'pct' => 18],
-    LessonStatus::ScenesGenerating->value => ['icon' => '✍️', 'label' => 'Writing the lesson — creating each scene, image and narration…',    'pct' => null],
-    LessonStatus::ScenesReady->value      => ['icon' => '📝', 'label' => 'Almost there — writing quiz questions for your students…',           'pct' => 95],
-    LessonStatus::Configuring->value      => ['icon' => '✅', 'label' => 'Your lesson is ready!',                                              'pct' => 100],
+    LessonStatus::SourceReady->value      => ['icon' => 'spinner', 'label' => 'Your lesson is in the queue — starting up…',                         'pct' =>  2],
+    LessonStatus::FetchingSources->value  => ['icon' => 'signal', 'label' => 'Reading up on the topic — looking it up on Wikipedia…',              'pct' =>  8],
+    LessonStatus::Outlining->value        => ['icon' => 'light-bulb', 'label' => 'Planning the story — deciding what to cover and in what order…',     'pct' => 18],
+    LessonStatus::ScenesGenerating->value => ['icon' => 'pencil', 'label' => 'Writing the lesson — creating each scene, image and narration…',    'pct' => null],
+    LessonStatus::ScenesReady->value      => ['icon' => 'document-text', 'label' => 'Almost there — writing quiz questions for your students…',           'pct' => 95],
+    LessonStatus::Configuring->value      => ['icon' => 'check-circle', 'label' => 'Your lesson is ready!',                                              'pct' => 100],
 ];
 
 $pipelineOrder = ['fetching_sources' => 0, 'outlining' => 1, 'scenes_generating' => 2, 'scenes_ready' => 3];
 
 $currentStatus  = $lesson->status->value;
 $currentOrder   = $pipelineOrder[$currentStatus] ?? -1;
-$step           = $statusSteps[$currentStatus] ?? ['icon' => '⏳', 'label' => 'Processing…', 'pct' => 2];
+$step           = $statusSteps[$currentStatus] ?? ['icon' => 'spinner', 'label' => 'Processing…', 'pct' => 2];
 
 // The pipeline parks at ScenesReady after the quiz job finishes, and polling has stopped by
 // then — without this the page says "writing quiz questions… 95%" forever even though
 // everything is done. Once quiz questions exist, tell the teacher to continue.
 if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->exists()) {
-    $step = ['icon' => '✅', 'label' => 'Your lesson is ready — continue to configure it!', 'pct' => 100];
+    $step = ['icon' => 'check-circle', 'label' => 'Your lesson is ready — continue to configure it!', 'pct' => 100];
 }
 
 // Progress bar value — scenes phase maps scene progress into 20-94 range
@@ -52,7 +52,7 @@ $isFailed  = $lesson->status === LessonStatus::Failed;
 
             {{-- Status headline --}}
             <div class="flex items-center gap-2">
-                <span class="text-xl leading-none">{{ $step['icon'] }}</span>
+                <x-dynamic-component :component="'icons.'.$step['icon']" class="w-6 h-6 flex-shrink-0" />
                 <h2 class="text-base font-semibold text-amber-300">{!! $step['label'] !!}</h2>
                 @if (! $isDone)
                     <span class="w-4 h-4 border-2 border-amber-400/60 border-t-amber-400 rounded-full animate-spin shrink-0"></span>
@@ -145,9 +145,9 @@ $isFailed  = $lesson->status === LessonStatus::Failed;
         @endif
     @endif
 
-    <div class="flex justify-end gap-3 pt-2">
+    <div class="relative flex items-center justify-center pt-2">
         <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 1]) }}"
-           wire:navigate class="btn btn-outline">← Edit Settings</a>
+           wire:navigate class="btn btn-outline absolute left-0">← Edit Settings</a>
         <button wire:click="continueToConfigure"
                 @disabled(! $this->canContinue)
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-40">

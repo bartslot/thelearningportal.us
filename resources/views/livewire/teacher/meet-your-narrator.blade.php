@@ -40,8 +40,8 @@
                     >
                 @else
                     <div class="h-32 w-32 sm:h-40 sm:w-40 rounded-2xl bg-slate-800 border-2 border-slate-700
-                                flex items-center justify-center text-5xl">
-                        🎓
+                                flex items-center justify-center">
+                        <x-icons.academic-cap class="w-6 h-6 text-slate-500" />
                     </div>
                 @endif
 
@@ -84,7 +84,7 @@
                                        px-5 py-2.5 text-sm font-semibold text-emerald-300
                                        hover:bg-emerald-900/60 hover:border-emerald-500 transition-all"
                             >
-                                <span class="text-lg">👍</span>
+                                <x-icons.hand-thumb-up class="w-5 h-5" />
                                 Yes, I love it!
                             </button>
                             <button
@@ -93,7 +93,7 @@
                                        px-5 py-2.5 text-sm font-medium text-slate-400
                                        hover:border-rose-700 hover:text-rose-400 transition-all"
                             >
-                                <span class="text-lg">👎</span>
+                                <x-icons.hand-thumb-down class="w-5 h-5" />
                                 Not really
                             </button>
                         </div>
@@ -114,7 +114,7 @@
              class="h-8 w-8 rounded-lg object-cover border border-slate-700 flex-shrink-0">
     @endif
     <p class="text-sm text-slate-400">
-        {{ $feedback->liked ? '🎉 Great! The Professor will narrate your lessons.' : '📝 Noted — your feedback has been sent to the admin.' }}
+        {{ $feedback->liked ? 'Great! The Professor will narrate your lessons.' : 'Noted — your feedback has been sent to the admin.' }}
     </p>
     <button wire:click="dismiss" class="ml-auto text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0">✕</button>
 </div>

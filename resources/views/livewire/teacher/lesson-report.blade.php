@@ -19,10 +19,21 @@
                 <option value="90">{{ __('Last 90 days') }}</option>
                 <option value="all">{{ __('All time') }}</option>
             </select>
-            <button wire:click="exportCsv" class="btn btn-sm btn-outline">⬇ CSV</button>
-            <a href="{{ route('teacher.lessons.answer-sheet', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">🖨 {{ __('Answer sheets') }}</a>
-            <a href="{{ route('teacher.lessons.print.handout', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">📄 {{ __('Print handout') }}</a>
-            <label for="paper-import" class="btn btn-sm btn-warning">📷 {{ __('Import paper answers') }}</label>
+            <button wire:click="exportCsv" class="btn btn-sm btn-outline">
+                <x-icons.arrow-down-tray class="w-4 h-4" />
+                CSV
+            </button>
+            <a href="{{ route('teacher.lessons.answer-sheet', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">
+                <x-icons.printer class="w-4 h-4" />
+                {{ __('Answer sheets') }}
+            </a>
+            <a href="{{ route('teacher.lessons.print.handout', $lesson) }}" target="_blank" class="btn btn-sm btn-outline">
+                {{ __('Print handout') }}
+            </a>
+            <label for="paper-import" class="btn btn-sm btn-warning">
+                <x-icons.camera class="w-4 h-4" />
+                {{ __('Import paper answers') }}
+            </label>
         </div>
     </div>
 
@@ -122,7 +133,11 @@
                         <div class="mt-2 space-y-1 border-t border-base-300 pt-2 text-sm">
                             @foreach ($this->drilldown as $a)
                                 <div class="flex items-start gap-2">
-                                    <span>{{ $a['was_correct'] ? '✅' : '❌' }}</span>
+                                    @if($a['was_correct'])
+                                        <x-icons.check-circle class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                                    @else
+                                        <x-icons.x-circle class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
+                                    @endif
                                     <span class="flex-1">{{ $a['asks_ahead'] ? '⤳ ' : '' }}{{ $a['question_text'] }}
                                         <span class="opacity-60">— {{ $a['chosen_text'] }}@if(!$a['was_correct']) ({{ __('correct') }}: {{ $a['correct_text'] }})@endif</span>
                                     </span>
@@ -141,7 +156,10 @@
     {{-- Paper import: upload photos of filled answer sheets → review grid → confirm. --}}
     <div class="modal {{ $paperModalOpen || $paperPhotos ? 'modal-open' : '' }}">
         <div class="modal-box max-w-3xl">
-            <h3 class="mb-3 text-lg font-semibold">📷 {{ __('Import paper answers') }}</h3>
+            <h3 class="mb-3 text-lg font-semibold flex items-center gap-2">
+                <x-icons.camera class="w-5 h-5 inline-block" />
+                {{ __('Import paper answers') }}
+            </h3>
             <input id="paper-import" type="file" wire:model="paperPhotos" multiple accept="image/*" class="file-input file-input-bordered w-full" />
             <button wire:click="extractPaper" wire:loading.attr="disabled" class="btn btn-sm btn-warning mt-2">
                 <span wire:loading wire:target="extractPaper" class="loading loading-spinner loading-xs"></span>

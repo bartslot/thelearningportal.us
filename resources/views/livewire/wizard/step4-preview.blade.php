@@ -31,7 +31,10 @@
             </div>
             @if ($lesson->game_pack_path)
                 <a href="{{ route('teacher.lessons.print.game-pack', $lesson) }}" target="_blank"
-                   class="btn btn-sm btn-outline shadow-lg">🎲 {{ __('Download spelpakket (PDF)') }}</a>
+                   class="btn btn-sm btn-outline shadow-lg">
+                    <x-icons.cube class="w-4 h-4" />
+                    {{ __('Download spelpakket (PDF)') }}
+                </a>
             @endif
         @else
             <button wire:click="publish"
@@ -67,8 +70,8 @@
         </x-splash-screen>
     @endif
 
-    {{-- Play / Back floating --}}
-    <div class="fixed bottom-28 inset-x-0 z-30 flex items-center justify-center gap-3">
+    {{-- Play / Back floating — bottom strip (scenes now live in the left rail) --}}
+    <div class="fixed bottom-6 inset-x-0 z-30 flex items-center justify-center gap-3 pl-44">
         <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 3]) }}"
            wire:navigate class="btn btn-sm btn-outline">← Configure</a>
         <button type="button" @click="togglePlay()"

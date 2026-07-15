@@ -9,14 +9,18 @@
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <a href="{{ route('admin.avatars.index') }}"
            class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 hover:border-amber-600/50 transition-colors group">
-            <p class="text-3xl mb-3">🎭</p>
+            <div class="mb-3">
+                <x-icons.user-circle class="w-8 h-8 text-slate-500" />
+            </div>
             <h2 class="font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">Avatars</h2>
             <p class="text-sm text-slate-500 mt-1">{{ $avatarCount }} configured</p>
         </a>
 
         <a href="{{ route('teacher.dashboard') }}"
            class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 hover:border-amber-600/50 transition-colors group">
-            <p class="text-3xl mb-3">📚</p>
+            <div class="mb-3">
+                <x-icons.book-open class="w-8 h-8 text-slate-500" />
+            </div>
             <h2 class="font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">Lessons</h2>
             <p class="text-sm text-slate-500 mt-1">Manage all lessons</p>
         </a>
