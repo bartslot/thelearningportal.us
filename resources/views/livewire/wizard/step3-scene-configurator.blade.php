@@ -4,7 +4,7 @@
 
 <div class="contents" x-data="step3SceneConfigurator" wire:poll.3s
      x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view.objects ? '13rem' : '0px');
-               document.documentElement.style.setProperty('--ruler-w', $store.view.rulers ? '16px' : '0px');
+               document.documentElement.style.setProperty('--ruler-w', $store.view.rulers ? '20px' : '0px');
                window.__placeRulers && requestAnimationFrame(window.__placeRulers)">
 
     {{-- Letterboxed canvas stage. The lesson lives in the WORK AREA between the fixed chrome —
@@ -22,7 +22,7 @@
                 --lbw: calc(100vw - var(--work-left) - var(--work-right));
                 --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset)));
                 left: var(--work-left); right: var(--work-right);
-                height: var(--lbh); top: var(--top-inset);"
+                height: var(--lbh); top: calc(var(--top-inset) + (100vh - var(--top-inset) - var(--lbh)) / 2);"
          data-character-url=""
          data-territory="{{ $lesson->topic }}"
          data-flag="{{ $lesson->territoryFlagUrl() }}"
@@ -229,16 +229,31 @@
         <header
             @pointerdown="startInspectorDrag($event)"
             class="card-title flex min-h-11 cursor-grab select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-2 text-sm active:cursor-grabbing">
-            {{-- Drag grip (left) --}}
-            <span class="flex items-center text-slate-600" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
-                    <circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/>
-                    <circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/>
-                    <circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>
-                </svg>
-            </span>
-            {{-- No panel title: the right panel is purely the per-scene editor now. Global
-                 settings live on the top toolbar (Settings button), not here. --}}
+            {{-- Drag grip + Scene / Settings switch. These links swap the panel body between the
+                 per-scene editor and the lesson-global settings (Story + Music). --}}
+            <div class="flex min-w-0 items-center gap-2">
+                <span class="flex shrink-0 items-center text-slate-600" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
+                        <circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/>
+                        <circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/>
+                        <circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>
+                    </svg>
+                </span>
+                <div class="flex items-center gap-0.5 rounded-lg bg-base-300 p-0.5" @pointerdown.stop>
+                    <button type="button" @click.stop wire:click="$set('panelView', 'scene')"
+                            @class([
+                                'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+                                'bg-amber-500 text-slate-950' => $panelView === 'scene',
+                                'text-slate-400 hover:text-slate-100' => $panelView !== 'scene',
+                            ])>{{ __('Scene') }}</button>
+                    <button type="button" @click.stop wire:click="$set('panelView', 'settings')"
+                            @class([
+                                'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+                                'bg-amber-500 text-slate-950' => $panelView === 'settings',
+                                'text-slate-400 hover:text-slate-100' => $panelView !== 'settings',
+                            ])>{{ __('Settings') }}</button>
+                </div>
+            </div>
             <div class="flex shrink-0 items-center gap-1">
                 <button type="button"
                         @pointerdown.stop
@@ -273,6 +288,7 @@
              x-transition.opacity.duration.150ms
              class="card-body overflow-y-auto p-4"
              :style="inspectorBodyStyle()">
+            @if ($panelView === 'scene')
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
                 @if ($sceneModel->kind === 'map')
@@ -302,21 +318,9 @@
             @if ($this->showsMetersPanel())
                 <x-lesson.story-meters-panel :meters-draft="$metersDraft" />
             @endif
-        </div>
-    </aside>
 
-    {{-- Global class & lesson settings — opened from the Settings button on the top toolbar.
-         Holds the Story link and the class Background Music (both lesson-wide, not per-scene). --}}
-    <div class="modal modal-bottom sm:modal-middle {{ $settingsOpen ? 'modal-open' : '' }}"
-         role="dialog" aria-modal="true">
-        <div class="modal-box max-w-lg border border-slate-700 bg-base-300">
-            <div class="mb-4 flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-slate-100">{{ __('Class & lesson settings') }}</h2>
-                <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
-                        aria-label="Close" wire:click="$set('settingsOpen', false)">✕</button>
-            </div>
-
-            {{-- ══ Story ══════════════════════════════════════════ --}}
+            @else
+            {{-- ══ SETTINGS view — lesson-global Story + class Background Music ══════════════ --}}
             <div class="space-y-1.5">
                 <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Story') }}</span>
                 <p class="text-xs text-slate-400">{{ __('The narrative arc and framework this lesson is built on.') }}</p>
@@ -326,55 +330,44 @@
                 </a>
             </div>
 
-            {{-- ── Background Music (global) ──────────────────── --}}
             <div class="mt-6 pt-4 border-t border-slate-700/50" x-data="musicStrip">
-                <div class="flex items-center justify-between mb-2">
+                <div class="mb-2 flex items-center justify-between">
                     <span class="text-[10px] uppercase tracking-widest text-slate-500">Background Music</span>
                     @if($lesson->background_music)
-                        <button wire:click="selectMusic('')"
-                                class="text-[10px] text-slate-500 hover:text-rose-400 transition-colors">✕ off</button>
+                        <button wire:click="selectMusic('')" class="text-[10px] text-slate-500 transition-colors hover:text-rose-400">✕ off</button>
                     @endif
                 </div>
-                <div class="flex gap-2 pb-2 overflow-x-auto scroll-smooth" style="scroll-snap-type:x mandatory; scrollbar-width:none;">
+                <div class="grid grid-cols-3 gap-2">
                     @foreach($this->musicTracks() as $track)
                     @php $url = asset('sound/bg-music/' . $track['file']); @endphp
                     <button
                         x-on:click="toggle('{{ $track['id'] }}', '{{ $url }}')"
                         wire:click="selectMusic('{{ $track['id'] }}')"
-                        :class="selectedId === '{{ $track['id'] }}'
-                            ? 'border-amber-400'
-                            : 'border-slate-700/60 hover:border-indigo-500/50'"
-                        class="{{ $track['gradient_class'] }} shrink-0 w-16 rounded-xl p-2 border relative cursor-pointer transition-all"
-                        style="scroll-snap-align:start; min-height:72px;"
+                        :class="selectedId === '{{ $track['id'] }}' ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50'"
+                        class="{{ $track['gradient_class'] }} relative cursor-pointer rounded-xl border p-2 transition-all"
+                        style="min-height:64px;"
                         title="{{ $track['label'] }}"
                         x-init="@if($lesson->background_music === $track['id']) selectedId = '{{ $track['id'] }}' @endif"
                     >
-                        <div class="absolute top-1 right-1 z-10">
-                            <span x-show="playingId === '{{ $track['id'] }}'"
-                                  class="flex gap-0.5 items-end h-3 text-indigo-400">
-                                <span class="wave-bar h-3"></span>
-                                <span class="wave-bar h-2"></span>
-                                <span class="wave-bar h-3"></span>
+                        <div class="absolute right-1 top-1 z-10">
+                            <span x-show="playingId === '{{ $track['id'] }}'" class="flex h-3 items-end gap-0.5 text-indigo-400">
+                                <span class="wave-bar h-3"></span><span class="wave-bar h-2"></span><span class="wave-bar h-3"></span>
                             </span>
-                            <span x-show="playingId !== '{{ $track['id'] }}' && selectedId === '{{ $track['id'] }}'"
-                                  class="text-amber-400 text-xs leading-none">✓</span>
+                            <span x-show="playingId !== '{{ $track['id'] }}' && selectedId === '{{ $track['id'] }}'" class="text-xs leading-none text-amber-400">✓</span>
                         </div>
-                        <div class="flex items-center justify-center h-7 mt-1">
-                            <svg class="w-5 h-5 text-white/50" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/>
-                            </svg>
+                        <div class="mt-1 flex h-6 items-center justify-center">
+                            <svg class="h-5 w-5 text-white/50" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/></svg>
                         </div>
-                        <p class="text-[10px] text-white/80 text-center truncate mt-1 leading-tight">{{ $track['label'] }}</p>
+                        <p class="mt-1 truncate text-center text-[10px] leading-tight text-white/80">{{ $track['label'] }}</p>
                     </button>
                     @endforeach
                 </div>
-                <p class="text-[10px] text-slate-600 mt-1">Click to preview (20s). Selected track plays during lesson.</p>
+                <p class="mt-1 text-[10px] text-slate-600">Click to preview (20s). Selected track plays during lesson.</p>
             </div>
+            @endif
         </div>
-        <button type="button" class="modal-backdrop" aria-label="Close"
-                wire:click="$set('settingsOpen', false)"></button>
-    </div>
-        
+    </aside>
+
     {{-- Bottom CTA removed: the Play button (top toolbar) opens the player, and the back
          arrow (top-left) exits to the dashboard. --}}
 
@@ -410,23 +403,103 @@
          Internal notes. Persisted to localStorage; the rail also syncs its Scenes checkbox. --}}
     @push('scripts')
     <script>
+    // Object-list row icons (from the shared ui_icons pack). Type glyphs replace the old
+    // TEXT/PANEL/BG text tags. `currentColor` lets each inherit the row's text colour.
+    window.__objIcons = {
+        text:   '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.25 19.5H3.75C3.35218 19.5 2.97064 19.342 2.68934 19.0607C2.40804 18.7794 2.25 18.3978 2.25 18V6C2.25 5.60218 2.40804 5.22064 2.68934 4.93934C2.97064 4.65804 3.35218 4.5 3.75 4.5H20.25C20.6478 4.5 21.0294 4.65804 21.3107 4.93934C21.592 5.22064 21.75 5.60218 21.75 6V18C21.75 18.3978 21.592 18.7794 21.3107 19.0607C21.0294 19.342 20.6478 19.5 20.25 19.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.18335 9.3667C8.80595 9.3667 8.5 9.06075 8.5 8.68335C8.5 8.30595 8.80595 8 9.18335 8H14.8167C15.1941 8 15.5 8.30595 15.5 8.68335C15.5 9.06075 15.1941 9.3667 14.8167 9.3667H12.7882V16.2118C12.7882 16.6471 12.4353 17 12 17C11.5647 17 11.2118 16.6471 11.2118 16.2118V9.3667H9.18335Z" fill="currentColor"/></svg>',
+        panelL: '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.0122 3.86951C21.1166 3.86977 22.0122 4.7651 22.0122 5.86951V18.475L22.0015 18.6791C21.899 19.6874 21.0475 20.4738 20.0122 20.474L20.0112 20.475H3.98779L3.78369 20.4642C2.84228 20.3688 2.0942 19.6204 1.99854 18.6791L1.98779 18.475V5.86951C1.98779 4.76494 2.88322 3.86951 3.98779 3.86951H20.0122ZM10.5522 18.975H20.0122C20.288 18.9747 20.5119 18.7507 20.5122 18.475V5.86951C20.5122 5.59353 20.2881 5.36977 20.0122 5.36951H10.5522V18.975Z" fill="currentColor"/></svg>',
+        panelR: '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.0122 3.86951C21.1168 3.86951 22.0122 4.76494 22.0122 5.86951V18.475C22.0122 19.5796 21.1168 20.475 20.0122 20.475H3.98779L3.78369 20.4642C2.84228 20.3688 2.0942 19.6204 1.99854 18.6791L1.98779 18.475V5.86951C1.98779 4.76494 2.88322 3.86951 3.98779 3.86951H20.0122ZM3.98779 5.36951C3.71165 5.36951 3.48779 5.59336 3.48779 5.86951V18.475C3.48806 18.7509 3.71181 18.975 3.98779 18.975H13.4478V5.36951H3.98779Z" fill="currentColor"/></svg>',
+        photo:  '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M2.25 15.75L7.409 10.591C7.61793 10.3821 7.86597 10.2163 8.13896 10.1033C8.41194 9.99018 8.70452 9.93198 9 9.93198C9.29548 9.93198 9.58806 9.99018 9.86104 10.1033C10.134 10.2163 10.3821 10.3821 10.591 10.591L15.75 15.75M14.25 14.25L15.659 12.841C15.8679 12.6321 16.116 12.4663 16.389 12.3533C16.6619 12.2402 16.9545 12.182 17.25 12.182C17.5455 12.182 17.8381 12.2402 18.111 12.3533C18.384 12.4663 18.6321 12.6321 18.841 12.841L21.75 15.75M3.75 19.5H20.25C20.6478 19.5 21.0294 19.342 21.3107 19.0607C21.592 18.7794 21.75 18.3978 21.75 18V6C21.75 5.60218 21.592 5.22064 21.3107 4.93934C21.0294 4.65804 20.6478 4.5 20.25 4.5H3.75C3.35218 4.5 2.97064 4.65804 2.68934 4.93934C2.40804 5.22064 2.25 5.60218 2.25 6V18C2.25 18.3978 2.40804 18.7794 2.68934 19.0607C2.97064 19.342 3.35218 19.5 3.75 19.5ZM14.625 8.25C14.625 8.66421 14.2892 9 13.875 9C13.4608 9 13.125 8.66421 13.125 8.25C13.125 7.83579 13.4608 7.5 13.875 7.5C14.2892 7.5 14.625 7.83579 14.625 8.25Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        solid:  '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.0049 19.6379H9.00488C8.73967 19.6379 8.48531 19.5325 8.29778 19.345C8.11024 19.1574 8.00488 18.9031 8.00488 18.6379V10.6379C8.00488 10.3727 8.11024 10.1183 8.29778 9.93077C8.48531 9.74324 8.73967 9.63788 9.00488 9.63788H20.0049C20.2701 9.63788 20.5245 9.74324 20.712 9.93077C20.8995 10.1183 21.0049 10.3727 21.0049 10.6379V18.6379C21.0049 18.9031 20.8995 19.1574 20.712 19.345C20.5245 19.5325 20.2701 19.6379 20.0049 19.6379Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.1345 9.6989C14.1345 6.75148 11.7451 4.36212 8.79772 4.36212C5.8503 4.36212 3.46095 6.75148 3.46095 9.6989C3.44224 11.3303 4.45651 14.5767 8.41688 14.5767" stroke="currentColor" stroke-width="1.5"/></svg>',
+    };
     // Object list — reads the live text layer (title/text boxes + backing panels) so the teacher
-    // can find and flash-locate objects that overlap on the stage.
+    // can find, flash-locate, and restack objects that overlap on the stage.
     window.objectList = function objectList() {
         return {
             items: [],
+            dragging: false,
+            selectedId: null,
+            _sig: null,
             init() {
                 this.refresh();
-                setInterval(() => { if (window.Alpine?.store('view')?.objects) this.refresh(); }, 2000);
+                setInterval(() => { if (!this.dragging && window.Alpine?.store('view')?.objects) this.refresh(); }, 2000);
+                this.$nextTick(() => this.initSortable());
             },
+            effZ(t) {
+                const layer = window.__lessonTextLayer;
+                if (layer && typeof layer._effZ === 'function') return layer._effZ(t);
+                return Number.isFinite(t.z) ? t.z : (t.kind === 'rect' ? 0 : 1);
+            },
+            iconSvg(obj) { return window.__objIcons[obj.icon] || ''; },
             refresh() {
                 const texts = (window.__lessonTextLayer && window.__lessonTextLayer._texts) || [];
-                const items = texts.map((t) => t.kind === 'rect'
-                    ? { id: t.id, tag: 'Panel', label: (t.side || 'left') + ' half' }
-                    : { id: t.id, tag: 'Text', label: (t.text || 'Text').slice(0, 40) });
-                // The background is the bottom-most object on every scene — always listed last.
-                items.push({ id: '__bg__', tag: 'BG', label: 'Background', bg: true });
+                // Front-most first: the top row is the highest z (drawn last / on top). Ties keep
+                // insertion order. Mirrors the canvas stacking so the list reads like a layers panel.
+                const withZ = texts.map((t, i) => ({ t, i, z: this.effZ(t) }));
+                withZ.sort((a, b) => (b.z - a.z) || (b.i - a.i));
+                const items = withZ.map(({ t }) => t.kind === 'rect'
+                    ? { id: t.id, icon: t.side === 'right' ? 'panelR' : 'panelL', label: (t.side || 'left') + ' half', bg: false }
+                    : { id: t.id, icon: 'text', label: (t.text || 'Text').slice(0, 40), bg: false });
+                // The background is the bottom-most object on every scene — always listed last, not draggable.
+                items.push({ id: '__bg__', icon: 'photo', label: 'Background', bg: true });
+                // Skip the re-render (and its churn under SortableJS) when nothing actually changed —
+                // the 2s poll would otherwise rebuild identical rows and fight the drag layer.
+                const sig = items.map((i) => i.id + ':' + i.icon + ':' + i.label).join('|');
+                if (sig === this._sig) return;
+                this._sig = sig;
                 this.items = items;
+            },
+            // Drag-to-reorder (SortableJS). Top of the list = frontmost; dropping a row restacks
+            // the objects on the canvas (their z-index) and persists it via the layer's onChange.
+            initSortable() {
+                const list = this.$refs.list;
+                if (!list || !window.Sortable || list._objSortable) return;
+                list._objSortable = true;
+                window.Sortable.create(list, {
+                    animation: 150,
+                    // No handle — the whole row drags. Background ([data-bg]) is pinned, and the
+                    // adjust button ([data-nodrag]) opts out so tapping it doesn't start a drag.
+                    draggable: '[data-obj-id]',
+                    filter: '[data-bg], [data-nodrag]',
+                    preventOnFilter: false,         // keep the adjust button's own click working
+                    // Pointer-based dragging (not native HTML5 DnD): more reliable inside this
+                    // fixed-position panel and works consistently across browsers.
+                    forceFallback: true,
+                    fallbackTolerance: 4,
+                    onStart: (evt) => { this.dragging = true; evt.item._objNext = evt.item.nextSibling; },
+                    onEnd: (evt) => {
+                        this.dragging = false;
+                        // Read the new top→bottom order Sortable applied (BG has no data-obj-id).
+                        const ids = [...evt.to.querySelectorAll('[data-obj-id]')].map((el) => el.dataset.objId);
+                        // Undo Sortable's DOM move so Alpine's keyed x-for stays the single source of
+                        // truth (avoids the classic Alpine+Sortable double-move corruption)…
+                        evt.from.insertBefore(evt.item, evt.item._objNext || null);
+                        // …then restack the layer (assigns z + persists) and force a rebuild so Alpine
+                        // renders the new order. _sig is cleared or refresh() would no-op the change.
+                        if (ids.length) window.__lessonTextLayer?.reorder(ids);
+                        this._sig = null;
+                        this.refresh();
+                    },
+                });
+            },
+            // Click a row → select that object: highlight the row, ring the object on the canvas
+            // (the layer broadcasts back so canvas↔list stay in sync), and scroll it into view.
+            select(obj) {
+                this.selectedId = obj.id;
+                if (obj.bg) {
+                    window.__lessonTextLayer?.select?.('__bg__');   // clears any canvas object ring
+                    this.locate(obj);                                // route to the Background inspector
+                    return;
+                }
+                window.__lessonTextLayer?.select?.(obj.id);
+                document.querySelector(`[data-text-id="${obj.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            },
+            // Hover "adjust" icon → select the object, then open its editor: focus a text box
+            // (reveals its font/size/align toolbar) or surface the panel's side/colour bar.
+            edit(obj) {
+                this.select(obj);
+                if (obj.bg) return;   // select() already routed to the Background inspector
+                document.querySelector(`[data-text-id="${obj.id}"] [contenteditable]`)?.focus();
             },
             locate(obj) {
                 if (obj.bg) {
@@ -632,16 +705,39 @@
     {{-- Rulers — hug the actual canvas stage (top edge + left edge), positioned by JS so they
          always sit flush against the canvas and shift right when the rail/object list push it.
          The canvas reserves --ruler-w on its top & left so the rulers never overlap it. --}}
-    <div id="ruler-top" x-show="$store.view.rulers" x-cloak class="pointer-events-none fixed z-30"
-         style="background: #0f172a repeating-linear-gradient(to right, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
+    {{-- Visibility AND position are driven entirely by the JS below (not Alpine x-show), so neither
+         the 3s Livewire poll nor an Alpine re-init can flicker them. wire:ignore keeps the poll off
+         their JS-injected number labels. --}}
+    <div id="ruler-top" wire:ignore class="pointer-events-none fixed z-30"
+         style="display:none; background: #0f172a repeating-linear-gradient(to right, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
                 border-bottom: 1px solid rgba(148,163,184,.3);"></div>
-    <div id="ruler-left" x-show="$store.view.rulers" x-cloak class="pointer-events-none fixed z-30"
-         style="background: #0f172a repeating-linear-gradient(to bottom, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
+    <div id="ruler-left" wire:ignore class="pointer-events-none fixed z-30"
+         style="display:none; background: #0f172a repeating-linear-gradient(to bottom, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
                 border-right: 1px solid rgba(148,163,184,.3);"></div>
     @push('scripts')
     <script>
     (() => {
-        const RW = 16;
+        const RW = 20;
+        // Number labels every 100px, origin (0) at the canvas top-left corner — like Keynote.
+        const buildLabels = (el, len, axis) => {
+            const key = Math.round(len / 100);
+            let layer = el.querySelector('.ruler-nums');
+            if (el._len === key && layer) return;   // rebuild on a 100px change or if morphed away
+            el._len = key;
+            if (!layer) {
+                layer = document.createElement('div');
+                layer.className = 'ruler-nums';
+                layer.style.cssText = 'position:absolute;inset:0;overflow:hidden';
+                el.appendChild(layer);
+            }
+            let html = '';
+            for (let n = 0; n <= len; n += 100) {
+                html += axis === 'x'
+                    ? `<span style="position:absolute;left:${n + 2}px;bottom:1px;font-size:8px;line-height:1;color:#94a3b8;font-variant-numeric:tabular-nums">${n}</span>`
+                    : `<span style="position:absolute;top:${n + 1}px;left:2px;font-size:8px;line-height:1;color:#94a3b8;font-variant-numeric:tabular-nums">${n}</span>`;
+            }
+            layer.innerHTML = html;
+        };
         const boot = () => {
             const canvas = document.getElementById('lesson-canvas-root');
             const top = document.getElementById('ruler-top');
@@ -651,14 +747,141 @@
                 const r = canvas.getBoundingClientRect();
                 Object.assign(top.style, { left: `${r.left}px`, top: `${r.top - RW}px`, width: `${r.width}px`, height: `${RW}px` });
                 Object.assign(left.style, { left: `${r.left - RW}px`, top: `${r.top}px`, width: `${RW}px`, height: `${r.height}px` });
+                buildLabels(top, r.width, 'x');
+                buildLabels(left, r.height, 'y');
             };
-            place();
-            window.__placeRulers = place;   // let the View x-effect nudge it on toggle
-            new ResizeObserver(place).observe(canvas);
-            window.addEventListener('resize', place);
-            // Position-only shifts (rail collapse, object-list toggle) may not resize the canvas
-            // enough to fire the observer — a light poll keeps the rulers glued to the stage.
-            setInterval(() => { if (window.Alpine?.store('view')?.rulers) place(); }, 120);
+            const tick = () => {
+                const on = !!window.Alpine?.store('view')?.rulers;
+                const disp = on ? 'block' : 'none';
+                if (top.style.display !== disp) { top.style.display = disp; left.style.display = disp; }
+                if (on) place();
+            };
+            window.__placeRulers = tick;   // View x-effect nudges visibility + position on toggle
+            tick();
+            new ResizeObserver(() => { if (window.Alpine?.store('view')?.rulers) place(); }).observe(canvas);
+            window.addEventListener('resize', tick);
+            // A light poll keeps the rulers glued to the stage through rail / object-list shifts.
+            setInterval(tick, 120);
+        };
+        if (document.readyState !== 'loading') boot();
+        else document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('livewire:navigated', boot);
+    })();
+    </script>
+    @endpush
+
+    {{-- Ruler guides — drag from a ruler onto the stage to drop a dotted guide line with a live
+         pixel label. Guides are magnetic: an object snaps when dragged within 10px (the snap
+         helper is read by TextOverlayLayer). Session-only; shown with the rulers. --}}
+    @push('scripts')
+    <script>
+    (() => {
+        const AMBER = '#f59e0b';
+        const boot = () => {
+            const canvas = document.getElementById('lesson-canvas-root');
+            const rTop = document.getElementById('ruler-top');
+            const rLeft = document.getElementById('ruler-left');
+            if (!canvas || !rTop || !rLeft) return;
+            document.getElementById('guide-host')?.remove();   // fresh start (SPA nav recreates the canvas)
+
+            const host = document.createElement('div');
+            host.id = 'guide-host';
+            host.style.cssText = 'position:fixed;z-index:20;pointer-events:none;overflow:visible';
+            document.body.appendChild(host);
+
+            const label = document.createElement('div');
+            label.style.cssText = 'position:fixed;z-index:60;pointer-events:none;display:none;background:' + AMBER +
+                ';color:#1a1206;font:600 10px/1.4 ui-sans-serif,system-ui;padding:1px 5px;border-radius:3px;font-variant-numeric:tabular-nums';
+            document.body.appendChild(label);
+            const showLabel = (x, y, t) => { label.textContent = t; label.style.left = (x + 12) + 'px'; label.style.top = (y + 12) + 'px'; label.style.display = 'block'; };
+            const hideLabel = () => { label.style.display = 'none'; };
+
+            const guides = [];
+            let idc = 0;
+            const rect = () => canvas.getBoundingClientRect();
+
+            const layout = () => {
+                const r = rect();
+                host.style.display = window.Alpine?.store('view')?.rulers ? 'block' : 'none';
+                host.style.left = r.left + 'px'; host.style.top = r.top + 'px';
+                host.style.width = r.width + 'px'; host.style.height = r.height + 'px';
+                for (const g of guides) {
+                    if (g.axis === 'v') {
+                        g.el.style.cssText = `position:absolute;top:0;bottom:0;left:${g.frac * r.width}px;width:9px;margin-left:-4px;pointer-events:auto;cursor:ew-resize`;
+                        g.line.style.cssText = 'position:absolute;left:4px;top:0;bottom:0;border-left:1px dotted ' + AMBER;
+                    } else {
+                        g.el.style.cssText = `position:absolute;left:0;right:0;top:${g.frac * r.height}px;height:9px;margin-top:-4px;pointer-events:auto;cursor:ns-resize`;
+                        g.line.style.cssText = 'position:absolute;top:4px;left:0;right:0;border-top:1px dotted ' + AMBER;
+                    }
+                }
+            };
+
+            const moveTo = (g, cx, cy) => {
+                const r = rect();
+                if (g.axis === 'v') { const px = Math.max(0, Math.min(r.width, cx - r.left)); g.frac = px / r.width; showLabel(cx, cy, 'X ' + Math.round(px)); }
+                else { const py = Math.max(0, Math.min(r.height, cy - r.top)); g.frac = py / r.height; showLabel(cx, cy, 'Y ' + Math.round(py)); }
+                layout();
+            };
+            const offCanvas = (cx, cy) => { const r = rect(); return cx < r.left - 10 || cx > r.right + 10 || cy < r.top - 10 || cy > r.bottom + 10; };
+            const del = (g) => { g.el.remove(); const i = guides.indexOf(g); if (i >= 0) guides.splice(i, 1); };
+
+            const startDrag = (g, cx, cy) => {
+                moveTo(g, cx, cy);
+                const mv = (ev) => moveTo(g, ev.clientX, ev.clientY);
+                const up = (ev) => {
+                    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+                    hideLabel();
+                    if (offCanvas(ev.clientX, ev.clientY)) del(g);
+                };
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            };
+
+            const add = (axis) => {
+                const el = document.createElement('div'); const line = document.createElement('div');
+                el.appendChild(line); host.appendChild(el);
+                const g = { id: ++idc, axis, frac: 0, el, line };
+                el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); startDrag(g, e.clientX, e.clientY); });
+                guides.push(g); return g;
+            };
+
+            const pull = (ruler, axis) => {
+                ruler.style.pointerEvents = 'auto';
+                ruler.style.cursor = axis === 'v' ? 'ew-resize' : 'ns-resize';
+                ruler.addEventListener('pointerdown', (e) => { e.preventDefault(); startDrag(add(axis), e.clientX, e.clientY); });
+            };
+            pull(rLeft, 'v'); pull(rTop, 'h');
+
+            // Magnetic snap — TextOverlayLayer calls this with the dragged object's screen rect.
+            window.__guides = {
+                snap(objRect) {
+                    const r = rect(), T = 10; let dx = 0, dy = 0, bestX = T, bestY = T;
+                    for (const g of guides) {
+                        if (g.axis === 'v') {
+                            const gx = r.left + g.frac * r.width;
+                            for (const ox of [objRect.left, (objRect.left + objRect.right) / 2, objRect.right]) {
+                                const d = gx - ox; if (Math.abs(d) <= bestX) { bestX = Math.abs(d); dx = d; }
+                            }
+                        } else {
+                            const gy = r.top + g.frac * r.height;
+                            for (const oy of [objRect.top, (objRect.top + objRect.bottom) / 2, objRect.bottom]) {
+                                const d = gy - oy; if (Math.abs(d) <= bestY) { bestY = Math.abs(d); dy = d; }
+                            }
+                        }
+                    }
+                    return { dx, dy };
+                },
+                // Screen-x of every vertical guide + the canvas rect — TextOverlayLayer uses these
+                // to auto-align a fresh title to a ruler dropped on the left half of the stage.
+                verticals() {
+                    const r = rect();
+                    return { rect: r, xs: guides.filter(g => g.axis === 'v').map(g => r.left + g.frac * r.width) };
+                },
+            };
+
+            layout();
+            new ResizeObserver(layout).observe(canvas);
+            window.addEventListener('resize', layout);
+            setInterval(layout, 150);
         };
         if (document.readyState !== 'loading') boot();
         else document.addEventListener('DOMContentLoaded', boot);
@@ -672,15 +895,31 @@
          No heading — teachers recognise their own objects. --}}
     <div x-show="$store.view.objects" x-cloak x-data="objectList()" x-init="init()"
          @scene-objects-changed.window="refresh()"
+         @scene-object-selected.window="selectedId = $event.detail.id"
          class="fixed z-30 overflow-hidden border-r border-slate-700 bg-slate-900"
          style="left: var(--rail-w, 11rem); width: 13rem; top: 4rem; bottom: 0;">
-        <div class="h-full space-y-0.5 overflow-y-auto p-1.5">
+        <div x-ref="list" class="h-full space-y-0.5 overflow-y-auto p-1.5">
             <template x-for="obj in items" :key="obj.id">
-                <button type="button" @click="locate(obj)"
-                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-800">
-                    <span class="text-[10px] uppercase tracking-wide text-amber-400/80" x-text="obj.tag"></span>
-                    <span class="truncate" x-text="obj.label"></span>
-                </button>
+                {{-- The whole row is the drag handle (grab cursor); only the adjust button opts out.
+                     Background isn't draggable — [data-cursor] switches its cursor back to a pointer. --}}
+                <div :data-obj-id="obj.bg ? null : obj.id" :data-bg="obj.bg ? '1' : null"
+                     @click="select(obj)"
+                     :class="[
+                        obj.bg ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
+                        selectedId === obj.id ? 'bg-sky-500/15 text-sky-100 ring-1 ring-sky-400/50' : 'text-slate-200 hover:bg-slate-800',
+                     ]"
+                     class="group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm">
+                    <span class="shrink-0 text-slate-400" x-html="iconSvg(obj)" aria-hidden="true"></span>
+                    <span class="flex-1 truncate" x-text="obj.label"></span>
+                    {{-- Adjust / settings — appears on hover; data-nodrag keeps a press here from starting a drag --}}
+                    <button type="button" data-nodrag @click.stop="edit(obj)"
+                            class="shrink-0 cursor-pointer text-slate-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
+                            title="{{ __('Adjust settings') }}" aria-label="{{ __('Adjust settings') }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+                        </svg>
+                    </button>
+                </div>
             </template>
         </div>
     </div>
@@ -809,44 +1048,71 @@
          as this scene's background (downloaded to lesson storage; attribution stored on the scene). --}}
     <div class="modal modal-bottom sm:modal-middle {{ $paintingPickerOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-3xl border border-slate-700/70 bg-base-300">
+        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between gap-3">
                 <h2 class="text-lg font-semibold text-slate-100">{{ __('Painting backgrounds') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
                         aria-label="Close" wire:click="$set('paintingPickerOpen', false)">✕</button>
             </div>
 
-            <label class="input input-sm input-bordered flex items-center gap-2 bg-slate-900 mb-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5 text-slate-500">
-                    <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/>
-                </svg>
-                <input type="search"
-                       wire:model.live.debounce.400ms="paintingQuery"
-                       placeholder="{{ __('Search paintings or painters (e.g. senaat, Caesar, Rembrandt)…') }}"
-                       class="grow bg-transparent" />
-            </label>
+            {{-- Filters on one line; search collapses to an icon on the right that opens an overlay. --}}
+            <div class="relative mb-3" x-data="{ searching: @entangle('searchOpen').live }">
+                <div class="flex items-center gap-1.5">
+                    @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans')] as $kindVal => $kindLabel)
+                        <button type="button" wire:click="$set('paintingKind', '{{ $kindVal }}')"
+                                class="btn btn-xs flex-none {{ $paintingKind === $kindVal ? 'bg-amber-500 text-slate-950 border-0 hover:bg-amber-400' : 'btn-outline border-slate-600 text-slate-400 hover:border-amber-400 hover:text-amber-300' }}">
+                            {{ $kindLabel }}
+                        </button>
+                    @endforeach
 
-            {{-- Kind filter: everything / paintings / historical city plans (Braun & Hogenberg e.a.) --}}
-            <div class="mb-3 flex items-center gap-1.5">
-                @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans')] as $kindVal => $kindLabel)
-                    <button type="button"
-                            wire:click="$set('paintingKind', '{{ $kindVal }}')"
-                            class="btn btn-xs {{ $paintingKind === $kindVal ? 'bg-amber-500 text-slate-950 border-0 hover:bg-amber-400' : 'btn-outline border-slate-600 text-slate-400 hover:border-amber-400 hover:text-amber-300' }}">
-                        {{ $kindLabel }}
+                    <span class="mx-1 h-4 w-px flex-none bg-slate-700"></span>
+                    <span class="flex-none text-[10px] font-semibold uppercase tracking-wider text-slate-500">{{ __('Region') }}</span>
+                    @foreach (['' => __('Auto'), 'european' => __('Europe'), 'americas' => __('Americas'), 'asia' => __('Asia'), 'africa' => __('Africa'), 'all' => __('All')] as $regVal => $regLabel)
+                        <button type="button" wire:click="$set('paintingRegion', '{{ $regVal }}')"
+                                class="btn btn-xs flex-none {{ $paintingRegion === $regVal ? 'bg-sky-600 text-white border-0 hover:bg-sky-500' : 'btn-outline border-slate-600 text-slate-400 hover:border-sky-400 hover:text-sky-300' }}">
+                            {{ $regLabel }}
+                        </button>
+                    @endforeach
+
+                    <button type="button" x-show="!searching"
+                            @click="searching = true; $nextTick(() => $refs.psearch.focus())"
+                            class="btn btn-xs btn-circle btn-ghost ml-auto flex-none text-slate-400 hover:text-amber-300"
+                            aria-label="{{ __('Search paintings') }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
+                            <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/>
+                        </svg>
                     </button>
-                @endforeach
-            </div>
+                </div>
 
-            <div wire:loading.delay
-                 wire:target="paintingQuery, applyPaintingBackground, paintingPickerOpen, paintingKind"
-                 class="flex items-center gap-2 py-2 text-xs text-slate-400">
-                <x-icons.spinner class="w-3.5 h-3.5 animate-spin" />
-                <span>{{ __('Loading…') }}</span>
+                {{-- Overlay search bar, revealed by the icon --}}
+                <div x-show="searching" x-cloak x-transition.opacity.duration.150ms
+                     class="absolute inset-x-0 -top-1.5 z-20 flex items-center gap-2 rounded-lg border border-amber-500/50 bg-base-200 px-3 py-2 shadow-xl">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 flex-none text-slate-400">
+                        <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/>
+                    </svg>
+                    <input x-ref="psearch" type="search"
+                           wire:model.live.debounce.400ms="paintingQuery"
+                           placeholder="{{ __('Search paintings or painters (e.g. Caesar, Rembrandt)…') }}"
+                           class="grow bg-transparent text-sm outline-none placeholder:text-slate-500"
+                           @keydown.escape="searching = false" />
+                    <button type="button" @click="searching = false; $wire.set('paintingQuery', '')"
+                            class="btn btn-xs btn-circle btn-ghost text-slate-400" aria-label="{{ __('Close search') }}">✕</button>
+                </div>
             </div>
 
             @if ($paintingPickerOpen)
+                {{-- wire:init loads the scored grid AFTER the modal paints; a skeleton shows meanwhile. --}}
+                <div wire:init="preparePaintings">
+                @if (! $paintingReady)
+                    <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-hidden sm:grid-cols-3">
+                        @for ($i = 0; $i < 9; $i++)
+                            <div class="animate-pulse rounded-lg bg-slate-700/40" style="aspect-ratio:16/10"></div>
+                        @endfor
+                    </div>
+                @else
                 <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3"
-                     wire:loading.class="opacity-40" wire:target="applyPaintingBackground">
+                     wire:loading.class="opacity-40"
+                     wire:target="paintingQuery, paintingKind, paintingRegion, applyPaintingBackground">
                     @forelse ($this->paintingResults as $art)
                         <button type="button"
                                 wire:key="art-{{ md5($art['source'].$art['key']) }}"
@@ -891,6 +1157,8 @@
                 <p class="mt-2 text-[10px] text-slate-500">
                     {{ __('Public-domain works from Wikimedia Commons. The painting is saved to this lesson and credited automatically.') }}
                 </p>
+                @endif
+                </div>
             @endif
         </div>
         <button type="button" class="modal-backdrop" aria-label="Close"

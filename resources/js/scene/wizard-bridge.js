@@ -96,6 +96,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         kbAnimated: payload.kbAnimated,
                         kbDirection: payload.kbDirection,
                         backgroundColor: payload.backgroundColor,
+                        focus: payload.focus ?? payload.config?.background_focus,
                         layers: firstShot?.layers ?? null,
                     })
                 } else if (view === 'world') {
@@ -222,6 +223,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 kbAnimated: e.detail?.kbAnimated,
                 kbDirection: e.detail?.kbDirection,
                 backgroundColor: e.detail?.backgroundColor,
+                focus: e.detail?.focus ?? e.detail?.config?.background_focus,
                 layers: firstShot?.layers ?? null,
             })
         } else if (view === 'skybox') {
@@ -356,7 +358,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // on the scene's clear color so it renders as a flat 2D backdrop, or use ParallaxScene
     // for layered shots (E3c).
     const slideshowTextureCache = new Map()
+    let currentBgFocus = 'center'   // 'top' anchors portrait backgrounds so faces survive the crop
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
+        currentBgFocus = motion.focus || 'center'
         // Layered shot (E3c): render via ParallaxScene when the shot carries layers.
         if (Array.isArray(motion.layers) && motion.layers.length) {
             const didShow = await showLayeredSlideshowShot(motion)
@@ -383,6 +387,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         t.colorSpace        = THREE.SRGBColorSpace
                         t.mapping           = THREE.UVMapping
                         t.matrixAutoUpdate  = true
+                        // Clamp (not wrap) so a top-anchored crop can never bleed the image's
+                        // opposite edge in if an offset+repeat overshoots [0,1].
+                        t.wrapS = t.wrapT   = THREE.ClampToEdgeWrapping
                         resolve(t)
                     }, undefined, reject)
                 })
@@ -449,7 +456,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (vpAspect > imgAspect) {
             // viewport wider — fill by width, crop top/bottom
             const rY = imgAspect / vpAspect
-            return { rX: 1, rY, oX: 0, oY: (1 - rY) / 2 }
+            // Portrait focus: anchor the crop to the TOP (oY = 1-rY) so the face isn't lost;
+            // otherwise centre it. (flipY textures: v=1 is the image top.)
+            const oY = currentBgFocus === 'top' ? (1 - rY) : (1 - rY) / 2
+            return { rX: 1, rY, oX: 0, oY }
         } else {
             // viewport taller — fill by height, crop left/right
             const rX = vpAspect / imgAspect
@@ -483,7 +493,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         // Apply cover scaling so the image always fills the viewport at any size.
         const cv = coverScale(tex)
         tex.repeat.set(cv.rX * r, cv.rY * r)
-        tex.offset.set(cv.oX + ox * cv.rX, cv.oY + oy * cv.rY)
+        // Top-anchored portraits pan the vertical drift DOWNWARD only, so it never rises past
+        // the top edge (which would wrap the texture and bleed the image's bottom in at the top).
+        const oySign = currentBgFocus === 'top' ? -1 : 1
+        tex.offset.set(cv.oX + ox * cv.rX, cv.oY + oySign * oy * cv.rY)
     }
 
     // ── Auto-orbit + handheld vibration ───────────────────────────────────────
@@ -887,6 +900,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             backgroundColor: normalizedScenes[0].background_color,
             kbAnimated:  normalizedScenes[0].kb_animated,
             kbDirection: normalizedScenes[0].kb_direction,
+            focus: normalizedScenes[0].config?.background_focus,
             // Multiplane layers (E3c) ride along so the first paint is layered too.
             shots: normalizedScenes[0].shots ?? [],
         })
@@ -906,6 +920,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 backgroundColor: scene?.background_color,
                 kbAnimated:  scene?.kb_animated,
                 kbDirection: scene?.kb_direction,
+                focus: scene?.config?.background_focus,
                 textsReadonly: scene?.config?.texts || [],
             }),
         },

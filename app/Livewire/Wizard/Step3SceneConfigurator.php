@@ -55,8 +55,8 @@ class Step3SceneConfigurator extends Component
 
     public bool $addSceneOpen = false;
 
-    /** Global class/lesson settings (Story + Music) — a modal opened from the top toolbar. */
-    public bool $settingsOpen = false;
+    /** Right-panel view: 'scene' (per-scene editor) or 'settings' (lesson-global Story + Music). */
+    public string $panelView = 'scene';
 
     /** Transient Publish feedback banner (no app-wide toast system exists yet). */
     public ?string $publishNotice = null;
@@ -195,6 +195,7 @@ class Step3SceneConfigurator extends Component
             'backgroundColor' => (string) ($scene->background_color ?? '#000000'),
             'kbAnimated' => (bool) ($scene->kb_animated ?? true),
             'kbDirection' => $scene->kb_direction,
+            'focus' => $scene->config['background_focus'] ?? null,   // 'top' for portraits
             'texts' => (array) (($scene->config ?? [])['texts'] ?? []),
             'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
             'worldPanoUrl' => $scene->world_pano_path ? asset('storage/'.$scene->world_pano_path) : null,
@@ -647,6 +648,8 @@ class Step3SceneConfigurator extends Component
                         'side' => ($t['side'] ?? 'left') === 'right' ? 'right' : 'left',
                         'color' => preg_match('/^#[0-9a-fA-F]{6}$/', $color) ? $color : '#0f172a',
                         'opacity' => max(0.1, min(0.95, (float) ($t['opacity'] ?? 0.5))),
+                        // Stacking order set by drag-reorder in the object list (higher = in front).
+                        'z' => (isset($t['z']) && is_numeric($t['z'])) ? (int) $t['z'] : null,
                     ];
                 }
 
@@ -683,6 +686,8 @@ class Step3SceneConfigurator extends Component
                     'anchor' => $anchor,
                     'lng' => $anchor === 'map' ? $lng : null,
                     'lat' => $anchor === 'map' ? $lat : null,
+                    // Stacking order set by drag-reorder in the object list (higher = in front).
+                    'z' => (isset($t['z']) && is_numeric($t['z'])) ? (int) $t['z'] : null,
                 ];
             })
             ->take(12)
@@ -1010,6 +1015,32 @@ class Step3SceneConfigurator extends Component
     /** The scene's derived match target {core, themes, actor_qids, era} — drives the scored grid. */
     public array $matchTarget = [];
 
+    /**
+     * Region focus for the picker: '' = Auto (follow the lesson subject — colonisation reaches
+     * the Americas, VOC reaches Asia), 'european' to force Europe, 'americas'|'asia'|'africa' to
+     * browse another region, or 'all'. Region is only a soft ranking nudge — the subject decides.
+     */
+    public string $paintingRegion = '';
+
+    /** False until the wire:init prep runs — lets the modal paint instantly with a skeleton. */
+    public bool $paintingReady = false;
+
+    /** Whether the collapsible search bar is open (entangled with Alpine so it survives re-renders). */
+    public bool $searchOpen = false;
+
+    /** Which subject region(s) to PREFER in scoring for the current focus (soft, never a gate). */
+    private function regionPreference(): array
+    {
+        return match ($this->paintingRegion) {
+            'all' => ['european', 'americas', 'asia', 'africa', 'universal'],
+            'european' => ['european'],
+            'americas' => ['americas'],
+            'asia' => ['asia'],
+            'africa' => ['africa'],
+            default => $this->matchTarget['regions'] ?? ['european'],   // Auto: from the lesson subject
+        };
+    }
+
     private const PAINTING_GRID_LIMIT = 30;
 
     public function openPaintingPicker(): void
@@ -1018,11 +1049,19 @@ class Step3SceneConfigurator extends Component
         $this->paintingCommonsLoaded = false;
         $this->paintingQuery = '';
         $this->paintingKind = '';
-
-        // Derive (once, cached on the scene) what this scene's background must show, so the
-        // grid can gate + score candidates. Best-effort: on failure the picker falls back
-        // to the era/location blend.
+        $this->paintingRegion = '';
         $this->matchTarget = [];
+        $this->paintingReady = false;   // modal opens instantly; wire:init fills the grid
+        $this->searchOpen = false;
+    }
+
+    /**
+     * Fill the scored grid AFTER the modal has painted (called via wire:init), so opening the
+     * picker is instant. Derives the scene's match target — one LLM call, cached on the scene —
+     * which is the slow bit that used to block the open.
+     */
+    public function preparePaintings(): void
+    {
         $scene = $this->selectedSceneModel();
         if ($scene) {
             try {
@@ -1031,6 +1070,7 @@ class Step3SceneConfigurator extends Component
                 $this->matchTarget = [];
             }
         }
+        $this->paintingReady = true;
     }
 
     // ── Ink artwork library ──────────────────────────────────────────────
@@ -1081,7 +1121,9 @@ class Step3SceneConfigurator extends Component
     #[Computed]
     public function paintingResults()
     {
-        if (! $this->paintingPickerOpen) {
+        // Nothing to compute until the modal has painted and wire:init prep has run — keeps
+        // opening the picker instant (the skeleton shows meanwhile).
+        if (! $this->paintingPickerOpen || ! $this->paintingReady) {
             return collect();
         }
 
@@ -1091,7 +1133,8 @@ class Step3SceneConfigurator extends Component
 
         $kind = $this->paintingKind ?: null;
         $target = $this->matchTarget;
-        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target) {
+        $preferRegions = $this->regionPreference();
+        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
             if ($term !== '') {
                 return \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
             }
@@ -1105,6 +1148,7 @@ class Step3SceneConfigurator extends Component
                     $target['era'] ?? null,
                     self::PAINTING_GRID_LIMIT,
                     $kind,
+                    $preferRegions,
                 )->get();
                 if ($scored->isNotEmpty()) {
                     return $scored;
@@ -1219,7 +1263,10 @@ class Step3SceneConfigurator extends Component
         $path = "lessons/{$this->lesson->id}/paintings/{$fileStem}.{$ext}";
         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
 
-        $config = array_merge($scene->config ?? [], ['background_credit' => $credit]);
+        $config = array_merge($scene->config ?? [], [
+            'background_credit' => $credit,
+            'background_focus' => $credit['focus'] ?? 'center',   // 'top' anchors portraits
+        ]);
         // City plans double as layout ground truth: the image/3D pipeline reads
         // config.layout_reference to keep generated streets & squares historically placed.
         if (($credit['kind'] ?? null) === 'city_map') {
@@ -1257,6 +1304,16 @@ class Step3SceneConfigurator extends Component
             return [null, null, null];
         }
 
+        // Portraits are usually taller than 16:9 with the face near the top — anchor the
+        // background crop to the top so a cover-fit never decapitates the sitter.
+        $tagList = is_array($artwork->tags)
+            ? $artwork->tags
+            : array_filter(explode(',', trim((string) $artwork->tags, '{}')));
+        $isPortrait = array_intersect(
+            ['portrait', 'group-portrait', 'equestrian-portrait', 'self-portrait'],
+            $tagList,
+        ) !== [];
+
         return [$artwork->image_url, [
             'kind' => $artwork->kind,
             'qid' => $artwork->qid,
@@ -1268,6 +1325,7 @@ class Step3SceneConfigurator extends Component
             'license' => 'public domain',
             'source' => 'Wikimedia Commons',
             'source_url' => $artwork->image_url,
+            'focus' => $isPortrait ? 'top' : 'center',
         ], preg_replace('/[^A-Za-z0-9_-]/', '-', $key)];
     }
 
@@ -1636,7 +1694,7 @@ class Step3SceneConfigurator extends Component
     #[On('open-lesson-settings')]
     public function openSettings(): void
     {
-        $this->settingsOpen = true;
+        $this->panelView = 'settings';
     }
 
     /**
