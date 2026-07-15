@@ -3,17 +3,49 @@ const LOCATION_PIN_SVG = `
   <path d="M10.3329 0C4.63543 0 0 4.63543 0 10.3329C0 19.3812 9.58334 25.4792 9.9913 25.735L10.334 25.9493L10.6767 25.735C11.0848 25.4795 20.668 19.3812 20.668 10.3329C20.668 4.63543 16.0326 0 10.3351 0H10.3329ZM10.3329 15.5C7.47996 15.5 5.16584 13.1871 5.16584 10.3329C5.16584 7.47996 7.47872 5.16584 10.3329 5.16584C13.1859 5.16584 15.5 7.47872 15.5 10.3329C15.5 13.1859 13.1871 15.5 10.3329 15.5Z" fill="white"/>
 </svg>`
 
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+/**
+ * Typeset a year label so it reads like a history caption: ordinal suffixes go up
+ * as superscript ("16th century" → 16ᵗʰ), and era markers (BCE/BC/CE/AD/AH) shrink.
+ * Numeric years ("1453") pass through untouched. Input is escaped first — only the
+ * known <sup>/<span> tags below are ever injected.
+ */
+export function formatYearHtml(raw) {
+  let s = escapeHtml(raw)
+  // Ordinal suffix: uppercase (16TH), a touch smaller and slightly raised — not a tiny superscript.
+  s = s.replace(
+    /(\d)(st|nd|rd|th)\b/gi,
+    (_, d, suf) => `${d}<sup style="font-size:0.62em;font-weight:700;vertical-align:0.32em;line-height:0;letter-spacing:0.02em;">${suf.toUpperCase()}</sup>`
+  )
+  s = s.replace(
+    /\b(BCE|BC|CE|AD|AH)\b/g,
+    '<span style="font-size:0.5em;font-weight:600;letter-spacing:0.06em;margin-left:0.12em;vertical-align:0.18em;opacity:0.9;">$1</span>'
+  )
+  return s
+}
+
 export class SceneOverlay {
-  constructor(hostEl) {
+  /**
+   * @param {{ editable?: boolean, onChange?: (patch: {sceneId:?number} & object) => void }} [opts]
+   *   editable — Configure mode: the identity is editable inline and can be hidden with an ×.
+   *   onChange — called with { sceneId, year?, location?, title?, hidden? } on any edit.
+   */
+  constructor(hostEl, { editable = false, onChange = null } = {}) {
     this.host = hostEl
+    this.editable = editable
+    this.onChange = onChange
     this.mounted = false
+    this._raw = { year: '', location: '', title: '' }
+    this._sceneId = null
   }
 
   mount() {
     if (this.mounted) return
     this.host.classList.add('scene-overlay')
     this.host.innerHTML = `
-      <div class="scene-overlay__year absolute bottom-40 left-40 flex flex-col gap-3" style="transition:opacity 600ms;">
+      <div class="scene-overlay__year absolute bottom-10 left-10 flex flex-col gap-3" style="transition:opacity 600ms;">
         <div class="scene-overlay__identity" style="display:flex; align-items:center; gap:12px;">
           <img data-flag class="scene-overlay__flag" alt="" style="height:64px; width:auto; flex:none; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
           <span data-title class="scene-overlay__title" style="font-family:var(--font-history, inherit); font-size:40px; font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
@@ -33,18 +65,82 @@ export class SceneOverlay {
     this.locationEl = this.host.querySelector('[data-location]')
     this.yearWrap   = this.host.querySelector('.scene-overlay__year')
     this.locWrap    = this.host.querySelector('.scene-overlay__location')
+    if (this.editable) this._wireEditing()
     this.mounted = true
   }
 
-  // Territory identity (constant for the lesson): a bigger flag above the territory title.
+  // ── Editable (Configure): inline edit + an × to hide the whole identity. ──
+  _wireEditing() {
+    this.yearWrap.style.pointerEvents = 'auto'
+    // Debounced save while typing — robust even if a blur is missed (contenteditable +
+    // the 3s status poll can swallow blur events).
+    this._editTimer = null
+    const save = (field, value) => {
+      clearTimeout(this._editTimer)
+      this._editTimer = setTimeout(() => this._emit({ [field]: value }), 500)
+    }
+
+    // Year — edits in plain text; re-typesets on blur.
+    this.yearEl.contentEditable = 'true'
+    this.yearEl.spellcheck = false
+    this.yearEl.style.cssText += ' cursor:text; outline:none; border-radius:6px; text-transform:none;'
+    this.yearEl.addEventListener('focus', () => {
+      this.yearEl.style.boxShadow = '0 0 0 1.5px rgba(245,158,11,0.7)'
+      this.yearEl.textContent = this._raw.year
+    })
+    this.yearEl.addEventListener('input', () => { this._raw.year = this.yearEl.innerText.trim(); save('year', this._raw.year) })
+    this.yearEl.addEventListener('blur', () => {
+      this.yearEl.style.boxShadow = 'none'
+      this.yearEl.innerHTML = formatYearHtml(this._raw.year)
+    })
+
+    // Location — edits in plain text; display uppercases.
+    this.locationEl.contentEditable = 'true'
+    this.locationEl.spellcheck = false
+    this.locationEl.style.cssText += ' cursor:text; outline:none; border-radius:6px; text-transform:none;'
+    this.locationEl.addEventListener('focus', () => {
+      this.locationEl.style.boxShadow = '0 0 0 1.5px rgba(245,158,11,0.7)'
+      this.locationEl.textContent = this._raw.location
+    })
+    this.locationEl.addEventListener('input', () => { this._raw.location = this.locationEl.innerText.trim(); save('location', this._raw.location) })
+    this.locationEl.addEventListener('blur', () => {
+      this.locationEl.style.boxShadow = 'none'
+      this.locationEl.textContent = this._raw.location.toUpperCase()
+    })
+
+    // Title — per-scene override.
+    this.titleEl.contentEditable = 'true'
+    this.titleEl.spellcheck = false
+    this.titleEl.style.cssText += ' cursor:text; outline:none; border-radius:6px;'
+    this.titleEl.addEventListener('focus', () => { this.titleEl.style.boxShadow = '0 0 0 1.5px rgba(245,158,11,0.7)' })
+    this.titleEl.addEventListener('input', () => { this._raw.title = this.titleEl.innerText.trim(); save('title', this._raw.title) })
+    this.titleEl.addEventListener('blur', () => { this.titleEl.style.boxShadow = 'none' })
+
+    for (const el of [this.titleEl, this.yearEl, this.locationEl]) {
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur() } })
+    }
+    // Show/hide is driven by the "Caption" toggle in the scene inspector — not an on-canvas
+    // control — so there's no × or restore chip here.
+  }
+
+  _emit(patch) { this.onChange?.({ sceneId: this._sceneId, ...patch }) }
+
+  /** Hide/show the whole identity block (persisted per scene as config.hide_identity). */
+  setHidden(hidden) {
+    if (!this.mounted) this.mount()
+    this.yearWrap.style.display = hidden ? 'none' : ''
+  }
+
+  // Territory identity (constant for the lesson) — or a per-scene title override.
   setTerritory({ title, flagUrl } = {}) {
     if (!this.mounted) this.mount()
+    this._raw.title = title || ''
 
     if (title) {
       this.titleEl.textContent = title
       this.titleEl.style.display = ''
     } else {
-      this.titleEl.style.display = 'none'
+      this.titleEl.style.display = this.editable ? '' : 'none'
     }
 
     if (flagUrl) {
@@ -56,22 +152,29 @@ export class SceneOverlay {
     }
   }
 
-  update({ year, location }) {
+  update({ year, location, sceneId, hidden } = {}) {
     if (!this.mounted) this.mount()
+    if (sceneId !== undefined) this._sceneId = sceneId
+    this._raw.year = year || ''
+    this._raw.location = location || ''
 
     if (year) {
-      this.yearEl.textContent = String(year)
+      this.yearEl.innerHTML = formatYearHtml(year)
       this.yearWrap.style.opacity = '1'
     } else {
-      this.yearWrap.style.opacity = '0'
+      this.yearWrap.style.opacity = this.editable ? '1' : '0'
+      if (this.editable) this.yearEl.textContent = ''
     }
 
     if (location) {
       this.locationEl.textContent = String(location).toUpperCase()
       this.locWrap.style.opacity = '1'
     } else {
-      this.locWrap.style.opacity = '0'
+      this.locWrap.style.opacity = this.editable ? '1' : '0'
+      if (this.editable) this.locationEl.textContent = ''
     }
+
+    this.setHidden(!!hidden)
   }
 
   destroy() {

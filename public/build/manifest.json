@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-JoMILeB-.css",
+    "file": "assets/app-D1QBnYvB.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-EJBve4a-.js",
+    "file": "assets/app-DVB_Y-ii.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-DTkN3urp.js",
+    "file": "assets/lesson-player-L94SzkVy.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -106,8 +106,20 @@
       "resources/js/scene/QuizOverlay.js"
     ]
   },
+  "resources/js/scene/ArtworkOverlay.js": {
+    "file": "assets/ArtworkOverlay-BNmQd5bp.js",
+    "name": "ArtworkOverlay",
+    "src": "resources/js/scene/ArtworkOverlay.js",
+    "isDynamicEntry": true
+  },
+  "resources/js/scene/InkDrawEngine.js": {
+    "file": "assets/InkDrawEngine-DrJihjhg.js",
+    "name": "InkDrawEngine",
+    "src": "resources/js/scene/InkDrawEngine.js",
+    "isDynamicEntry": true
+  },
   "resources/js/scene/ParallaxScene.js": {
-    "file": "assets/ParallaxScene-DsVvSmKH.js",
+    "file": "assets/ParallaxScene-DVzTGPhS.js",
     "name": "ParallaxScene",
     "src": "resources/js/scene/ParallaxScene.js",
     "isDynamicEntry": true
@@ -125,13 +137,13 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/TextOverlayLayer.js": {
-    "file": "assets/TextOverlayLayer-DPxY7f1q.js",
+    "file": "assets/TextOverlayLayer-CfHOSVcg.js",
     "name": "TextOverlayLayer",
     "src": "resources/js/scene/TextOverlayLayer.js",
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-CGN3xMU_.js",
+    "file": "assets/index-DZR0ZGzh.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -143,7 +155,9 @@
       "resources/js/avatar-3d.js"
     ],
     "dynamicImports": [
-      "resources/js/scene/ParallaxScene.js"
+      "resources/js/scene/ParallaxScene.js",
+      "resources/js/scene/InkDrawEngine.js",
+      "resources/js/scene/ArtworkOverlay.js"
     ]
   },
   "resources/js/timemap/index.js": {

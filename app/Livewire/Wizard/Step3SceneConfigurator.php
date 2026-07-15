@@ -753,6 +753,22 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    /** Inspector toggle: show/hide the on-canvas caption (flag · title · year · location). */
+    public function toggleCaption(): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $config = $scene->config ?? [];
+        $config['hide_identity'] = ! (bool) ($config['hide_identity'] ?? false);
+        $scene->config = $config;
+        $scene->save();
+
+        // Re-dispatch scene:load so the canvas overlay reflects the new hide flag.
+        $this->selectSceneInternal($scene->id);
+    }
+
     #[On('annotationsChanged')]
     public function updateAnnotations(int $sceneId, array $annotations): void
     {

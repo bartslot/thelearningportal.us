@@ -19,19 +19,16 @@
                class="input input-sm input-bordered bg-slate-900 mt-1" />
     </label>
 
+    {{-- Show/hide the on-canvas caption (flag · title · year · location) for this scene. --}}
+    <label class="flex cursor-pointer items-center justify-between gap-2">
+        <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Caption') }}</span>
+        <input type="checkbox" class="toggle toggle-sm toggle-warning"
+               @checked(! ($scene->config['hide_identity'] ?? false))
+               wire:click="toggleCaption" />
+    </label>
+
     {{-- Style is a GLOBAL lesson setting (Step 1 / chat preset), set once — no per-scene
          override (founder decision 2026-07-11; the old dropdown also showed stale options). --}}
-
-    <label class="form-control">
-        <span class="text-xs uppercase tracking-wider text-slate-400">Animation</span>
-        <select wire:model.live="selectedScene.animation_clip_id" wire:change="saveSelected"
-                class="select select-sm select-bordered bg-slate-900 mt-1">
-            <option value="">— none —</option>
-            @foreach ($clips as $clip)
-                <option value="{{ $clip->id }}">{{ $clip->name }} ({{ $clip->category }})</option>
-            @endforeach
-        </select>
-    </label>
 
     <x-lesson.skybox-controls :scene="$scene" />
 
@@ -65,6 +62,21 @@
                     <span class="text-xs text-slate-400 self-center">script changed — re-narrate to refresh audio</span>
                 @endif
             @endif
+
+            {{-- Summarize the narration into a bullet list over a half-screen backing panel. --}}
+            <button type="button"
+                    wire:click="summarizeScriptToList({{ $scene->id }})"
+                    wire:loading.attr="disabled" wire:target="summarizeScriptToList"
+                    @disabled(empty($scene->script_segment))
+                    class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                    title="{{ __('Summarize the script into a bullet list over a half-screen backing panel') }}">
+                <span wire:loading wire:target="summarizeScriptToList"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                <svg wire:loading.remove wire:target="summarizeScriptToList" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+                    <path stroke-linecap="round" d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+                </svg>
+                <span wire:loading.remove wire:target="summarizeScriptToList">{{ __('Summarize to list') }}</span>
+                <span wire:loading wire:target="summarizeScriptToList">{{ __('Summarizing…') }}</span>
+            </button>
         </div>
     </div>
 
