@@ -437,13 +437,18 @@
                 // insertion order. Mirrors the canvas stacking so the list reads like a layers panel.
                 const withZ = texts.map((t, i) => ({ t, i, z: this.effZ(t) }));
                 withZ.sort((a, b) => (b.z - a.z) || (b.i - a.i));
-                const items = withZ.map(({ t }) => t.kind === 'rect'
+                const textItems = withZ.map(({ t }) => t.kind === 'rect'
                     ? { id: t.id, icon: t.side === 'right' ? 'panelR' : 'panelL', label: (t.side || 'left') + ' half', bg: false }
                     : { id: t.id, icon: 'text', label: (t.text || 'Text').slice(0, 40), bg: false });
-                // Clipart / artwork layers (own overlay). Listed below the text objects, above BG.
-                // Not part of the text z-order, so they aren't drag-reorderable here (art:true).
+                // Clipart / artwork layers (own overlay, drag-reorderable). _layers is bottom-first
+                // (last painted = on top), so reverse it to list front-most first like the text rows.
                 const arts = (window.__lessonArtworkLayer && window.__lessonArtworkLayer._layers) || [];
-                for (const a of arts) items.push({ id: 'art_' + a.asset_id, icon: 'photo', label: a.title || 'Clipart', bg: false, art: true });
+                const artItems = [...arts].reverse().map((a) =>
+                    ({ id: 'art_' + a.asset_id, icon: 'photo', label: a.title || 'Clipart', bg: false, art: true }));
+                // The clipart group sits above the text objects only when the teacher dragged it there
+                // (config.clipart_on_top → the overlay host's z-index is raised above the text layer).
+                const onTop = !!(window.__lessonArtworkLayer && window.__lessonArtworkLayer.onTop);
+                const items = onTop ? [...artItems, ...textItems] : [...textItems, ...artItems];
                 // The background is the bottom-most object on every scene — always listed last, not draggable.
                 items.push({ id: '__bg__', icon: 'photo', label: 'Background', bg: true });
                 // Skip the re-render (and its churn under SortableJS) when nothing actually changed —
@@ -478,13 +483,33 @@
                         // Undo Sortable's DOM move so Alpine's keyed x-for stays the single source of
                         // truth (avoids the classic Alpine+Sortable double-move corruption)…
                         evt.from.insertBefore(evt.item, evt.item._objNext || null);
-                        // …then restack the layer (assigns z + persists) and force a rebuild so Alpine
-                        // renders the new order. _sig is cleared or refresh() would no-op the change.
-                        if (ids.length) window.__lessonTextLayer?.reorder(ids);
+                        // …then restack each layer system and rebuild. Text and clipart are two
+                        // separate overlays, so split the dropped order by type and reorder each.
+                        const isArt = (id) => id.startsWith('art_');
+                        const textIds = ids.filter((id) => !isArt(id));
+                        const artIds = ids.filter(isArt);
+                        if (textIds.length) window.__lessonTextLayer?.reorder(textIds);
+                        if (artIds.length) this.reorderClipart(ids, textIds, artIds);
+                        // _sig is cleared or refresh() would no-op the reordered rows.
                         this._sig = null;
                         this.refresh();
                     },
                 });
+            },
+            // Clipart lives in its own overlay (a single host in one z-band). Reorder the clipart
+            // layers among themselves and, when the clipart block was dragged above/below the text
+            // block, raise/lower the whole overlay past the text layer. Persisted server-side.
+            reorderClipart(allIds, textIds, artRowIds) {
+                const layer = window.__lessonArtworkLayer;
+                if (!layer) return;
+                // Did the clipart block land above or below the text block? (compare mean row index)
+                const avg = (list) => list.reduce((s, id) => s + allIds.indexOf(id), 0) / list.length;
+                const onTop = textIds.length ? (avg(artRowIds) < avg(textIds)) : (layer.onTop ?? false);
+                layer.setOnTop(onTop);
+                const paintOrder = layer.reorder(artRowIds.map((id) => Number(id.slice(4))));  // bottom-first
+                const host = document.querySelector('.wizard-artwork-host');
+                if (host) host.style.zIndex = onTop ? '8' : '2';  // above (8) / below (2) the text overlay
+                window.Livewire?.dispatch('artwork:reorder', { assetIds: paintOrder, onTop });
             },
             // Click a row → select that object: highlight the row, ring the object on the canvas
             // (the layer broadcasts back so canvas↔list stay in sync), and scroll it into view.
@@ -910,11 +935,11 @@
         <div x-ref="list" class="h-full space-y-0.5 overflow-y-auto p-1.5">
             <template x-for="obj in items" :key="obj.id">
                 {{-- The whole row is the drag handle (grab cursor); only the adjust button opts out.
-                     Background isn't draggable — [data-cursor] switches its cursor back to a pointer. --}}
-                <div :data-obj-id="(obj.bg || obj.art) ? null : obj.id" :data-bg="obj.bg ? '1' : null"
+                     Text and clipart rows reorder; the background is pinned to the bottom ([data-bg]). --}}
+                <div :data-obj-id="obj.bg ? null : obj.id" :data-bg="obj.bg ? '1' : null"
                      @click="select(obj)"
                      :class="[
-                        (obj.bg || obj.art) ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
+                        obj.bg ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
                         selectedId === obj.id ? 'bg-sky-500/15 text-sky-100 ring-1 ring-sky-400/50' : 'text-slate-200 hover:bg-slate-800',
                      ]"
                      class="group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm">
@@ -1200,6 +1225,8 @@
     <script type="application/json" id="step3-scenes-data">
         {!! $this->scenes->map(fn ($s) => array_merge(
             $s->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction']),
+            // config carries per-scene flags the first paint needs (background focus, clipart-on-top …).
+            ['config' => $s->config ?? null],
             ['shots' => $this->serializeShots($s)],
         ))->toJson() !!}
     </script>

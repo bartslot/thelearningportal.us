@@ -40,6 +40,10 @@ trait EditsSceneArtwork
             'scale' => (float) 1.0,
             'height' => (int) 40,
             'sway' => false,
+            // Free position on the stage (centre anchor, % of the stage) — teacher drags it
+            // on the canvas. Defaults to just-below-centre where a figure usually reads best.
+            'x' => 50.0,
+            'y' => 58.0,
         ];
 
         // Immutable transformation: build new arrays, never mutate in place
@@ -149,6 +153,8 @@ trait EditsSceneArtwork
             'blur' => [0, 50],
             'sway' => null, // boolean
             'blend' => ['multiply', 'screen', 'overlay', 'darken', 'lighten'],
+            'x' => [0, 100],   // stage position %, centre anchor
+            'y' => [0, 100],
         ];
 
         if (!array_key_exists($field, $whitelist)) {
@@ -168,7 +174,7 @@ trait EditsSceneArtwork
 
         // Coerce and clamp the value.
         $coercedValue = match ($field) {
-            'depth', 'scale', 'opacity', 'blur' => (float) $value,
+            'depth', 'scale', 'opacity', 'blur', 'x', 'y' => (float) $value,
             'height', 'wobble' => (int) $value,
             'sway' => (bool) $value,
             'kind', 'blend' => (string) $value,
@@ -181,7 +187,7 @@ trait EditsSceneArtwork
             // Clamp: use floats for min/max to preserve float results when clamping floats
             $coercedValue = max((float) $min, min((float) $max, (float) $coercedValue));
             // Re-cast after clamping to preserve float/int type
-            if (in_array($field, ['depth', 'scale', 'opacity', 'blur'], true)) {
+            if (in_array($field, ['depth', 'scale', 'opacity', 'blur', 'x', 'y'], true)) {
                 $coercedValue = (float) $coercedValue;
             } elseif (in_array($field, ['height', 'wobble'], true)) {
                 $coercedValue = (int) $coercedValue;
@@ -212,7 +218,117 @@ trait EditsSceneArtwork
         $this->selectSceneInternal($scene->id);
     }
 
-    /** @return array<int, array{asset_id: int, path: string, title: string, url: string, depth: float, scale: float, height: float, sway: bool, wobble?: int, opacity?: float, blur?: float, z?: int, blend?: string, kind?: string}> */
+    /**
+     * Batched move + scale from an on-canvas drag/resize. Persists all three in one call and,
+     * crucially, does NOT re-dispatch scene:load — the canvas editor already holds the new
+     * position, so re-broadcasting would clobber the layer mid-interaction (same guard the
+     * text overlay uses). The Livewire re-render still refreshes the Layers panel thumbnails.
+     */
+    #[On('artwork:move')]
+    public function moveArtworkLayer(int $assetId, float $x, float $y, float $scale): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $shots = $scene->shots ?? [];
+        if (empty($shots)) {
+            return;
+        }
+
+        $x = max(0.0, min(100.0, $x));
+        $y = max(0.0, min(100.0, $y));
+        $scale = max(0.2, min(3.0, $scale));
+
+        $shots = collect($shots)->map(function (array $shot) use ($assetId, $x, $y, $scale): array {
+            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $x, $y, $scale): array {
+                if (($l['asset_id'] ?? null) === $assetId) {
+                    $l['x'] = $x;
+                    $l['y'] = $y;
+                    $l['scale'] = $scale;
+                }
+
+                return $l;
+            })->all();
+
+            return array_merge($shot, ['layers' => $layers]);
+        })->all();
+
+        $scene->update(['shots' => $shots]);
+        unset($this->sceneArtworkLayers);   // recompute the Layers panel; no scene:load re-dispatch
+    }
+
+    /**
+     * Reorder clipart layers from the object-list drag. `$assetIds` is the new paint order
+     * (bottom-first — the overlay draws array order, last on top). `$onTop` records whether the
+     * whole clipart group now sits above the text overlay (the canvas host's z-index follows it).
+     *
+     * Like moveArtworkLayer, this does NOT re-dispatch scene:load — the canvas already applied the
+     * new order/z client-side, so re-broadcasting would clobber the just-dropped state.
+     */
+    #[On('artwork:reorder')]
+    public function reorderArtworkLayers(array $assetIds, bool $onTop): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $shots = $scene->shots ?? [];
+        if (empty($shots)) {
+            return;
+        }
+
+        // asset_id => desired position (lower = painted earlier = visually lower).
+        $rank = array_flip(array_values(array_map('intval', $assetIds)));
+
+        $shots = collect($shots)->map(function (array $shot) use ($rank): array {
+            $layers = $shot['layers'] ?? [];
+            // Non-asset layers (the base cover image) stay pinned at the bottom of the stack.
+            $covers = array_values(array_filter($layers, fn ($l) => ($l['asset_id'] ?? null) === null));
+            $assets = array_values(array_filter($layers, fn ($l) => ($l['asset_id'] ?? null) !== null));
+            usort($assets, fn ($a, $b) => ($rank[$a['asset_id']] ?? PHP_INT_MAX) <=> ($rank[$b['asset_id']] ?? PHP_INT_MAX));
+
+            return array_merge($shot, ['layers' => array_merge($covers, $assets)]);
+        })->all();
+
+        $config = $scene->config ?? [];
+        $config['clipart_on_top'] = $onTop;
+
+        $scene->update(['shots' => $shots, 'config' => $config]);
+        unset($this->sceneArtworkLayers);   // refresh the Layers panel; no scene:load re-dispatch
+    }
+
+    /**
+     * Slideshow render mode (stored in config['slideshow_mode']):
+     *   'standard' — flat image, no depth.
+     *   'parallax' — layers (and text) follow the camera by depth; per-layer Depth control shows.
+     *   'drawing'  — ink line-art draw-on animation (pen engine).
+     * Read back in the scene:load payload for the canvas.
+     */
+    public function setSlideshowMode(string $mode): void
+    {
+        if (! in_array($mode, ['standard', 'parallax', 'drawing'], true)) {
+            return;
+        }
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $config = $scene->config ?? [];
+        $config['slideshow_mode'] = $mode;
+        $config['parallax'] = $mode === 'parallax';   // back-compat for readers still checking the bool
+        $scene->update(['config' => $config]);
+
+        if ($this->selectedScene !== null) {
+            $this->selectedScene['config'] = $config;
+        }
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /** @return array<int, array{asset_id: int, path: string, title: string, url: string, depth: float, scale: float, height: float, sway: bool, x?: float, y?: float, wobble?: int, opacity?: float, blur?: float, z?: int, blend?: string, kind?: string}> */
     #[Computed]
     public function sceneArtworkLayers(): array
     {

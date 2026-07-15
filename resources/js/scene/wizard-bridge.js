@@ -98,6 +98,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         backgroundColor: payload.backgroundColor,
                         focus: payload.focus ?? payload.config?.background_focus,
                         layers: firstShot?.layers ?? null,
+                        parallax: !!payload.parallax,
+                        clipartOnTop: !!payload.config?.clipart_on_top,
+                        slideshowMode: payload.slideshowMode || (payload.parallax ? 'parallax' : 'standard'),
+                        sceneId: payload.sceneId ?? 0,
                     })
                 } else if (view === 'world') {
                     destroyWizardLayers()
@@ -225,6 +229,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 backgroundColor: e.detail?.backgroundColor,
                 focus: e.detail?.focus ?? e.detail?.config?.background_focus,
                 layers: firstShot?.layers ?? null,
+                parallax: !!e.detail?.parallax,
+                clipartOnTop: !!e.detail?.config?.clipart_on_top,
+                sceneId: sceneId ?? 0,
             })
         } else if (view === 'skybox') {
             // Skybox sphere is already loaded — just restore camera + make it visible.
@@ -711,6 +718,15 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let _wizardLayeredScene = null
     let _wizardLayerHost = null
     let _wizardLayeredRaf = 0
+    // Editable clipart overlay (separate from the parallax bg): its own host, own module.
+    let _artworkMod = null
+    let _artworkOverlay = null
+    let _artworkHost = null
+    let _artworkSig = null   // skip re-seeding the overlay on identical poll re-renders
+    // Drawing mode: ink pen engine that draws each clipart stroke-by-stroke.
+    let _inkMod = null
+    let _inkEngines = []
+    let _inkSig = null
 
     function wizardLayerHost() {
         if (_wizardLayerHost?.isConnected) return _wizardLayerHost
@@ -726,6 +742,21 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         return host
     }
 
+    // The editable clipart overlay sits ABOVE the parallax background (z:2) but below the
+    // text overlay. Its host is transparent + pointer-events:none; only the layer nodes catch.
+    function wizardArtworkHost() {
+        if (_artworkHost?.isConnected) return _artworkHost
+        const parent = canvasEl.parentElement
+        if (!parent) return null
+        if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative'
+        const host = document.createElement('div')
+        host.className = 'wizard-artwork-host'
+        host.style.cssText = 'position:absolute;inset:0;overflow:hidden;z-index:2;pointer-events:none;'
+        parent.appendChild(host)
+        _artworkHost = host
+        return host
+    }
+
     function destroyWizardLayers() {
         if (_wizardLayeredRaf) { cancelAnimationFrame(_wizardLayeredRaf); _wizardLayeredRaf = 0 }
         if (_wizardLayeredScene) {
@@ -733,12 +764,23 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             _wizardLayeredScene = null
         }
         if (_wizardLayerHost) _wizardLayerHost.style.display = 'none'
+        if (_artworkOverlay) { try { _artworkOverlay.clear() } catch (_) {} }
+        if (_artworkHost) _artworkHost.style.display = 'none'
+        _artworkSig = null
+        for (const e of _inkEngines) { try { e.destroy() } catch (_) {} }
+        _inkEngines = []
+        _inkSig = null
     }
 
     async function showLayeredSlideshowShot(payload) {
         try {
-            const { layers } = payload
+            const { layers, parallax = false } = payload
             if (!Array.isArray(layers) || !layers.length) return false
+
+            // Split: the background plane(s) render as parallax; free clipart (asset_id) is
+            // rendered by the editable overlay so teachers can move + scale it directly.
+            const bgLayers = layers.filter(l => l.kind === 'cover' || l.asset_id == null)
+            const artLayers = layers.filter(l => l.asset_id != null && l.kind !== 'cover')
 
             if (!_parallaxMod) _parallaxMod = await import('./ParallaxScene.js')
             const host = wizardLayerHost()
@@ -749,20 +791,69 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             kenBurnsState = null
             if (activePlayer?._skyboxSphere) activePlayer._skyboxSphere.visible = false
 
+            // Background: parallax drift only when the scene is a parallax scene; otherwise flat.
             _wizardLayeredScene = new _parallaxMod.ParallaxScene(host)
-            // Gentle default drift so teachers see the depth separation while editing.
-            _wizardLayeredScene.show({ layers, motion: { panX: -4, panY: 0, zoom: 1.06 } })
+            const motion = parallax ? { panX: -4, panY: 0, zoom: 1.06 } : { panX: 0, panY: 0, zoom: 1 }
+            _wizardLayeredScene.show({ layers: bgLayers.length ? bgLayers : layers, motion })
 
-            // Ping-pong the motion — nothing else (audio, scrubbing) drives it in the editor.
-            const CYCLE_MS = 10000
-            const start = performance.now()
-            const loop = (now) => {
-                if (!_wizardLayeredScene) return
-                const t = ((now - start) % CYCLE_MS) / CYCLE_MS
-                _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+            if (parallax) {
+                // Ping-pong the drift so teachers see the depth separation while editing.
+                const CYCLE_MS = 10000
+                const start = performance.now()
+                const loop = (now) => {
+                    if (!_wizardLayeredScene) return
+                    const t = ((now - start) % CYCLE_MS) / CYCLE_MS
+                    _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+                    _wizardLayeredRaf = requestAnimationFrame(loop)
+                }
                 _wizardLayeredRaf = requestAnimationFrame(loop)
+            } else {
+                _wizardLayeredScene.update(0.5)   // static, centred pose
             }
-            _wizardLayeredRaf = requestAnimationFrame(loop)
+
+            const mode = payload.slideshowMode || (parallax ? 'parallax' : 'standard')
+            const artHost = wizardArtworkHost()
+
+            if (mode === 'drawing' && artHost && artLayers.length) {
+                // Drawing mode: each clipart draws itself stroke-by-stroke (looped preview). Not
+                // editable here — teachers position it in Standard/Parallax, Drawing is the effect.
+                artHost.style.display = ''
+                if (_artworkOverlay) { try { _artworkOverlay.clear() } catch (_) {} }
+                if (!_inkMod) _inkMod = await import('./InkDrawEngine.js')
+                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.url]))
+                if (sig !== _inkSig) {
+                    _inkSig = sig
+                    for (const e of _inkEngines) { try { e.destroy() } catch (_) {} }
+                    _inkEngines = artLayers.map((l) => {
+                        const eng = new _inkMod.InkDrawEngine(artHost)
+                        eng.draw(l.url, { xPct: l.x ?? 50, yPct: l.y ?? 58, scale: l.scale ?? 1, heightPct: l.height ?? 40 }, { loop: true })
+                        return eng
+                    })
+                    window.__inkEngines = _inkEngines
+                }
+            } else if (artHost) {
+                // Editable clipart overlay (Standard / Parallax).
+                for (const e of _inkEngines) { try { e.destroy() } catch (_) {} }
+                _inkEngines = []; _inkSig = null
+                artHost.style.display = ''
+                if (!_artworkMod) _artworkMod = await import('./ArtworkOverlay.js')
+                if (!_artworkOverlay) {
+                    _artworkOverlay = new _artworkMod.ArtworkOverlay(artHost, {
+                        onChange: (assetId, t) => {
+                            window.Livewire?.dispatch('artwork:move', { assetId, x: t.x, y: t.y, scale: t.scale })
+                        },
+                    })
+                    window.__lessonArtworkLayer = _artworkOverlay
+                }
+                // Clipart can be stacked above the text overlay (teacher drags it there in the object
+                // list). The host is cached with z-index:2, so re-apply the flag on every scene load.
+                const clipartOnTop = !!payload.clipartOnTop
+                _artworkOverlay.setOnTop(clipartOnTop)
+                artHost.style.zIndex = clipartOnTop ? '8' : '2'
+                // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
+                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.url]))
+                if (sig !== _artworkSig) { _artworkSig = sig; _artworkOverlay.setLayers(artLayers) }
+            }
             return true
         } catch (e) {
             console.warn('[wizard-bridge] layered slideshow failed', e)
@@ -901,6 +992,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             kbAnimated:  normalizedScenes[0].kb_animated,
             kbDirection: normalizedScenes[0].kb_direction,
             focus: normalizedScenes[0].config?.background_focus,
+            // The scene config rides along so first paint honours per-scene flags
+            // (background focus, clipart-above-text stacking, …).
+            config: normalizedScenes[0].config ?? null,
             // Multiplane layers (E3c) ride along so the first paint is layered too.
             shots: normalizedScenes[0].shots ?? [],
         })
