@@ -62,7 +62,11 @@ class UpscayleSceneImage implements ShouldQueue
                 return;
             }
 
-            Storage::disk('public')->put($this->imagePath, $enhanced);
+            // Keep the stored file small: re-encode the upscaled frame to WebP at the
+            // configured quality (~60). Upscayl's own output is near-lossless and can run to
+            // ~1 MB; q60 lands it around 150 KB with no visible loss at player resolution.
+            $webpQuality = (int) config('services.openai.image_compression', 60);
+            Storage::disk('public')->put($this->imagePath, \App\Services\Support\WebpEncoder::encode($enhanced, $webpQuality));
 
             // Touch updated_at so scene:load gets a fresh ?v= cache-buster
             $scene->update(['upscale_status' => 'done']);

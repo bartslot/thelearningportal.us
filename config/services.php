@@ -75,7 +75,7 @@ return [
         'scene_size' => env('OPENAI_SCENE_SIZE', env('OPENAI_IMAGE_SIZE', '1536x1024')),
         'skybox_size' => env('OPENAI_SKYBOX_SIZE', env('OPENAI_IMAGE_SIZE', '1536x1024')),
         'image_format' => env('OPENAI_IMAGE_FORMAT', 'webp'),       // png|jpeg|webp
-        'image_compression' => (int) env('OPENAI_IMAGE_COMPRESSION', 50), // 0-100 (jpeg/webp only)
+        'image_compression' => (int) env('OPENAI_IMAGE_COMPRESSION', 60), // webp/jpeg quality: 100≈lossless/~1.5MB, 60≈high-res/~110KB, lower=smaller
         'image_stitch' => filter_var(env('OPENAI_IMAGE_STITCH', true), FILTER_VALIDATE_BOOLEAN), // 2-image stitched panorama
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'timeout' => (int) env('OPENAI_TIMEOUT', 60),
@@ -121,6 +121,8 @@ return [
 
     'europeana' => [
         'key' => env('EUROPEANA_API_KEY'),
+        'base_url' => env('EUROPEANA_BASE_URL', 'https://api.europeana.eu/record/v2'),
+        'timeout' => (int) env('EUROPEANA_TIMEOUT', 30),
     ],
 
     'unsplash' => [

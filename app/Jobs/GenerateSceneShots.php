@@ -96,13 +96,17 @@ class GenerateSceneShots implements ShouldQueue
                 $cells = array_map(fn (string $cell) => HatchEngraver::render($cell, 1536), $cells);
             }
 
+            // Store shots as WebP: a lossless PNG cell is ~1 MB, the same cell at quality 60
+            // is ~110 KB with no visible loss at player resolution. (The later Upscayl pass
+            // overwrites each file with its own WebP output — see UpscayleSceneImage.)
+            $webpQuality = (int) config('services.openai.image_compression', 60);
             $baseDir = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/shots";
             foreach ($cells as $index => $cellBytes) {
                 if (! isset($shots[$index])) {
                     break;
                 }
-                $path = "{$baseDir}/shot_{$index}.png";
-                Storage::disk('public')->put($path, $cellBytes);
+                $path = "{$baseDir}/shot_{$index}.webp";
+                Storage::disk('public')->put($path, \App\Services\Support\WebpEncoder::encode($cellBytes, $webpQuality));
                 $shots[$index]['image_path'] = $path;
             }
             $shots = array_values(array_filter($shots, fn (array $shot) => isset($shot['image_path'])));

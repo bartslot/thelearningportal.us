@@ -238,17 +238,10 @@ class OpenAiImageService
 
     private function reencodeWebp(string $bytes): string
     {
-        if (! function_exists('imagecreatefromstring')) {
-            return $bytes;
-        }
-        $img = @imagecreatefromstring($bytes);
-        if ($img === false) {
-            return $bytes;
-        }
-        $out = $this->encodeWebp($img);
-        imagedestroy($img);
-
-        return $out;
+        return \App\Services\Support\WebpEncoder::encode(
+            $bytes,
+            (int) config('services.openai.image_compression', 60),
+        );
     }
 
     /**
@@ -354,7 +347,7 @@ class OpenAiImageService
             'prompt' => $prompt,
             'size' => $size,
             'output_format' => (string) config('services.openai.image_format', 'webp'),
-            'output_compression' => (int) config('services.openai.image_compression', 50),
+            'output_compression' => (int) config('services.openai.image_compression', 60),
             'n' => 1,
         ], $extra);
 
@@ -366,7 +359,12 @@ class OpenAiImageService
         try {
             // Image generation regularly exceeds the chat timeout — storyboard-grid prompts
             // at 1536x1024 can take well over a minute to render.
+            //
+            // Pin HTTP/1.1: the multi-MB base64 image body trips a known OpenSSL 3.6 + HTTP/2
+            // failure ("cURL 56: unexpected eof while reading"). HTTP/2 is renegotiated on every
+            // retry, so retries alone never recover — forcing 1.1 does.
             $response = Http::withToken($key)
+                ->withOptions(['version' => '1.1'])
                 ->timeout((int) config('services.openai.image_timeout', 180))
                 ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
                 ->post(rtrim($base, '/').'/images/generations', $payload);
@@ -589,7 +587,7 @@ class OpenAiImageService
 
     private function encodeWebp(\GdImage $img): string
     {
-        $quality = (int) config('services.openai.image_compression', 50);
+        $quality = (int) config('services.openai.image_compression', 60);
         ob_start();
         imagewebp($img, null, $quality);
 
