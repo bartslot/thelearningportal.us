@@ -34,9 +34,14 @@ class Artwork extends Model
         'extra' => 'array',
     ];
 
-    /** Commons rendition URL at a given pixel width (FilePath redirects to the scaled file). */
+    /** Thumbnail URL at ~$width px. Commons FilePath honours ?width=; Europeana provides its
+     *  own thumbnail proxy (the raw image_url is a provider CDN that ignores ?width). */
     public function renditionUrl(int $width): string
     {
+        if ($this->source === 'europeana') {
+            return $this->extra['thumb_url'] ?? $this->image_url;
+        }
+
         return $this->image_url.'?width='.$width;
     }
 
@@ -101,9 +106,13 @@ class Artwork extends Model
      *
      *  GATE   the work MUST carry every `$core` depicts tag (e.g. ['naval-battle']) —
      *         a candidate missing any core tag is the wrong picture and is excluded.
-     *  SCORE  soft overlap → 2·(theme hits) + 2·(actor QID hits)
-     *         + era: depicted_era == $era ? 2 : era_flexible ? 1 : 0   (flexible never penalised)
-     *         + quality/50 (fame/museum tiebreak).
+     *  SCORE  SUBJECT decides relevance: 2·(theme hits) + 2·(actor QID hits)
+     *         + era: depicted_era == $era ? 2 : era_flexible ? 1 : 0 + quality/50.
+     *         Region is only a SOFT nudge (never a gate): a work in one of $preferRegions
+     *         gets +2, 'universal' +1, unclassified 0, a foreign region −4. So a foreign-
+     *         subject work that's genuinely on-topic (e.g. "Landing of Columbus" for a
+     *         colonisation lesson whose regions include 'americas') still surfaces, while an
+     *         off-topic American work in a French-Revolution lesson sinks on subject + region.
      *
      * Ranked best-first. Only tagged, public-domain works can match.
      */
@@ -115,6 +124,7 @@ class Artwork extends Model
         ?string $era = null,
         int $limit = 30,
         ?string $kind = null,
+        array $preferRegions = ['european'],
     ) {
         $pgArray = fn (array $a): string => '{'.implode(',', array_map(
             fn ($x) => '"'.str_replace(['\\', '"'], '', (string) $x).'"', $a
@@ -141,13 +151,15 @@ class Artwork extends Model
                 .'+ 2 * (select count(distinct al.target_qid) from artwork_links al '
                 .'         where al.artwork_qid = artworks.qid and al.target_qid = any(?::text[])) '
                 .'+ (case when depicted_era = ? then 2 when era_flexible then 1 else 0 end) '
-                .'+ coalesce(quality, 0) / 50.0 ) as match_score, '
+                .'+ coalesce(quality, 0) / 50.0 '
+                // region: soft nudge only — subject already decided relevance above.
+                .'+ (case when region = any(?::text[]) then 2 when region = \'universal\' then 1 when region is null then 0 else -4 end) ) as match_score, '
                 // soft-criteria hit count, for the "n / m correct" badge
                 .'( (select count(*) from unnest(tags) t where t = any(?::text[])) '
                 .'+ (select count(distinct al.target_qid) from artwork_links al '
                 .'     where al.artwork_qid = artworks.qid and al.target_qid = any(?::text[])) '
                 .'+ (case when depicted_era = ? or era_flexible then 1 else 0 end) ) as soft_hits',
-                [$themesArr, $actorsArr, $era, $themesArr, $actorsArr, $era],
+                [$themesArr, $actorsArr, $era, $pgArray($preferRegions), $themesArr, $actorsArr, $era],
             )
             ->orderByRaw('match_score desc, quality desc nulls last')
             ->limit($limit);

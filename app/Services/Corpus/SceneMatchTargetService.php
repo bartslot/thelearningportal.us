@@ -73,12 +73,16 @@ class SceneMatchTargetService
         // what stops a thin scene ("Flanders 1988") from drifting to random modern landscapes.
         $core = $themes = [];
         $era = null;
+        $regions = ['european'];
         if ($vocab['depicts'] !== []) {
             try {
                 $out = $this->llm->json($this->system($vocab), $this->user($scene, $lesson));
                 $core = array_values(array_intersect((array) ($out['core'] ?? []), $vocab['depicts']));
                 $themes = array_values(array_intersect((array) ($out['themes'] ?? []), $vocab['theme']));
                 $era = in_array($out['era'] ?? null, $vocab['era'], true) ? $out['era'] : null;
+                $valid = ['european', 'americas', 'asia', 'africa'];
+                $r = array_values(array_intersect((array) ($out['regions'] ?? []), $valid));
+                $regions = $r !== [] ? $r : ['european'];
             } catch (Throwable $e) {
                 // Graceful: no core → picker falls back to the era/location blend.
             }
@@ -90,6 +94,8 @@ class SceneMatchTargetService
             'actor_qids' => array_values(array_unique($actors)),
             // Prefer the LLM's lesson-grounded era; fall back to the scene year, then lesson era.
             'era' => $era ?? $this->eraOf($scene->year) ?? $this->eraOf($lesson->era),
+            // Region(s) the lesson SUBJECT spans — colonisation/exploration reach beyond Europe.
+            'regions' => $regions,
             'sig' => $sig,
         ];
     }
@@ -117,10 +123,11 @@ class SceneMatchTargetService
         return "You choose the background image a history lesson scene needs.\n"
             ."The LESSON is the anchor — its subject/period is the domain; the scene refines within it.\n"
             ."If the scene text is thin or its year looks wrong, lean on the LESSON to decide.\n"
-            ."Return strict JSON {\"core\":[],\"themes\":[],\"era\":\"\"} using ONLY these exact slugs:\n"
+            ."Return strict JSON {\"core\":[],\"themes\":[],\"era\":\"\",\"regions\":[]} using ONLY these exact slugs:\n"
             .'DEPICTS: '.implode(', ', $vocab['depicts'])."\n"
             .'THEME: '.implode(', ', $vocab['theme'])."\n"
             .'ERA: '.implode(', ', $vocab['era'])."\n"
+            ."REGIONS: european, americas, asia, africa\n"
             ."core = the 1-2 DEPICTS slugs the background MUST literally show — ONLY the defining\n"
             ."  subject(s). Prefer a single tag; add a 2nd only if genuinely essential (e.g. a sea\n"
             ."  battle = naval-battle). Do NOT pad with secondary details.\n"
@@ -131,6 +138,10 @@ class SceneMatchTargetService
             ."  when the scene is clearly set in a DIFFERENT period than the lesson; IGNORE the scene\n"
             ."  year when it looks like placeholder/default data (e.g. a 1900s year on a lesson about\n"
             ."  antiquity). The lesson subject wins.\n"
+            ."regions = which world region(s) the lesson's SUBJECT spans, 1-3. Default ['european'].\n"
+            ."  Add others when the subject genuinely reaches them: colonisation / age of discovery /\n"
+            ."  Atlantic trade => ['european','americas']; VOC / spice trade => ['european','asia'];\n"
+            ."  a purely European topic (French Revolution, Reformation) stays ['european'].\n"
             ."Never invent a slug; if unsure, omit.";
     }
 
