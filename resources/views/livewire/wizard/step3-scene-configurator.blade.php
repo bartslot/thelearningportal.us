@@ -440,6 +440,10 @@
                 const items = withZ.map(({ t }) => t.kind === 'rect'
                     ? { id: t.id, icon: t.side === 'right' ? 'panelR' : 'panelL', label: (t.side || 'left') + ' half', bg: false }
                     : { id: t.id, icon: 'text', label: (t.text || 'Text').slice(0, 40), bg: false });
+                // Clipart / artwork layers (own overlay). Listed below the text objects, above BG.
+                // Not part of the text z-order, so they aren't drag-reorderable here (art:true).
+                const arts = (window.__lessonArtworkLayer && window.__lessonArtworkLayer._layers) || [];
+                for (const a of arts) items.push({ id: 'art_' + a.asset_id, icon: 'photo', label: a.title || 'Clipart', bg: false, art: true });
                 // The background is the bottom-most object on every scene — always listed last, not draggable.
                 items.push({ id: '__bg__', icon: 'photo', label: 'Background', bg: true });
                 // Skip the re-render (and its churn under SortableJS) when nothing actually changed —
@@ -491,6 +495,11 @@
                     this.locate(obj);                                // route to the Background inspector
                     return;
                 }
+                if (obj.art) {
+                    window.__lessonArtworkLayer?.select?.(obj.id);   // ring the clipart (clears text ring)
+                    document.querySelector(`[data-layer-id="${obj.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    return;
+                }
                 window.__lessonTextLayer?.select?.(obj.id);
                 document.querySelector(`[data-text-id="${obj.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
             },
@@ -498,7 +507,7 @@
             // (reveals its font/size/align toolbar) or surface the panel's side/colour bar.
             edit(obj) {
                 this.select(obj);
-                if (obj.bg) return;   // select() already routed to the Background inspector
+                if (obj.bg || obj.art) return;   // select() already handled these
                 document.querySelector(`[data-text-id="${obj.id}"] [contenteditable]`)?.focus();
             },
             locate(obj) {
@@ -902,10 +911,10 @@
             <template x-for="obj in items" :key="obj.id">
                 {{-- The whole row is the drag handle (grab cursor); only the adjust button opts out.
                      Background isn't draggable — [data-cursor] switches its cursor back to a pointer. --}}
-                <div :data-obj-id="obj.bg ? null : obj.id" :data-bg="obj.bg ? '1' : null"
+                <div :data-obj-id="(obj.bg || obj.art) ? null : obj.id" :data-bg="obj.bg ? '1' : null"
                      @click="select(obj)"
                      :class="[
-                        obj.bg ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
+                        (obj.bg || obj.art) ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
                         selectedId === obj.id ? 'bg-sky-500/15 text-sky-100 ring-1 ring-sky-400/50' : 'text-slate-200 hover:bg-slate-800',
                      ]"
                      class="group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm">
@@ -1048,16 +1057,15 @@
          as this scene's background (downloaded to lesson storage; attribution stored on the scene). --}}
     <div class="modal modal-bottom sm:modal-middle {{ $paintingPickerOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
-            <div class="mb-3 flex items-center justify-between gap-3">
-                <h2 class="text-lg font-semibold text-slate-100">{{ __('Painting backgrounds') }}</h2>
+        <div class="modal-box max-w-6xl border border-slate-700/70 bg-base-300">
+            <div class="mb-3 flex justify-end">
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
-                        aria-label="Close" wire:click="$set('paintingPickerOpen', false)">✕</button>
+                        aria-label="{{ __('Close') }}" wire:click="$set('paintingPickerOpen', false)">✕</button>
             </div>
 
             {{-- Filters on one line; search collapses to an icon on the right that opens an overlay. --}}
-            <div class="relative mb-3" x-data="{ searching: @entangle('searchOpen').live }">
-                <div class="flex items-center gap-1.5">
+            <div class="relative mb-5" x-data="{ searching: @entangle('searchOpen').live }">
+                <div class="flex items-center gap-2">
                     @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans')] as $kindVal => $kindLabel)
                         <button type="button" wire:click="$set('paintingKind', '{{ $kindVal }}')"
                                 class="btn btn-xs flex-none {{ $paintingKind === $kindVal ? 'bg-amber-500 text-slate-950 border-0 hover:bg-amber-400' : 'btn-outline border-slate-600 text-slate-400 hover:border-amber-400 hover:text-amber-300' }}">
@@ -1086,17 +1094,15 @@
 
                 {{-- Overlay search bar, revealed by the icon --}}
                 <div x-show="searching" x-cloak x-transition.opacity.duration.150ms
-                     class="absolute inset-x-0 -top-1.5 z-20 flex items-center gap-2 rounded-lg border border-amber-500/50 bg-base-200 px-3 py-2 shadow-xl">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 flex-none text-slate-400">
+                     class="absolute inset-x-0 -top-2.5 z-20 flex items-center gap-3 rounded-xl border border-amber-500/50 bg-base-200 px-4 py-3 shadow-2xl">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5 flex-none text-slate-400">
                         <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/>
                     </svg>
                     <input x-ref="psearch" type="search"
                            wire:model.live.debounce.400ms="paintingQuery"
                            placeholder="{{ __('Search paintings or painters (e.g. Caesar, Rembrandt)…') }}"
                            class="grow bg-transparent text-sm outline-none placeholder:text-slate-500"
-                           @keydown.escape="searching = false" />
-                    <button type="button" @click="searching = false; $wire.set('paintingQuery', '')"
-                            class="btn btn-xs btn-circle btn-ghost text-slate-400" aria-label="{{ __('Close search') }}">✕</button>
+                           @keydown.escape="searching = false; $wire.set('paintingQuery', '')" />
                 </div>
             </div>
 
@@ -1104,15 +1110,21 @@
                 {{-- wire:init loads the scored grid AFTER the modal paints; a skeleton shows meanwhile. --}}
                 <div wire:init="preparePaintings">
                 @if (! $paintingReady)
-                    <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-hidden sm:grid-cols-3">
-                        @for ($i = 0; $i < 9; $i++)
-                            <div class="animate-pulse rounded-lg bg-slate-700/40" style="aspect-ratio:16/10"></div>
-                        @endfor
+                    {{-- Skeleton fills the SAME fixed height as the loaded grid → no size jump. --}}
+                    <div class="h-[62vh] overflow-hidden p-1.5">
+                        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            @for ($i = 0; $i < 15; $i++)
+                                <div class="animate-pulse rounded-lg bg-slate-700/40" style="aspect-ratio:16/10"></div>
+                            @endfor
+                        </div>
                     </div>
                 @else
-                <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3"
+                {{-- Fixed-height scroll WRAPPER (not the grid — a fixed height on the grid would
+                     stretch the tiles and kill their aspect ratio). p-1.5 keeps hover rings unclipped. --}}
+                <div class="h-[62vh] overflow-y-auto p-1.5"
                      wire:loading.class="opacity-40"
                      wire:target="paintingQuery, paintingKind, paintingRegion, applyPaintingBackground">
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     @forelse ($this->paintingResults as $art)
                         <button type="button"
                                 wire:key="art-{{ md5($art['source'].$art['key']) }}"
@@ -1134,27 +1146,28 @@
                                     ✓ {{ $art['correctness'] }}
                                 </span>
                             @endif
-                            <span class="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-left text-[9px] text-white">
+                            <span class="absolute inset-x-0 bottom-0 truncate bg-black/70 px-2 py-1 text-left text-[10px] text-white">
                                 {{ $art['title'] }}@if($art['caption']) · {{ $art['caption'] }}@endif
                             </span>
                         </button>
                     @empty
-                        <p class="col-span-full py-6 text-center text-sm text-slate-400">
+                        <p class="col-span-full py-10 text-center text-sm text-slate-400">
                             {{ __('No paintings found — try a name, place or event (Dutch or English).') }}
                         </p>
                     @endforelse
+                </div>
                 </div>
                 @unless ($paintingCommonsLoaded)
                     <button type="button"
                             wire:click="$set('paintingCommonsLoaded', true)"
                             wire:loading.attr="disabled" wire:target="paintingCommonsLoaded"
-                            class="btn btn-xs btn-outline mt-2 border-slate-600 text-slate-300 hover:border-sky-400 hover:text-sky-300 inline-flex items-center gap-1.5">
+                            class="btn btn-sm btn-outline mt-4 border-slate-600 text-slate-300 hover:border-sky-400 hover:text-sky-300 inline-flex items-center gap-1.5">
                         <span wire:loading wire:target="paintingCommonsLoaded"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
                         <span wire:loading.remove wire:target="paintingCommonsLoaded">{{ __('More from Wikimedia Commons') }}</span>
                         <span wire:loading wire:target="paintingCommonsLoaded">{{ __('Searching Wikimedia…') }}</span>
                     </button>
                 @endunless
-                <p class="mt-2 text-[10px] text-slate-500">
+                <p class="mt-4 text-[11px] text-slate-500">
                     {{ __('Public-domain works from Wikimedia Commons. The painting is saved to this lesson and credited automatically.') }}
                 </p>
                 @endif
