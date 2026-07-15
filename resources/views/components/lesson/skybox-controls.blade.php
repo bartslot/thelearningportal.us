@@ -328,6 +328,35 @@
                                     <span class="text-[10px] uppercase tracking-wide text-slate-500">{{ __('Sway') }}</span>
                                 </label>
                             </div>
+
+                            {{-- Drawing-mode ink controls: how the clipart draws itself. --}}
+                            @if ($slideshowMode === 'drawing')
+                                <div class="space-y-2 border-t border-slate-700/50 pt-2">
+                                    <span class="block text-[10px] uppercase tracking-widest text-amber-400/70">{{ __('Ink draw-on') }}</span>
+                                    <label class="flex items-center gap-2">
+                                        <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Speed') }}</span>
+                                        <input type="range" min="2" max="20" step="0.5"
+                                               value="{{ $layer['draw_time'] ?? 7 }}"
+                                               wire:change="updateArtworkLayer({{ $aid }}, 'draw_time', $event.target.value)"
+                                               class="range range-xs flex-1" title="{{ __('Seconds for the full draw-on') }}" />
+                                        <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format((float) ($layer['draw_time'] ?? 7), 1), '0'), '.') }}s</span>
+                                    </label>
+                                    <div class="flex items-center gap-2">
+                                        <select wire:change="updateArtworkLayer({{ $aid }}, 'ink_preset', $event.target.value)"
+                                                class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300" title="{{ __('Pen style') }}">
+                                            @foreach (['production' => __('Production'), 'brush' => __('Brush'), 'sketch' => __('Sketch'), 'liner' => __('Liner'), 'etch' => __('Etch')] as $pv => $pl)
+                                                <option value="{{ $pv }}" @selected(($layer['ink_preset'] ?? 'production') === $pv)>{{ $pl }}</option>
+                                            @endforeach
+                                        </select>
+                                        <select wire:change="updateArtworkLayer({{ $aid }}, 'ink_fill', $event.target.value)"
+                                                class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300" title="{{ __('Fill') }}">
+                                            @foreach (['auto' => __('Fill: Auto'), 'none' => __('Fill: None'), 'wash' => __('Fill: Wash'), 'hatch' => __('Fill: Hatch'), 'cross' => __('Fill: Crosshatch')] as $fv => $fl)
+                                                <option value="{{ $fv }}" @selected(($layer['ink_fill'] ?? 'auto') === $fv)>{{ $fl }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 @endforeach

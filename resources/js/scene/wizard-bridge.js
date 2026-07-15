@@ -718,6 +718,20 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let _wizardLayeredScene = null
     let _wizardLayerHost = null
     let _wizardLayeredRaf = 0
+    let _bgSig = null   // skip re-fading the background when only unrelated inspector fields change
+
+    // Ken Burns direction → ParallaxScene motion, so the ANIMATED + direction settings drive
+    // the background pan/zoom on layered scenes too (not just flat ones). Static when off.
+    const kbMotion = (payload) => {
+        if (payload.kbAnimated === false) return { panX: 0, panY: 0, zoom: 1 }
+        switch (payload.kbDirection) {
+            case 'left_right': return { panX: 6, panY: 0, zoom: 1.03 }
+            case 'right_left': return { panX: -6, panY: 0, zoom: 1.03 }
+            case 'zoom_in':    return { panX: 0, panY: 0, zoom: 1.09 }
+            case 'zoom_out':   return { panX: 0, panY: 0, zoom: 0.92 }
+            default:           return { panX: -4, panY: 0, zoom: 1.06 }   // Auto (varied pans)
+        }
+    }
     // Editable clipart overlay (separate from the parallax bg): its own host, own module.
     let _artworkMod = null
     let _artworkOverlay = null
@@ -764,6 +778,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             _wizardLayeredScene = null
         }
         if (_wizardLayerHost) _wizardLayerHost.style.display = 'none'
+        _bgSig = null
         if (_artworkOverlay) { try { _artworkOverlay.clear() } catch (_) {} }
         if (_artworkHost) _artworkHost.style.display = 'none'
         _artworkSig = null
@@ -786,29 +801,38 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             const host = wizardLayerHost()
             if (!host) return false
 
-            destroyWizardLayers()
             host.style.display = ''
             kenBurnsState = null
             if (activePlayer?._skyboxSphere) activePlayer._skyboxSphere.visible = false
 
-            // Background: parallax drift only when the scene is a parallax scene; otherwise flat.
-            _wizardLayeredScene = new _parallaxMod.ParallaxScene(host)
-            const motion = parallax ? { panX: -4, panY: 0, zoom: 1.06 } : { panX: 0, panY: 0, zoom: 1 }
-            _wizardLayeredScene.show({ layers: bgLayers.length ? bgLayers : layers, motion })
-
-            if (parallax) {
-                // Ping-pong the drift so teachers see the depth separation while editing.
-                const CYCLE_MS = 10000
-                const start = performance.now()
-                const loop = (now) => {
-                    if (!_wizardLayeredScene) return
-                    const t = ((now - start) % CYCLE_MS) / CYCLE_MS
-                    _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+            // ── Background — only rebuild when the bg actually changes. Re-showing on every
+            //    scene:load (a caption toggle, a script edit, a 3s poll) re-runs the 900ms fade =
+            //    the flicker Bart saw. The motion follows the ANIMATED + Ken Burns direction. ──
+            const motion = kbMotion(payload)
+            const animated = payload.kbAnimated !== false && (Math.abs(motion.panX) > 0.01 || Math.abs(motion.zoom - 1) > 0.001)
+            // Strip the ?v=<updated_at> cache-buster: it changes on EVERY scene save (a caption
+            // toggle, a script edit), which would otherwise force a bg re-fade = flicker.
+            const stripV = (u) => String(u || '').split('?')[0]
+            const bgSig = JSON.stringify([bgLayers.map(l => stripV(l.url)), motion, animated])
+            if (bgSig !== _bgSig || !_wizardLayeredScene) {
+                _bgSig = bgSig
+                if (_wizardLayeredRaf) { cancelAnimationFrame(_wizardLayeredRaf); _wizardLayeredRaf = 0 }
+                if (_wizardLayeredScene) { try { _wizardLayeredScene.destroy() } catch (_) {} }
+                _wizardLayeredScene = new _parallaxMod.ParallaxScene(host)
+                _wizardLayeredScene.show({ layers: bgLayers.length ? bgLayers : layers, motion })
+                if (animated) {
+                    // Ping-pong so the pan/zoom previews in a loop (playback drives it monotonically).
+                    const CYCLE_MS = 12000, start = performance.now()
+                    const loop = (now) => {
+                        if (!_wizardLayeredScene) return
+                        const t = ((now - start) % CYCLE_MS) / CYCLE_MS
+                        _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+                        _wizardLayeredRaf = requestAnimationFrame(loop)
+                    }
                     _wizardLayeredRaf = requestAnimationFrame(loop)
+                } else {
+                    _wizardLayeredScene.update(0.5)   // static, centred pose
                 }
-                _wizardLayeredRaf = requestAnimationFrame(loop)
-            } else {
-                _wizardLayeredScene.update(0.5)   // static, centred pose
             }
 
             const mode = payload.slideshowMode || (parallax ? 'parallax' : 'standard')
@@ -820,13 +844,18 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 artHost.style.display = ''
                 if (_artworkOverlay) { try { _artworkOverlay.clear() } catch (_) {} }
                 if (!_inkMod) _inkMod = await import('./InkDrawEngine.js')
-                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.url]))
+                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || '').split('?')[0], l.ink_preset, l.ink_fill, l.draw_time]))
                 if (sig !== _inkSig) {
                     _inkSig = sig
                     for (const e of _inkEngines) { try { e.destroy() } catch (_) {} }
                     _inkEngines = artLayers.map((l) => {
                         const eng = new _inkMod.InkDrawEngine(artHost)
-                        eng.draw(l.url, { xPct: l.x ?? 50, yPct: l.y ?? 58, scale: l.scale ?? 1, heightPct: l.height ?? 40 }, { loop: true })
+                        eng.draw(l.url, { xPct: l.x ?? 50, yPct: l.y ?? 58, scale: l.scale ?? 1, heightPct: l.height ?? 40 }, {
+                            loop: true,
+                            preset: l.ink_preset || undefined,
+                            fillMode: (l.ink_fill && l.ink_fill !== 'auto') ? l.ink_fill : undefined,
+                            durationSec: l.draw_time || undefined,
+                        })
                         return eng
                     })
                     window.__inkEngines = _inkEngines
@@ -851,7 +880,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 _artworkOverlay.setOnTop(clipartOnTop)
                 artHost.style.zIndex = clipartOnTop ? '8' : '2'
                 // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
-                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.url]))
+                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url||"").split("?")[0]]))
                 if (sig !== _artworkSig) { _artworkSig = sig; _artworkOverlay.setLayers(artLayers) }
             }
             return true

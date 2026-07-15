@@ -16,16 +16,28 @@
 
 const INK = '#191410'
 
-// Ink Lab presets (verbatim). `production` is Bart-approved (2026-07-14).
-const PRESETS = {
+// Ink Lab presets (verbatim from ink-lab.html). `production` is Bart-approved (2026-07-14).
+const D = {
+  speed: 420, longBoost: 60, curveSlow: 55, lift: 0.12, overlap: 20, order: 'doc', hesit: 12, retrace: 15,
+  width: 4.2, startW: 60, endW: 14, wJitter: 35,
+  wobble: 1.4, wFreq: 1.0, splats: 10,
+  fillMode: 'cross', toneThr: 0.82, hatchGap: 7, hatchAngle: 35, hatchSpd: 4,
+  fillDur: 2.4, fillDelay: 0.5,
+}
+export const INK_PRESETS = {
   production: {
     speed: 620, longBoost: 60, curveSlow: 55, lift: 0.12, overlap: 30, order: 'doc', hesit: 12, retrace: 15,
     width: 2.2, startW: 90, endW: 55, wJitter: 35,
     wobble: 2.1, wFreq: 1.0, splats: 13,
-    fillMode: 'wash', toneThr: 0.82, hatchGap: 4, hatchAngle: 35, hatchSpd: 2,
+    fillMode: 'cross', toneThr: 0.82, hatchGap: 4, hatchAngle: 35, hatchSpd: 2,
     fillDur: 4.6, fillDelay: 0.8,
   },
+  brush:  { ...D, fillMode: 'wash' },
+  etch:   { ...D, width: 2.2, startW: 90, endW: 55, wobble: 0.8, speed: 620, fillMode: 'cross', hatchGap: 6, splats: 3 },
+  sketch: { ...D, width: 2.6, startW: 85, endW: 35, wJitter: 55, wobble: 2.8, wFreq: 2.2, fillMode: 'hatch', toneThr: 0.75, hatchGap: 9, splats: 18, retrace: 30, hesit: 20 },
+  liner:  { ...D, width: 1.5, startW: 100, endW: 88, wJitter: 10, wobble: 0.5, speed: 640, fillMode: 'none', splats: 4, retrace: 5, hesit: 6 },
 }
+const PRESETS = INK_PRESETS
 
 const smooth = t => t * t * (3 - 2 * t)
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
@@ -55,10 +67,13 @@ export class InkDrawEngine {
     if (this._destroyed || !parsed || !parsed.shapes.length) return
     this._vb = parsed.viewBox
     this._shapes = parsed.shapes
-    // Auto fill mode: solid clipart (silhouettes) get an ink wash; pure line-art gets none.
+    // Fill mode: an explicit choice wins; else the preset's own fill; else auto (solid clipart
+    // gets an ink wash, pure line-art gets none — sensible when the teacher hasn't chosen).
     if (opts.fillMode) this.S.fillMode = opts.fillMode
-    else this.S.fillMode = parsed.shapes.some(s => s.filled) ? 'wash' : 'none'
+    else if (!opts.preset) this.S.fillMode = parsed.shapes.some(s => s.filled) ? 'wash' : 'none'
     this._sample()
+    if (this.S.fillMode === 'hatch' || this.S.fillMode === 'cross') await this._buildTone(svgUrl)
+    if (this._destroyed) return
     this._build()
     this._watchResize()
     this._start()
@@ -151,6 +166,40 @@ export class InkDrawEngine {
       case 'ellipse': { const cx = A('cx'), cy = A('cy'), rx = A('rx'), ry = A('ry'); return rx && ry ? `M${cx - rx},${cy} a${rx},${ry} 0 1,0 ${rx * 2},0 a${rx},${ry} 0 1,0 ${-rx * 2},0 Z` : '' }
       default: return ''
     }
+  }
+
+  // Tone map for hatch/cross fill: render the clipart over white → luminance grid (transparent
+  // → white → light → no hatch; the dark silhouette → dark → hatched). Same-origin, so readable.
+  _buildTone(url) {
+    return new Promise((resolve) => {
+      const TW = 256, TH = 256, img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const oc = document.createElement('canvas'); oc.width = TW; oc.height = TH
+          const octx = oc.getContext('2d')
+          octx.fillStyle = '#fff'; octx.fillRect(0, 0, TW, TH)
+          octx.drawImage(img, 0, 0, TW, TH)
+          const im = octx.getImageData(0, 0, TW, TH).data
+          const lum = new Float32Array(TW * TH)
+          for (let i = 0; i < lum.length; i++) lum[i] = (0.299 * im[i * 4] + 0.587 * im[i * 4 + 1] + 0.114 * im[i * 4 + 2]) / 255
+          this._tone = { w: TW, h: TH, lum }
+        } catch (_) { this._tone = null }
+        resolve()
+      }
+      img.onerror = () => { this._tone = null; resolve() }
+      img.src = url
+    })
+  }
+
+  // Luminance 0..1 (1 = white) at a device-px point; outside the clipart box → white (no hatch).
+  toneAt(x, y) {
+    if (!this._tone) return 1
+    const boxW = this._vb.w * this._s, boxH = this._vb.h * this._s
+    if (x < this._left || y < this._top || x > this._left + boxW || y > this._top + boxH) return 1
+    const u = clamp(Math.floor((x - this._left) / boxW * this._tone.w), 0, this._tone.w - 1)
+    const v = clamp(Math.floor((y - this._top) / boxH * this._tone.h), 0, this._tone.h - 1)
+    return this._tone.lum[v * this._tone.w + u]
   }
 
   // Sample every shape into segments (viewBox coords, split at pen jumps between subpaths).
@@ -271,6 +320,42 @@ export class InkDrawEngine {
       this._shapes.forEach((shape, pi) => {
         if (!shape.filled || !(pi in pathEnd)) return
         this._washes.push({ p2: new Path2D(shape.d), start: pathEnd[pi] + S.fillDelay, dur: S.fillDur })
+      })
+    } else if ((S.fillMode === 'hatch' || S.fillMode === 'cross') && this._tone) {
+      // Tone-driven hatching (verbatim from the Lab): lay pen strokes across dark regions.
+      // 'cross' = 3 passes at rising angles/darkness. Scoped to the clipart's box.
+      const passes = S.fillMode === 'hatch'
+        ? [{ ang: S.hatchAngle, thr: S.toneThr }]
+        : [{ ang: S.hatchAngle, thr: S.toneThr }, { ang: S.hatchAngle + 62, thr: S.toneThr * 0.72 }, { ang: S.hatchAngle + 118, thr: S.toneThr * 0.45 }]
+      let ht = outlineEnd + S.fillDelay
+      const boxW = this._vb.w * this._s, boxH = this._vb.h * this._s
+      const cx = this._left + boxW / 2, cy = this._top + boxH / 2
+      const gap = S.hatchGap * DP, step = 3 * DP, minRun = 8 * DP, diag = Math.max(boxW, boxH) * 1.5
+      passes.forEach(pass => {
+        const a = pass.ang * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), px = -sa, py = ca
+        const runs = []
+        for (let o = -diag / 2; o < diag / 2; o += gap) {
+          const mx = cx + px * o, my = cy + py * o
+          let run = null
+          for (let l = -diag / 2; l < diag / 2; l += step) {
+            const x = mx + ca * l, y = my + sa * l
+            if (this.toneAt(x, y) < pass.thr) { if (!run) run = []; run.push({ x, y }) }
+            else if (run) { if (run.length * step > minRun) runs.push(run); run = null }
+          }
+          if (run && run.length * step > minRun) runs.push(run)
+        }
+        runs.forEach(run => {
+          const j = () => (rand() - 0.5) * 2.5 * DP
+          const p0 = run[0], p1 = run[run.length - 1], ext = 2 * DP
+          run.unshift({ x: p0.x - ca * ext + j(), y: p0.y - sa * ext + j() })
+          run.push({ x: p1.x + ca * ext + j(), y: p1.y + sa * ext + j() })
+          const st = this._makeStroke(run, { wobble: S.wobble * DP * 0.6, width: S.width * DP * 0.38, sw: 0.9, ew: 0.6, jit: S.wJitter / 150, curve: 0 }, rand)
+          st.start = ht
+          st.dur = Math.max(0.03, st.len / (S.speed * DP * S.hatchSpd))
+          this._strokes.push(st)
+          ht = st.start + st.dur * 0.35 + 0.008   // rapid rhythmic hatching
+        })
+        ht += 0.35
       })
     }
 

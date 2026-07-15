@@ -154,6 +154,10 @@ trait EditsSceneArtwork
             'sway' => null, // boolean
             'blend' => ['multiply', 'screen', 'overlay', 'darken', 'lighten'],
             'x' => [0, 100],   // stage position %, centre anchor
+            // Drawing-mode ink controls (per layer).
+            'ink_preset' => ['production', 'brush', 'etch', 'sketch', 'liner'],
+            'ink_fill' => ['auto', 'none', 'wash', 'hatch', 'cross'],
+            'draw_time' => [2, 20],   // seconds for the full draw-on
             'y' => [0, 100],
         ];
 
@@ -174,10 +178,10 @@ trait EditsSceneArtwork
 
         // Coerce and clamp the value.
         $coercedValue = match ($field) {
-            'depth', 'scale', 'opacity', 'blur', 'x', 'y' => (float) $value,
+            'depth', 'scale', 'opacity', 'blur', 'x', 'y', 'draw_time' => (float) $value,
             'height', 'wobble' => (int) $value,
             'sway' => (bool) $value,
-            'kind', 'blend' => (string) $value,
+            'kind', 'blend', 'ink_preset', 'ink_fill' => (string) $value,
             default => $value,
         };
 
@@ -195,7 +199,7 @@ trait EditsSceneArtwork
         }
 
         // Validate enum-like fields.
-        if (in_array($field, ['kind', 'blend'], true)) {
+        if (in_array($field, ['kind', 'blend', 'ink_preset', 'ink_fill'], true)) {
             if (!in_array($coercedValue, $whitelist[$field], true)) {
                 return;
             }

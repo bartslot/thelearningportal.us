@@ -20,9 +20,9 @@
     </label>
 
     {{-- Show/hide the on-canvas caption (flag · title · year · location) for this scene. --}}
-    <label class="flex cursor-pointer items-center justify-between gap-2">
+    <label class="my-1 flex cursor-pointer items-center justify-between gap-2 rounded-lg bg-slate-800/40 px-3 py-2">
         <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Caption') }}</span>
-        <input type="checkbox" class="toggle toggle-sm toggle-warning"
+        <input type="checkbox" class="toggle toggle-sm toggle-warning shrink-0"
                @checked(! ($scene->config['hide_identity'] ?? false))
                wire:click="toggleCaption" />
     </label>

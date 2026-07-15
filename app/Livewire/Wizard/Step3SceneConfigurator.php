@@ -149,6 +149,10 @@ class Step3SceneConfigurator extends Component
                 'blend' => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
                 'wobble' => isset($l['wobble']) ? (int) $l['wobble'] : null,
                 'z' => isset($l['z']) ? (int) $l['z'] : null,
+                // Drawing-mode ink controls (per layer).
+                'ink_preset' => $l['ink_preset'] ?? null,
+                'ink_fill' => $l['ink_fill'] ?? null,
+                'draw_time' => isset($l['draw_time']) ? (float) $l['draw_time'] : null,
             ])->filter(fn ($l) => $l['url'])->values()->all() ?: null,
         ])->filter(fn ($shot) => $shot['image_url'])->values()->all();
     }

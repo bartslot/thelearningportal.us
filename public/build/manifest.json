@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-vpZf8Fhf.js",
+    "file": "assets/app-jAlcpPAj.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -113,7 +113,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/InkDrawEngine.js": {
-    "file": "assets/InkDrawEngine-CM7R39vT.js",
+    "file": "assets/InkDrawEngine-DDl-qHFm.js",
     "name": "InkDrawEngine",
     "src": "resources/js/scene/InkDrawEngine.js",
     "isDynamicEntry": true
@@ -143,7 +143,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-_cCJQSwL.js",
+    "file": "assets/index-BUBizfCh.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
