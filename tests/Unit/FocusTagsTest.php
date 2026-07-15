@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 class FocusTagsTest extends TestCase
 {
-    public function test_all_returns_ordered_array_with_labels_and_emojis(): void
+    public function test_all_returns_ordered_array_with_labels(): void
     {
         $all = FocusTags::all();
 
@@ -17,7 +17,6 @@ class FocusTagsTest extends TestCase
         $this->assertGreaterThanOrEqual(16, count($all));
         $this->assertArrayHasKey('power', $all);
         $this->assertArrayHasKey('label', $all['power']);
-        $this->assertArrayHasKey('emoji', $all['power']);
     }
 
     public function test_sanitize_whitelists_against_all(): void

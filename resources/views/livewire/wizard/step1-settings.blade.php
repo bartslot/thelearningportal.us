@@ -127,13 +127,12 @@
                         type="button"
                         wire:click="toggleFocusTag('{{ $slug }}')"
                         @class([
-                            'btn btn-xs gap-1',
+                            'btn btn-xs',
                             'btn-primary' => in_array($slug, $focusTags, true),
                             'btn-outline' => ! in_array($slug, $focusTags, true),
                         ])
                     >
-                        <span>{{ $tag['emoji'] }}</span>
-                        <span>{{ __($tag['label']) }}</span>
+                        {{ __($tag['label']) }}
                     </button>
                 @endforeach
             </div>
