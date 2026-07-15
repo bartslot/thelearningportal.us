@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-D1QBnYvB.css",
+    "file": "assets/app-CpRre-pe.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-DVB_Y-ii.js",
+    "file": "assets/app-vpZf8Fhf.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -107,13 +107,13 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-BNmQd5bp.js",
+    "file": "assets/ArtworkOverlay-D3aA2gCp.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true
   },
   "resources/js/scene/InkDrawEngine.js": {
-    "file": "assets/InkDrawEngine-DrJihjhg.js",
+    "file": "assets/InkDrawEngine-CM7R39vT.js",
     "name": "InkDrawEngine",
     "src": "resources/js/scene/InkDrawEngine.js",
     "isDynamicEntry": true
@@ -143,7 +143,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-DZR0ZGzh.js",
+    "file": "assets/index-_cCJQSwL.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

@@ -176,8 +176,8 @@
     </div>
 
     {{-- ═══════════════════════════════════ FOOTER ══════════════════════════════════════ --}}
-    <div class="flex items-center justify-between pt-2">
-        <button type="button" wire:click="back" class="btn btn-sm btn-ghost text-slate-300">← Back</button>
+    <div class="relative flex items-center justify-center pt-2">
+        <button type="button" wire:click="back" class="btn btn-sm btn-ghost text-slate-300 absolute left-0">← Back</button>
         <button type="button" wire:click="generate" class="btn btn-primary">
             Generate lesson <i class="ti ti-arrow-right"></i>
         </button>

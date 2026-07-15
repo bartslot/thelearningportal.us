@@ -1,6 +1,8 @@
 @props([
     'scene'    => null,
     'selected' => false,
+    'wide'     => false,   // vertical rail: fill the rail width instead of fixed w-32
+    'number'   => null,    // slide number badge (vertical rail)
 ])
 
 <button type="button"
@@ -8,7 +10,9 @@
         wire:click="selectScene({{ $scene->id }})"
         data-scene-id="{{ $scene->id }}"
         @class([
-            'group relative shrink-0 w-32 aspect-video rounded-xl overflow-hidden transition-all',
+            'group relative shrink-0 aspect-video rounded-xl overflow-hidden transition-all',
+            'w-full' => $wide,
+            'w-32' => ! $wide,
             'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'        => $selected,
             'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $selected && $scene->status !== 'failed',
             'ring-1 ring-rose-500/50'                                          => $scene->status === 'failed',
@@ -25,14 +29,30 @@
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>
         </div>
     @else
+        {{-- Placeholder sits underneath; a present image covers it. If the image 404s
+             (generation failed / file removed) onerror hides it, revealing the placeholder
+             instead of the browser's broken-image glyph. --}}
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-800/60 text-slate-500">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5 opacity-80" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <circle cx="8.5" cy="9.5" r="1.4"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4 17 4.5-4.5a1.4 1.4 0 0 1 2 0L15 17m-1.5-2 2-2a1.4 1.4 0 0 1 2 0l2.5 2.5"/>
+            </svg>
+            <span class="text-[9px] tracking-widest">{{ __('SCENE') }} {{ $scene->order }}</span>
+        </div>
         @if ($scene->image_path)
             <img src="{{ asset('storage/' . $scene->image_path) }}"
-                 class="w-full h-full object-cover" alt="" />
-        @else
-            <div class="w-full h-full bg-slate-800/60 flex items-center justify-center text-[10px] text-slate-500 tracking-widest">SCENE {{ $scene->order }}</div>
+                 onerror="this.style.display='none'"
+                 class="relative w-full h-full object-cover" alt="" />
         @endif
-        <span class="absolute bottom-0 inset-x-0 bg-black/55 text-[9px] text-white px-1 py-0.5">
+        <span class="absolute bottom-0 inset-x-0 bg-black/55 text-[9px] text-white px-1 py-0.5 text-left truncate">
             {{ $scene->year ?? '—' }} · {{ $scene->location ?? '—' }}
+        </span>
+    @endif
+
+    @if ($number !== null)
+        <span class="absolute top-1 left-1 min-w-4 rounded bg-black/60 px-1 text-center text-[9px] font-semibold leading-4 text-white/80">
+            {{ $number }}
         </span>
     @endif
 

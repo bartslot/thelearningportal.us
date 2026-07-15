@@ -78,7 +78,11 @@ export class SceneTimelinePlayer {
 
     // Pass the whole scene so the bridge can honour scene_view (flat Ken Burns vs skybox).
     await this.skybox.crossfadeTo(scene.world_pano_path || scene.image_path, scene)
-    this.overlay.update({ year: scene.year, location: scene.location })
+    this.overlay.update({
+      year: scene.year,
+      location: scene.location,
+      hidden: !!(scene.config && scene.config.hide_identity),
+    })
 
     if (scene.animation_clip_id) {
       this.avatar.setClip(scene.animation_clip_id)

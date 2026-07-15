@@ -237,42 +237,36 @@ class AvatarStudio extends Component
     }
 
     /**
-     * Tick a voice as the avatar's preferred narrator for a language.
-     * Narration resolves this via Avatar::voiceFor(lesson locale).
+     * Mark a voice as USED for a language. This is the single voice-selection action:
+     * it sets the per-language narrator (voice_map, resolved by Avatar::voiceFor) AND
+     * makes it the avatar's base/active voice. "Preferred" and "active" were two names
+     * for practically the same thing — this merges them.
      */
-    public function setPreferred(string $lang, string $voiceId): void
+    public function useVoice(string $lang, string $voiceId): void
     {
         $known = collect($this->voiceRows())->pluck('id')->all();
-        if (! in_array($voiceId, $known, true) || mb_strlen($lang) > 8) {
+        if ($lang === '' || mb_strlen($lang) > 8 || ! in_array($voiceId, $known, true)) {
             return;
         }
 
         $map = $this->avatar->voice_map ?? [];
-        // Ticking the already-preferred voice unticks it.
-        $map[$lang] = ($map[$lang] ?? null) === $voiceId ? null : $voiceId;
+        // Ticking the voice already used for this language clears it.
+        $wasUsed = ($map[$lang] ?? null) === $voiceId;
+        $map[$lang] = $wasUsed ? null : $voiceId;
         $map = array_filter($map, fn ($v) => $v !== null);
 
-        $this->avatar->update(['voice_map' => $map]);
-        $this->flash(__('Preferred voices updated.'), false);
-    }
+        $updates = ['voice_map' => $map];
+        if (! $wasUsed) {
+            // Choosing a voice also makes it the avatar's base/active voice.
+            $this->voice_id = $voiceId;
+            $this->voice_provider = $this->previewProvider;
+            $this->previewVoiceId = $voiceId;
+            $updates['voice_id'] = $voiceId;
+            $updates['voice_provider'] = $this->previewProvider;
+        }
 
-    public function selectVoice(string $voiceId): void
-    {
-        $this->voice_id       = $voiceId;
-        $this->voice_provider = $this->previewProvider;
-
-        // The sample-generation controls read the preview fields — without this sync,
-        // "Generate" kept synthesizing with the previously selected voice.
-        $this->previewVoiceId = $voiceId;
-
-        // Clicking a card both auditions AND chooses: persist immediately so the
-        // studio needs no separate save step for the voice.
-        $this->avatar->update([
-            'voice_provider' => $this->voice_provider,
-            'voice_id'       => $voiceId,
-        ]);
-
-        $this->flash(__('Voice set to:').' '.(collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId), false);
+        $this->avatar->update($updates);
+        $this->flash(__('Voice updated.'), false);
     }
 
     #[Computed]

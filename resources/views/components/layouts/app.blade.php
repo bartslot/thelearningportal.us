@@ -11,7 +11,11 @@
     @livewireStyles
 </head>
 <body class="h-full bg-slate-950 text-slate-100 antialiased">
-    <x-app-nav />
+    {{-- Canvas steps (Configure/Preview) are full-screen editors — hide the global menu bar
+         so nothing overlaps the composition. The teacher exits via the back arrow (top-left). --}}
+    @unless ($hideChrome ?? false)
+        <x-app-nav />
+    @endunless
 
     @if(session('success'))
         <div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
@@ -29,7 +33,9 @@
         </div>
     @endif
 
-    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main @class([
+        'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8' => ! ($hideChrome ?? false),
+    ])>
         {{ $slot }}
     </main>
 

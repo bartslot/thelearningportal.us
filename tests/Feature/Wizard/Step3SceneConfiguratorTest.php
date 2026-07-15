@@ -6,7 +6,6 @@ namespace Tests\Feature\Wizard;
 
 use App\Enums\LessonStatus;
 use App\Jobs\GenerateSceneAudio;
-use App\Jobs\GenerateSceneImage;
 use App\Livewire\Wizard\Step3SceneConfigurator;
 use App\Models\Lesson;
 use App\Models\Scene;
@@ -22,15 +21,18 @@ class Step3SceneConfiguratorTest extends TestCase
     use RefreshDatabase;
 
     private User $teacher;
+
     private Lesson $lesson;
+
     private Scene $s1;
+
     private Scene $s2;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->teacher = User::factory()->create();
-        $this->lesson  = Lesson::create([
+        $this->lesson = Lesson::create([
             'teacher_id' => $this->teacher->id,
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
             'image_style' => 'cinematic', 'status' => LessonStatus::ScenesReady,
@@ -423,5 +425,19 @@ class Step3SceneConfiguratorTest extends TestCase
             ->call('selectScene', $this->s2->id)
             ->call('setQuizShuffle', 'chaos');
         $this->assertSame('once', $this->s2->fresh()->config['quiz_shuffle']);
+    }
+
+    public function test_opens_the_ink_svg_artwork_library_from_the_insert_tool(): void
+    {
+        // Clipart is inserted from the canvas tools strip, which is wire:ignore and
+        // therefore dispatches a browser event rather than a wire:click.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->assertSet('svgLibraryOpen', false)
+            ->assertSeeHtml("Livewire.dispatch('open-svg-library')")
+            ->dispatch('open-svg-library')
+            ->assertSet('svgLibraryOpen', true)
+            ->assertSee('Ink artwork library')
+            ->assertSeeLivewire('svg-asset-library');
     }
 }

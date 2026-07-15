@@ -86,7 +86,7 @@ class SceneArtworkTest extends TestCase
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('selectScene', $this->scene->id)
             ->call('attachArtwork', $this->asset1->id)
-            ->assertSee('Scene artwork')
+            ->assertSee('Layers')
             ->assertSee('Test SVG 1');
     }
 

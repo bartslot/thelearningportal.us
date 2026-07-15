@@ -21,6 +21,10 @@
         <!-- dompdf (game-pack + handout tests) peaks past PHP's 128M default as the suite grows. -->
         <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
+        <!-- Isolate tests from the dev database. Without this, RefreshDatabase runs
+             migrate:fresh against DB_DATABASE from .env (learningportal_dev) and wipes
+             local dev data every run. learningportal_test already exists for this. -->
+        <env name="DB_DATABASE" value="learningportal_test"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

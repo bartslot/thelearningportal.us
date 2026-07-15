@@ -13,6 +13,8 @@
     $isUpscaling    = ($scene->upscale_status ?? null) === 'upscaling';
     $isBusy         = $isGenerating;
     $hasSkyboxImage = ! empty($scene->skybox_image_path);
+    $slideshowMode  = (string) ($scene->config['slideshow_mode'] ?? (($scene->config['parallax'] ?? false) ? 'parallax' : 'standard'));
+    $parallax       = $slideshowMode === 'parallax';
     $candidates     = $scene->skybox_candidates ?? [];
     // Default image-source tab reflects how the current background was set.
     $bgKind         = $scene->config['background_credit']['kind'] ?? null;
@@ -94,6 +96,28 @@
 
     {{-- ── Slideshow tab ────────────────────────────────────────────────────── --}}
     <div x-show="view === 'slideshow'" x-cloak class="space-y-2">
+        {{-- Slideshow render mode — Standard (flat) | Parallax (depth) | Drawing (line art). --}}
+        <div x-data="{ mode: @js($slideshowMode) }">
+            <div class="flex rounded-lg overflow-hidden border border-slate-700 text-[11px] font-medium">
+                @foreach (['standard' => __('Standard'), 'parallax' => __('Parallax'), 'drawing' => __('Drawing')] as $modeVal => $modeLabel)
+                    <button type="button"
+                            @click="mode = '{{ $modeVal }}'; $wire.call('setSlideshowMode', '{{ $modeVal }}')"
+                            :class="mode === '{{ $modeVal }}'
+                                ? 'bg-amber-500 text-slate-950'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                            class="flex-1 py-1.5 transition-colors">
+                        {{ $modeLabel }}
+                    </button>
+                @endforeach
+            </div>
+            <p class="mt-1 text-[10px] leading-tight text-slate-500" x-show="mode === 'parallax'" x-cloak>
+                {{ __('Layers and text gain depth and follow the camera.') }}
+            </p>
+            <p class="mt-1 text-[10px] leading-tight text-slate-500" x-show="mode === 'drawing'" x-cloak>
+                {{ __('The scene draws itself as an ink line-art animation.') }}
+            </p>
+        </div>
+
         {{-- Current background preview + remove --}}
         <div class="flex items-start gap-3">
             @if ($scene->image_path)
@@ -148,18 +172,31 @@
             @endif
         </div>
 
-        {{-- Image source tabs — how to set this scene's background. --}}
-        <div x-data="{ src: '{{ $srcDefault }}' }" class="space-y-2">
+        {{-- Background — how this scene is filled. Keynote model: a scene has ONE
+             background (image / video / 3D). Clipart and other objects go ON TOP via
+             the Insert tools, not here. --}}
+        <div x-data="{ bgType: @js(in_array($srcDefault, ['video', '3d'], true) ? $srcDefault : 'image'), imgSrc: @js(in_array($srcDefault, ['ai', 'paintings', 'url'], true) ? $srcDefault : 'ai') }" class="space-y-2">
+            <span class="block text-[10px] uppercase tracking-widest text-slate-500">{{ __('Background') }}</span>
             <div class="flex overflow-hidden rounded-lg border border-slate-700 text-[10px] font-medium">
-                @foreach (['ai' => __('AI generated'), 'paintings' => __('Paintings'), 'video' => __('Video'), '3d' => __('3D'), 'url' => __('URL')] as $sv => $sl)
-                    <button type="button" @click="src = '{{ $sv }}'"
-                            :class="src === '{{ $sv }}' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
-                            class="flex-1 whitespace-nowrap px-1 py-1.5 transition-colors">{{ $sl }}</button>
+                @foreach (['image' => __('Image'), 'video' => __('Video'), '3d' => __('3D')] as $bv => $bl)
+                    <button type="button" @click="bgType = '{{ $bv }}'"
+                            :class="bgType === '{{ $bv }}' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                            class="flex-1 whitespace-nowrap px-1 py-1.5 transition-colors">{{ $bl }}</button>
+                @endforeach
+            </div>
+
+          {{-- Image — where the background image comes from: generate, a painting, or a URL --}}
+          <div x-show="bgType === 'image'" x-cloak class="space-y-2">
+            <div class="flex overflow-hidden rounded-lg border border-slate-700/70 text-[10px] font-medium">
+                @foreach (['ai' => __('AI generated'), 'paintings' => __('Paintings'), 'url' => __('URL')] as $sv => $sl)
+                    <button type="button" @click="imgSrc = '{{ $sv }}'"
+                            :class="imgSrc === '{{ $sv }}' ? 'bg-slate-700 text-amber-300' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                            class="flex-1 whitespace-nowrap px-1 py-1 transition-colors">{{ $sl }}</button>
                 @endforeach
             </div>
 
             {{-- AI generated --}}
-            <div x-show="src === 'ai'" x-cloak class="space-y-2">
+            <div x-show="imgSrc === 'ai'" x-cloak class="space-y-2">
                 <button type="button"
                         wire:click="regenerate({{ $scene->id }}, 'image')"
                         wire:loading.attr="disabled" wire:target="regenerate"
@@ -180,8 +217,8 @@
                 </details>
             </div>
 
-            {{-- Paintings (curated public-domain / museum works) --}}
-            <div x-show="src === 'paintings'" x-cloak class="space-y-1.5">
+            {{-- Paintings (curated public-domain / museum works) as the background image --}}
+            <div x-show="imgSrc === 'paintings'" x-cloak class="space-y-1.5">
                 <button type="button" wire:click="openPaintingPicker" @disabled($isBusy)
                         class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 inline-flex items-center gap-1.5">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -192,53 +229,10 @@
                     <span>{{ __('Browse paintings') }}</span>
                 </button>
                 <p class="text-[10px] text-slate-500">{{ __('Public-domain paintings & museum works, matched to the scene’s era and place.') }}</p>
-
-                <button type="button" wire:click="openSvgLibrary" @disabled($isBusy)
-                        class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 inline-flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 20s2-8 8-8m0 0c4 0 6 3 6 3M12 12c0-4 3-6 3-6M15 4l1 1"/>
-                    </svg>
-                    <span>{{ __('Import line-art (SVG)') }}</span>
-                </button>
-                <p class="text-[10px] text-slate-500">{{ __('Public-domain SVGs (Wikimedia, freesvg) drawn line-by-line in the ink style.') }}</p>
-
-                @if (count($this->sceneArtworkLayers()) > 0)
-                    <div class="space-y-2 border-t border-slate-700 pt-2 mt-2">
-                        <span class="text-[10px] uppercase tracking-widest text-slate-500 block">{{ __('Scene artwork') }}</span>
-                        @foreach ($this->sceneArtworkLayers() as $layer)
-                            <div class="flex items-center gap-2 rounded bg-slate-800/50 p-1.5 text-[11px]">
-                                <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] }}"
-                                     class="h-8 w-8 rounded bg-base-100 object-contain shrink-0" />
-                                <div class="flex-1 min-w-0">
-                                    <p class="truncate font-medium text-slate-300">{{ $layer['title'] }}</p>
-                                </div>
-                                <div class="flex items-center gap-1">
-                                    <input type="range" min="0.4" max="2.5" step="0.1"
-                                           value="{{ $layer['depth'] ?? 1.3 }}"
-                                           wire:change="updateArtworkLayer({{ $layer['asset_id'] }}, 'depth', $event.target.value)"
-                                           class="range range-xs w-16" />
-                                    <span class="text-[10px] text-slate-400 w-8 text-right">{{ number_format((float) ($layer['depth'] ?? 1.3), 2) }}</span>
-                                </div>
-                                <select wire:change="updateArtworkLayer({{ $layer['asset_id'] }}, 'kind', $event.target.value)"
-                                        class="select select-xs select-bordered bg-slate-900 border-slate-700 text-slate-300">
-                                    <option value="figure" @selected(($layer['kind'] ?? 'figure') === 'figure')>Figure</option>
-                                    <option value="strip" @selected(($layer['kind'] ?? 'figure') === 'strip')>Strip</option>
-                                </select>
-                                <button type="button"
-                                        wire:click="detachArtwork({{ $layer['asset_id'] }})"
-                                        class="btn btn-ghost btn-xs text-slate-500 hover:text-rose-400">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                                    </svg>
-                                </button>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
             </div>
 
             {{-- URL (paste a direct image link) --}}
-            <div x-show="src === 'url'" x-cloak x-data="{ imageUrl: '' }" class="space-y-1.5">
+            <div x-show="imgSrc === 'url'" x-cloak x-data="{ imageUrl: '' }" class="space-y-1.5">
                 <input type="url" x-model="imageUrl" placeholder="https://…/image.jpg"
                        class="input input-xs input-bordered bg-slate-900 w-full" />
                 <button type="button"
@@ -250,19 +244,95 @@
                 </button>
                 <p class="text-[10px] text-slate-500">{{ __('Paste a direct image link — it’s downloaded and saved to this lesson.') }}</p>
             </div>
+          </div>{{-- /image sub-sources --}}
 
             {{-- Video — YouTube/Vimeo embed (next todo) --}}
-            <div x-show="src === 'video'" x-cloak
+            <div x-show="bgType === 'video'" x-cloak
                  class="rounded-lg border border-dashed border-slate-700 p-3 text-[11px] text-slate-500">
                 {{ __('Embed a YouTube or Vimeo video as the scene — coming soon.') }}
             </div>
 
             {{-- 3D — Sketchfab embed (next todo) --}}
-            <div x-show="src === '3d'" x-cloak
+            <div x-show="bgType === '3d'" x-cloak
                  class="rounded-lg border border-dashed border-slate-700 p-3 text-[11px] text-slate-500">
                 {{ __('Embed a Sketchfab 3D model — coming soon.') }}
             </div>
         </div>
+
+        {{-- Layers — objects placed ON TOP of the background. Clipart is added from the
+             Insert tools on the canvas; each layer keeps its own depth, kind and controls.
+             (Keynote model: objects live above the slide background, not inside it.) --}}
+        @if (count($this->sceneArtworkLayers()) > 0)
+            <div class="space-y-2">
+                {{-- Depth per layer is a Parallax-mode control; the mode itself is chosen in the
+                     Standard | Parallax | Drawing row above. --}}
+                <span class="block text-[10px] uppercase tracking-widest text-slate-500">{{ __('Layers') }}</span>
+                @foreach ($this->sceneArtworkLayers() as $layer)
+                    @php($aid = $layer['asset_id'])
+                    <div class="rounded bg-slate-800/50 text-[11px]" x-data="{ open: false }" wire:key="layer-{{ $aid }}">
+                        {{-- Compact row: thumbnail, title, Format toggle, remove --}}
+                        <div class="flex items-center gap-2 p-1.5">
+                            <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] }}"
+                                 class="h-8 w-8 shrink-0 rounded bg-base-100 object-contain" />
+                            <p class="min-w-0 flex-1 truncate font-medium text-slate-300">{{ $layer['title'] }}</p>
+                            <button type="button" @click="open = !open"
+                                    class="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-amber-300"
+                                    :class="open && 'text-amber-300'"
+                                    title="{{ __('Format this object') }}" aria-label="{{ __('Format') }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/>
+                                </svg>
+                            </button>
+                            <button type="button" wire:click="detachArtwork({{ $aid }})"
+                                    class="btn btn-ghost btn-xs btn-square text-slate-500 hover:text-rose-400"
+                                    aria-label="{{ __('Remove layer') }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        {{-- Format panel — the object's properties (Keynote: Format the selection) --}}
+                        <div x-show="open" x-cloak class="space-y-2 border-t border-slate-700/60 px-2 pb-2.5 pt-2">
+                            {{-- Position + size are handled by dragging on the canvas. Depth only
+                                 applies on a parallax scene, so it's gated on the toggle above. --}}
+                            @foreach (array_merge(
+                                $parallax ? [['depth', __('Depth'), 0.4, 2.5, 0.05, 1.3]] : [],
+                                [
+                                    ['scale', __('Size'), 0.2, 3, 0.05, 1.0],
+                                    ['opacity', __('Opacity'), 0.05, 1, 0.05, 1.0],
+                                    ['blur', __('Blur'), 0, 50, 1, 0],
+                                ]
+                            ) as [$field, $label, $min, $max, $step, $default])
+                                <label class="flex items-center gap-2">
+                                    <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ $label }}</span>
+                                    <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
+                                           value="{{ $layer[$field] ?? $default }}"
+                                           wire:change="updateArtworkLayer({{ $aid }}, '{{ $field }}', $event.target.value)"
+                                           class="range range-xs flex-1" />
+                                    <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format((float) ($layer[$field] ?? $default), 2), '0'), '.') }}</span>
+                                </label>
+                            @endforeach
+
+                            <div class="flex items-center gap-2 pt-0.5">
+                                <select wire:change="updateArtworkLayer({{ $aid }}, 'kind', $event.target.value)"
+                                        class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300"
+                                        title="{{ __('Layer kind') }}">
+                                    <option value="figure" @selected(($layer['kind'] ?? 'figure') === 'figure')>{{ __('Figure') }}</option>
+                                    <option value="strip" @selected(($layer['kind'] ?? 'figure') === 'strip')>{{ __('Strip') }}</option>
+                                </select>
+                                <label class="flex cursor-pointer items-center gap-1.5">
+                                    <input type="checkbox" @checked($layer['sway'] ?? false)
+                                           wire:change="updateArtworkLayer({{ $aid }}, 'sway', $event.target.checked ? 1 : 0)"
+                                           class="checkbox checkbox-xs" />
+                                    <span class="text-[10px] uppercase tracking-wide text-slate-500">{{ __('Sway') }}</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
 
         {{-- Background motion: Animated toggle + Ken Burns direction — applies to any image. --}}
         @if ($scene->image_path)

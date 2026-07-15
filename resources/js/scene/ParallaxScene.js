@@ -189,7 +189,10 @@ export class ParallaxScene {
         : 0)
       const el = this._buildPlane({ ...spec, blur })
       root.appendChild(el)
-      return { el, depth: spec.depth ?? 1, baseScale: spec.scale ?? 1 }
+      // Free-positioned figures apply their own scale on the img, so the plane's baseScale is 1
+      // (parallax pan/zoom only) — otherwise the user scale would be applied twice.
+      const positioned = spec.kind === 'figure' && Number.isFinite(spec.x) && Number.isFinite(spec.y)
+      return { el, depth: spec.depth ?? 1, baseScale: positioned ? 1 : (spec.scale ?? 1) }
     })
     // Debug/back-compat aliases: first cover plane + first figure plane.
     this._bgLayer = this._planes.find(p => p.el.classList.contains('px-layer-bg'))?.el ?? null
@@ -233,11 +236,21 @@ export class ParallaxScene {
     img.draggable = false
 
     if (kind === 'figure') {
-      // Centered + bottom-anchored figure; translateX(-50%) lives in the sway keyframes
-      // too, so the breathing animation composes with the centering instead of fighting it.
-      img.style.cssText = 'position:absolute;bottom:0;left:50%;transform:translateX(-50%);'
-        + `height:${height ?? 80}%;max-width:92%;object-fit:contain;object-position:bottom;`
-      if (animate) img.classList.add('px-sway')
+      if (Number.isFinite(spec.x) && Number.isFinite(spec.y)) {
+        // Teacher-positioned figure: free centre-anchored placement at x/y% with its own scale.
+        // The plane wrapper carries the parallax pan (baseScale forced to 1 in show() so this
+        // scale isn't doubled). No sway — a placed object stays put.
+        const s = Number.isFinite(spec.scale) ? spec.scale : 1
+        img.style.cssText = `position:absolute;left:${spec.x}%;top:${spec.y}%;`
+          + `height:${height ?? 40}%;max-width:none;object-fit:contain;`
+          + `transform:translate(-50%,-50%) scale(${s});`
+      } else {
+        // Centered + bottom-anchored figure; translateX(-50%) lives in the sway keyframes
+        // too, so the breathing animation composes with the centering instead of fighting it.
+        img.style.cssText = 'position:absolute;bottom:0;left:50%;transform:translateX(-50%);'
+          + `height:${height ?? 80}%;max-width:92%;object-fit:contain;object-position:bottom;`
+        if (animate) img.classList.add('px-sway')
+      }
     } else {
       // strip: full-width foreground band (SVG trees/grass), tucked past both side
       // edges + slightly below the bottom so its own pan never exposes a border.

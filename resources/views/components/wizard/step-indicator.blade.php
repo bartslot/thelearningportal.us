@@ -27,7 +27,7 @@
         2 => 'Story',
         3 => 'Generate',
         4 => 'Configure',
-        5 => 'Preview',
+        5 => 'Play',
     ];
 
     $stepUrl = fn (int $n) => $lesson

@@ -262,7 +262,21 @@ class BuildTopics extends Command
         // Portrait (P18 → Commons FilePath URL). Added after the table existed, so guard it.
         $corpus->statement('ALTER TABLE public.figures ADD COLUMN IF NOT EXISTS image_url text');
 
-        // topics view: single source for the picker (polities UNION figures).
+        // Places catalog (cities etc. — populated by the corpus place harvest, not this command).
+        $corpus->statement('
+            CREATE TABLE IF NOT EXISTS public.catalog_places (
+                qid text PRIMARY KEY,
+                name text NOT NULL,
+                summary text,
+                lat numeric,
+                lng numeric,
+                sitelinks integer DEFAULT 0,
+                wikipedia_url text,
+                is_publishable boolean DEFAULT true,
+                created_at timestamptz DEFAULT now()
+            )');
+
+        // topics view: single source for the picker (polities UNION figures UNION places).
         $corpus->statement('
             CREATE OR REPLACE VIEW public.topics AS
               SELECT
@@ -297,6 +311,25 @@ class BuildTopics extends Command
                 \'Wikidata (CC0) · Wikipedia (CC-BY-SA)\' AS source_attribution
               FROM public.figures
               WHERE COALESCE(is_publishable, true)
+            UNION ALL
+              SELECT
+                \'place:\' || qid               AS id,
+                \'place\'                       AS type,
+                NULL::text                     AS figure_kind,
+                name,
+                qid,
+                NULL::text                     AS parent_qid,
+                wikipedia_url,
+                NULL::integer                  AS era_start,
+                NULL::integer                  AS era_end,
+                lat                            AS region_lat,
+                lng                            AS region_lng,
+                summary                        AS region_label,
+                summary, sitelinks,
+                \'Wikidata (CC0) · Wikipedia (CC-BY-SA)\' AS source_attribution
+              FROM public.catalog_places
+              WHERE COALESCE(is_publishable, true)
+                AND wikipedia_url IS NOT NULL
         ');
     }
 }

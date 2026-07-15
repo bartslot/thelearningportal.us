@@ -44,6 +44,10 @@ class LessonWizard extends Component
     public function render(): View
     {
         return view('livewire.lesson-wizard')
-            ->layout('components.layouts.app', ['title' => 'Create Lesson']);
+            ->layout('components.layouts.app', [
+                'title' => 'Create Lesson',
+                // Configure (4) and Preview (5) are full-screen canvas editors — hide the global nav.
+                'hideChrome' => in_array($this->step, [4, 5], true),
+            ]);
     }
 }

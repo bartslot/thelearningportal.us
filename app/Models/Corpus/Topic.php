@@ -36,8 +36,11 @@ class Topic extends Model
     ];
 
     /**
-     * Search the catalog by name. Prefix matches rank above substring matches; ties broken by
-     * sitelinks (fame). Returns up to $limit rows.
+     * Search the catalog by name. Ranking, best first: exact name → name prefix →
+     * word prefix ("Empire of Rome" for "rome") → fuzzy word similarity ("Roman
+     * Empire" for "rome", via pg_trgm) → plain substring. Ties broken by sitelinks
+     * (fame). The old pure-substring match surfaced "Óscar Romero"/"Prome Kingdom"
+     * for "Rome" while missing "Roman Empire" entirely.
      */
     public function scopeSearch($query, string $term, int $limit = 10)
     {
@@ -49,8 +52,17 @@ class Topic extends Model
         $like = str_replace(['%', '_'], ['\%', '\_'], $term);
 
         return $query
-            ->where('name', 'ILIKE', '%'.$like.'%')
-            ->orderByRaw('CASE WHEN name ILIKE ? THEN 0 ELSE 1 END', [$like.'%'])
+            ->whereRaw('(name ILIKE ? OR word_similarity(?, name) > 0.55)', ['%'.$like.'%', $term])
+            ->orderByRaw(
+                'CASE
+                    WHEN lower(name) = lower(?) THEN 0
+                    WHEN name ILIKE ? THEN 1
+                    WHEN name ILIKE ? THEN 2
+                    WHEN word_similarity(?, name) > 0.55 THEN 3
+                    ELSE 4
+                 END',
+                [$term, $like.'%', '% '.$like.'%', $term]
+            )
             ->orderByDesc('sitelinks')
             ->limit($limit);
     }
