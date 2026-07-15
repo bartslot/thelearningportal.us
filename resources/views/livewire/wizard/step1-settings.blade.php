@@ -98,6 +98,10 @@
                                     <span class="badge badge-sm badge-outline border-sky-500/40 text-sky-300 shrink-0">
                                         {{ $s['figure_kind'] === 'ruler' ? 'Ruler' : 'Person' }}
                                     </span>
+                                @elseif ($s['type'] === 'place')
+                                    <span class="badge badge-sm badge-outline border-emerald-500/40 text-emerald-300 shrink-0">
+                                        {{ __('Place') }}
+                                    </span>
                                 @endif
                                 <span class="flex flex-col items-start gap-0.5">
                                     <span class="text-sm text-white">{{ $s['name'] }}</span>
@@ -112,10 +116,33 @@
             @endif
         </div>
 
-        {{-- Optional focus / angle (free text — the only free-text in topic selection) --}}
+        {{-- Optional focus tags (thematic lenses) --}}
+        <div class="form-control">
+            <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2">
+                {{ __('Pick a focus (optional)') }}
+            </span>
+            <div class="flex flex-wrap gap-2">
+                @foreach (\App\Lessons\FocusTags::all() as $slug => $tag)
+                    <button
+                        type="button"
+                        wire:click="toggleFocusTag('{{ $slug }}')"
+                        @class([
+                            'btn btn-xs gap-1',
+                            'btn-primary' => in_array($slug, $focusTags, true),
+                            'btn-outline' => ! in_array($slug, $focusTags, true),
+                        ])
+                    >
+                        <span>{{ $tag['emoji'] }}</span>
+                        <span>{{ __($tag['label']) }}</span>
+                    </button>
+                @endforeach
+            </div>
+        </div>
+
+        {{-- Optional focus / angle (free text — complementary to tags) --}}
         <div class="form-control">
             <span class="label-text text-xs uppercase tracking-wider text-slate-400">
-                Focus / angle <span class="normal-case tracking-normal text-slate-500">· optional</span>
+                {{ __('Anything specific?') }} <span class="normal-case tracking-normal text-slate-500">· {{ __('optional') }}</span>
             </span>
             <input type="text" name="focus"
                    wire:model.blur="focus"
@@ -667,9 +694,9 @@
     {{-- ═══════════════════════════════════════════════
          ACTIONS
     ════════════════════════════════════════════════ --}}
-    <div class="flex justify-end gap-3 pt-2">
+    <div class="relative flex items-center justify-center pt-2">
         <button type="button" wire:click="saveDraft"
-                class="btn btn-outline">Save as draft</button>
+                class="btn btn-outline absolute left-0">Save as draft</button>
         <button type="button" wire:click="generate"
                 wire:loading.attr="disabled" wire:target="generate"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">

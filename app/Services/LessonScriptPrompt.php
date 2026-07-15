@@ -145,11 +145,18 @@ SYS;
         $protagonist = trim((string) $lesson->protagonist_name);
         $protagonistLine = $protagonist !== '' ? "Protagonist the student follows: {$protagonist}" : '';
 
+        $focusLine = '';
+        if (is_array($lesson->focus_tags) && count($lesson->focus_tags) > 0) {
+            $labels = \App\Lessons\FocusTags::labels($lesson->focus_tags);
+            $focusLine = "Keep the narrative lens on: {$labels}";
+        }
+
         return <<<USR
 Topic: {$lesson->topic}
 Grade level: {$lesson->grade_level}
 Tone: {$lesson->tone}
 {$protagonistLine}
+{$focusLine}
 
 {$objectivesBlock}
 

@@ -43,6 +43,8 @@ class Step1Settings extends Component
     // Optional free-text angle/focus, e.g. "daily life of a soldier".
     public string $focus = '';
 
+    public array $focusTags = [];
+
     public string $subject = 'history';
 
     public string $grade_level = 'Age 12';
@@ -113,6 +115,7 @@ class Step1Settings extends Component
             $this->lockedTopicName = $lesson->topic_id ? ($lesson->topic ?? '') : '';
             $this->topicWikipediaUrl = $lesson->wikipedia_source;
             $this->focus = $lesson->focus ?? '';
+            $this->focusTags = $lesson->focus_tags ?? [];
             $this->subject = $lesson->subject ?? 'history';
             $this->grade_level = $lesson->grade_level ?? 'Age 12';
             $this->hydrateAudienceFromGradeLevel($this->grade_level);
@@ -201,6 +204,11 @@ class Step1Settings extends Component
     public function updatedRegion(): void
     {
         $this->era = null; // reset era when region changes
+    }
+
+    public function toggleFocusTag(string $slug): void
+    {
+        $this->focusTags = \App\Lessons\FocusTags::toggle($this->focusTags, $slug);
     }
 
     public function updatedIncludeGame(): void
@@ -540,7 +548,8 @@ class Step1Settings extends Component
             'topic' => trim($this->topic),
             'topic_id' => $this->topicId,
             'story_id' => $story?->id,
-            'focus' => trim($this->focus) ?: null,
+            'focus_tags' => \App\Lessons\FocusTags::sanitize($this->focusTags) ?: null,
+            'focus' => trim($this->focus) ?: (count($this->focusTags) > 0 ? \App\Lessons\FocusTags::labels($this->focusTags) : null),
             'wikipedia_source' => $this->topicWikipediaUrl,
             'subject' => 'history',
             'region' => $this->region ?: null,

@@ -38,6 +38,7 @@ class Lesson extends Model
         'topic_id',
         'story_id',
         'focus',
+        'focus_tags',
         'title_bg_path',
         'subject',
         'grade_level',
@@ -115,6 +116,7 @@ class Lesson extends Model
             'team_count' => 'integer',
             'game_split_count' => 'integer',
             'wizard_step' => 'integer',
+            'focus_tags' => 'array',
         ];
     }
 

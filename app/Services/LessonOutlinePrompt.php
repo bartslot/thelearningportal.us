@@ -174,6 +174,21 @@ SG;
 
         $storyBlock = $story ? self::buildStoryBlock($story) : '';
 
+        $focusBlock = '';
+        if ((is_array($lesson->focus_tags) && count($lesson->focus_tags) > 0) || $lesson->focus) {
+            $focusParts = [];
+            $labels = \App\Lessons\FocusTags::labels($lesson->focus_tags ?? []);
+            if ($labels !== '') {
+                $focusParts[] = "Weight the story's lens, scene selection, and learning objectives toward these themes: {$labels}.";
+            }
+            // Skip the angle when it's just the auto-derived tag labels — no point
+            // telling the model the same thing twice.
+            if ($lesson->focus && $lesson->focus !== $labels) {
+                $focusParts[] = "Teacher's angle: {$lesson->focus}";
+            }
+            $focusBlock = 'FOCUS: '.implode(' ', $focusParts);
+        }
+
         return <<<USR
 Topic: {$lesson->topic}
 Subject: {$lesson->subject}
@@ -186,6 +201,7 @@ target_narration_scenes: {$targetNarrationScenes} (must be ≥3; aim within ±1)
 {$arcBlock}
 {$gameClause}
 {$storyBlock}
+{$focusBlock}
 Source text:
 """
 {$sourceText}

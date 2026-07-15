@@ -13,6 +13,31 @@
         </div>
     </div>
 
+    {{-- ── Teacher: focus tags (optional) ─────────────────────────────────────── --}}
+    @if ($state === 'goal')
+        <div class="space-y-3">
+            <div>
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">{{ __('Pick a focus (optional)') }}</p>
+                <div class="flex flex-wrap gap-2">
+                    @foreach (\App\Lessons\FocusTags::all() as $slug => $tag)
+                        <button
+                            type="button"
+                            wire:click="toggleFocusTag('{{ $slug }}')"
+                            @class([
+                                'btn btn-xs gap-1',
+                                'btn-primary' => in_array($slug, $focusTags, true),
+                                'btn-outline' => ! in_array($slug, $focusTags, true),
+                            ])
+                        >
+                            <span>{{ $tag['emoji'] }}</span>
+                            <span>{{ __($tag['label']) }}</span>
+                        </button>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- ── Teacher: the goal (textarea until sent, bubble after) ─────────────── --}}
     @if ($state === 'goal')
         <form wire:submit="submitGoal" class="space-y-2">
@@ -33,7 +58,19 @@
         </form>
     @else
         <div class="chat chat-end">
-            <div class="chat-bubble chat-bubble-primary">{{ $goal }}</div>
+            {{-- Tag-only submissions have no goal text — echo the chosen focus instead
+                 so the teacher's bubble is never empty. --}}
+            <div class="chat-bubble chat-bubble-primary">
+                @if (trim($goal) !== '')
+                    {{ $goal }}
+                @else
+                    {{ collect($focusTags)
+                        ->map(fn ($slug) => (\App\Lessons\FocusTags::all()[$slug] ?? null))
+                        ->filter()
+                        ->map(fn ($tag) => $tag['emoji'].' '.__($tag['label']))
+                        ->join(' · ') }}
+                @endif
+            </div>
         </div>
     @endif
 

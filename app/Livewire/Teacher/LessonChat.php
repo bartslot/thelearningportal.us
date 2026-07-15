@@ -53,27 +53,62 @@ class LessonChat extends Component
 
     public string $topic = '';
 
+    public array $focusTags = [];
+
     /** Idempotency guard — the second click of a double-click redirects, never re-creates. */
     public ?int $createdLessonId = null;
 
     // ── Step 1: goal ───────────────────────────────────────────────────────────────
 
+    public function toggleFocusTag(string $slug): void
+    {
+        if ($this->createdLessonId !== null) {
+            return;
+        }
+
+        $this->focusTags = \App\Lessons\FocusTags::toggle($this->focusTags, $slug);
+    }
+
     public function submitGoal(LessonGoalParser $parser): void
     {
-        $this->validate(['goal' => 'required|string|min:5|max:500']);
+        // Allow submit when goal is empty BUT tags are selected.
+        $goalText = trim($this->goal);
+        $hasTags = count($this->focusTags) > 0;
+        if ($goalText === '' && ! $hasTags) {
+            $this->addError('goal', __('validation.required', ['attribute' => __('goal')]));
+
+            return;
+        }
+        if (strlen($goalText) > 500) {
+            $this->addError('goal', __('validation.max.string', ['attribute' => __('goal'), 'max' => 500]));
+
+            return;
+        }
+        if ($goalText !== '' && strlen($goalText) < 5) {
+            $this->addError('goal', __('validation.min.string', ['attribute' => __('goal'), 'min' => 5]));
+
+            return;
+        }
 
         if ($this->state !== 'goal') {
             return;
         }
 
-        $parsed = $parser->parse($this->goal, app()->getLocale());
+        // Build parser input: prepend focus labels to goal if tags exist.
+        $parserInput = $goalText;
+        if ($hasTags) {
+            $focusLabels = \App\Lessons\FocusTags::labels($this->focusTags);
+            $parserInput = "Focus themes: {$focusLabels}. {$goalText}";
+        }
+
+        $parsed = $parser->parse($parserInput, app()->getLocale());
 
         $this->suggestedPresetKey = $parsed['preset_key'];
         $this->presetKey = $parsed['preset_key'];
         $this->storyQuery = $parsed['story_query'];
         $this->gradeLevel = 'Age '.$this->snapToGradeChip($parsed['age'] ?? self::DEFAULT_AGE);
         // Fallback: without a parsed topic the goal itself is the free-topic label.
-        $this->topic = $parsed['topic'] ?? Str::limit(trim($this->goal), 80, '');
+        $this->topic = $parsed['topic'] ?? Str::limit($goalText ?: $focusLabels, 80, '');
 
         $this->state = 'proposals';
     }
@@ -97,6 +132,7 @@ class LessonChat extends Component
      * the "Ground in: <story>" chips. Matches PER WORD (≥4 chars), not the whole phrase:
      * a goal like "Romeinse limes en soldaten" must still find the story titled
      * "De Romeinse Limes" (whole-phrase ILIKE silently missed it — caught in smoke test).
+     * Includes tag labels in the word list so tag-only submissions still surface stories.
      *
      * @return list<array{id: int, title: string, subtitle: ?string}>
      */
@@ -108,6 +144,17 @@ class LessonChat extends Component
             preg_split('/[^\p{L}\p{N}]+/u', $query) ?: [],
             fn (string $w) => mb_strlen($w) >= 4,
         ));
+
+        // Include tag labels in word list for matching
+        if (count($this->focusTags) > 0) {
+            $tagLabels = preg_split('/[^\p{L}\p{N}]+/u', \App\Lessons\FocusTags::labels($this->focusTags)) ?: [];
+            $tagWords = array_filter(
+                $tagLabels,
+                fn (string $w) => mb_strlen($w) >= 4,
+            );
+            $words = array_unique(array_merge($words, $tagWords));
+        }
+
         if ($words === []) {
             return [];
         }
@@ -228,6 +275,8 @@ class LessonChat extends Component
             'subject' => 'history',
             'grade_level' => $this->gradeLevel,
             'details' => Str::limit(trim($this->goal), self::GOAL_AS_DETAILS_LIMIT, '') ?: null,
+            'focus_tags' => count($this->focusTags) > 0 ? $this->focusTags : null,
+            'focus' => count($this->focusTags) > 0 ? \App\Lessons\FocusTags::labels($this->focusTags) : null,
             'source_mode' => 'internet',
             'avatar_id' => Avatar::where('is_active', true)->orderBy('sort_order')->value('id'),
             'lesson_code' => strtoupper(Str::random(6)),
