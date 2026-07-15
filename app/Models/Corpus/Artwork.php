@@ -125,6 +125,7 @@ class Artwork extends Model
         int $limit = 30,
         ?string $kind = null,
         array $preferRegions = ['european'],
+        ?string $term = null,
     ) {
         $pgArray = fn (array $a): string => '{'.implode(',', array_map(
             fn ($x) => '"'.str_replace(['\\', '"'], '', (string) $x).'"', $a
@@ -138,6 +139,18 @@ class Artwork extends Model
         // GATE — every core tag must be present (Postgres array containment).
         if ($core !== []) {
             $query->whereRaw('tags @> ?::text[]', [$pgArray($core)]);
+        }
+
+        // Text search: the term is the FILTER (title / painter / depicted subject); the lesson
+        // context below still does the RANKING, so "Revolution" in a French-Revolution lesson
+        // floats French works above the American Revolution and off-topic hits.
+        if ($term !== null && trim($term) !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\%', '\_'], trim($term)).'%';
+            $query->where(fn ($q) => $q
+                ->where('title', 'ILIKE', $like)
+                ->orWhere('creator_name', 'ILIKE', $like)
+                ->orWhereIn('qid', fn ($s) => $s
+                    ->select('artwork_qid')->from('artwork_links')->where('target_label', 'ILIKE', $like)));
         }
 
         $themesArr = $pgArray($themes);

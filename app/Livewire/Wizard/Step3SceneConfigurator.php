@@ -135,6 +135,10 @@ class Step3SceneConfigurator extends Component
             // Multiplane layers (E3c): [{path|url, depth, kind, scale, height, sway}] back→front.
             'layers' => collect($shot['layers'] ?? [])->map(fn ($l) => [
                 'url' => ! empty($l['path']) ? asset('storage/'.$l['path']).'?v='.$ts : ($l['url'] ?? null),
+                // asset_id + x/y let the on-canvas editor identify and free-position each layer.
+                'asset_id' => isset($l['asset_id']) ? (int) $l['asset_id'] : null,
+                'x' => isset($l['x']) ? (float) $l['x'] : null,
+                'y' => isset($l['y']) ? (float) $l['y'] : null,
                 'depth' => (float) ($l['depth'] ?? 1),
                 'kind' => in_array($l['kind'] ?? 'cover', ['cover', 'figure', 'strip'], true) ? ($l['kind'] ?? 'cover') : 'cover',
                 'scale' => (float) ($l['scale'] ?? 1),
@@ -196,6 +200,10 @@ class Step3SceneConfigurator extends Component
             'kbAnimated' => (bool) ($scene->kb_animated ?? true),
             'kbDirection' => $scene->kb_direction,
             'focus' => $scene->config['background_focus'] ?? null,   // 'top' for portraits
+            'slideshowMode' => (string) (($scene->config ?? [])['slideshow_mode']
+                ?? ((($scene->config ?? [])['parallax'] ?? false) ? 'parallax' : 'standard')),
+            'parallax' => (($scene->config ?? [])['slideshow_mode'] ?? null) === 'parallax'
+                || (bool) (($scene->config ?? [])['parallax'] ?? false),
             'texts' => (array) (($scene->config ?? [])['texts'] ?? []),
             'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
             'worldPanoUrl' => $scene->world_pano_path ? asset('storage/'.$scene->world_pano_path) : null,
@@ -1136,7 +1144,24 @@ class Step3SceneConfigurator extends Component
         $preferRegions = $this->regionPreference();
         $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
             if ($term !== '') {
-                return \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
+                // Search: the term filters, but rank by the lesson's subject/region context so
+                // "Revolution" in a French-Revolution lesson floats French works to the top.
+                $found = \App\Models\Corpus\Artwork::matchScene(
+                    [],                              // no core gate — the term is the filter
+                    $target['themes'] ?? [],
+                    $target['actor_qids'] ?? [],
+                    $target['era'] ?? null,
+                    self::PAINTING_GRID_LIMIT,
+                    $kind,
+                    $preferRegions,
+                    $term,
+                )->get();
+
+                // Untagged works aren't in the scored index — fall back to a plain search only
+                // when the scored search finds nothing.
+                return $found->isNotEmpty()
+                    ? $found
+                    : \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
             }
             // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
             // correctness (theme + actor + era + quality). This is the source-blind ranker.
