@@ -12,6 +12,7 @@ use App\Jobs\GenerateSkyboxCandidates;
 use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
 use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
+use App\Livewire\Wizard\Concerns\EditsSceneArtwork;
 use App\Livewire\Wizard\Concerns\EditsStoryGame;
 use App\Models\AnimationClip;
 use App\Models\AvatarAnimationController;
@@ -28,6 +29,7 @@ use Livewire\Component;
 class Step3SceneConfigurator extends Component
 {
     use EditsQuizQuestions;
+    use EditsSceneArtwork;
     use EditsStoryGame;
 
     private const EDITABLE_FIELDS = [
@@ -106,6 +108,39 @@ class Step3SceneConfigurator extends Component
         $this->selectSceneInternal($id);
     }
 
+    /**
+     * URL-form shots for the preview JS (scene:load payload AND the inert
+     * scenes JSON in the blade — the bridge falls back to the latter when the
+     * initial scene:load dispatch is missed during hydration).
+     * Mirrors the lesson player's serialization in resources/views/lesson/player.blade.php.
+     */
+    public function serializeShots(Scene $scene): array
+    {
+        $ts = $scene->updated_at?->timestamp ?? '';
+
+        return collect($scene->shots ?? [])->map(fn ($shot) => [
+            'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
+            // bg_url/hero_url (E3b story-pack shots) — parallax layers, see ParallaxScene.js.
+            'bg_url' => ! empty($shot['bg_path']) ? asset('storage/'.$shot['bg_path']).'?v='.$ts : null,
+            'hero_url' => ! empty($shot['hero_path']) ? asset('storage/'.$shot['hero_path']).'?v='.$ts : null,
+            'anchor_sentence' => $shot['anchor_sentence'] ?? null,
+            // Multiplane layers (E3c): [{path|url, depth, kind, scale, height, sway}] back→front.
+            'layers' => collect($shot['layers'] ?? [])->map(fn ($l) => [
+                'url' => ! empty($l['path']) ? asset('storage/'.$l['path']).'?v='.$ts : ($l['url'] ?? null),
+                'depth' => (float) ($l['depth'] ?? 1),
+                'kind' => in_array($l['kind'] ?? 'cover', ['cover', 'figure', 'strip'], true) ? ($l['kind'] ?? 'cover') : 'cover',
+                'scale' => (float) ($l['scale'] ?? 1),
+                'height' => isset($l['height']) ? (float) $l['height'] : null,
+                'sway' => (bool) ($l['sway'] ?? false),
+                'blur' => isset($l['blur']) ? (float) $l['blur'] : null,
+                'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
+                'blend' => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
+                'wobble' => isset($l['wobble']) ? (int) $l['wobble'] : null,
+                'z' => isset($l['z']) ? (int) $l['z'] : null,
+            ])->filter(fn ($l) => $l['url'])->values()->all() ?: null,
+        ])->filter(fn ($shot) => $shot['image_url'])->values()->all();
+    }
+
     private function selectSceneInternal(int $id): void
     {
         $scene = $this->lesson->scenes()->findOrFail($id);
@@ -123,19 +158,16 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('scene:load', payload: [
             'sceneId' => $scene->id,
             'imageUrl' => $imagePath ? asset('storage/'.$imagePath).'?v='.$ts : null,
-            'shots' => collect($scene->shots ?? [])->map(fn ($shot) => [
-                'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
-                // bg_url/hero_url (E3b story-pack shots) — parallax layers, see ParallaxScene.js.
-                'bg_url' => ! empty($shot['bg_path']) ? asset('storage/'.$shot['bg_path']).'?v='.$ts : null,
-                'hero_url' => ! empty($shot['hero_path']) ? asset('storage/'.$shot['hero_path']).'?v='.$ts : null,
-                'anchor_sentence' => $shot['anchor_sentence'] ?? null,
-            ])->filter(fn ($shot) => $shot['image_url'])->values()->all(),
+            'shots' => $this->serializeShots($scene),
             'hasSkyboxImage' => ! empty($scene->skybox_image_path),
             'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
             'animationClipId' => $scene->animation_clip_id,
             'animationClipUrl' => $this->animationGlbUrlFor($scene),
             'year' => $scene->year,
             'location' => $scene->location,
+            // Editable scene identity: a per-scene title override + a hide flag.
+            'identityTitle' => $scene->config['identity_title'] ?? null,
+            'hideIdentity' => (bool) ($scene->config['hide_identity'] ?? false),
             'kind' => $scene->kind,
             'config' => $scene->config,
             'gameType' => $scene->game_type,
@@ -589,8 +621,27 @@ class Step3SceneConfigurator extends Component
         }
 
         $clean = collect($texts)
-            ->filter(fn ($t) => is_array($t) && trim((string) ($t['text'] ?? '')) !== '')
+            // Keep text boxes with content and rectangle panels (which carry no text).
+            ->filter(fn ($t) => is_array($t) && (
+                ($t['kind'] ?? null) === 'rect' || trim((string) ($t['text'] ?? '')) !== ''
+            ))
             ->map(function (array $t) {
+                // The id is client-supplied — cap it so it can't be used to bloat scene config.
+                $id = mb_substr((string) ($t['id'] ?? ''), 0, 64);
+
+                // Rectangle backing panel: side + colour + opacity, no text/position.
+                if (($t['kind'] ?? null) === 'rect') {
+                    $color = (string) ($t['color'] ?? '#0f172a');
+
+                    return [
+                        'id' => $id !== '' ? $id : uniqid('rect_'),
+                        'kind' => 'rect',
+                        'side' => ($t['side'] ?? 'left') === 'right' ? 'right' : 'left',
+                        'color' => preg_match('/^#[0-9a-fA-F]{6}$/', $color) ? $color : '#0f172a',
+                        'opacity' => max(0.1, min(0.95, (float) ($t['opacity'] ?? 0.5))),
+                    ];
+                }
+
                 // Map-pinned labels carry a lng/lat; anything malformed falls back to screen.
                 $anchor = ($t['anchor'] ?? 'screen') === 'map' ? 'map' : 'screen';
                 $lng = isset($t['lng']) && is_numeric($t['lng']) ? max(-180.0, min(180.0, (float) $t['lng'])) : null;
@@ -601,17 +652,26 @@ class Step3SceneConfigurator extends Component
                 }
                 $font = $t['font'] ?? 'sans';
                 $size = $t['size'] ?? 'md';
-
-                // The id is client-supplied — cap it so it can't be used to bloat scene config.
-                $id = mb_substr((string) ($t['id'] ?? ''), 0, 64);
+                $list = $t['list'] ?? 'none';
+                $bg = $t['bg'] ?? 'none';
+                $bgColor = (string) ($t['bgColor'] ?? '#0f172a');
+                $align = $t['align'] ?? 'left';
 
                 return [
                     'id' => $id !== '' ? $id : uniqid('txt_'),
-                    'text' => mb_substr(trim((string) $t['text']), 0, 300),
+                    // A little more room for multi-line lists; still capped against abuse.
+                    'text' => mb_substr(trim((string) $t['text']), 0, 600),
                     'x' => max(0, min(100, (float) ($t['x'] ?? 40))),
                     'y' => max(0, min(100, (float) ($t['y'] ?? 40))),
+                    // Optional resized width (% of host); null = auto (default max-width).
+                    'w' => (isset($t['w']) && is_numeric($t['w'])) ? max(5.0, min(95.0, (float) $t['w'])) : null,
                     'font' => in_array($font, ['sans', 'history', 'cinzel'], true) ? $font : 'sans',
                     'size' => in_array($size, ['sm', 'md', 'lg', 'xl'], true) ? $size : 'md',
+                    'list' => in_array($list, ['bullet', 'number'], true) ? $list : 'none',
+                    'align' => in_array($align, ['center', 'right'], true) ? $align : 'left',
+                    'bg' => $bg === 'glass' ? 'glass' : 'none',
+                    'bgColor' => preg_match('/^#[0-9a-fA-F]{6}$/', $bgColor) ? $bgColor : '#0f172a',
+                    'bgOpacity' => (isset($t['bgOpacity']) && is_numeric($t['bgOpacity'])) ? max(0.05, min(0.95, (float) $t['bgOpacity'])) : 0.3,
                     'anchor' => $anchor,
                     'lng' => $anchor === 'map' ? $lng : null,
                     'lat' => $anchor === 'map' ? $lat : null,
@@ -626,6 +686,49 @@ class Step3SceneConfigurator extends Component
 
         if ($this->selectedSceneId === $sceneId && $this->selectedScene !== null) {
             $this->selectedScene['config'] = array_merge($this->selectedScene['config'] ?? [], ['texts' => $clean]);
+        }
+    }
+
+    /**
+     * Edit / hide the scene identity overlay (flag + title + year + location) from the canvas.
+     * year/location map to the scene columns; a title override and hide flag live in config.
+     */
+    #[On('sceneIdentityChanged')]
+    public function updateSceneIdentity(array $patch): void
+    {
+        $sceneId = (int) ($patch['sceneId'] ?? $this->selectedSceneId);
+        $scene = $sceneId ? $this->lesson->scenes()->find($sceneId) : null;
+        if (! $scene) {
+            return;
+        }
+
+        if (array_key_exists('year', $patch)) {
+            $scene->year = mb_substr(trim((string) $patch['year']), 0, 40) ?: null;
+        }
+        if (array_key_exists('location', $patch)) {
+            $scene->location = mb_substr(trim((string) $patch['location']), 0, 120) ?: null;
+        }
+
+        $config = $scene->config ?? [];
+        if (array_key_exists('title', $patch)) {
+            $title = mb_substr(trim((string) $patch['title']), 0, 80);
+            if ($title !== '') {
+                $config['identity_title'] = $title;
+            } else {
+                unset($config['identity_title']);
+            }
+        }
+        if (array_key_exists('hidden', $patch)) {
+            $config['hide_identity'] = (bool) $patch['hidden'];
+        }
+        $scene->config = $config;
+        $scene->save();
+
+        // Keep the inspector's year/location fields in step with a canvas edit.
+        if ($this->selectedSceneId === $scene->id && $this->selectedScene !== null) {
+            $this->selectedScene['year'] = $scene->year;
+            $this->selectedScene['location'] = $scene->location;
+            $this->selectedScene['config'] = $scene->config;
         }
     }
 
@@ -875,6 +978,408 @@ class Step3SceneConfigurator extends Component
         if ($this->selectedSceneId === $sceneId) {
             $this->selectSceneInternal($sceneId);
         }
+    }
+
+    // ── Painting backgrounds (corpus artworks) ───────────────────────────
+    // Public-domain paintings from Wikimedia Commons, pre-linked to corpus QIDs.
+    // Picking one downloads the 1920px rendition into lesson storage (no hotlinking
+    // at student runtime) and records attribution on the scene — zero generation credits.
+
+    public bool $paintingPickerOpen = false;
+
+    public string $paintingQuery = '';
+
+    /**
+     * Live Wikimedia Commons results are opt-in per picker session: fetching them
+     * inside the open/render path made that request slow enough for the 3s status
+     * poll's stale response to morph the modal shut again (open-state race).
+     */
+    public bool $paintingCommonsLoaded = false;
+
+    /** Grid filter: '' = everything, 'painting' = paintings, 'city_map' = Braun & Hogenberg-style city plans. */
+    public string $paintingKind = '';
+
+    private const PAINTING_GRID_LIMIT = 30;
+
+    public function openPaintingPicker(): void
+    {
+        $this->paintingPickerOpen = true;
+        $this->paintingCommonsLoaded = false;
+        $this->paintingQuery = '';
+        $this->paintingKind = '';
+    }
+
+    // ── Ink artwork library ──────────────────────────────────────────────
+    // Teacher-imported public-domain SVGs (Wikimedia Commons / freesvg.org),
+    // drawn line-by-line in the ink style. See App\Livewire\SvgAssetLibrary.
+
+    public bool $svgLibraryOpen = false;
+
+    public function openSvgLibrary(): void
+    {
+        $this->svgLibraryOpen = true;
+    }
+
+    /**
+     * Best-effort numeric year for the selected scene, used to surface paintings that
+     * depict the same era. Handles "1453", "1204 CE", "500 BCE", and "16th century"
+     * (mapped to its mid-point, ~1550). Returns null when nothing parseable is present.
+     */
+    private function sceneApproxYear(): ?int
+    {
+        $raw = trim((string) ($this->selectedScene['year'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        $isBce = (bool) preg_match('/\b(BCE|BC)\b/i', $raw);
+
+        if (preg_match('/(\d+)\s*(?:st|nd|rd|th)\s*century/i', $raw, $m)) {
+            $century = (int) $m[1];
+            $year = ($century - 1) * 100 + 50; // mid-point of the century
+        } elseif (preg_match('/\b(\d{1,4})\b/', $raw, $m)) {
+            $year = (int) $m[1];
+        } else {
+            return null;
+        }
+
+        return $isBce ? -$year : $year;
+    }
+
+    /**
+     * Picker grid: curated corpus paintings first, then live Wikimedia Commons
+     * results (depicts-search by topic QID + text search) to fill the grid.
+     * Every tile is normalized to one shape so the blade renders a single list.
+     *
+     * @return \Illuminate\Support\Collection<int,array{source:string,key:string,thumb:string,title:string,caption:string}>
+     */
+    #[Computed]
+    public function paintingResults()
+    {
+        if (! $this->paintingPickerOpen) {
+            return collect();
+        }
+
+        $term = trim($this->paintingQuery);
+        $topicQid = preg_match('/^(?:figure|polity):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
+        $location = trim((string) ($this->selectedScene['location'] ?? ''));
+
+        $kind = $this->paintingKind ?: null;
+        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind) {
+            if ($term !== '') {
+                return \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
+            }
+            // No search: blend paintings depicting the lesson's topic (figure/polity QID)
+            // with works matching the scene's location (e.g. Constantinople cityscapes)
+            // and works depicting a moment near the scene's era ("16th century" → ~1550).
+            $suggested = collect();
+            if ($topicQid) {
+                $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
+            }
+            $approxYear = $this->sceneApproxYear();
+            if ($approxYear !== null && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                $suggested = $suggested
+                    ->concat(\App\Models\Corpus\Artwork::nearYear($approxYear, 60, self::PAINTING_GRID_LIMIT, $kind)->get())
+                    ->unique('qid')
+                    ->values();
+            }
+            if ($location !== '' && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                $suggested = $suggested
+                    ->concat(\App\Models\Corpus\Artwork::search($location, self::PAINTING_GRID_LIMIT, $kind)->get())
+                    ->unique('qid')
+                    ->values();
+            }
+
+            return $suggested;
+        });
+
+        $tiles = $corpus->map(fn ($art) => [
+            'source' => 'corpus',
+            'key' => $art->qid,
+            'thumb' => $art->renditionUrl(800),
+            'title' => $art->title ?? __('Untitled'),
+            'caption' => $art->caption(),
+            'kind' => $art->kind,
+        ]);
+
+        // Top up from Commons live search — finds files the Wikidata harvest can't
+        // (most Commons images have no Wikidata item of their own). City-map browsing
+        // stays corpus-only: the curated Braun & Hogenberg set IS the map catalog.
+        if ($this->paintingCommonsLoaded && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
+            $commons = app(\App\Services\CommonsImageService::class);
+            $live = collect();
+            if ($term !== '') {
+                $live = collect($commons->searchText($term.' painting'));
+            } else {
+                if ($topicQid) {
+                    $live = collect($commons->searchDepicting($topicQid));
+                }
+                if ($location !== '') {
+                    $live = $live->concat($commons->searchText($location.' painting'));
+                }
+            }
+            $tiles = $tiles->concat($live->unique('file_title')->map(fn ($f) => [
+                'source' => 'commons',
+                'key' => $f['file_title'],
+                'thumb' => $f['thumb_url'],
+                'title' => $f['title'],
+                'caption' => trim(($f['artist'] ?? '').' · '.$f['license'], ' ·'),
+                'kind' => 'painting',
+            ]));
+        }
+
+        return $tiles->unique(fn ($t) => mb_strtolower($t['title']))
+            ->take(self::PAINTING_GRID_LIMIT)
+            ->values();
+    }
+
+    public function applyPaintingBackground(string $source, string $key): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        [$imageUrl, $credit, $fileStem] = match ($source) {
+            'corpus' => $this->corpusPaintingPayload($key),
+            'commons' => $this->commonsPaintingPayload($key),
+            default => [null, null, null],
+        };
+        if (! $imageUrl) {
+            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'User-Agent' => 'LearningPortal/1.0 (thelearningportal.us; lesson backgrounds)',
+            ])->timeout(30)->get($imageUrl.'?width=1920');
+            if (! $response->successful() || $response->body() === '') {
+                throw new \RuntimeException('HTTP '.$response->status());
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+
+            return;
+        }
+
+        $ext = str_contains((string) $response->header('Content-Type'), 'png') ? 'png' : 'jpg';
+        $path = "lessons/{$this->lesson->id}/paintings/{$fileStem}.{$ext}";
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
+
+        $config = array_merge($scene->config ?? [], ['background_credit' => $credit]);
+        // City plans double as layout ground truth: the image/3D pipeline reads
+        // config.layout_reference to keep generated streets & squares historically placed.
+        if (($credit['kind'] ?? null) === 'city_map') {
+            $config['layout_reference'] = [
+                'type' => 'historical_city_plan',
+                'title' => $credit['title'],
+                'city' => $credit['city'] ?? null,
+                'atlas' => $credit['atlas'] ?? null,
+                'image_url' => $credit['source_url'],
+            ];
+        }
+
+        $scene->update([
+            'image_path' => $path,
+            'shots' => null,             // a painting replaces any storyboard shots
+            'scene_view' => 'slideshow', // paintings are flat images
+            'config' => $config,
+        ]);
+
+        $this->paintingPickerOpen = false;
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /** @return array{0:?string,1:?array,2:?string} [imageUrl base, credit payload, storage file stem] */
+    private function corpusPaintingPayload(string $key): array
+    {
+        // Wikidata QIDs (paintings) or synthetic ids like 'bh-12345' (city plans).
+        if (! preg_match('/^[A-Za-z0-9:_-]{1,64}$/', $key)) {
+            return [null, null, null];
+        }
+        $artwork = \App\Models\Corpus\Topic::resilient(
+            fn () => \App\Models\Corpus\Artwork::find($key)
+        );
+        if (! $artwork) {
+            return [null, null, null];
+        }
+
+        return [$artwork->image_url, [
+            'kind' => $artwork->kind,
+            'qid' => $artwork->qid,
+            'title' => $artwork->title,
+            'creator' => $artwork->creator_name,
+            'year' => $artwork->inception_year,
+            'city' => $artwork->extra['city'] ?? null,
+            'atlas' => $artwork->extra['atlas'] ?? null,
+            'license' => 'public domain',
+            'source' => 'Wikimedia Commons',
+            'source_url' => $artwork->image_url,
+        ], preg_replace('/[^A-Za-z0-9_-]/', '-', $key)];
+    }
+
+    /** @return array{0:?string,1:?array,2:?string} */
+    private function commonsPaintingPayload(string $fileTitle): array
+    {
+        $meta = app(\App\Services\CommonsImageService::class)->fileMeta($fileTitle);
+        if (! $meta) {
+            return [null, null, null];
+        }
+
+        return [$meta['image_url'], [
+            'kind' => 'painting',
+            'file_title' => $meta['file_title'],
+            'title' => $meta['title'],
+            'creator' => $meta['artist'],
+            'license' => $meta['license'],
+            'source' => 'Wikimedia Commons',
+            'source_url' => $meta['file_page'],
+        ], 'commons-'.substr(md5($meta['file_title']), 0, 12)];
+    }
+
+    /**
+     * Set the scene background from a pasted image URL — downloads it into lesson storage
+     * (no student-runtime hotlinking) and records the source.
+     */
+    public function applyImageUrl(int $sceneId, string $url): void
+    {
+        $url = trim($url);
+        if (! preg_match('#^https?://#i', $url) || ! $this->isSafePublicUrl($url)) {
+            $this->dispatch('toast', message: __('Enter a valid public image URL (http/https).'), type: 'warning');
+
+            return;
+        }
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'User-Agent' => 'LearningPortal/1.0 (thelearningportal.us; lesson backgrounds)',
+            ])->timeout(30)->get($url);
+            $type = (string) $response->header('Content-Type');
+            if (! $response->successful() || ! str_starts_with($type, 'image/') || $response->body() === '') {
+                throw new \RuntimeException('not an image ('.$type.')');
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not load that image URL — check the link.'), type: 'error');
+
+            return;
+        }
+
+        $ext = str_contains($type, 'png') ? 'png' : (str_contains($type, 'webp') ? 'webp' : 'jpg');
+        $path = "lessons/{$this->lesson->id}/url/".substr(md5($url), 0, 12).".{$ext}";
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
+
+        $scene->update([
+            'image_path' => $path,
+            'shots' => null,
+            'scene_view' => 'slideshow',
+            'config' => array_merge($scene->config ?? [], [
+                'background_credit' => ['kind' => 'url', 'source_url' => $url],
+            ]),
+        ]);
+
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+        $this->dispatch('toast', message: __('Image set as the scene background.'), type: 'success');
+    }
+
+    /** Reject obvious SSRF targets (loopback / private / link-local / metadata hosts). */
+    private function isSafePublicUrl(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (! $host) {
+            return false;
+        }
+        $host = strtolower(trim($host, '[]'));
+        if (in_array($host, ['localhost', '0.0.0.0', '::1'], true)) {
+            return false;
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)
+            && ! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Summarize the scene's narration into a short bullet list and drop it onto the slide
+     * as a frosted-glass text card (auto-blurs the moving image behind it).
+     */
+    public function summarizeScriptToList(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($sceneId);
+        $script = trim((string) $scene->script_segment);
+        if ($script === '') {
+            $this->dispatch('toast', message: __('This scene has no script to summarize yet.'), type: 'warning');
+
+            return;
+        }
+
+        try {
+            $result = app(\App\Services\OpenAiLlmService::class)->json(
+                'You condense a lesson narration into an on-screen summary for students. '
+                .'Return JSON {"points": ["…"]} with 3 to 5 very short bullet points, max ~8 words each, '
+                .'plain text (no markdown, no leading bullets/numbers), in the SAME language as the narration.',
+                $script,
+            );
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not summarize the script — please try again.'), type: 'error');
+
+            return;
+        }
+
+        $points = collect($result['points'] ?? [])
+            ->filter(fn ($p) => is_string($p) && trim($p) !== '')
+            ->map(fn ($p) => mb_substr(trim(preg_replace('/^[\s\-\*•\d\.\)]+/u', '', $p)), 0, 120))
+            ->filter()
+            ->take(6)
+            ->values()
+            ->all();
+
+        if ($points === []) {
+            $this->dispatch('toast', message: __('The summary came back empty — please try again.'), type: 'warning');
+
+            return;
+        }
+
+        $texts = $scene->config['texts'] ?? [];
+        // Backing panel — covers the left half, dark navy at 80% opacity.
+        $texts[] = [
+            'id' => uniqid('rect_'),
+            'kind' => 'rect',
+            'side' => 'left',
+            'color' => '#0f172a',
+            'opacity' => 0.8,
+        ];
+        // Bullet summary sits on top of the panel — inset from the left so its markers
+        // clear the editor's scene rail while staying within the left-half panel.
+        $texts[] = [
+            'id' => uniqid('txt_'),
+            'text' => implode("\n", $points),
+            'x' => 13,
+            'y' => 18,
+            'font' => 'sans',
+            'size' => 'lg',
+            'list' => 'bullet',
+            'bg' => 'none',
+            'anchor' => 'screen',
+        ];
+        $scene->config = array_merge($scene->config ?? [], ['texts' => array_slice($texts, 0, 12)]);
+        $scene->save();
+
+        // Refresh the live overlay (and the inspector snapshot) so the card appears at once.
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
+        $this->dispatch('toast', message: __('Summary added to the slide.'), type: 'success');
     }
 
     public function regenerate(int $sceneId, string $asset): void

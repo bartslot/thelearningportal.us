@@ -259,6 +259,11 @@ export class ParallaxScene {
    * @param {HTMLElement} layer @param {PlaneSpec} spec
    */
   _applyArtisticProps (layer, { blur = 0, opacity = 1, blend = null, wobble = 0, z = null } = {}) {
+    // Server-serialized layers carry explicit nulls for unset props (JSON has no
+    // undefined), which bypass the parameter defaults above — normalize first.
+    blur = blur ?? 0
+    opacity = opacity ?? 1
+    wobble = wobble ?? 0
     const filters = []
     const wobbleLevel = Math.min(2, Math.max(0, Math.round(wobble)))
     if (wobbleLevel > 0) filters.push(`url(#px-wobble-${wobbleLevel})`)

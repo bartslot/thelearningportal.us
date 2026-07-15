@@ -52,6 +52,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let overlay       = null
     let timer         = null
     let quizOverlay   = null
+    let baseTerritory = ''   // lesson-level territory title (fallback when a scene has no override)
+    let baseFlag      = ''
     let readonlyTextLayer = null
     // Tracks a tab click that hasn't been confirmed by the DB yet.
     // Prevents wire:poll from snapping Three.js back to the old view.
@@ -89,12 +91,15 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             try {
                 if (view === 'slideshow') {
                     applySlideshowCameraMode(activePlayer)
+                    const firstShot = (payload.shots && payload.shots.length) ? payload.shots[0] : null
                     await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10, {
                         kbAnimated: payload.kbAnimated,
                         kbDirection: payload.kbDirection,
                         backgroundColor: payload.backgroundColor,
+                        layers: firstShot?.layers ?? null,
                     })
                 } else if (view === 'world') {
+                    destroyWizardLayers()
                     applyWorldCameraMode(activePlayer)
                     if (payload.worldPanoUrl && payload.worldLabsStatus === 'ready') {
                         hideWorldWaitingState(activePlayer._scene)
@@ -114,6 +119,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         applyWorldWaitingState()
                     }
                 } else if (payload.imageUrl) {
+                    destroyWizardLayers()
                     restoreDefaultCameraMode(activePlayer)
                     await applySkyboxView(payload.imageUrl, payload.skyboxBlur ?? 0)
                 }
@@ -132,7 +138,14 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             catch (err) { console.warn('[wizard-bridge] loadAnimation failed', err) }
         }
         if (payload.audioUrl) preloadAudio(payload.audioUrl)
-        overlay?.update({ year: payload.year, location: payload.location })
+        // Per-scene identity: a title override (else the lesson territory) and a hide flag.
+        overlay?.setTerritory({ title: payload.identityTitle || baseTerritory, flagUrl: baseFlag })
+        overlay?.update({
+          sceneId: payload.sceneId,
+          year: payload.year,
+          location: payload.location,
+          hidden: payload.hideIdentity,
+        })
         // The challenge countdown belongs to the STUDENT run, not the editor — a frozen
         // "0:00" in Configure only confuses teachers. Keep it hidden here.
         timer?.hide()
@@ -204,15 +217,23 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         _pendingView = view ?? null
         if (view === 'slideshow') {
             applySlideshowCameraMode(activePlayer)
-            await applySlideshowBackground(imageUrl, sceneId ?? 0, duration ?? 10, e.detail ?? {})
+            const firstShot = (e.detail?.shots && e.detail.shots.length) ? e.detail.shots[0] : null
+            await applySlideshowBackground(imageUrl, sceneId ?? 0, duration ?? 10, {
+                kbAnimated: e.detail?.kbAnimated,
+                kbDirection: e.detail?.kbDirection,
+                backgroundColor: e.detail?.backgroundColor,
+                layers: firstShot?.layers ?? null,
+            })
         } else if (view === 'skybox') {
             // Skybox sphere is already loaded — just restore camera + make it visible.
+            destroyWizardLayers()
             kenBurnsState = null
             if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = true
             activePlayer?.dismountWorldLabs?.()
             hideWorldWaitingState(activePlayer?._scene)
             restoreDefaultCameraMode(activePlayer)
         } else if (view === 'world') {
+            destroyWizardLayers()
             applyWorldCameraMode(activePlayer)
         }
     })
@@ -332,9 +353,19 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     }
 
     // Slideshow mode: hide the inverted-sphere skybox and put the image directly
-    // on the scene's clear color so it renders as a flat 2D backdrop.
+    // on the scene's clear color so it renders as a flat 2D backdrop, or use ParallaxScene
+    // for layered shots (E3c).
     const slideshowTextureCache = new Map()
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
+        // Layered shot (E3c): render via ParallaxScene when the shot carries layers.
+        if (Array.isArray(motion.layers) && motion.layers.length) {
+            const didShow = await showLayeredSlideshowShot(motion)
+            if (didShow) return
+            // Fall through to flat if layered show fails
+        }
+        // Flat scene: make sure a previous scene's layer host isn't covering the canvas.
+        destroyWizardLayers()
+
         // No image (deleted, or a blank/map scene): show the scene's solid backdrop instead of
         // whatever texture happened to be on the canvas before. Also avoids handing the loader
         // a null url — THREE would fetch the literal string "null" and log a stray 404.
@@ -660,6 +691,73 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         requestAnimationFrame(loop)
     }
 
+    // Layered scene (wizard E3c preview): renders a multiplane shot via ParallaxScene
+    // in a DOM host laid over the Three.js canvas. The wizard has no #background-layer
+    // (that element belongs to the student player), so we own our host here.
+    let _parallaxMod = null
+    let _wizardLayeredScene = null
+    let _wizardLayerHost = null
+    let _wizardLayeredRaf = 0
+
+    function wizardLayerHost() {
+        if (_wizardLayerHost?.isConnected) return _wizardLayerHost
+        const parent = canvasEl.parentElement
+        if (!parent) return null
+        if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative'
+        const host = document.createElement('div')
+        host.className = 'wizard-parallax-host'
+        // pointer-events:none keeps OrbitControls and canvas clicks working underneath.
+        host.style.cssText = 'position:absolute;inset:0;overflow:hidden;z-index:1;pointer-events:none;'
+        parent.appendChild(host)
+        _wizardLayerHost = host
+        return host
+    }
+
+    function destroyWizardLayers() {
+        if (_wizardLayeredRaf) { cancelAnimationFrame(_wizardLayeredRaf); _wizardLayeredRaf = 0 }
+        if (_wizardLayeredScene) {
+            try { _wizardLayeredScene.destroy() } catch (_) {}
+            _wizardLayeredScene = null
+        }
+        if (_wizardLayerHost) _wizardLayerHost.style.display = 'none'
+    }
+
+    async function showLayeredSlideshowShot(payload) {
+        try {
+            const { layers } = payload
+            if (!Array.isArray(layers) || !layers.length) return false
+
+            if (!_parallaxMod) _parallaxMod = await import('./ParallaxScene.js')
+            const host = wizardLayerHost()
+            if (!host) return false
+
+            destroyWizardLayers()
+            host.style.display = ''
+            kenBurnsState = null
+            if (activePlayer?._skyboxSphere) activePlayer._skyboxSphere.visible = false
+
+            _wizardLayeredScene = new _parallaxMod.ParallaxScene(host)
+            // Gentle default drift so teachers see the depth separation while editing.
+            _wizardLayeredScene.show({ layers, motion: { panX: -4, panY: 0, zoom: 1.06 } })
+
+            // Ping-pong the motion — nothing else (audio, scrubbing) drives it in the editor.
+            const CYCLE_MS = 10000
+            const start = performance.now()
+            const loop = (now) => {
+                if (!_wizardLayeredScene) return
+                const t = ((now - start) % CYCLE_MS) / CYCLE_MS
+                _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+                _wizardLayeredRaf = requestAnimationFrame(loop)
+            }
+            _wizardLayeredRaf = requestAnimationFrame(loop)
+            return true
+        } catch (e) {
+            console.warn('[wizard-bridge] layered slideshow failed', e)
+            destroyWizardLayers()
+            return false
+        }
+    }
+
     window.Livewire?.on('scene:load', ({ payload }) => {
         pendingScene = payload
         if (playerReady) applyScene(payload)
@@ -742,10 +840,17 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     startHandheldVibration(player)
     startKenBurnsTick()
-    overlay      = new Scene.SceneOverlay(overlayEl); overlay.mount()
-    // Territory identity (flag + title) from the lesson — constant across scenes.
+    // Configure = editable identity: inline-edit + an × to hide it, persisted per scene.
+    overlay      = new Scene.SceneOverlay(overlayEl, {
+      editable: true,
+      onChange: (patch) => window.Livewire?.dispatch('sceneIdentityChanged', { patch }),
+    })
+    overlay.mount()
+    // Territory identity (flag + title) from the lesson — the fallback across scenes.
     const rootData = document.getElementById('lesson-canvas-root')?.dataset || {}
-    overlay.setTerritory({ title: rootData.territory || '', flagUrl: rootData.flag || '' })
+    baseTerritory = rootData.territory || ''
+    baseFlag = rootData.flag || ''
+    overlay.setTerritory({ title: baseTerritory, flagUrl: baseFlag })
     timer        = new Scene.GameTimerOverlay(timerEl)
     quizOverlay  = new Scene.QuizOverlay(timerEl)   // same full-bleed host layer as the timer
 
@@ -782,6 +887,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             backgroundColor: normalizedScenes[0].background_color,
             kbAnimated:  normalizedScenes[0].kb_animated,
             kbDirection: normalizedScenes[0].kb_direction,
+            // Multiplane layers (E3c) ride along so the first paint is layered too.
+            shots: normalizedScenes[0].shots ?? [],
         })
     }
 

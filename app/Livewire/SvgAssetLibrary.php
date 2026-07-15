@@ -76,6 +76,12 @@ class SvgAssetLibrary extends Component
         unset($this->library);
     }
 
+    public function attach(int $id): void
+    {
+        $asset = SvgAsset::ownedBy((int) auth()->id())->findOrFail($id);
+        $this->dispatch('svg-asset:attach', assetId: $asset->id);
+    }
+
     /** @return Collection<int, SvgAsset> */
     #[Computed]
     public function library(): Collection

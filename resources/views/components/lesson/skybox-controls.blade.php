@@ -14,6 +14,9 @@
     $isBusy         = $isGenerating;
     $hasSkyboxImage = ! empty($scene->skybox_image_path);
     $candidates     = $scene->skybox_candidates ?? [];
+    // Default image-source tab reflects how the current background was set.
+    $bgKind         = $scene->config['background_credit']['kind'] ?? null;
+    $srcDefault     = $bgKind === 'painting' ? 'paintings' : ($bgKind === 'url' ? 'url' : 'ai');
 @endphp
 
 <div class="mt-2 space-y-3"
@@ -91,10 +94,19 @@
 
     {{-- ── Slideshow tab ────────────────────────────────────────────────────── --}}
     <div x-show="view === 'slideshow'" x-cloak class="space-y-2">
+        {{-- Current background preview + remove --}}
         <div class="flex items-start gap-3">
             @if ($scene->image_path)
                 <img src="{{ asset('storage/' . $scene->image_path) }}"
                      class="w-20 h-12 rounded object-cover shrink-0" />
+                <button type="button"
+                        wire:click="deleteSceneImage({{ $scene->id }})"
+                        wire:confirm="{{ __('Remove this image? The scene will use a solid dark background instead.') }}"
+                        @disabled($isBusy)
+                        class="btn btn-xs btn-ghost text-rose-300 hover:text-rose-200 self-center"
+                        title="{{ __('Remove image — use solid background') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
+                </button>
             @else
                 {{-- No image: solid backdrop. Click the swatch → hue picker + dark presets. --}}
                 <div class="relative shrink-0"
@@ -134,7 +146,20 @@
                     </div>
                 </div>
             @endif
-            <div class="flex flex-wrap items-center gap-1.5">
+        </div>
+
+        {{-- Image source tabs — how to set this scene's background. --}}
+        <div x-data="{ src: '{{ $srcDefault }}' }" class="space-y-2">
+            <div class="flex overflow-hidden rounded-lg border border-slate-700 text-[10px] font-medium">
+                @foreach (['ai' => __('AI generated'), 'paintings' => __('Paintings'), 'video' => __('Video'), '3d' => __('3D'), 'url' => __('URL')] as $sv => $sl)
+                    <button type="button" @click="src = '{{ $sv }}'"
+                            :class="src === '{{ $sv }}' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                            class="flex-1 whitespace-nowrap px-1 py-1.5 transition-colors">{{ $sl }}</button>
+                @endforeach
+            </div>
+
+            {{-- AI generated --}}
+            <div x-show="src === 'ai'" x-cloak class="space-y-2">
                 <button type="button"
                         wire:click="regenerate({{ $scene->id }}, 'image')"
                         wire:loading.attr="disabled" wire:target="regenerate"
@@ -142,28 +167,104 @@
                         class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                     @if ($isGenerating)
                         <x-icons.spinner class="w-3 h-3 animate-spin" />
-                        <span>Generating…</span>
+                        <span>{{ __('Generating…') }}</span>
                     @else
                         <x-icons.regenerate class="w-3 h-3" />
                         <span>{{ $scene->image_path ? __('Regenerate') : __('Generate image') }}</span>
                     @endif
                 </button>
-                @if ($scene->image_path)
-                    <button type="button"
-                            wire:click="deleteSceneImage({{ $scene->id }})"
-                            wire:confirm="{{ __('Remove this image? The scene will use a solid dark background instead.') }}"
-                            @disabled($isBusy)
-                            class="btn btn-xs btn-ghost text-rose-300 hover:text-rose-200"
-                            title="{{ __('Remove image — use solid background') }}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
-                    </button>
+                <details class="text-xs">
+                    <summary class="cursor-pointer text-slate-400">{{ __('Prompt') }}</summary>
+                    <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
+                              class="textarea textarea-sm textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
+                </details>
+            </div>
+
+            {{-- Paintings (curated public-domain / museum works) --}}
+            <div x-show="src === 'paintings'" x-cloak class="space-y-1.5">
+                <button type="button" wire:click="openPaintingPicker" @disabled($isBusy)
+                        class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 inline-flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+                        <rect x="3" y="4" width="18" height="14" rx="2"/>
+                        <path stroke-linecap="round" d="m3 15 4.5-4.5a1.4 1.4 0 0 1 2 0L14 15m-2-2 2.5-2.5a1.4 1.4 0 0 1 2 0L21 15"/>
+                        <circle cx="9" cy="8.5" r="1.2" fill="currentColor" stroke="none"/>
+                    </svg>
+                    <span>{{ __('Browse paintings') }}</span>
+                </button>
+                <p class="text-[10px] text-slate-500">{{ __('Public-domain paintings & museum works, matched to the scene’s era and place.') }}</p>
+
+                <button type="button" wire:click="openSvgLibrary" @disabled($isBusy)
+                        class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 inline-flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 20s2-8 8-8m0 0c4 0 6 3 6 3M12 12c0-4 3-6 3-6M15 4l1 1"/>
+                    </svg>
+                    <span>{{ __('Import line-art (SVG)') }}</span>
+                </button>
+                <p class="text-[10px] text-slate-500">{{ __('Public-domain SVGs (Wikimedia, freesvg) drawn line-by-line in the ink style.') }}</p>
+
+                @if (count($this->sceneArtworkLayers()) > 0)
+                    <div class="space-y-2 border-t border-slate-700 pt-2 mt-2">
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500 block">{{ __('Scene artwork') }}</span>
+                        @foreach ($this->sceneArtworkLayers() as $layer)
+                            <div class="flex items-center gap-2 rounded bg-slate-800/50 p-1.5 text-[11px]">
+                                <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] }}"
+                                     class="h-8 w-8 rounded bg-base-100 object-contain shrink-0" />
+                                <div class="flex-1 min-w-0">
+                                    <p class="truncate font-medium text-slate-300">{{ $layer['title'] }}</p>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <input type="range" min="0.4" max="2.5" step="0.1"
+                                           value="{{ $layer['depth'] ?? 1.3 }}"
+                                           wire:change="updateArtworkLayer({{ $layer['asset_id'] }}, 'depth', $event.target.value)"
+                                           class="range range-xs w-16" />
+                                    <span class="text-[10px] text-slate-400 w-8 text-right">{{ number_format((float) ($layer['depth'] ?? 1.3), 2) }}</span>
+                                </div>
+                                <select wire:change="updateArtworkLayer({{ $layer['asset_id'] }}, 'kind', $event.target.value)"
+                                        class="select select-xs select-bordered bg-slate-900 border-slate-700 text-slate-300">
+                                    <option value="figure" @selected(($layer['kind'] ?? 'figure') === 'figure')>Figure</option>
+                                    <option value="strip" @selected(($layer['kind'] ?? 'figure') === 'strip')>Strip</option>
+                                </select>
+                                <button type="button"
+                                        wire:click="detachArtwork({{ $layer['asset_id'] }})"
+                                        class="btn btn-ghost btn-xs text-slate-500 hover:text-rose-400">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        @endforeach
+                    </div>
                 @endif
+            </div>
+
+            {{-- URL (paste a direct image link) --}}
+            <div x-show="src === 'url'" x-cloak x-data="{ imageUrl: '' }" class="space-y-1.5">
+                <input type="url" x-model="imageUrl" placeholder="https://…/image.jpg"
+                       class="input input-xs input-bordered bg-slate-900 w-full" />
+                <button type="button"
+                        @click="imageUrl && $wire.applyImageUrl({{ $scene->id }}, imageUrl)"
+                        wire:loading.attr="disabled" wire:target="applyImageUrl"
+                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 inline-flex items-center gap-1.5">
+                    <span wire:loading wire:target="applyImageUrl"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                    <span>{{ __('Use image URL') }}</span>
+                </button>
+                <p class="text-[10px] text-slate-500">{{ __('Paste a direct image link — it’s downloaded and saved to this lesson.') }}</p>
+            </div>
+
+            {{-- Video — YouTube/Vimeo embed (next todo) --}}
+            <div x-show="src === 'video'" x-cloak
+                 class="rounded-lg border border-dashed border-slate-700 p-3 text-[11px] text-slate-500">
+                {{ __('Embed a YouTube or Vimeo video as the scene — coming soon.') }}
+            </div>
+
+            {{-- 3D — Sketchfab embed (next todo) --}}
+            <div x-show="src === '3d'" x-cloak
+                 class="rounded-lg border border-dashed border-slate-700 p-3 text-[11px] text-slate-500">
+                {{ __('Embed a Sketchfab 3D model — coming soon.') }}
             </div>
         </div>
 
-        {{-- Background motion: Animated toggle + Ken Burns direction. Alpine mirrors the
-             toggle locally so the dropdown hides INSTANTLY (this component can't read the
-             Livewire $selectedScene array, and a server round-trip felt laggy anyway). --}}
+        {{-- Background motion: Animated toggle + Ken Burns direction — applies to any image. --}}
         @if ($scene->image_path)
             <div class="flex flex-wrap items-center gap-3 pt-1"
                  x-data="{ animated: @js((bool) ($scene->kb_animated ?? true)) }">
@@ -185,12 +286,6 @@
                 </select>
             </div>
         @endif
-
-        <details class="text-xs">
-            <summary class="cursor-pointer text-slate-400">Prompt</summary>
-            <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
-                      class="textarea textarea-sm textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
-        </details>
     </div>
 
     {{-- ── Skybox tab ───────────────────────────────────────────────────────── --}}

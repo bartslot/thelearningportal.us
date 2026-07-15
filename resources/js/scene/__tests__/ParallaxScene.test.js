@@ -270,6 +270,22 @@ describe('artistic layer controls (E3c-b)', () => {
     scene.destroy()
   })
 
+  it('treats explicit null artistic props as unset (server JSON has no undefined)', () => {
+    // Regression: blade serializers emit null for unset props; null bypassed the
+    // parameter defaults, so opacity became Math.max(0, null) = 0 — invisible layers.
+    const scene = new ParallaxScene(host())
+    scene.show({
+      layers: [
+        { url: 'bg.png', kind: 'cover', depth: 1, blur: null, opacity: null, blend: null, wobble: null, z: null },
+      ],
+    })
+    const layer = document.querySelector('.px-layer-bg')
+    expect(layer.style.opacity).not.toBe('0')
+    expect(layer.style.filter).toBe('')
+    expect(layer.style.mixBlendMode).toBe('')
+    scene.destroy()
+  })
+
   it('wobble adds the boiling-line displacement filter before the blur', () => {
     const scene = new ParallaxScene(host())
     scene.show({ layers: [{ url: 'bg.png', kind: 'cover', wobble: 2, blur: 1 }] })

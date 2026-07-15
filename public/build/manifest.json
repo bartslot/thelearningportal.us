@@ -32,7 +32,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-DsaBR9vJ.css",
+    "file": "assets/app-DVXaXnLv.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-BU9VEZa4.js",
+    "file": "assets/app-IyfFTGKP.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -89,7 +89,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-CYu7bUsM.js",
+    "file": "assets/lesson-player-BskTuQcy.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -107,7 +107,7 @@
     ]
   },
   "resources/js/scene/ParallaxScene.js": {
-    "file": "assets/ParallaxScene-D7KwonVi.js",
+    "file": "assets/ParallaxScene-DsVvSmKH.js",
     "name": "ParallaxScene",
     "src": "resources/js/scene/ParallaxScene.js",
     "isDynamicEntry": true
@@ -131,7 +131,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-CQz2f2cU.js",
+    "file": "assets/index-fryJ2zAN.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -139,7 +139,11 @@
       "node_modules/three/build/three.module.js",
       "resources/js/scene/QuizOverlay.js",
       "resources/js/scene/TextOverlayLayer.js",
+      "_preload-helper-DIdkKO6w.js",
       "resources/js/avatar-3d.js"
+    ],
+    "dynamicImports": [
+      "resources/js/scene/ParallaxScene.js"
     ]
   },
   "resources/js/timemap/index.js": {

@@ -71,12 +71,16 @@
         @else
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 @foreach ($this->library as $asset)
-                    <div class="group relative rounded-lg border border-base-300 bg-base-100 p-2">
+                    <div class="group relative rounded-lg border border-base-300 bg-base-100 p-2 flex flex-col">
                         <div class="flex h-24 items-center justify-center overflow-hidden rounded bg-base-200">
                             <img src="{{ $asset->url() }}" alt="{{ $asset->title }}" class="max-h-full max-w-full">
                         </div>
                         <p class="mt-2 truncate text-xs font-medium" title="{{ $asset->title }}">{{ $asset->title }}</p>
                         <p class="truncate text-[11px] opacity-50" title="{{ $asset->credit() }}">{{ $asset->credit() }}</p>
+                        <button wire:click="attach({{ $asset->id }})"
+                                class="btn btn-xs btn-primary mt-auto mb-1.5">
+                            {{ __('Add to scene') }}
+                        </button>
                         <button wire:click="remove({{ $asset->id }})"
                                 wire:confirm="Remove this artwork from your library?"
                                 class="btn btn-ghost btn-xs btn-circle absolute right-1 top-1 text-error opacity-0 transition group-hover:opacity-100"

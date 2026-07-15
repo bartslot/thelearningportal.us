@@ -117,6 +117,10 @@
         let textLayer = null
         let textSceneId = null
         let lastAppliedTexts = null
+        // A just-added box/panel lives client-side for a beat before the save round-trips.
+        // The 3s status poll can re-fire scene:load with STALE server texts in that window —
+        // ignore it briefly so a fresh add (which has no focus to guard it) isn't wiped.
+        let localDirtyUntil = 0
         const ensureTextLayer = () => {
             if (textLayer) return textLayer
             const layerHost = document.getElementById('lesson-text-overlay')
@@ -125,6 +129,7 @@
                 editable: true,
                 onChange: (texts) => {
                     lastAppliedTexts = JSON.stringify(texts)
+                    localDirtyUntil = Date.now() + 2500
                     // sceneId may still be null before the first scene:load — the server
                     // falls back to the currently selected scene in that case.
                     window.Livewire.dispatch('sceneTextsChanged', { sceneId: textSceneId ?? null, texts })
@@ -141,14 +146,17 @@
             if (!layer) return
             const incoming = JSON.stringify(p.texts || [])
             const layerHost = document.getElementById('lesson-text-overlay')
-            // scene:load re-fires every status poll — never nuke a box mid-typing, and skip
-            // no-op re-renders of the same content.
-            if (p.sceneId === textSceneId && (incoming === lastAppliedTexts || layerHost?.contains(document.activeElement))) return
+            // scene:load re-fires every status poll — never nuke a box mid-typing, skip
+            // no-op re-renders of the same content, and hold off on stale polls right after
+            // a local add (until the save round-trips back).
+            const sameScene = p.sceneId === textSceneId
+            if (sameScene && (incoming === lastAppliedTexts || layerHost?.contains(document.activeElement) || Date.now() < localDirtyUntil)) return
             textSceneId = p.sceneId
             lastAppliedTexts = incoming
             layer.setTexts(p.texts || [])
         })
         window.addEventListener('lesson:add-text', () => ensureTextLayer()?.addText())
+        window.addEventListener('lesson:add-rect', (e) => ensureTextLayer()?.addRect(e.detail?.side || 'left'))
     }
     // Livewire defers stacked scripts, so `livewire:initialized` has often ALREADY fired by the time
     // this runs — boot immediately in that case; otherwise wait for the event. (Same footgun the
@@ -165,7 +173,10 @@
     <aside x-cloak
            x-ref="inspectorPanel"
            :style="inspectorPanelStyle()"
-           :class="inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(24rem,calc(100vw-1rem))]' }}' : 'w-56'"
+           :class="[
+               inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(24rem,calc(100vw-1rem))]' }}' : 'w-56',
+               docked ? 'rounded-none border-r-0 border-t-0' : 'rounded-2xl'
+           ]"
            class="card card-compact fixed z-50 overflow-hidden border border-slate-700/70 bg-base-300/95 shadow-2xl backdrop-blur-xl">
         <header
             @pointerdown="startInspectorDrag($event)"
@@ -177,10 +188,11 @@
             <div class="flex shrink-0 items-center gap-1">
                 <button type="button"
                         @pointerdown.stop
-                        @click.stop="resetInspectorPosition()"
+                        @click.stop="dockInspector()"
                         class="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-slate-100"
-                        aria-label="Reset inspector position"
-                        title="Reset position">
+                        :class="docked && 'text-amber-300'"
+                        aria-label="Dock inspector to the right"
+                        title="Dock to right">
                     <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M3 12a9 9 0 1 0 9-9" />
@@ -284,31 +296,72 @@
         </div>
     </aside>
         
-    {{-- Step nav — the primary CTA of this screen. Full-width strip above the timeline so
-         teachers can't miss it (the old small button hid behind the narrator portrait). --}}
-    <div class="fixed bottom-28 inset-x-0 z-30 flex items-center justify-between px-4 pointer-events-none">
-        <div class="flex items-center gap-2 pointer-events-auto">
-            <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"
-               wire:navigate class="btn btn-sm btn-ghost text-slate-300">← {{ __('Back') }}</a>
-            {{-- [T] text tool: adds a text box on the scene, focused and ready to type. --}}
-            <button type="button"
-                    onclick="window.dispatchEvent(new CustomEvent('lesson:add-text'))"
-                    class="btn btn-sm btn-square border border-slate-600 bg-base-300/80 text-slate-200 hover:border-amber-400 hover:text-amber-300 backdrop-blur"
-                    title="{{ __('Add text to this scene (drag to move; paste a link to embed a page)') }}"
-                    aria-label="{{ __('Add text to this scene') }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-                    <rect x="2.5" y="5.5" width="19" height="13" rx="3" stroke-dasharray="3.5 2.5"/>
-                    <path stroke-linecap="round" d="M9 9.5h6M12 9.5v6"/>
-                </svg>
-            </button>
-        </div>
+    {{-- Step nav — the primary CTA of this screen. Bottom strip, offset right of the scene
+         rail so teachers can't miss it (the old small button hid behind the narrator portrait). --}}
+    <div class="fixed bottom-6 inset-x-0 z-30 flex items-center justify-center pointer-events-none">
+        <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"
+           wire:navigate class="btn btn-sm btn-ghost text-slate-300 absolute left-48 pointer-events-auto">← {{ __('Back') }}</a>
         <button wire:click="continueToPreview"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 shadow-xl px-6 pointer-events-auto">
             {{ __('Continue to Preview') }} →
         </button>
     </div>
 
-    {{-- Bottom timeline --}}
+    {{-- Scene canvas tools — horizontal strip pinned to the top-left of the canvas, below the
+         app header and right of the scene rail. Replaces the orphaned [T] button that used to
+         sit in the bottom bar. Kept clear of the bottom-left scene caption (flag/year/location). --}}
+    {{-- wire:ignore: the tools are static, so the 3s status poll must not morph this strip —
+         that would re-init Alpine and snap the rectangle popover shut mid-interaction. --}}
+    <div class="fixed left-48 top-[4.75rem] z-40 flex items-center gap-1 rounded-full border border-slate-700/60 bg-base-300/80 px-1.5 py-1 shadow-xl backdrop-blur"
+         wire:ignore
+         x-data="{ rectOpen: false }">
+        <span class="px-1.5 text-[9px] font-semibold uppercase tracking-widest text-slate-500">{{ __('Tools') }}</span>
+
+        {{-- Text --}}
+        <button type="button"
+                onclick="window.dispatchEvent(new CustomEvent('lesson:add-text'))"
+                class="btn btn-ghost btn-xs btn-square text-slate-300 hover:text-amber-300"
+                title="{{ __('Add text (drag to move; paste a link to embed a page)') }}"
+                aria-label="{{ __('Add text') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
+                <rect x="2.5" y="5.5" width="19" height="13" rx="3" stroke-dasharray="3.5 2.5"/>
+                <path stroke-linecap="round" d="M9 9.5h6M12 9.5v6"/>
+            </svg>
+        </button>
+
+        {{-- Rectangle backing panel (left/right half) --}}
+        <div class="relative">
+            <button type="button" @click="rectOpen = !rectOpen"
+                    class="btn btn-ghost btn-xs btn-square text-slate-300 hover:text-amber-300"
+                    :class="rectOpen && 'text-amber-300'"
+                    title="{{ __('Add a panel (left or right half) behind your text') }}"
+                    aria-label="{{ __('Add panel') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
+                    <rect x="3" y="5" width="18" height="14" rx="2"/>
+                    <path d="M12 5v14" stroke-dasharray="2.5 2"/>
+                </svg>
+            </button>
+            <div x-show="rectOpen" x-cloak @click.outside="rectOpen = false"
+                 x-transition.opacity.duration.150ms
+                 class="absolute left-0 top-full z-50 mt-1.5 w-40 rounded-xl border border-slate-700 bg-base-300 p-1.5 shadow-2xl">
+                <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Backing panel') }}</p>
+                <button type="button"
+                        @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'left' } })); rectOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-base-200">
+                    <span class="flex h-4 w-6 overflow-hidden rounded border border-slate-600"><span class="w-1/2 bg-amber-400/70"></span></span>
+                    {{ __('Left half') }}
+                </button>
+                <button type="button"
+                        @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'right' } })); rectOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-base-200">
+                    <span class="flex h-4 w-6 justify-end overflow-hidden rounded border border-slate-600"><span class="w-1/2 bg-amber-400/70"></span></span>
+                    {{ __('Right half') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
     {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
@@ -354,9 +407,116 @@
                 wire:click="$set('addSceneOpen', false)"></button>
     </div>
 
+    {{-- Painting picker — public-domain artworks from the corpus. Click a thumbnail to set it
+         as this scene's background (downloaded to lesson storage; attribution stored on the scene). --}}
+    <div class="modal modal-bottom sm:modal-middle {{ $paintingPickerOpen ? 'modal-open' : '' }}"
+         role="dialog" aria-modal="true">
+        <div class="modal-box max-w-3xl border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold text-slate-100">{{ __('Painting backgrounds') }}</h2>
+                <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
+                        aria-label="Close" wire:click="$set('paintingPickerOpen', false)">✕</button>
+            </div>
+
+            <label class="input input-sm input-bordered flex items-center gap-2 bg-slate-900 mb-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5 text-slate-500">
+                    <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/>
+                </svg>
+                <input type="search"
+                       wire:model.live.debounce.400ms="paintingQuery"
+                       placeholder="{{ __('Search paintings or painters (e.g. senaat, Caesar, Rembrandt)…') }}"
+                       class="grow bg-transparent" />
+            </label>
+
+            {{-- Kind filter: everything / paintings / historical city plans (Braun & Hogenberg e.a.) --}}
+            <div class="mb-3 flex items-center gap-1.5">
+                @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans')] as $kindVal => $kindLabel)
+                    <button type="button"
+                            wire:click="$set('paintingKind', '{{ $kindVal }}')"
+                            class="btn btn-xs {{ $paintingKind === $kindVal ? 'bg-amber-500 text-slate-950 border-0 hover:bg-amber-400' : 'btn-outline border-slate-600 text-slate-400 hover:border-amber-400 hover:text-amber-300' }}">
+                        {{ $kindLabel }}
+                    </button>
+                @endforeach
+            </div>
+
+            <div wire:loading.delay
+                 wire:target="paintingQuery, applyPaintingBackground, paintingPickerOpen, paintingKind"
+                 class="flex items-center gap-2 py-2 text-xs text-slate-400">
+                <x-icons.spinner class="w-3.5 h-3.5 animate-spin" />
+                <span>{{ __('Loading…') }}</span>
+            </div>
+
+            @if ($paintingPickerOpen)
+                <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3"
+                     wire:loading.class="opacity-40" wire:target="applyPaintingBackground">
+                    @forelse ($this->paintingResults as $art)
+                        <button type="button"
+                                wire:key="art-{{ md5($art['source'].$art['key']) }}"
+                                wire:click="applyPaintingBackground('{{ $art['source'] }}', '{{ addslashes($art['key']) }}')"
+                                wire:loading.attr="disabled" wire:target="applyPaintingBackground"
+                                class="group relative block overflow-hidden rounded-lg ring-1 ring-slate-700 transition hover:ring-2 hover:ring-amber-400 disabled:cursor-wait"
+                                style="aspect-ratio:16/10"
+                                title="{{ trim($art['title'].' — '.$art['caption'], ' —') }}">
+                            <img src="{{ $art['thumb'] }}" loading="lazy" alt=""
+                                 class="h-full w-full object-cover transition group-hover:scale-105" />
+                            @if (($art['kind'] ?? 'painting') === 'city_map')
+                                <span class="absolute right-1 top-1 rounded bg-sky-600/90 px-1 text-[8px] font-semibold uppercase tracking-wider text-white">
+                                    {{ __('plan') }}
+                                </span>
+                            @endif
+                            <span class="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-left text-[9px] text-white">
+                                {{ $art['title'] }}@if($art['caption']) · {{ $art['caption'] }}@endif
+                            </span>
+                        </button>
+                    @empty
+                        <p class="col-span-full py-6 text-center text-sm text-slate-400">
+                            {{ __('No paintings found — try a name, place or event (Dutch or English).') }}
+                        </p>
+                    @endforelse
+                </div>
+                @unless ($paintingCommonsLoaded)
+                    <button type="button"
+                            wire:click="$set('paintingCommonsLoaded', true)"
+                            wire:loading.attr="disabled" wire:target="paintingCommonsLoaded"
+                            class="btn btn-xs btn-outline mt-2 border-slate-600 text-slate-300 hover:border-sky-400 hover:text-sky-300 inline-flex items-center gap-1.5">
+                        <span wire:loading wire:target="paintingCommonsLoaded"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                        <span wire:loading.remove wire:target="paintingCommonsLoaded">{{ __('More from Wikimedia Commons') }}</span>
+                        <span wire:loading wire:target="paintingCommonsLoaded">{{ __('Searching Wikimedia…') }}</span>
+                    </button>
+                @endunless
+                <p class="mt-2 text-[10px] text-slate-500">
+                    {{ __('Public-domain works from Wikimedia Commons. The painting is saved to this lesson and credited automatically.') }}
+                </p>
+            @endif
+        </div>
+        <button type="button" class="modal-backdrop" aria-label="Close"
+                wire:click="$set('paintingPickerOpen', false)"></button>
+    </div>
+
+    {{-- Ink artwork library — teacher-imported public-domain SVGs, drawn line-by-line.
+         The nested Livewire component only mounts while the modal is open. --}}
+    <div class="modal modal-bottom sm:modal-middle {{ $svgLibraryOpen ? 'modal-open' : '' }}"
+         role="dialog" aria-modal="true">
+        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold text-slate-100">{{ __('Ink artwork library') }}</h2>
+                <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
+                        aria-label="Close" wire:click="$set('svgLibraryOpen', false)">✕</button>
+            </div>
+            @if ($svgLibraryOpen)
+                <livewire:svg-asset-library :key="'svg-library-'.$lesson->id" />
+            @endif
+        </div>
+        <button type="button" class="modal-backdrop" aria-label="Close"
+                wire:click="$set('svgLibraryOpen', false)"></button>
+    </div>
+
     {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
     <script type="application/json" id="step3-scenes-data">
-        {!! $this->scenes->map->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction'])->toJson() !!}
+        {!! $this->scenes->map(fn ($s) => array_merge(
+            $s->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction']),
+            ['shots' => $this->serializeShots($s)],
+        ))->toJson() !!}
     </script>
 </div>
 
@@ -407,6 +567,9 @@
 
             Alpine.data('step3SceneConfigurator', () => ({
                 inspectorOpen: true,
+                // Docked (default): pinned flush to the right edge, full height below the header.
+                // Dragging the header pops it out into a free-floating panel.
+                docked: true,
                 inspectorX: 0,
                 inspectorY: 0,
                 inspectorDragging: false,
@@ -420,6 +583,8 @@
 
                 async init() {
                     this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1';
+                    // Docked is the standard state — default to it unless the teacher undocked before.
+                    this.docked = (localStorage.getItem('wizard.inspector.docked') ?? '1') === '1';
                     this.restoreInspectorPosition();
                     this.$watch('inspectorOpen', v => {
                         localStorage.setItem('wizard.inspector', v ? '1' : '0');
@@ -455,17 +620,46 @@
                     if (this._inspectorResizeHandler) window.removeEventListener('resize', this._inspectorResizeHandler);
                 },
 
+                // App nav height (h-16 = 64px) — the docked panel sits flush under it, no gap.
+                _headerOffset: 64,
+
                 inspectorPanelStyle() {
+                    if (this.docked) {
+                        // Flush right, below the header. Full height when open; just the bar when collapsed.
+                        return this.inspectorOpen
+                            ? `right:0; left:auto; top:${this._headerOffset}px; bottom:0;`
+                            : `right:0; left:auto; top:${this._headerOffset}px;`;
+                    }
                     return `left:${this.inspectorX}px; top:${this.inspectorY}px;`;
                 },
 
                 inspectorBodyStyle() {
-                    const maxHeight = Math.max(180, Math.min(680, window.innerHeight - this.inspectorY - 132));
+                    const maxHeight = this.docked
+                        ? window.innerHeight - this._headerOffset - 44   // viewport − header − card title bar
+                        : Math.max(180, Math.min(680, window.innerHeight - this.inspectorY - 132));
                     return `max-height:${maxHeight}px;`;
                 },
 
                 toggleInspector() {
                     this.inspectorOpen = !this.inspectorOpen;
+                },
+
+                setDocked(v) {
+                    this.docked = v;
+                    localStorage.setItem('wizard.inspector.docked', v ? '1' : '0');
+                },
+
+                // Re-dock to the right edge (the ⟲ button / standard state).
+                dockInspector() {
+                    this.setDocked(true);
+                },
+
+                // Pop the panel out of the dock into a free-floating panel at its current spot.
+                undockInspector() {
+                    const rect = this.$refs.inspectorPanel?.getBoundingClientRect();
+                    this.inspectorX = rect ? rect.left : Math.max(8, window.innerWidth - this.inspectorPanelWidth() - 16);
+                    this.inspectorY = rect ? rect.top : this._headerOffset;
+                    this.setDocked(false);
                 },
 
                 resetInspectorPosition() {
@@ -476,6 +670,7 @@
                 },
 
                 restoreInspectorPosition() {
+                    if (this.docked) return;   // docked ignores stored free position
                     let saved = null;
                     try {
                         saved = JSON.parse(localStorage.getItem('wizard.inspector.position') ?? 'null');
@@ -495,6 +690,8 @@
 
                 startInspectorDrag(event) {
                     if (event.button !== undefined && event.button !== 0) return;
+                    // Grabbing the header of a docked panel pulls it out into free-floating mode.
+                    if (this.docked) this.undockInspector();
                     this.inspectorDragging = true;
                     this.inspectorDragStartX = event.clientX;
                     this.inspectorDragStartY = event.clientY;
@@ -517,16 +714,20 @@
                 },
 
                 constrainInspectorPosition(save = true) {
+                    if (this.docked) return;   // docked panel is CSS-pinned, nothing to clamp
                     const panel = this.$refs.inspectorPanel;
                     const rect = panel?.getBoundingClientRect();
                     const margin = 8;
+                    // Keep the panel clear of the vertical scene rail (w-44 = 176px) — also
+                    // migrates positions saved before the rail existed out of the overlap zone.
+                    const railReserve = 176 + margin;
                     const bottomReserve = 112;
                     const width = rect?.width || this.inspectorPanelWidth();
                     const height = rect?.height || 44;
-                    const maxX = Math.max(margin, window.innerWidth - width - margin);
+                    const maxX = Math.max(railReserve, window.innerWidth - width - margin);
                     const maxY = Math.max(margin, window.innerHeight - height - bottomReserve);
 
-                    this.inspectorX = this.clamp(this.inspectorX, margin, maxX);
+                    this.inspectorX = this.clamp(this.inspectorX, railReserve, maxX);
                     this.inspectorY = this.clamp(this.inspectorY, margin, maxY);
 
                     if (save) {
