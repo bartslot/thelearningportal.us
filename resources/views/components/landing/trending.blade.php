@@ -34,28 +34,28 @@
 
     $features = [
         [
-            ‘title’ => ‘Interactive Lessons’,
-            ‘description’ => ‘Interaction energizes your class. Techniques that prompt students to respond in real time keep attention high and make the material easier to absorb.’,
-            ‘image’ => asset(‘history/6history.webp’),
-            ‘icon’ => ‘book-open’,
+            'title' => 'Interactive Lessons',
+            'description' => 'Interaction energizes your class. Techniques that prompt students to respond in real time keep attention high and make the material easier to absorb.',
+            'image' => asset('history/6history.webp'),
+            'icon' => 'book-open',
         ],
         [
-            ‘title’ => ‘Engaged Students’,
-            ‘description’ => ‘Learning can be fun. With gamification, lessons feel active and memorable, improving engagement and retention in class.’,
-            ‘image’ => asset(‘history/12history.webp’),
-            ‘icon’ => ‘puzzle-piece’,
+            'title' => 'Engaged Students',
+            'description' => 'Learning can be fun. With gamification, lessons feel active and memorable, improving engagement and retention in class.',
+            'image' => asset('history/12history.webp'),
+            'icon' => 'puzzle-piece',
         ],
         [
-            ‘title’ => ‘Track Progress’,
-            ‘description’ => ‘Track each student’s progress and see how lessons perform through a clear dashboard built for teachers.’,
-            ‘image’ => asset(‘history/18history.webp’),
-            ‘icon’ => ‘chart-bar’,
+            'title' => 'Track Progress',
+            'description' => "Track each student's progress and see how lessons perform through a clear dashboard built for teachers.",
+            'image' => asset('history/18history.webp'),
+            'icon' => 'chart-bar',
         ],
         [
-            ‘title’ => ‘Made for Teachers’,
-            ‘description’ => ‘The editor helps teachers refine, adjust, and enhance content. Building a new lesson is faster and easier with the right tools.’,
-            ‘image’ => asset(‘history/24history.webp’),
-            ‘icon’ => ‘academic-cap’,
+            'title' => 'Made for Teachers',
+            'description' => 'The editor helps teachers refine, adjust, and enhance content. Building a new lesson is faster and easier with the right tools.',
+            'image' => asset('history/24history.webp'),
+            'icon' => 'academic-cap',
         ],
     ];
 @endphp
