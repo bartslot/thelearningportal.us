@@ -186,8 +186,13 @@ class OpenAiImageService
         }
 
         try {
-            $tmpIn = tempnam(sys_get_temp_dir(), 'upscayl_in_').'.webp';
-            $tmpOut = tempnam(sys_get_temp_dir(), 'upscayl_out_').'.webp';
+            // tempnam() creates a real file AT the returned path; appending '.webp' yields a
+            // DIFFERENT path, so the tempnam file itself would be orphaned. Track both bases and
+            // the .webp paths and clean them all up in finally.
+            $tmpInBase = tempnam(sys_get_temp_dir(), 'upscayl_in_');
+            $tmpOutBase = tempnam(sys_get_temp_dir(), 'upscayl_out_');
+            $tmpIn = $tmpInBase.'.webp';
+            $tmpOut = $tmpOutBase.'.webp';
 
             file_put_contents($tmpIn, $bytes);
 
@@ -231,8 +236,11 @@ class OpenAiImageService
 
             return $bytes;
         } finally {
-            isset($tmpIn) && file_exists($tmpIn) && unlink($tmpIn);
-            isset($tmpOut) && file_exists($tmpOut) && unlink($tmpOut);
+            foreach ([$tmpInBase ?? null, $tmpIn ?? null, $tmpOutBase ?? null, $tmpOut ?? null] as $p) {
+                if (is_string($p) && file_exists($p)) {
+                    @unlink($p);
+                }
+            }
         }
     }
 
@@ -328,8 +336,13 @@ class OpenAiImageService
 
         ob_start();
         imagepng($out);
+        $result = (string) ob_get_clean();
 
-        return (string) ob_get_clean();
+        // Free both GD handles — this runs per map-sketch edit inside the queue worker.
+        imagedestroy($src);
+        imagedestroy($out);
+
+        return $result;
     }
 
     /**

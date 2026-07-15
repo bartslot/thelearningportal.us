@@ -60,7 +60,10 @@ class Artwork extends Model
      */
     public function scopeSearch($query, string $term, int $limit = 30, ?string $kind = null)
     {
-        $like = '%'.str_replace(['%', '_'], ['\%', '\_'], trim($term)).'%';
+        // Escape the backslash FIRST (Postgres' default LIKE escape char), then the wildcards —
+        // a term ending in a lone backslash otherwise throws "LIKE pattern must not end with
+        // escape character" (a 500 from the search box).
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], trim($term)).'%';
 
         return $query
             ->where('pd_likely', true)
@@ -127,8 +130,12 @@ class Artwork extends Model
         array $preferRegions = ['european'],
         ?string $term = null,
     ) {
+        // Build a Postgres text[] literal. Values are still passed as bound params (?::text[]),
+        // so this is not an injection vector — but backslashes/quotes must be ESCAPED (\\, \"),
+        // not stripped, or an element containing them corrupts the match or trips a
+        // "malformed array literal" error.
         $pgArray = fn (array $a): string => '{'.implode(',', array_map(
-            fn ($x) => '"'.str_replace(['\\', '"'], '', (string) $x).'"', $a
+            fn ($x) => '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $x).'"', $a
         )).'}';
 
         $query
@@ -145,7 +152,7 @@ class Artwork extends Model
         // context below still does the RANKING, so "Revolution" in a French-Revolution lesson
         // floats French works above the American Revolution and off-topic hits.
         if ($term !== null && trim($term) !== '') {
-            $like = '%'.str_replace(['%', '_'], ['\%', '\_'], trim($term)).'%';
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], trim($term)).'%';
             $query->where(fn ($q) => $q
                 ->where('title', 'ILIKE', $like)
                 ->orWhere('creator_name', 'ILIKE', $like)

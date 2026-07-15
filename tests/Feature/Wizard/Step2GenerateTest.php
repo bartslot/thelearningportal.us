@@ -73,7 +73,7 @@ class Step2GenerateTest extends TestCase
         Livewire::actingAs($this->teacher)
             ->test(Step2Generate::class, ['lesson' => $this->lesson])
             ->call('checkAndAutoAdvance')
-            ->assertRedirect(route('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 3]));
+            ->assertRedirect(route('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 4]));
     }
 
     public function test_shows_per_scene_asset_states(): void

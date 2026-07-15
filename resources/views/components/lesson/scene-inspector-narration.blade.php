@@ -1,4 +1,4 @@
-@props(['scene' => null, 'clips' => collect()])
+@props(['scene' => null])
 
 @php
     $isGenerating = $scene->status === 'generating';

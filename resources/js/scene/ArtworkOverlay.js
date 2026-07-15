@@ -147,7 +147,7 @@ export class ArtworkOverlay {
       const onMove = (ev) => {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
         if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-        if (!dragging) { dragging = true; node.style.cursor = 'grabbing'; node.setPointerCapture?.(ev.pointerId) }
+        if (!dragging) { dragging = true; node.style.cursor = 'grabbing'; try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ } }
         item.x = origin.x + (dx / rect.width) * 100
         item.y = origin.y + (dy / rect.height) * 100
         clamp(); paint()

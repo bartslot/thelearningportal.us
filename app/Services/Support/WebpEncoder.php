@@ -38,6 +38,10 @@ final class WebpEncoder
         imagewebp($img, null, $quality);
         $out = (string) ob_get_clean();
 
+        // Free the GD handle — encode() runs on every generated/upscaled image inside a
+        // long-lived queue worker, so a leaked handle here accumulates until OOM.
+        imagedestroy($img);
+
         return $out !== '' ? $out : $bytes;
     }
 }

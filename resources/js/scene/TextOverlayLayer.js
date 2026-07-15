@@ -530,7 +530,7 @@ export class TextOverlayLayer {
       const hostRect = this.host.getBoundingClientRect()
       const startX = e.clientX
       const startWidthPx = node.getBoundingClientRect().width
-      resize.setPointerCapture?.(e.pointerId)
+      try { resize.setPointerCapture?.(e.pointerId) } catch (_) { /* synthetic/edge pointers throw */ }
       const onMove = (ev) => {
         const newPx = Math.max(80, startWidthPx + (ev.clientX - startX))
         const wPct = Math.min(90, Math.max(10, (newPx / hostRect.width) * 100))
@@ -576,7 +576,7 @@ export class TextOverlayLayer {
       const onMove = (ev) => {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
         if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-        if (!dragging) { dragging = true; edit.blur(); node.setPointerCapture?.(ev.pointerId) }
+        if (!dragging) { dragging = true; edit.blur(); try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ } }
         item.x = origin.x + (dx / rect.width) * 100
         item.y = origin.y + (dy / rect.height) * 100
         clamp()

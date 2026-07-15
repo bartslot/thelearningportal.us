@@ -107,17 +107,25 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                     destroyWizardLayers()
                     applyWorldCameraMode(activePlayer)
                     if (payload.worldPanoUrl && payload.worldLabsStatus === 'ready') {
-                        hideWorldWaitingState(activePlayer._scene)
-                        const result = await activePlayer.mountWorldLabs({
-                            panoUrl:   payload.worldPanoUrl,
-                            spzUrl:    payload.worldSpzUrl,
-                            glbUrl:    payload.worldGlbUrl,
-                            semantics: payload.worldSemantics ?? {},
-                        })
-                        repositionWorldCamera(activePlayer)
-                        applyWorldSettings(activePlayer, payload)
-                        window.dispatchEvent(new CustomEvent('world:mounted', { detail: payload }))
-                        _lastMountedWorldStatus = payload.sceneId + ':ready'
+                        // Idempotency (mirrors the scene:worldstatus poll handler): scene:load
+                        // re-fires on every unrelated edit and on the 3s poll. Re-mounting a world
+                        // that's already up reloads SPZ/GLB/pano and snaps the camera back, so skip
+                        // it — just keep the world settings in sync.
+                        if (_lastMountedWorldStatus === payload.sceneId + ':ready') {
+                            applyWorldSettings(activePlayer, payload)
+                        } else {
+                            _lastMountedWorldStatus = payload.sceneId + ':ready'
+                            hideWorldWaitingState(activePlayer._scene)
+                            await activePlayer.mountWorldLabs({
+                                panoUrl:   payload.worldPanoUrl,
+                                spzUrl:    payload.worldSpzUrl,
+                                glbUrl:    payload.worldGlbUrl,
+                                semantics: payload.worldSemantics ?? {},
+                            })
+                            repositionWorldCamera(activePlayer)
+                            applyWorldSettings(activePlayer, payload)
+                            window.dispatchEvent(new CustomEvent('world:mounted', { detail: payload }))
+                        }
                     } else {
                         activePlayer.dismountWorldLabs()
                         _lastMountedWorldStatus = null

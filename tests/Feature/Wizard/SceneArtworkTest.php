@@ -309,4 +309,31 @@ class SceneArtworkTest extends TestCase
             ->call('selectScene', $this->scene->id)
             ->call('attachArtwork', $otherAsset->id);
     }
+
+    public function test_swapping_the_background_url_preserves_attached_clipart_layers(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        \Illuminate\Support\Facades\Http::fake([
+            'https://example.com/new-bg.jpg' => \Illuminate\Support\Facades\Http::response(
+                'fake-image-bytes', 200, ['Content-Type' => 'image/jpeg'],
+            ),
+        ]);
+
+        // Attach clipart, then swap the background via a pasted URL.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id)
+            ->call('applyImageUrl', $this->scene->id, 'https://example.com/new-bg.jpg');
+
+        $shots = $this->scene->fresh()->shots;
+
+        // The clipart layer must survive the background swap — not be nulled out.
+        $this->assertNotNull($shots, 'background swap must not delete attached clipart');
+        $assetIds = collect($shots[0]['layers'] ?? [])->pluck('asset_id')->filter()->all();
+        $this->assertContains($this->asset1->id, $assetIds, 'clipart asset layer should be preserved');
+        // The new background is carried as the cover layer (no asset_id).
+        $this->assertArrayNotHasKey('asset_id', $shots[0]['layers'][0], 'first layer is the cover');
+        $this->assertSame('cover', $shots[0]['layers'][0]['kind'] ?? null);
+    }
 }

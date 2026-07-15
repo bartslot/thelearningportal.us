@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Wizard\Concerns;
 
+use App\Models\Scene;
 use App\Models\SvgAsset;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -100,6 +101,32 @@ trait EditsSceneArtwork
         $scene->update(['shots' => $shots]);
         $this->selectSceneInternal($scene->id);
         $this->svgLibraryOpen = false;
+    }
+
+    /**
+     * Build a shots array carrying the given background image plus any clipart layers already on
+     * the scene, so swapping the background (painting / pasted URL) doesn't silently delete the
+     * teacher's manually-placed clipart. Returns null when there is no clipart to preserve — the
+     * caller then keeps the simpler flat-background behaviour (shots = null).
+     */
+    private function shotsPreservingArtwork(Scene $scene, string $newImagePath): ?array
+    {
+        $assetLayers = collect($scene->shots[0]['layers'] ?? [])
+            ->filter(fn ($l) => ($l['asset_id'] ?? null) !== null)
+            ->values()
+            ->all();
+
+        if ($assetLayers === []) {
+            return null;
+        }
+
+        $cover = ['path' => $newImagePath, 'kind' => 'cover', 'depth' => (float) 0.4];
+
+        return [[
+            'order' => 0,
+            'image_path' => $newImagePath,
+            'layers' => array_merge([$cover], $assetLayers),
+        ]];
     }
 
     public function detachArtwork(int $assetId): void
@@ -301,6 +328,14 @@ trait EditsSceneArtwork
         $config['clipart_on_top'] = $onTop;
 
         $scene->update(['shots' => $shots, 'config' => $config]);
+
+        // Mirror the config change back into the in-memory snapshot. Without this, the next
+        // saveSelected() (e.g. blurring Year/Location) would write the STALE snapshot config
+        // over the row and silently revert clipart_on_top — 'config' is an EDITABLE_FIELD.
+        if ($this->selectedSceneId === $scene->id && $this->selectedScene !== null) {
+            $this->selectedScene['config'] = $scene->config;
+        }
+
         unset($this->sceneArtworkLayers);   // refresh the Layers panel; no scene:load re-dispatch
     }
 

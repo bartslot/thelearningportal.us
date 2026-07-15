@@ -9,6 +9,7 @@ use App\Models\Scene;
 use App\Services\OpenAiLlmService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -84,7 +85,12 @@ class SceneMatchTargetService
                 $r = array_values(array_intersect((array) ($out['regions'] ?? []), $valid));
                 $regions = $r !== [] ? $r : ['european'];
             } catch (Throwable $e) {
-                // Graceful: no core → picker falls back to the era/location blend.
+                // Graceful: no core → picker falls back to the era/location blend. Log so a
+                // broken key / rate-limit / parse regression is visible, not silent.
+                Log::warning('scene-match-target: LLM derive failed', [
+                    'scene_id' => $scene->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -103,19 +109,28 @@ class SceneMatchTargetService
     /** Controlled vocab (depicts + theme + era slugs), cached — the picker's allowed tags. */
     private function vocab(): array
     {
-        return Cache::remember('corpus.match_vocab.v2', 3600, function () {
-            try {
-                $rows = DB::connection('pgsql_corpus')->table('curriculum_themes')->get(['tag', 'facet']);
+        $cached = Cache::get('corpus.match_vocab.v2');
+        if (is_array($cached)) {
+            return $cached;
+        }
 
-                return [
-                    'depicts' => $rows->where('facet', 'depicts')->pluck('tag')->all(),
-                    'theme' => $rows->where('facet', 'theme')->pluck('tag')->all(),
-                    'era' => $rows->where('facet', 'era')->pluck('tag')->all(),
-                ];
-            } catch (Throwable $e) {
-                return ['depicts' => [], 'theme' => [], 'era' => []];
-            }
-        });
+        try {
+            $rows = DB::connection('pgsql_corpus')->table('curriculum_themes')->get(['tag', 'facet']);
+            $vocab = [
+                'depicts' => $rows->where('facet', 'depicts')->pluck('tag')->all(),
+                'theme' => $rows->where('facet', 'theme')->pluck('tag')->all(),
+                'era' => $rows->where('facet', 'era')->pluck('tag')->all(),
+            ];
+            // Only cache SUCCESS. A transient corpus-DB blip must not pin an empty vocab for an
+            // hour — that would silently disable painting matching app-wide until the TTL expires.
+            Cache::put('corpus.match_vocab.v2', $vocab, 3600);
+
+            return $vocab;
+        } catch (Throwable $e) {
+            Log::warning('corpus match vocab load failed', ['error' => $e->getMessage()]);
+
+            return ['depicts' => [], 'theme' => [], 'era' => []];
+        }
     }
 
     private function system(array $vocab): string

@@ -199,24 +199,9 @@ class Step1SettingsTest extends TestCase
         $this->assertStringContainsString('Napoleon', $source->extracted_text);
     }
 
-    public function test_dispatches_build_lesson_outline_on_generate(): void
-    {
-        Bus::fake();
-
-        Livewire::actingAs($this->teacher)
-            ->test(Step1Settings::class, ['lesson' => null])
-            ->call('selectTopic', 'polity:Q2277')
-            ->set('subject', 'history')
-            ->set('grade_level', '7th grade')
-            ->set('source_mode', 'internet')
-            ->set('image_style', 'painted')
-            ->set('avatar_id', $this->avatar->id)
-            ->set('game_split_count', 1)
-            ->call('generate')
-            ->assertHasNoErrors();
-
-        Bus::assertDispatched(BuildLessonOutline::class);
-    }
+    // Note: Step 1's "generate" no longer dispatches BuildLessonOutline — the pipeline now kicks
+    // off from the Story step (2). That advance is covered by the test below, and the outline
+    // dispatch itself by Step2GenerateTest, so the old dispatch-on-generate assertion was removed.
 
     public function test_generate_advances_wizard_step_to_2_so_parent_renders_step_2(): void
     {

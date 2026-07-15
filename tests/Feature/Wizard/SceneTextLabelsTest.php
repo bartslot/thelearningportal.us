@@ -120,7 +120,7 @@ class SceneTextLabelsTest extends TestCase
         $texts = $this->saveTexts($payload);
 
         $this->assertCount(12, $texts, 'labels cap at 12 per scene');
-        $this->assertSame(300, mb_strlen($texts[0]['text']), 'label text caps at 300 chars');
+        $this->assertSame(600, mb_strlen($texts[0]['text']), 'label text caps at 600 chars');
     }
 
     public function test_client_supplied_ids_are_length_capped(): void

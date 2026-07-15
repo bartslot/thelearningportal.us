@@ -291,6 +291,12 @@
             @if ($panelView === 'scene')
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
+                {{-- Key the inspector by scene id. The inspector partials seed their Alpine x-data
+                     (view tabs, blur/opacity sliders, slideshow mode, colour) ONCE from $scene;
+                     without a per-scene key, Livewire's morph preserves the previous scene's Alpine
+                     state on switch, so sliders/tabs show — and can persist — the wrong scene's
+                     values. A changing key forces Alpine to reinitialise from the new scene. --}}
+                <div wire:key="scene-inspector-{{ $sceneModel->id }}">
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
                                                  :territory-results="$this->territoryResults"
@@ -303,13 +309,14 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @else
-                    <x-lesson.scene-inspector-narration :scene="$sceneModel" :clips="$this->animationClips" />
+                    <x-lesson.scene-inspector-narration :scene="$sceneModel" />
                 @endif
 
                 {{-- Story-game: branch OPTION scenes get the "Game effects" editor. --}}
                 @if ($this->showsGameEffectsPanel($sceneModel))
                     <x-lesson.scene-inspector-story-effects :scene="$sceneModel" :meters="$this->storyMeters()" />
                 @endif
+                </div>{{-- /scene-inspector-{{ $sceneModel->id }} --}}
             @else
                 <p class="text-sm text-slate-400">No scene selected.</p>
             @endif

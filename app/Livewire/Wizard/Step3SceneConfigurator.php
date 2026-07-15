@@ -15,7 +15,6 @@ use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
 use App\Livewire\Wizard\Concerns\EditsSceneArtwork;
 use App\Livewire\Wizard\Concerns\EditsStoryGame;
 use App\Models\AnimationClip;
-use App\Models\AvatarAnimationController;
 use App\Models\City;
 use App\Models\Lesson;
 use App\Models\Scene;
@@ -91,19 +90,6 @@ class Step3SceneConfigurator extends Component
             : null;
     }
 
-    #[Computed]
-    public function animationClips()
-    {
-        $avatar = $this->lesson->avatar;
-        if (! $avatar) {
-            return collect();
-        }
-
-        $ctrl = AvatarAnimationController::where('avatar_id', $avatar->id)->first();
-        $ids = collect($ctrl?->controller ?? [])->flatten()->all();
-
-        return AnimationClip::whereIn('id', $ids)->orderBy('category')->orderBy('sort_order')->get();
-    }
 
     #[Computed]
     public function games()
@@ -1326,7 +1312,8 @@ class Step3SceneConfigurator extends Component
 
         $scene->update([
             'image_path' => $path,
-            'shots' => null,             // a painting replaces any storyboard shots
+            // A painting replaces the storyboard, but keep any clipart the teacher attached.
+            'shots' => $this->shotsPreservingArtwork($scene, $path),
             'scene_view' => 'slideshow', // paintings are flat images
             'config' => $config,
         ]);
@@ -1428,7 +1415,8 @@ class Step3SceneConfigurator extends Component
 
         $scene->update([
             'image_path' => $path,
-            'shots' => null,
+            // Keep any clipart the teacher attached when swapping to a pasted-URL background.
+            'shots' => $this->shotsPreservingArtwork($scene, $path),
             'scene_view' => 'slideshow',
             'config' => array_merge($scene->config ?? [], [
                 'background_credit' => ['kind' => 'url', 'source_url' => $url],
