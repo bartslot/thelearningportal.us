@@ -2,11 +2,27 @@
     @vite('resources/js/lesson-map.js')
 @endpush
 
-<div class="contents" x-data="step3SceneConfigurator" wire:poll.3s>
+<div class="contents" x-data="step3SceneConfigurator" wire:poll.3s
+     x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view.objects ? '13rem' : '0px');
+               document.documentElement.style.setProperty('--ruler-w', $store.view.rulers ? '16px' : '0px');
+               window.__placeRulers && requestAnimationFrame(window.__placeRulers)">
 
-    {{-- Fullscreen canvas wrapper — wire:ignore so Livewire never re-renders the
-         canvas (which would force a new Avatar3DPlayer + reset camera/orbit). --}}
-    <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
+    {{-- Letterboxed canvas stage. The lesson lives in the WORK AREA between the fixed chrome —
+         the scene rail (left, 11rem) and the docked inspector (right, 24rem) — below the top
+         toolbar (4rem). It never slides under those panels. Inside that area it fits a 16:9 band,
+         centred vertically, so the darkest-blue page forms bars top & bottom (Keynote-style).
+         The canvas fits its host via coverScale (clientWidth-based), so constraining it is safe.
+         wire:ignore so Livewire never re-renders the canvas (which would reset camera/orbit). --}}
+    {{-- --work-left / --work-right track the live widths of the rail and inspector (set by the
+         work-area sync script below) so the stage always fills exactly the gap between them and
+         never slides under either panel. Defaults match the rail (11rem) + docked inspector (24rem). --}}
+    <div class="fixed z-0 bg-slate-950" id="lesson-canvas-root"
+         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 24rem;
+                --top-inset: calc(4rem + var(--ruler-w, 0px));
+                --lbw: calc(100vw - var(--work-left) - var(--work-right));
+                --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset)));
+                left: var(--work-left); right: var(--work-right);
+                height: var(--lbh); top: var(--top-inset);"
          data-character-url=""
          data-territory="{{ $lesson->topic }}"
          data-flag="{{ $lesson->territoryFlagUrl() }}"
@@ -25,6 +41,38 @@
              would otherwise collapse an `absolute inset-0` host to height 0. --}}
         <div id="lesson-map-preview" class="fixed inset-0 z-[5]" style="display:none" wire:ignore></div>
     </div>
+
+    {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (docked
+         narration 24rem, game 48rem, collapsed 14rem, or 0 when floating). The stage tracks it
+         via --work-right; a resize nudge lets the WebGL scene refit. --}}
+    @push('scripts')
+    <script>
+    (() => {
+        const boot = () => {
+            const root = document.getElementById('lesson-canvas-root')
+            if (!root) return
+            const aside = document.querySelector('aside[x-ref="inspectorPanel"]')
+            if (!aside) { requestAnimationFrame(boot); return }
+            let raf = 0
+            const sync = () => {
+                raf = 0
+                const r = aside.getBoundingClientRect()
+                // Docked = pinned to the right edge near the top; floating panels reserve no space.
+                const docked = r.right >= window.innerWidth - 2 && r.top <= 140 && r.width > 0
+                root.style.setProperty('--work-right', docked ? `${Math.round(r.width)}px` : '0px')
+                window.dispatchEvent(new Event('resize'))   // nudge the scene renderer to refit
+            }
+            const schedule = () => { if (!raf) raf = requestAnimationFrame(sync) }
+            new ResizeObserver(schedule).observe(aside)
+            new MutationObserver(schedule).observe(aside, { attributes: true, attributeFilter: ['style', 'class'] })
+            sync()
+        }
+        if (document.readyState !== 'loading') boot()
+        else document.addEventListener('DOMContentLoaded', boot)
+        document.addEventListener('livewire:navigated', boot)
+    })()
+    </script>
+    @endpush
 
     {{-- Mount/destroy the MapLibre map block when a map scene is (de)selected. --}}
     @push('scripts')
@@ -177,14 +225,20 @@
                inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(24rem,calc(100vw-1rem))]' }}' : 'w-56',
                docked ? 'rounded-none border-r-0 border-t-0' : 'rounded-2xl'
            ]"
-           class="card card-compact fixed z-50 overflow-hidden border border-slate-700/70 bg-base-300/95 shadow-2xl backdrop-blur-xl">
+           class="card card-compact fixed z-50 overflow-hidden border border-slate-700 bg-base-300 shadow-2xl">
         <header
             @pointerdown="startInspectorDrag($event)"
-            class="card-title flex min-h-11 cursor-grab select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200/80 px-3 py-2 text-sm active:cursor-grabbing">
-            <div class="flex min-w-0 items-center gap-2">
-                <span class="h-2 w-2 shrink-0 rounded-full bg-amber-400"></span>
-                <span class="truncate font-semibold text-slate-100">Inspector</span>
-            </div>
+            class="card-title flex min-h-11 cursor-grab select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-2 text-sm active:cursor-grabbing">
+            {{-- Drag grip (left) --}}
+            <span class="flex items-center text-slate-600" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
+                    <circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/>
+                    <circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/>
+                    <circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>
+                </svg>
+            </span>
+            {{-- No panel title: the right panel is purely the per-scene editor now. Global
+                 settings live on the top toolbar (Settings button), not here. --}}
             <div class="flex shrink-0 items-center gap-1">
                 <button type="button"
                         @pointerdown.stop
@@ -248,8 +302,31 @@
             @if ($this->showsMetersPanel())
                 <x-lesson.story-meters-panel :meters-draft="$metersDraft" />
             @endif
+        </div>
+    </aside>
 
-            {{-- ── Background Music ──────────────────────────── --}}
+    {{-- Global class & lesson settings — opened from the Settings button on the top toolbar.
+         Holds the Story link and the class Background Music (both lesson-wide, not per-scene). --}}
+    <div class="modal modal-bottom sm:modal-middle {{ $settingsOpen ? 'modal-open' : '' }}"
+         role="dialog" aria-modal="true">
+        <div class="modal-box max-w-lg border border-slate-700 bg-base-300">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-slate-100">{{ __('Class & lesson settings') }}</h2>
+                <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
+                        aria-label="Close" wire:click="$set('settingsOpen', false)">✕</button>
+            </div>
+
+            {{-- ══ Story ══════════════════════════════════════════ --}}
+            <div class="space-y-1.5">
+                <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Story') }}</span>
+                <p class="text-xs text-slate-400">{{ __('The narrative arc and framework this lesson is built on.') }}</p>
+                <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}" wire:navigate
+                   class="btn btn-sm btn-outline mt-1 border-slate-600 text-slate-200 hover:border-amber-400 hover:text-amber-300">
+                    {{ __('Edit story') }}
+                </a>
+            </div>
+
+            {{-- ── Background Music (global) ──────────────────── --}}
             <div class="mt-6 pt-4 border-t border-slate-700/50" x-data="musicStrip">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-[10px] uppercase tracking-widest text-slate-500">Background Music</span>
@@ -294,52 +371,202 @@
                 <p class="text-[10px] text-slate-600 mt-1">Click to preview (20s). Selected track plays during lesson.</p>
             </div>
         </div>
-    </aside>
-        
-    {{-- Step nav — the primary CTA of this screen. Bottom strip, offset right of the scene
-         rail so teachers can't miss it (the old small button hid behind the narrator portrait). --}}
-    <div class="fixed bottom-6 inset-x-0 z-30 flex items-center justify-center pointer-events-none">
-        <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]) }}"
-           wire:navigate class="btn btn-sm btn-ghost text-slate-300 absolute left-48 pointer-events-auto">← {{ __('Back') }}</a>
-        <button wire:click="continueToPreview"
-                class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 shadow-xl px-6 pointer-events-auto">
-            {{ __('Continue to Preview') }} →
-        </button>
+        <button type="button" class="modal-backdrop" aria-label="Close"
+                wire:click="$set('settingsOpen', false)"></button>
     </div>
+        
+    {{-- Bottom CTA removed: the Play button (top toolbar) opens the player, and the back
+         arrow (top-left) exits to the dashboard. --}}
+
+    {{-- Publish feedback banner (no global toast system yet) — auto-clears after 5s. Bottom-centre
+         so it clears the top toolbar, step indicator and inspector. --}}
+    @if ($publishNotice)
+        <div class="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2"
+             wire:key="publish-notice"
+             x-data x-init="setTimeout(() => $wire.set('publishNotice', null), 5000)">
+            <div @class([
+                'flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm shadow-2xl',
+                'border-emerald-600 bg-emerald-950 text-emerald-200' => $publishOk,
+                'border-amber-600 bg-amber-950 text-amber-200' => ! $publishOk,
+            ])>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0" aria-hidden="true">
+                    @if ($publishOk)
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    @else
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                    @endif
+                </svg>
+                {{ $publishNotice }}
+            </div>
+        </div>
+    @endif
 
     {{-- Scene canvas tools — horizontal strip pinned to the top-left of the canvas, below the
          app header and right of the scene rail. Replaces the orphaned [T] button that used to
          sit in the bottom bar. Kept clear of the bottom-left scene caption (flag/year/location). --}}
     {{-- wire:ignore: the tools are static, so the 3s status poll must not morph this strip —
          that would re-init Alpine and snap the rectangle popover shut mid-interaction. --}}
-    <div class="fixed left-48 top-[4.75rem] z-40 flex items-center gap-1 rounded-full border border-slate-700/60 bg-base-300/80 px-1.5 py-1 shadow-xl backdrop-blur"
+    {{-- View state store — drives the View menu toggles: Scenes (rail), Object list, Rulers,
+         Internal notes. Persisted to localStorage; the rail also syncs its Scenes checkbox. --}}
+    @push('scripts')
+    <script>
+    // Object list — reads the live text layer (title/text boxes + backing panels) so the teacher
+    // can find and flash-locate objects that overlap on the stage.
+    window.objectList = function objectList() {
+        return {
+            items: [],
+            init() {
+                this.refresh();
+                setInterval(() => { if (window.Alpine?.store('view')?.objects) this.refresh(); }, 2000);
+            },
+            refresh() {
+                const texts = (window.__lessonTextLayer && window.__lessonTextLayer._texts) || [];
+                const items = texts.map((t) => t.kind === 'rect'
+                    ? { id: t.id, tag: 'Panel', label: (t.side || 'left') + ' half' }
+                    : { id: t.id, tag: 'Text', label: (t.text || 'Text').slice(0, 40) });
+                // The background is the bottom-most object on every scene — always listed last.
+                items.push({ id: '__bg__', tag: 'BG', label: 'Background', bg: true });
+                this.items = items;
+            },
+            locate(obj) {
+                if (obj.bg) {
+                    // Route to the Background settings in the inspector (scroll + flash them).
+                    const insp = document.querySelector('aside[x-ref="inspectorPanel"]');
+                    const label = insp && [...insp.querySelectorAll('*')].find(
+                        (el) => el.children.length === 0 && el.textContent.trim().toUpperCase() === 'BACKGROUND');
+                    const target = label?.parentElement || label;
+                    if (target) {
+                        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        target.style.transition = 'box-shadow .2s';
+                        target.style.boxShadow = '0 0 0 2px #38bdf8';
+                        setTimeout(() => { target.style.boxShadow = ''; }, 900);
+                    }
+                    return;
+                }
+                const node = document.querySelector(`[data-text-id="${obj.id}"]`);
+                if (!node) return;
+                node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                node.style.outline = '2px solid #38bdf8';
+                node.style.outlineOffset = '2px';
+                setTimeout(() => { node.style.outline = ''; node.style.outlineOffset = ''; }, 900);
+            },
+        };
+    };
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('view', {
+            scenes: true, objects: false, rulers: false, notes: false, railLast: 176,
+            init() {
+                try { Object.assign(this, JSON.parse(localStorage.getItem('wizard.view') || '{}')); } catch (_) {}
+                const w = parseFloat(localStorage.getItem('wizard.rail.w'));
+                if (Number.isFinite(w)) this.scenes = w > 0;
+            },
+            _save() {
+                localStorage.setItem('wizard.view', JSON.stringify({
+                    scenes: this.scenes, objects: this.objects, rulers: this.rulers,
+                    notes: this.notes, railLast: this.railLast,
+                }));
+            },
+            toggleScenes() {
+                const el = document.documentElement;
+                if (this.scenes) {
+                    const cur = parseFloat(getComputedStyle(el).getPropertyValue('--rail-w')) || this.railLast;
+                    if (cur > 0) this.railLast = cur;
+                    el.style.setProperty('--rail-w', '0px');
+                    localStorage.setItem('wizard.rail.w', '0');
+                    this.scenes = false;
+                } else {
+                    const w = this.railLast || 176;
+                    el.style.setProperty('--rail-w', w + 'px');
+                    localStorage.setItem('wizard.rail.w', String(w));
+                    this.scenes = true;
+                }
+                this._save();
+            },
+            toggle(k) { this[k] = !this[k]; this._save(); },
+        });
+    });
+    </script>
+    @endpush
+
+    {{-- Top toolbar — Keynote-style: Play + insert tools as stacked icon-over-label buttons.
+         Solid background (no opacity/blur) so the composition never shows through. wire:ignore
+         keeps the 3s status poll from morphing the strip and snapping the Panel popover shut. --}}
+    <div class="fixed right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg"
+         style="left: max(var(--rail-w, 11rem), 3.25rem)"
          wire:ignore
-         x-data="{ rectOpen: false }">
-        <span class="px-1.5 text-[9px] font-semibold uppercase tracking-widest text-slate-500">{{ __('Tools') }}</span>
+         x-data="{ rectOpen: false, viewOpen: false }">
+        {{-- Left group: View menu + Play + insert tools --}}
+        <div class="flex items-stretch gap-0.5">
+        {{-- View menu — show/hide workspace surfaces (Keynote's View) --}}
+        <div class="relative">
+            <button type="button" @click="viewOpen = !viewOpen"
+                    class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                    :class="viewOpen && 'text-amber-300'"
+                    title="{{ __('Show or hide workspace panels') }}" aria-label="{{ __('View') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
+                </svg>
+                <span class="text-[10px] font-medium">{{ __('View') }}</span>
+            </button>
+            <div x-show="viewOpen" x-cloak @click.outside="viewOpen = false" x-transition.opacity.duration.150ms
+                 class="absolute left-0 top-full z-50 mt-1.5 w-56 rounded-xl border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Show') }}</p>
+                <template x-for="item in [
+                    { k: 'scenes',  label: @js(__('Scenes')) },
+                    { k: 'objects', label: @js(__('Object list')) },
+                    { k: 'rulers',  label: @js(__('Rulers')) },
+                    { k: 'notes',   label: @js(__('Internal notes')) },
+                ]" :key="item.k">
+                    <button type="button"
+                            @click="(item.k === 'scenes' ? $store.view.toggleScenes() : $store.view.toggle(item.k)); viewOpen = false"
+                            class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-slate-800">
+                        <span class="flex h-4 w-4 shrink-0 items-center justify-center text-amber-400">
+                            <svg x-show="$store.view[item.k]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                            </svg>
+                        </span>
+                        <span x-text="item.label"></span>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <div class="mx-1 my-1.5 w-px bg-slate-700"></div>
+
+        {{-- Play → open the player (step 5) --}}
+        <button type="button"
+                onclick="Livewire.dispatch('lesson:play')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-emerald-300 transition hover:bg-base-200"
+                title="{{ __('Play the lesson') }}" aria-label="{{ __('Play the lesson') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Play') }}</span>
+        </button>
+
+        <div class="mx-1 my-1.5 w-px bg-slate-700"></div>
 
         {{-- Text --}}
         <button type="button"
                 onclick="window.dispatchEvent(new CustomEvent('lesson:add-text'))"
-                class="btn btn-ghost btn-xs btn-square text-slate-300 hover:text-amber-300"
-                title="{{ __('Add text (drag to move; paste a link to embed a page)') }}"
-                aria-label="{{ __('Add text') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
-                <rect x="2.5" y="5.5" width="19" height="13" rx="3" stroke-dasharray="3.5 2.5"/>
-                <path stroke-linecap="round" d="M9 9.5h6M12 9.5v6"/>
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
+                title="{{ __('Add text (drag to move; paste a link to embed a page)') }}" aria-label="{{ __('Add text') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5m16.5-1.5V6A2.25 2.25 0 0 0 18 3.75h-1.5m0 16.5H18A2.25 2.25 0 0 0 20.25 18v-1.5M15 12H9m1.5 8.25H6A2.25 2.25 0 0 1 3.75 18v-1.5M12 8.25v7.5" />
             </svg>
+            <span class="text-[10px] font-medium">{{ __('Text') }}</span>
         </button>
 
-        {{-- Rectangle backing panel (left/right half) --}}
+        {{-- Panel (backing rectangle, left/right half) --}}
         <div class="relative">
             <button type="button" @click="rectOpen = !rectOpen"
-                    class="btn btn-ghost btn-xs btn-square text-slate-300 hover:text-amber-300"
+                    class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
                     :class="rectOpen && 'text-amber-300'"
-                    title="{{ __('Add a panel (left or right half) behind your text') }}"
-                    aria-label="{{ __('Add panel') }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
-                    <rect x="3" y="5" width="18" height="14" rx="2"/>
-                    <path d="M12 5v14" stroke-dasharray="2.5 2"/>
+                    title="{{ __('Add a panel (left or right half) behind your text') }}" aria-label="{{ __('Add panel') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m-4.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
                 </svg>
+                <span class="text-[10px] font-medium">{{ __('Panel') }}</span>
             </button>
             <div x-show="rectOpen" x-cloak @click.outside="rectOpen = false"
                  x-transition.opacity.duration.150ms
@@ -359,16 +586,187 @@
                 </button>
             </div>
         </div>
+
+        {{-- Clipart — insert a public-domain SVG as an object/layer on top of the background --}}
+        <button type="button"
+                onclick="Livewire.dispatch('open-svg-library')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
+                title="{{ __('Insert clipart (public-domain line-art)') }}" aria-label="{{ __('Insert clipart') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42"/>
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Clipart') }}</span>
+        </button>
+        </div>
+
+        {{-- Right group: global actions, pushed to the far right --}}
+        <div class="flex items-stretch gap-0.5">
+        {{-- Settings — global class/lesson settings (Story + Music). Lives on the toolbar, not
+             inside the per-scene inspector. --}}
+        <button type="button"
+                onclick="Livewire.dispatch('open-lesson-settings')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                title="{{ __('Class & lesson settings') }}" aria-label="{{ __('Settings') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Settings') }}</span>
+        </button>
+
+        {{-- Publish — make the lesson available (every scene must be ready) --}}
+        <button type="button"
+                onclick="Livewire.dispatch('lesson:publish')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-emerald-300 transition hover:bg-slate-800"
+                title="{{ __('Publish this lesson') }}" aria-label="{{ __('Publish') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Publish') }}</span>
+        </button>
+        </div>
+    </div>
+
+    {{-- ══ View surfaces (toggled by the View menu) ══════════════════════════════════ --}}
+
+    {{-- Rulers — hug the actual canvas stage (top edge + left edge), positioned by JS so they
+         always sit flush against the canvas and shift right when the rail/object list push it.
+         The canvas reserves --ruler-w on its top & left so the rulers never overlap it. --}}
+    <div id="ruler-top" x-show="$store.view.rulers" x-cloak class="pointer-events-none fixed z-30"
+         style="background: #0f172a repeating-linear-gradient(to right, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
+                border-bottom: 1px solid rgba(148,163,184,.3);"></div>
+    <div id="ruler-left" x-show="$store.view.rulers" x-cloak class="pointer-events-none fixed z-30"
+         style="background: #0f172a repeating-linear-gradient(to bottom, rgba(148,163,184,.5) 0 1px, transparent 1px 50px);
+                border-right: 1px solid rgba(148,163,184,.3);"></div>
+    @push('scripts')
+    <script>
+    (() => {
+        const RW = 16;
+        const boot = () => {
+            const canvas = document.getElementById('lesson-canvas-root');
+            const top = document.getElementById('ruler-top');
+            const left = document.getElementById('ruler-left');
+            if (!canvas || !top || !left) return;
+            const place = () => {
+                const r = canvas.getBoundingClientRect();
+                Object.assign(top.style, { left: `${r.left}px`, top: `${r.top - RW}px`, width: `${r.width}px`, height: `${RW}px` });
+                Object.assign(left.style, { left: `${r.left - RW}px`, top: `${r.top}px`, width: `${RW}px`, height: `${r.height}px` });
+            };
+            place();
+            window.__placeRulers = place;   // let the View x-effect nudge it on toggle
+            new ResizeObserver(place).observe(canvas);
+            window.addEventListener('resize', place);
+            // Position-only shifts (rail collapse, object-list toggle) may not resize the canvas
+            // enough to fire the observer — a light poll keeps the rulers glued to the stage.
+            setInterval(() => { if (window.Alpine?.store('view')?.rulers) place(); }, 120);
+        };
+        if (document.readyState !== 'loading') boot();
+        else document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('livewire:navigated', boot);
+    })();
+    </script>
+    @endpush
+
+    {{-- Object list — a full-height panel docked to the right of the Scenes rail. Lists the
+         scene's objects (title/text boxes, backing panels); click to flash-locate on the stage.
+         No heading — teachers recognise their own objects. --}}
+    <div x-show="$store.view.objects" x-cloak x-data="objectList()" x-init="init()"
+         @scene-objects-changed.window="refresh()"
+         class="fixed z-30 overflow-hidden border-r border-slate-700 bg-slate-900"
+         style="left: var(--rail-w, 11rem); width: 13rem; top: 4rem; bottom: 0;">
+        <div class="h-full space-y-0.5 overflow-y-auto p-1.5">
+            <template x-for="obj in items" :key="obj.id">
+                <button type="button" @click="locate(obj)"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-800">
+                    <span class="text-[10px] uppercase tracking-wide text-amber-400/80" x-text="obj.tag"></span>
+                    <span class="truncate" x-text="obj.label"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    {{-- Internal notes — the teacher's private per-lesson scratchpad (this browser). --}}
+    <div x-show="$store.view.notes" x-cloak
+         x-data="{ note: '', key: 'wizard.notes.{{ $lesson->id }}',
+                   init() { this.note = localStorage.getItem(this.key) || ''; },
+                   save() { localStorage.setItem(this.key, this.note); } }"
+         class="fixed bottom-4 right-4 z-40 w-72 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
+         style="right: calc(var(--work-right, 24rem) + 0.75rem);">
+        <div class="flex items-center justify-between border-b border-slate-700/60 bg-slate-800/60 px-3 py-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Internal notes') }}</span>
+            <button type="button" @click="$store.view.toggle('notes')" class="text-slate-500 hover:text-slate-200" aria-label="Close">✕</button>
+        </div>
+        <textarea x-model="note" @input.debounce.400ms="save()" rows="6"
+                  placeholder="{{ __('Private notes for this lesson — only you see these.') }}"
+                  class="w-full resize-none border-0 bg-transparent p-3 text-sm text-slate-200 focus:outline-none"></textarea>
     </div>
 
     {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
+    {{-- Rail resize handle — drag to resize the scene rail; drag to the edge to hide it entirely.
+         Sits at the rail's right edge; when the rail is collapsed (0) it rests at the far left so
+         it can be dragged back out. --}}
+    {{-- Straddles the rail's own border (no extra line of its own → no double line). On hover the
+         panel edge lights up bright blue; the cursor already signals resize. --}}
+    <div id="rail-resize" wire:ignore
+         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize"
+         style="left: var(--rail-w, 11rem)"
+         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail') }}"
+         title="{{ __('Drag to resize · drag to the edge to hide') }}">
+        <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
+    </div>
+    @push('scripts')
+    <script>
+    (() => {
+        const KEY = 'wizard.rail.w';
+        const rootEl = document.documentElement;
+        const clamp = (v) => Math.max(0, Math.min(280, v));
+        const saved = parseFloat(localStorage.getItem(KEY));
+        if (Number.isFinite(saved)) rootEl.style.setProperty('--rail-w', saved + 'px');
+        const boot = () => {
+            const handle = document.getElementById('rail-resize');
+            if (!handle || handle.__wired) return;
+            handle.__wired = true;
+            let dragging = false;
+            handle.addEventListener('pointerdown', (e) => {
+                dragging = true; handle.setPointerCapture(e.pointerId);
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+            handle.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                rootEl.style.setProperty('--rail-w', clamp(e.clientX) + 'px');
+            });
+            const end = (e) => {
+                if (!dragging) return;
+                dragging = false;
+                try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+                document.body.style.userSelect = '';
+                let w = clamp(parseFloat(rootEl.style.getPropertyValue('--rail-w')) || 176);
+                if (w < 56) w = 0;                 // dragged to the edge → hide
+                else if (w < 120) w = 120;         // otherwise keep a usable minimum
+                rootEl.style.setProperty('--rail-w', w + 'px');
+                localStorage.setItem(KEY, String(w));
+                // Keep the View ▸ Scenes checkbox in sync with a drag-to-hide / drag-out.
+                const store = window.Alpine?.store('view');
+                if (store) { store.scenes = w > 0; if (w > 0) store.railLast = w; store._save?.(); }
+            };
+            handle.addEventListener('pointerup', end);
+            handle.addEventListener('pointercancel', end);
+        };
+        if (document.readyState !== 'loading') boot();
+        else document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('livewire:navigated', boot);
+    })();
+    </script>
+    @endpush
+
     {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
          menu stayed opacity:0 on focus). Open state is Livewire-driven; tiles call addScene(). --}}
     <div class="modal modal-bottom sm:modal-middle {{ $addSceneOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-lg border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+        <div class="modal-box max-w-lg border border-slate-700/70 bg-base-300">
             <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-slate-100">Add a scene</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
@@ -411,7 +809,7 @@
          as this scene's background (downloaded to lesson storage; attribution stored on the scene). --}}
     <div class="modal modal-bottom sm:modal-middle {{ $paintingPickerOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-3xl border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+        <div class="modal-box max-w-3xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between gap-3">
                 <h2 class="text-lg font-semibold text-slate-100">{{ __('Painting backgrounds') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
@@ -464,6 +862,12 @@
                                     {{ __('plan') }}
                                 </span>
                             @endif
+                            @if (! empty($art['correctness']))
+                                <span class="absolute left-1 top-1 rounded bg-emerald-600/90 px-1 text-[8px] font-semibold uppercase tracking-wider text-white"
+                                      title="{{ __('Match correctness — soft criteria met') }}">
+                                    ✓ {{ $art['correctness'] }}
+                                </span>
+                            @endif
                             <span class="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-left text-[9px] text-white">
                                 {{ $art['title'] }}@if($art['caption']) · {{ $art['caption'] }}@endif
                             </span>
@@ -497,7 +901,7 @@
          The nested Livewire component only mounts while the modal is open. --}}
     <div class="modal modal-bottom sm:modal-middle {{ $svgLibraryOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300/95 backdrop-blur-xl">
+        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between gap-3">
                 <h2 class="text-lg font-semibold text-slate-100">{{ __('Ink artwork library') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"

@@ -55,6 +55,14 @@ class Step3SceneConfigurator extends Component
 
     public bool $addSceneOpen = false;
 
+    /** Global class/lesson settings (Story + Music) — a modal opened from the top toolbar. */
+    public bool $settingsOpen = false;
+
+    /** Transient Publish feedback banner (no app-wide toast system exists yet). */
+    public ?string $publishNotice = null;
+
+    public bool $publishOk = false;
+
     public ?string $prevSelectedStatus = null;
 
     public function mount(Lesson $lesson): void
@@ -999,6 +1007,9 @@ class Step3SceneConfigurator extends Component
     /** Grid filter: '' = everything, 'painting' = paintings, 'city_map' = Braun & Hogenberg-style city plans. */
     public string $paintingKind = '';
 
+    /** The scene's derived match target {core, themes, actor_qids, era} — drives the scored grid. */
+    public array $matchTarget = [];
+
     private const PAINTING_GRID_LIMIT = 30;
 
     public function openPaintingPicker(): void
@@ -1007,6 +1018,19 @@ class Step3SceneConfigurator extends Component
         $this->paintingCommonsLoaded = false;
         $this->paintingQuery = '';
         $this->paintingKind = '';
+
+        // Derive (once, cached on the scene) what this scene's background must show, so the
+        // grid can gate + score candidates. Best-effort: on failure the picker falls back
+        // to the era/location blend.
+        $this->matchTarget = [];
+        $scene = $this->selectedSceneModel();
+        if ($scene) {
+            try {
+                $this->matchTarget = app(\App\Services\Corpus\SceneMatchTargetService::class)->for($scene, $this->lesson);
+            } catch (\Throwable $e) {
+                $this->matchTarget = [];
+            }
+        }
     }
 
     // ── Ink artwork library ──────────────────────────────────────────────
@@ -1015,6 +1039,7 @@ class Step3SceneConfigurator extends Component
 
     public bool $svgLibraryOpen = false;
 
+    #[On('open-svg-library')]
     public function openSvgLibrary(): void
     {
         $this->svgLibraryOpen = true;
@@ -1065,13 +1090,28 @@ class Step3SceneConfigurator extends Component
         $location = trim((string) ($this->selectedScene['location'] ?? ''));
 
         $kind = $this->paintingKind ?: null;
-        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind) {
+        $target = $this->matchTarget;
+        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target) {
             if ($term !== '') {
                 return \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
             }
-            // No search: blend paintings depicting the lesson's topic (figure/polity QID)
-            // with works matching the scene's location (e.g. Constantinople cityscapes)
-            // and works depicting a moment near the scene's era ("16th century" → ~1550).
+            // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
+            // correctness (theme + actor + era + quality). This is the source-blind ranker.
+            if (! empty($target['core'])) {
+                $scored = \App\Models\Corpus\Artwork::matchScene(
+                    $target['core'],
+                    $target['themes'] ?? [],
+                    $target['actor_qids'] ?? [],
+                    $target['era'] ?? null,
+                    self::PAINTING_GRID_LIMIT,
+                    $kind,
+                )->get();
+                if ($scored->isNotEmpty()) {
+                    return $scored;
+                }
+            }
+            // Fallback blend (no derived target, or the gate found nothing): depicts-by-topic
+            // + near-era + location cityscapes.
             $suggested = collect();
             if ($topicQid) {
                 $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
@@ -1093,6 +1133,9 @@ class Step3SceneConfigurator extends Component
             return $suggested;
         });
 
+        // "Correctness n/m": soft criteria satisfied (themes + actors + era) out of the total.
+        $softMax = count($target['themes'] ?? []) + count($target['actor_qids'] ?? []) + (! empty($target['era']) ? 1 : 0);
+
         $tiles = $corpus->map(fn ($art) => [
             'source' => 'corpus',
             'key' => $art->qid,
@@ -1100,6 +1143,10 @@ class Step3SceneConfigurator extends Component
             'title' => $art->title ?? __('Untitled'),
             'caption' => $art->caption(),
             'kind' => $art->kind,
+            'provenance' => $art->collection ?: __('Wikimedia'),
+            'correctness' => (isset($art->soft_hits) && $softMax > 0)
+                ? min($softMax, (int) $art->soft_hits).'/'.$softMax
+                : null,
         ]);
 
         // Top up from Commons live search — finds files the Wikidata harvest can't
@@ -1125,6 +1172,8 @@ class Step3SceneConfigurator extends Component
                 'title' => $f['title'],
                 'caption' => trim(($f['artist'] ?? '').' · '.$f['license'], ' ·'),
                 'kind' => 'painting',
+                'provenance' => __('Wikimedia Commons'),
+                'correctness' => null,
             ]));
         }
 
@@ -1584,6 +1633,33 @@ class Step3SceneConfigurator extends Component
         $this->lesson->refresh();
     }
 
+    #[On('open-lesson-settings')]
+    public function openSettings(): void
+    {
+        $this->settingsOpen = true;
+    }
+
+    /**
+     * Publish the lesson from the toolbar. Gate: every scene must be "ready".
+     * NOTE: public-visibility moderation (abuse/adult-content screening) is a
+     * separate gate still to be built — see the lesson-publishing plan.
+     */
+    #[On('lesson:publish')]
+    public function publish(): void
+    {
+        if ($this->lesson->scenes()->where('status', '!=', 'ready')->exists()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('Every scene must be ready before publishing.');
+
+            return;
+        }
+
+        $this->lesson->update(['status' => LessonStatus::Published]);
+        $this->publishOk = true;
+        $this->publishNotice = __('Lesson published.');
+    }
+
+    #[On('lesson:play')]
     public function continueToPreview(): void
     {
         $this->lesson->update(['wizard_step' => 5, 'status' => LessonStatus::Previewable]);
