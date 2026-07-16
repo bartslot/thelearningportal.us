@@ -12,10 +12,39 @@ use Livewire\Attributes\On;
 
 trait EditsSceneArtwork
 {
+    /** Asset id of the layer whose settings fill the inspector (Keynote "active object"). */
+    public ?int $activeLayerId = null;
+
     #[On('svg-asset:attach')]
     public function onSvgAssetAttach(int $assetId): void
     {
         $this->attachArtwork($assetId);
+    }
+
+    /** A layer was selected on the canvas / object list → its settings take over the inspector. */
+    #[On('layer:selected')]
+    public function setActiveLayer(int $assetId): void
+    {
+        $this->activeLayerId = $assetId;
+        $this->panelView = 'scene';   // never on the global Settings tab while editing a layer
+    }
+
+    /** Deselected (bg/text selected, empty canvas, or the back button) → inspector returns to scene. */
+    #[On('layer:deselected')]
+    public function clearActiveLayer(): void
+    {
+        $this->activeLayerId = null;
+    }
+
+    /** The active layer's enriched data (title, url, all fields), or null. */
+    #[Computed]
+    public function activeLayer(): ?array
+    {
+        if (! $this->activeLayerId) {
+            return null;
+        }
+
+        return collect($this->sceneArtworkLayers())->firstWhere('asset_id', $this->activeLayerId);
     }
 
     public function attachArtwork(int $assetId): void

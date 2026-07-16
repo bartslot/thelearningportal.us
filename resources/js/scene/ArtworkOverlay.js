@@ -115,8 +115,7 @@ export class ArtworkOverlay {
       if (!el) continue
       const on = artObjId(item.asset_id) === this._selectedId
       el.style.boxShadow = on ? '0 0 0 2px #38bdf8' : ''
-      const handle = el.querySelector('[data-scale-handle]')
-      if (handle) handle.style.display = on ? 'block' : 'none'
+      for (const handle of el.querySelectorAll('[data-scale-handle]')) handle.style.display = on ? 'block' : 'none'
     }
   }
 
@@ -144,33 +143,44 @@ export class ArtworkOverlay {
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
     node.appendChild(img)
 
-    // Scale handle (bottom-right) — shown only while selected.
-    const handle = document.createElement('div')
-    handle.dataset.scaleHandle = '1'
-    handle.title = 'Drag to scale'
-    handle.style.cssText = `position:absolute; bottom:-8px; right:-8px; width:16px; height:16px; display:none;
-      border-radius:4px; background:#0f172a; border:1.5px solid #38bdf8; cursor:nwse-resize;
-      touch-action:none; z-index:6;`
-    node.appendChild(handle)
+    // Round resize handles on ALL FOUR corners — shown only while selected, each with its own
+    // cursor. Dragging a corner keeps the OPPOSITE corner anchored (not centre-scaling).
+    const CORNERS = [
+      { name: 'tl', pos: 'top:-5px; left:-5px;',     cursor: 'nwse-resize' },
+      { name: 'tr', pos: 'top:-5px; right:-5px;',    cursor: 'nesw-resize' },
+      { name: 'bl', pos: 'bottom:-5px; left:-5px;',  cursor: 'nesw-resize' },
+      { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
+    ]
+    for (const c of CORNERS) {
+      const handle = document.createElement('div')
+      handle.dataset.scaleHandle = '1'
+      handle.title = 'Drag to resize'
+      handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
+        border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
+        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
+      node.appendChild(handle)
+      this._wireScale(item, node, handle, c.name)
+    }
 
-    this._wireScale(item, node, handle)
-    this._wireDrag(item, node, handle)
+    this._wireDrag(item, node)
     return node
   }
 
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
-  _wireDrag(item, node, handle) {
+  _wireDrag(item, node) {
     node.addEventListener('pointerdown', (e) => {
-      if (e.target === handle) return              // the scale handle is not a move
+      if (e.target.dataset && e.target.dataset.scaleHandle) return   // corner handles resize, not drag
       this.select(artObjId(item.asset_id))
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
       const origin = { x: item.x, y: item.y }
       let dragging = false
 
+      // Loose bounds: the centre may go well past the stage edges so clipart can sit partly
+      // (or mostly) off-canvas — still recoverable via the object list / Layers panel.
       const clamp = () => {
-        item.x = Math.min(100, Math.max(0, item.x))
-        item.y = Math.min(100, Math.max(0, item.y))
+        item.x = Math.min(150, Math.max(-50, item.x))
+        item.y = Math.min(150, Math.max(-50, item.y))
       }
       const paint = () => { node.style.left = `${item.x}%`; node.style.top = `${item.y}%` }
 
@@ -208,25 +218,44 @@ export class ArtworkOverlay {
     })
   }
 
-  // Corner handle → scale from the pointer's distance to the layer centre.
-  _wireScale(item, node, handle) {
+  // Corner handle → resize with the OPPOSITE corner anchored (grows toward the dragged corner,
+  // like other editors), moving x/y so that corner stays put. `corner` = tl|tr|bl|br.
+  _wireScale(item, node, handle, corner) {
     handle.addEventListener('pointerdown', (e) => {
       e.stopPropagation()
       e.preventDefault()
       this.select(artObjId(item.asset_id))
+      this._dragNode = node   // pause parallax drift while resizing
+      node.style.transform = this._transform(item)   // drop any parallax offset first
       const r = node.getBoundingClientRect()
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2
-      const startDist = Math.hypot(e.clientX - cx, e.clientY - cy) || 1
       const startScale = item.scale
+      const startDiag = Math.hypot(r.width, r.height) || 1
+      // Anchor = opposite corner (client px); sx/sy point from the anchor toward the centre.
+      const A = {
+        tl: { ax: r.right, ay: r.bottom, sx: -1, sy: -1 },
+        tr: { ax: r.left,  ay: r.bottom, sx: 1,  sy: -1 },
+        bl: { ax: r.right, ay: r.top,    sx: -1, sy: 1 },
+        br: { ax: r.left,  ay: r.top,    sx: 1,  sy: 1 },
+      }[corner] || { ax: r.left, ay: r.top, sx: 1, sy: 1 }
 
       const onMove = (ev) => {
-        const dist = Math.hypot(ev.clientX - cx, ev.clientY - cy)
-        item.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale * (dist / startDist)))
-        node.style.transform = `translate(-50%,-50%) scale(${item.scale})`
+        const dist = Math.hypot(ev.clientX - A.ax, ev.clientY - A.ay)
+        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale * (dist / startDiag)))
+        const f = s / startScale
+        const cxClient = A.ax + A.sx * (r.width * f) / 2      // new centre keeps the anchor fixed
+        const cyClient = A.ay + A.sy * (r.height * f) / 2
+        const host = this.host.getBoundingClientRect()
+        item.scale = s
+        item.x = (cxClient - host.left) / host.width * 100
+        item.y = (cyClient - host.top) / host.height * 100
+        node.style.left = `${item.x}%`
+        node.style.top = `${item.y}%`
+        node.style.transform = this._transform(item)
       }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
+        this._dragNode = null
         this._emit(item)
       }
       window.addEventListener('pointermove', onMove)

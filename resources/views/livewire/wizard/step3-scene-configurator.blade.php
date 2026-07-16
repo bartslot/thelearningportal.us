@@ -17,7 +17,7 @@
          work-area sync script below) so the stage always fills exactly the gap between them and
          never slides under either panel. Defaults match the rail (11rem) + docked inspector (24rem). --}}
     <div class="fixed z-0 bg-slate-950" id="lesson-canvas-root"
-         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 24rem;
+         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 16rem;
                 --top-inset: calc(4rem + var(--ruler-w, 0px));
                 --lbw: calc(100vw - var(--work-left) - var(--work-right));
                 --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset)));
@@ -222,7 +222,7 @@
            x-ref="inspectorPanel"
            :style="inspectorPanelStyle()"
            :class="[
-               inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(24rem,calc(100vw-1rem))]' }}' : 'w-56',
+               inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}' : 'w-56',
                docked ? 'rounded-none border-r-0 border-t-0' : 'rounded-2xl'
            ]"
            class="card card-compact fixed z-50 overflow-hidden border border-slate-700 bg-base-300 shadow-2xl">
@@ -288,7 +288,10 @@
              x-transition.opacity.duration.150ms
              class="card-body overflow-y-auto p-4"
              :style="inspectorBodyStyle()">
-            @if ($panelView === 'scene')
+            @if ($activeLayerId && ($al = $this->activeLayer))
+            {{-- A clipart layer is selected → its settings take over the inspector. --}}
+            <x-lesson.scene-layer-inspector :layer="$al" :scene="$this->selectedSceneModel" />
+            @elseif ($panelView === 'scene')
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
                 {{-- Key the inspector by scene id. The inspector partials seed their Alpine x-data
@@ -566,6 +569,25 @@
             },
         };
     };
+
+    // Bridge canvas/object-list selection → the Livewire inspector. Selecting a clipart layer
+    // makes it the "active layer" (its settings fill the aside); selecting text/panel/background
+    // (or nothing) clears it. Guarded so we only round-trip when the active layer actually changes.
+    (() => {
+        let lastActive = null;
+        window.addEventListener('scene-object-selected', (e) => {
+            const id = (e.detail && e.detail.id) || '';
+            const assetId = id.indexOf('art_') === 0 ? Number(id.slice(4)) : null;
+            if (assetId === lastActive) return;
+            lastActive = assetId;
+            if (assetId != null) window.Livewire.dispatch('layer:selected', { assetId });
+            else window.Livewire.dispatch('layer:deselected');
+        });
+        // Called when the layer is deselected via a non-canvas path (the inspector "Scene" back
+        // button) so re-selecting the SAME layer isn't blocked by the dedupe guard above.
+        window.__clearLayerGuard = () => { lastActive = null; };
+    })();
+
     document.addEventListener('alpine:init', () => {
         Alpine.store('view', {
             scenes: true, objects: false, rulers: false, notes: false, railLast: 176,
@@ -971,7 +993,7 @@
                    init() { this.note = localStorage.getItem(this.key) || ''; },
                    save() { localStorage.setItem(this.key, this.note); } }"
          class="fixed bottom-4 right-4 z-40 w-72 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
-         style="right: calc(var(--work-right, 24rem) + 0.75rem);">
+         style="right: calc(var(--work-right, 16rem) + 0.75rem);">
         <div class="flex items-center justify-between border-b border-slate-700/60 bg-slate-800/60 px-3 py-2">
             <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Internal notes') }}</span>
             <button type="button" @click="$store.view.toggle('notes')" class="text-slate-500 hover:text-slate-200" aria-label="Close">✕</button>
