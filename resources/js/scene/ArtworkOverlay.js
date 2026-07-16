@@ -48,10 +48,36 @@ export class ArtworkOverlay {
         y: Number.isFinite(l.y) ? l.y : 58,
         scale: Number.isFinite(l.scale) ? l.scale : 1,
         height: Number.isFinite(l.height) ? l.height : 40,
+        depth: Number.isFinite(l.depth) ? l.depth : 1,   // parallax: higher = follows the camera more
+        blur: Number.isFinite(l.blur) ? l.blur : 0,
+        opacity: Number.isFinite(l.opacity) ? l.opacity : 1,
         kind: l.kind || 'figure',
         title: l.title || 'Clipart',
       }))
     this._render()
+  }
+
+  // Base node transform (centre-anchored) plus an optional parallax offset in px.
+  _transform(item, dx = 0, dy = 0) {
+    return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${item.scale})`
+  }
+
+  /**
+   * Parallax drift for the editor preview: offset each layer by its depth × the camera pan,
+   * synced to the same progress the background uses. progress 0 = rest (layer at its x/y).
+   * The layer being dragged is skipped so editing isn't fought. progress≈0 resets to base.
+   */
+  setParallax(progress, motion) {
+    const m = motion || {}
+    const rect = this.host.getBoundingClientRect()
+    const p = Number.isFinite(progress) ? progress : 0
+    for (const item of this._layers) {
+      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+      if (!el || el === this._dragNode) continue   // never fight the layer being dragged
+      const dx = (m.panX || 0) / 100 * rect.width * p * item.depth
+      const dy = (m.panY || 0) / 100 * rect.height * p * item.depth
+      el.style.transform = this._transform(item, dx, dy)
+    }
   }
 
   clear() { this.setLayers([]) }
@@ -104,7 +130,7 @@ export class ArtworkOverlay {
     const node = document.createElement('div')
     node.dataset.layerId = artObjId(item.asset_id)
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${item.height}%;
-      transform:translate(-50%,-50%) scale(${item.scale}); transform-origin:center;
+      transform:${this._transform(item)}; transform-origin:center;
       pointer-events:auto; cursor:grab; touch-action:none; user-select:none;`
 
     const img = document.createElement('img')
@@ -112,6 +138,10 @@ export class ArtworkOverlay {
     img.alt = item.title
     img.draggable = false
     img.style.cssText = 'height:100%; width:auto; display:block; pointer-events:none; user-select:none;'
+    // Depth-of-field blur + opacity preview (the Format sliders — previously ignored here).
+    // Applied to the IMG, not the node, so the selection ring + scale handle stay crisp.
+    if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
+    if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
     node.appendChild(img)
 
     // Scale handle (bottom-right) — shown only while selected.
@@ -147,7 +177,12 @@ export class ArtworkOverlay {
       const onMove = (ev) => {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
         if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-        if (!dragging) { dragging = true; node.style.cursor = 'grabbing'; try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ } }
+        if (!dragging) {
+          dragging = true; node.style.cursor = 'grabbing'
+          this._dragNode = node   // pause parallax drift on this layer while editing
+          node.style.transform = this._transform(item)   // drop any parallax offset so drag is 1:1
+          try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ }
+        }
         item.x = origin.x + (dx / rect.width) * 100
         item.y = origin.y + (dy / rect.height) * 100
         clamp(); paint()
@@ -166,7 +201,7 @@ export class ArtworkOverlay {
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
         node.style.cursor = 'grab'
-        if (dragging) this._emit(item)
+        if (dragging) { this._dragNode = null; this._emit(item) }
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)

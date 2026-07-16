@@ -301,7 +301,7 @@
                                 [
                                     ['scale', __('Size'), 0.2, 3, 0.05, 1.0],
                                     ['opacity', __('Opacity'), 0.05, 1, 0.05, 1.0],
-                                    ['blur', __('Blur'), 0, 50, 1, 0],
+                                    ['blur', __('Blur'), 0, 2.5, 0.1, 0],
                                 ]
                             ) as [$field, $label, $min, $max, $step, $default])
                                 <label class="flex items-center gap-2">

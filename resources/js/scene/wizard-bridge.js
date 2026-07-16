@@ -727,6 +727,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     let _wizardLayerHost = null
     let _wizardLayeredRaf = 0
     let _bgSig = null   // skip re-fading the background when only unrelated inspector fields change
+    let _layeredParallax = false   // is the current scene in Parallax mode (drives clipart drift)
 
     // Ken Burns direction → ParallaxScene motion, so the ANIMATED + direction settings drive
     // the background pan/zoom on layered scenes too (not just flat ones). Static when off.
@@ -818,6 +819,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             //    the flicker Bart saw. The motion follows the ANIMATED + Ken Burns direction. ──
             const motion = kbMotion(payload)
             const animated = payload.kbAnimated !== false && (Math.abs(motion.panX) > 0.01 || Math.abs(motion.zoom - 1) > 0.001)
+            // Module flag so the persistent bg loop drives clipart parallax with the CURRENT mode
+            // (a Standard↔Parallax switch keeps the same motion, so the bg loop isn't rebuilt).
+            _layeredParallax = parallax
             // Strip the ?v=<updated_at> cache-buster: it changes on EVERY scene save (a caption
             // toggle, a script edit), which would otherwise force a bg re-fade = flicker.
             const stripV = (u) => String(u || '').split('?')[0]
@@ -834,12 +838,17 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                     const loop = (now) => {
                         if (!_wizardLayeredScene) return
                         const t = ((now - start) % CYCLE_MS) / CYCLE_MS
-                        _wizardLayeredScene.update(t < 0.5 ? t * 2 : (1 - t) * 2)
+                        const prog = t < 0.5 ? t * 2 : (1 - t) * 2
+                        _wizardLayeredScene.update(prog)
+                        // In Parallax mode the clipart follows the camera by its depth (rest at prog 0);
+                        // otherwise it stays flat (prog 0 → no offset).
+                        _artworkOverlay?.setParallax(_layeredParallax ? prog : 0, motion)
                         _wizardLayeredRaf = requestAnimationFrame(loop)
                     }
                     _wizardLayeredRaf = requestAnimationFrame(loop)
                 } else {
                     _wizardLayeredScene.update(0.5)   // static, centred pose
+                    _artworkOverlay?.setParallax(0, motion)   // no camera motion → clipart at rest
                 }
             }
 
@@ -888,7 +897,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 _artworkOverlay.setOnTop(clipartOnTop)
                 artHost.style.zIndex = clipartOnTop ? '8' : '2'
                 // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
-                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url||"").split("?")[0]]))
+                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.depth, l.blur, l.opacity, String(l.url || '').split('?')[0]]))
                 if (sig !== _artworkSig) { _artworkSig = sig; _artworkOverlay.setLayers(artLayers) }
             }
             return true

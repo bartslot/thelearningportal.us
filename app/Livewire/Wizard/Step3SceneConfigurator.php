@@ -112,6 +112,14 @@ class Step3SceneConfigurator extends Component
     {
         $ts = $scene->updated_at?->timestamp ?? '';
 
+        // Asset titles for the object-list labels ("Windmill silhouette", not "Clipart").
+        $assetIds = collect($scene->shots ?? [])
+            ->flatMap(fn ($shot) => collect($shot['layers'] ?? [])->pluck('asset_id'))
+            ->filter()->unique()->values();
+        $titles = $assetIds->isNotEmpty()
+            ? \App\Models\SvgAsset::whereIn('id', $assetIds)->pluck('title', 'id')
+            : collect();
+
         return collect($scene->shots ?? [])->map(fn ($shot) => [
             'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
             // bg_url/hero_url (E3b story-pack shots) — parallax layers, see ParallaxScene.js.
@@ -123,6 +131,7 @@ class Step3SceneConfigurator extends Component
                 'url' => ! empty($l['path']) ? asset('storage/'.$l['path']).'?v='.$ts : ($l['url'] ?? null),
                 // asset_id + x/y let the on-canvas editor identify and free-position each layer.
                 'asset_id' => isset($l['asset_id']) ? (int) $l['asset_id'] : null,
+                'title' => isset($l['asset_id']) ? ($titles[$l['asset_id']] ?? null) : null,
                 'x' => isset($l['x']) ? (float) $l['x'] : null,
                 'y' => isset($l['y']) ? (float) $l['y'] : null,
                 'depth' => (float) ($l['depth'] ?? 1),

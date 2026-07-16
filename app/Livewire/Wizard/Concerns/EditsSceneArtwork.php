@@ -177,7 +177,7 @@ trait EditsSceneArtwork
             'wobble' => [0, 2],
             'opacity' => [0.05, 1],
             'kind' => ['figure', 'strip', 'cover'],
-            'blur' => [0, 50],
+            'blur' => [0, 2.5],
             'sway' => null, // boolean
             'blend' => ['multiply', 'screen', 'overlay', 'darken', 'lighten'],
             'x' => [0, 100],   // stage position %, centre anchor
