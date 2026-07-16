@@ -32,7 +32,9 @@
                                flag_path: null, predecessor: null, successor: null };
                     loading = false;
                     window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity);
-                    window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
+                    {{-- Auto read-aloud removed: it hit ElevenLabs on every territory click and
+                         drained credits fast. Read-aloud can return later as an explicit button
+                         routed through a cheap TTS provider. --}}
                     return;
                 }
                 // Instant from the prefetch cache when available; else fetch (and cache).
@@ -40,12 +42,14 @@
                 if (cached) {
                     polity = { ...cached, label: $event.detail.name || cached.label }; loading = false;
                     window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity);
-                    window.__timemapSpeak && window.__timemapSpeak($event.detail.id, polity.summary);
+                    {{-- Auto read-aloud removed: it hit ElevenLabs on every territory click and
+                         drained credits fast. Read-aloud can return later as an explicit button
+                         routed through a cheap TTS provider. --}}
                     return;
                 }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); window.__timemapSpeak && window.__timemapSpeak($event.detail.id, d.summary); });
+                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); });
            "
            {{-- Mobile: start below the settings cog (right-4 top-4, z-30) — at w-80 on a phone the
                 cog lands exactly on the panel's ✕ close button and steals its taps. --}}
