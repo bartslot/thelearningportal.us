@@ -204,6 +204,13 @@ return [
         'hf_token' => env('HF_TOKEN'),
     ],
 
+    // Self-hosted Piper TTS (Oracle Always-Free box) — cheap Dutch narration for draft/preview.
+    'piper' => [
+        'url' => env('PIPER_TTS_URL'),
+        'voice' => env('PIPER_TTS_VOICE', 'nl_NL-pim-medium'),
+        'token' => env('PIPER_TTS_TOKEN'),
+    ],
+
     // ── WorldLabs Marble (3D Gaussian-splat world from image) ─────────────────
 
     'worldlabs' => [

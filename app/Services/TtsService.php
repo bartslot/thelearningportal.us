@@ -83,6 +83,15 @@ class TtsService
                 ?? $this->tryMacosTts($text);
         }
 
+        // Self-hosted Piper (Oracle box) — cheap Dutch narration for drafts/previews. Falls back
+        // to Azure/edge if the box is down so lesson generation never hard-fails.
+        if ($provider === 'piper') {
+            return $this->tryPiper($text)
+                ?? $this->tryAzure($text, $voiceId, $speed)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryMacosTts($text);
+        }
+
         if ($provider === 'edge_tts') {
             return $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
                 ?? $this->tryPocketTts($text, $voiceId)
@@ -199,6 +208,42 @@ SSML;
         $timingData = ['character_timings' => $result['alignment']];
 
         return $result['audio'];
+    }
+
+    /**
+     * Self-hosted Piper TTS (Oracle Always-Free box). JSON API: POST /tts {text, voice} -> WAV.
+     * The voice is server-side config (nl_NL-pim-medium) — the app's avatar voiceId is ElevenLabs-
+     * shaped and irrelevant here, so we don't pass it. Returns null on any failure to fall through.
+     */
+    private function tryPiper(string $text): ?string
+    {
+        $url = config('services.piper.url');
+        if (! $url) {
+            return null;
+        }
+
+        try {
+            $request = Http::timeout(90)->acceptJson();
+            $token = config('services.piper.token');
+            if ($token) {
+                $request = $request->withToken($token);
+            }
+
+            $response = $request->post(rtrim((string) $url, '/').'/tts', [
+                'text' => $text,
+                'voice' => (string) config('services.piper.voice', 'nl_NL-pim-medium'),
+            ]);
+
+            if (! $response->successful() || $response->body() === '') {
+                return null;
+            }
+
+            $this->generatedAudioExtension = 'wav';   // Piper returns WAV
+
+            return $response->body();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function tryPocketTts(string $text, string $voiceId = ''): ?string
