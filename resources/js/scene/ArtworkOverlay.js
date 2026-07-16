@@ -129,7 +129,7 @@ export class ArtworkOverlay {
     const node = document.createElement('div')
     node.dataset.layerId = artObjId(item.asset_id)
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${item.height}%;
-      transform:${this._transform(item)}; transform-origin:center;
+      transform:${this._transform(item)}; transform-origin:center; --art-scale:${item.scale};
       pointer-events:auto; cursor:grab; touch-action:none; user-select:none;`
 
     const img = document.createElement('img')
@@ -155,9 +155,12 @@ export class ArtworkOverlay {
       const handle = document.createElement('div')
       handle.dataset.scaleHandle = '1'
       handle.title = 'Drag to resize'
+      // Counter the node's scale(item.scale) so the handle chrome stays a constant 10px on
+      // screen no matter how large/small the layer is scaled.
       handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
         border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
-        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
+        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;
+        transform:scale(calc(1 / var(--art-scale, 1))); transform-origin:center;`
       node.appendChild(handle)
       this._wireScale(item, node, handle, c.name)
     }
@@ -251,6 +254,7 @@ export class ArtworkOverlay {
         node.style.left = `${item.x}%`
         node.style.top = `${item.y}%`
         node.style.transform = this._transform(item)
+        node.style.setProperty('--art-scale', String(s))   // keep handle counter-scale current
       }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)
