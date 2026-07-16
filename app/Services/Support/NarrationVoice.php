@@ -36,4 +36,16 @@ final class NarrationVoice
 
         return self::AZURE_BY_LOCALE[$locale ?? ''] ?? self::AZURE_MULTILINGUAL_FALLBACK;
     }
+
+    /** Self-hosted Piper voice per locale — Dutch stays on pim; English uses a native EN voice
+     *  so an English lesson isn't read in a Dutch accent. Unmapped locales fall back to Dutch. */
+    private const PIPER_BY_LOCALE = [
+        'nl' => 'nl_NL-pim-medium',
+        'en' => 'en_US-ryan-medium',
+    ];
+
+    public static function piper(?string $locale): string
+    {
+        return self::PIPER_BY_LOCALE[$locale ?? ''] ?? self::PIPER_BY_LOCALE['nl'];
+    }
 }

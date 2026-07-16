@@ -86,7 +86,7 @@ class TtsService
         // Self-hosted Piper (Oracle box) — cheap Dutch narration for drafts/previews. Falls back
         // to Azure/edge if the box is down so lesson generation never hard-fails.
         if ($provider === 'piper') {
-            return $this->tryPiper($text)
+            return $this->tryPiper($text, $voiceId)
                 ?? $this->tryAzure($text, $voiceId, $speed)
                 ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
                 ?? $this->tryMacosTts($text);
@@ -215,15 +215,21 @@ SSML;
      * The voice is server-side config (nl_NL-pim-medium) — the app's avatar voiceId is ElevenLabs-
      * shaped and irrelevant here, so we don't pass it. Returns null on any failure to fall through.
      */
-    private function tryPiper(string $text): ?string
+    private function tryPiper(string $text, string $voiceId = ''): ?string
     {
         $url = config('services.piper.url');
         if (! $url) {
             return null;
         }
 
+        // Use the caller's Piper voice (already language-mapped) when it looks like a Piper voice
+        // (e.g. "nl_NL-pim-medium"); otherwise the configured default.
+        $voice = preg_match('/^[a-z]{2}_[A-Z]{2}-/', $voiceId)
+            ? $voiceId
+            : (string) config('services.piper.voice', 'nl_NL-pim-medium');
+
         try {
-            $request = Http::timeout(90)->acceptJson();
+            $request = Http::timeout(90)->accept('audio/mpeg, */*');
             $token = config('services.piper.token');
             if ($token) {
                 $request = $request->withToken($token);
@@ -231,14 +237,14 @@ SSML;
 
             $response = $request->post(rtrim((string) $url, '/').'/tts', [
                 'text' => $text,
-                'voice' => (string) config('services.piper.voice', 'nl_NL-pim-medium'),
+                'voice' => $voice,
             ]);
 
             if (! $response->successful() || $response->body() === '') {
                 return null;
             }
 
-            $this->generatedAudioExtension = 'wav';   // Piper returns WAV
+            $this->generatedAudioExtension = 'mp3';   // server transcodes Piper WAV -> mp3
 
             return $response->body();
         } catch (\Throwable) {

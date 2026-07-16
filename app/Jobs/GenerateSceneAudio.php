@@ -51,14 +51,18 @@ class GenerateSceneAudio implements ShouldQueue
             // fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE, when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
-            $voiceId  = ($override !== '' && $override !== 'elevenlabs')
-                ? NarrationVoice::azure(
-                    $scene->lesson->teacher?->locale,
-                    (string) config('services.tts.provider_override_voice', ''),
-                )
+            $locale   = $scene->lesson->teacher?->locale;
+            $voiceId  = match (true) {
+                // Self-hosted Piper: pick the voice by language (Dutch pim, English ryan) so an
+                // English lesson isn't narrated in a Dutch accent.
+                $provider === 'piper' => NarrationVoice::piper($locale),
+                $override !== '' && $override !== 'elevenlabs' => NarrationVoice::azure(
+                    $locale, (string) config('services.tts.provider_override_voice', ''),
+                ),
                 // Avatar-driven: the studio's per-language preferred voice (voice_map)
                 // wins for the lesson's language; falls back to the avatar's base voice.
-                : ($avatar?->voiceFor($scene->lesson->teacher?->locale) ?? '');
+                default => $avatar?->voiceFor($locale) ?? '',
+            };
 
             $timing  = null;
             $audio   = $tts->generateAudioRaw(
