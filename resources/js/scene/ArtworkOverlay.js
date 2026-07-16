@@ -135,8 +135,11 @@ export class ArtworkOverlay {
   _node(item) {
     const node = document.createElement('div')
     node.dataset.layerId = artObjId(item.asset_id)
+    // width:max-content so the node sizes to the image's natural aspect at the given height.
+    // (A plain shrink-to-fit box collapses to a wrong tall/narrow shape when the child img
+    // uses percentage height — that distorted the selection box.)
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
-      transform:${this._transform(item)}; transform-origin:center;
+      width:max-content; transform:${this._transform(item)}; transform-origin:center;
       pointer-events:auto; cursor:grab; touch-action:none; user-select:none;`
 
     const img = document.createElement('img')

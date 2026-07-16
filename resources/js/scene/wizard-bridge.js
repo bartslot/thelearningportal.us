@@ -774,7 +774,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative'
         const host = document.createElement('div')
         host.className = 'wizard-artwork-host'
-        host.style.cssText = 'position:absolute;inset:0;overflow:hidden;z-index:2;pointer-events:none;'
+        // overflow:visible so clipart can be dragged to bleed off the stage edge while editing
+        // (a design-tool expectation). Playback clips at the stage via ParallaxScene, so the
+        // off-stage part isn't shown to students.
+        host.style.cssText = 'position:absolute;inset:0;overflow:visible;z-index:2;pointer-events:none;'
         parent.appendChild(host)
         _artworkHost = host
         return host
