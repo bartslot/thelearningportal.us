@@ -57,9 +57,16 @@ export class ArtworkOverlay {
     this._render()
   }
 
-  // Base node transform (centre-anchored) plus an optional parallax offset in px.
+  // Base node transform: centre-anchored translate only (+ optional parallax offset).
+  // The layer's *scale* is applied to the node HEIGHT, not here — so the node's border-box
+  // equals the on-screen image box and the selection ring / handles never scale with it.
   _transform(item, dx = 0, dy = 0) {
-    return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${item.scale})`
+    return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
+  }
+
+  // On-screen height of the node = base height × user scale, as a % of the stage.
+  _heightPct(item) {
+    return item.height * item.scale
   }
 
   /**
@@ -128,8 +135,8 @@ export class ArtworkOverlay {
   _node(item) {
     const node = document.createElement('div')
     node.dataset.layerId = artObjId(item.asset_id)
-    node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${item.height}%;
-      transform:${this._transform(item)}; transform-origin:center; --art-scale:${item.scale};
+    node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
+      transform:${this._transform(item)}; transform-origin:center;
       pointer-events:auto; cursor:grab; touch-action:none; user-select:none;`
 
     const img = document.createElement('img')
@@ -155,12 +162,9 @@ export class ArtworkOverlay {
       const handle = document.createElement('div')
       handle.dataset.scaleHandle = '1'
       handle.title = 'Drag to resize'
-      // Counter the node's scale(item.scale) so the handle chrome stays a constant 10px on
-      // screen no matter how large/small the layer is scaled.
       handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
         border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
-        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;
-        transform:scale(calc(1 / var(--art-scale, 1))); transform-origin:center;`
+        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
       node.appendChild(handle)
       this._wireScale(item, node, handle, c.name)
     }
@@ -253,8 +257,7 @@ export class ArtworkOverlay {
         item.y = (cyClient - host.top) / host.height * 100
         node.style.left = `${item.x}%`
         node.style.top = `${item.y}%`
-        node.style.transform = this._transform(item)
-        node.style.setProperty('--art-scale', String(s))   // keep handle counter-scale current
+        node.style.height = `${this._heightPct(item)}%`   // scale lives in height, not transform
       }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)

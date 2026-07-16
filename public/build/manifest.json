@@ -41,7 +41,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-B_ra7ARw.js",
+    "file": "assets/app-pu2hkJ-K.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -107,7 +107,7 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-nBW9QF-h.js",
+    "file": "assets/ArtworkOverlay-DsH_utI-.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true
@@ -143,7 +143,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-DOq7dtev.js",
+    "file": "assets/index-BCG7tm8A.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
