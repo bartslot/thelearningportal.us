@@ -144,27 +144,19 @@ class Step2Story extends Component
         $this->applyArcDefaults($this->framework());
     }
 
-    /** Pre-pair the arc's suggested game (teacher can still override below). */
+    /**
+     * Reset game state when the arc changes. The standalone Game field (quiz/strategy/debate) was
+     * removed, so we never auto-attach a game — a lesson is either plain narrative or a full
+     * Spel-verhaal (the branching-arc toggle). Auto-pairing here would silently bind an invisible,
+     * unremovable quiz/strategy to the lesson.
+     */
     private function applyArcDefaults(NarrativeFramework $framework): void
     {
-        // Spel-verhaal is branching-only; switching arcs always drops back to the paired game.
+        // Spel-verhaal is branching-only; switching arcs always drops it.
         $this->story_game = false;
         $this->print_pack = false;
-
-        $paired = $framework->defaultGameType();
-
-        if ($paired === null) {
-            $this->include_game = false;
-            $this->game_type = null;
-
-            return;
-        }
-
-        $this->include_game = true;
-        $this->game_type = $paired;
-        if ($paired === 'quiz' && ! $this->quiz_timing) {
-            $this->quiz_timing = 'after';
-        }
+        $this->include_game = false;
+        $this->game_type = null;
     }
 
     public function selectHero(string $qid): void

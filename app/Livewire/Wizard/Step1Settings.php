@@ -443,7 +443,11 @@ class Step1Settings extends Component
         return array_map(fn (string $k) => [
             'key' => $k,
             'label' => ucfirst($k),
-            'thumb' => asset("assets/style-{$k}.webp"),
+            // Null when the preview asset is missing so the picker renders a clean placeholder
+            // tile instead of a broken image (ink/etching/engraved shipped without thumbnails).
+            'thumb' => file_exists(public_path("assets/style-{$k}.webp"))
+                ? asset("assets/style-{$k}.webp")
+                : null,
         ], ImageStyleTemplate::styles());
     }
 
