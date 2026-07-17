@@ -57,15 +57,16 @@ final class EventImageHarvester
                 $img = $this->toResolved($hit, $eventName);
 
                 $titleKey = strtolower((string) preg_replace('/[^a-z0-9]+/i', '', $img->title));
-                if ($titleKey !== '' && isset($seenTitle[$titleKey])) {
-                    continue;   // collapse near-identical scans (e.g. 4× the same Boccaccio miniature)
+                if ($titleKey !== '' && $this->isDuplicateTitle($titleKey, $seenTitle)) {
+                    continue;   // collapse identical + near-identical scans (4× the same
+                                // Boccaccio miniature; "…Surrender, USS Missouri" vs "…Surrender")
                 }
                 if (! $structured && ! $this->isOnTopic($img, $topic)) {
                     continue;   // drop off-topic modern photos (e.g. the band "Darkthrone")
                 }
 
                 $seenFile[$file] = true;
-                $seenTitle[$titleKey] = true;
+                $seenTitle[] = $titleKey;
                 $out[] = $img;
                 if (count($out) >= $limit) {
                     return $out;
@@ -74,6 +75,27 @@ final class EventImageHarvester
         }
 
         return $out;
+    }
+
+    /**
+     * A title is a duplicate if it exactly matches, or is ≥90% similar to, one already
+     * accepted — collapsing different scans/crops of the same work.
+     *
+     * @param  list<string>  $seen  already-accepted alnum title keys
+     */
+    private function isDuplicateTitle(string $key, array $seen): bool
+    {
+        foreach ($seen as $prev) {
+            if ($prev === $key) {
+                return true;
+            }
+            similar_text($prev, $key, $percent);
+            if ($percent >= 90.0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
