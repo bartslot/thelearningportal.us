@@ -124,6 +124,45 @@ final class CanonThemeCatalog
         return array_key_exists($slug, self::THEMES);
     }
 
+    /**
+     * Group lessons by Canon theme for the card grids (Dashboard + Lessons page). Lessons whose
+     * stored theme is invalid get a suggestion from their topic text; empty groups are dropped.
+     *
+     * @param  \Illuminate\Support\Collection<int, Lesson>  $lessons
+     * @return list<array{slug:string,number:?int,label:string,subtitle:string,lessons:\Illuminate\Support\Collection<int, Lesson>}>
+     */
+    public function groupLessons(\Illuminate\Support\Collection $lessons): array
+    {
+        $definitions = $this->themes();
+        $definitions[self::OTHER] = [
+            'number' => null,
+            'label' => 'Other',
+            'subtitle' => 'Topics outside the Canon themes',
+        ];
+
+        $grouped = $lessons->groupBy(function (Lesson $lesson): string {
+            $theme = (string) $lesson->canon_theme;
+
+            if ($this->isValidTheme($theme)) {
+                return $theme;
+            }
+
+            return $this->suggest($lesson->topic, $lesson->details, $lesson->focus);
+        });
+
+        return collect($definitions)
+            ->map(fn (array $definition, string $slug): array => [
+                'slug' => $slug,
+                'number' => $definition['number'],
+                'label' => $definition['label'],
+                'subtitle' => $definition['subtitle'],
+                'lessons' => $grouped->get($slug, collect()),
+            ])
+            ->filter(fn (array $group): bool => $group['lessons']->isNotEmpty())
+            ->values()
+            ->all();
+    }
+
     public function isValidTheme(string $slug): bool
     {
         return $slug === self::OTHER || $this->isOfficialTheme($slug);

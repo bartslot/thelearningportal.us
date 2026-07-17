@@ -56,11 +56,29 @@ final class ResolvedStoryImage
      *
      * @return list<string>
      */
+    /** Common European diacritics → ASCII (libiconv on macOS drops these instead of folding). */
+    private const DIACRITICS = [
+        'à' => 'a', 'á' => 'a', 'â' => 'a', 'ä' => 'a', 'ã' => 'a', 'å' => 'a', 'ā' => 'a',
+        'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e', 'ē' => 'e',
+        'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i', 'ī' => 'i',
+        'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o', 'ø' => 'o', 'ō' => 'o',
+        'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u', 'ū' => 'u',
+        'ç' => 'c', 'ñ' => 'n', 'ý' => 'y', 'ÿ' => 'y', 'ß' => 'ss', 'æ' => 'ae', 'œ' => 'oe',
+    ];
+
     public static function contentTokens(string $text): array
     {
-        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
-        $ascii = strtolower($ascii !== false ? $ascii : $text);
-        $words = preg_split('/[^a-z0-9]+/', $ascii, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // Fold diacritics (ü→u, é→e) so Commons name matching works. Prefer ICU when the
+        // intl extension is present; otherwise use the explicit map (libiconv on macOS
+        // drops diacritics rather than folding them).
+        $lower = mb_strtolower($text, 'UTF-8');
+        if (function_exists('transliterator_transliterate')) {
+            $t = transliterator_transliterate('Latin-ASCII', $lower);
+            $lower = is_string($t) ? $t : $lower;
+        } else {
+            $lower = strtr($lower, self::DIACRITICS);
+        }
+        $words = preg_split('/[^a-z0-9]+/', $lower, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         $stop = ['with', 'from', 'this', 'that', 'into', 'voor', 'naar', 'door', 'deze', 'zijn', 'over', 'onze', 'komst'];
 

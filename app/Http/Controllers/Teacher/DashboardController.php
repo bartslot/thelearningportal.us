@@ -71,7 +71,7 @@ final class DashboardController extends Controller
             'lessonLimit' => self::LESSON_LIMIT,
             'narrator' => Avatar::active()->first(),
             'results' => $this->resultSummary($scores),
-            'themeGroups' => $this->themeGroups($lessons, $catalog),
+            'themeGroups' => $catalog->groupLessons($lessons),
         ]);
     }
 
@@ -175,47 +175,6 @@ final class DashboardController extends Controller
         ];
     }
 
-    /**
-     * @param  Collection<int, Lesson>  $lessons
-     * @return list<array{
-     *     slug:string,
-     *     number:int|null,
-     *     label:string,
-     *     subtitle:string,
-     *     lessons:Collection<int,Lesson>
-     * }>
-     */
-    private function themeGroups(Collection $lessons, CanonThemeCatalog $catalog): array
-    {
-        $definitions = $catalog->themes();
-        $definitions[CanonThemeCatalog::OTHER] = [
-            'number' => null,
-            'label' => 'Other',
-            'subtitle' => 'Topics outside the Canon themes',
-        ];
-
-        $grouped = $lessons->groupBy(function (Lesson $lesson) use ($catalog): string {
-            $theme = (string) $lesson->canon_theme;
-
-            if ($catalog->isValidTheme($theme)) {
-                return $theme;
-            }
-
-            return $catalog->suggest($lesson->topic, $lesson->details, $lesson->focus);
-        });
-
-        return collect($definitions)
-            ->map(fn (array $definition, string $slug): array => [
-                'slug' => $slug,
-                'number' => $definition['number'],
-                'label' => $definition['label'],
-                'subtitle' => $definition['subtitle'],
-                'lessons' => $grouped->get($slug, collect()),
-            ])
-            ->filter(fn (array $group): bool => $group['lessons']->isNotEmpty())
-            ->values()
-            ->all();
-    }
 
     /** @param  Collection<int, QuizScore>  $scores */
     private function correctRate(Collection $scores): int

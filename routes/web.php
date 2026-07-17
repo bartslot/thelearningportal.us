@@ -83,7 +83,12 @@ Route::middleware(['auth'])->get('/settings', \App\Livewire\Settings::class)->na
 
 Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function () {
 
-    Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    // The dashboard IS the workspace root: /teacher. The old /teacher/dashboard URL
+    // redirects so bookmarks keep working. Lessons live on their own page below.
+    Route::get('/', DashboardController::class)->name('dashboard');
+    Route::redirect('/dashboard', '/teacher');
+
+    Route::get('/lessons', \App\Http\Controllers\Teacher\LessonIndexController::class)->name('lessons.index');
 
     Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 
