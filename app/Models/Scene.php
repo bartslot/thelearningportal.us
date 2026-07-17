@@ -161,10 +161,25 @@ class Scene extends Model
             return [];
         }
 
-        $chunks = array_values(array_filter(array_map(
-            'trim',
-            preg_split('/\n\s*\n/', $text) ?: [$text],
-        )));
+        // Split into sentences (respecting paragraph breaks as harder boundaries) so even a
+        // single-paragraph script yields several timecoded lines, like the Figma 00:04/00:20.
+        $chunks = [];
+        foreach (preg_split('/\n\s*\n/', $text) ?: [$text] as $para) {
+            $para = trim((string) $para);
+            if ($para === '') {
+                continue;
+            }
+            // Break after . ! ? (optionally a closing quote) ONLY when the next line starts a
+            // new sentence — an uppercase letter or an opening quote. Both branches require
+            // that lookahead so mid-sentence dialogue ("…tower!' he declared.") stays intact.
+            $pattern = '/(?<=[.!?][\'"”’])\s+(?=[\p{Lu}"“‘\'])|(?<=[.!?])\s+(?=[\p{Lu}"“‘\'])/u';
+            foreach (preg_split($pattern, $para) ?: [$para] as $sentence) {
+                $sentence = trim((string) $sentence);
+                if ($sentence !== '') {
+                    $chunks[] = $sentence;
+                }
+            }
+        }
         if ($chunks === []) {
             $chunks = [$text];
         }

@@ -12,14 +12,21 @@
 
 <div x-show="$store.view.script" x-cloak
      x-data="scriptEditor(@js($audioUrl), {{ $duration ?: 0 }})"
-     class="fixed bottom-4 z-30 overflow-hidden rounded-xl border border-slate-700/70 bg-base-300/95 shadow-2xl backdrop-blur-sm"
-     style="left: calc(var(--work-left, 12rem) + 0.75rem); right: calc(var(--work-right, 16rem) + 0.75rem);">
+     class="fixed bottom-0 z-30 overflow-hidden border-t border-slate-700/70 bg-base-300"
+     style="left: var(--work-left, 12rem); right: var(--work-right, 16rem);"
+     :style="dragging
+        ? `left:var(--work-left,12rem);right:var(--work-right,16rem);transform:translateY(${dragY}px);transition:none;opacity:${Math.max(0.35, 1 - dragY / 240)}`
+        : `left:var(--work-left,12rem);right:var(--work-right,16rem);transform:translateY(0);transition:transform .18s ease,opacity .18s ease`">
 
-    {{-- Header --}}
-    <div class="flex items-center justify-between border-b border-slate-700/60 bg-base-200/60 px-3 py-1.5">
-        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Script') }}</span>
-        <button type="button" @click="$store.view.toggle('script')"
-                class="text-slate-500 transition hover:text-slate-200" aria-label="{{ __('Hide script') }}">✕</button>
+    {{-- Header doubles as a drag handle: drag it down past the threshold to hide the panel. --}}
+    <div class="relative flex cursor-grab touch-none select-none items-center justify-center border-b border-slate-700/60 bg-base-200/60 px-3 py-1.5"
+         x-on:pointerdown="dragStart($event)"
+         x-on:pointermove.window="dragMove($event)"
+         x-on:pointerup.window="dragEnd($event)"
+         x-on:pointercancel.window="dragEnd($event)"
+         role="button" aria-label="{{ __('Drag down to hide the script') }}">
+        <span class="pointer-events-none absolute left-3 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Script') }}</span>
+        <span class="h-1 w-9 rounded-full bg-slate-600" aria-hidden="true"></span>
     </div>
 
     @if ($segments === [])
@@ -74,6 +81,7 @@
 @once
     @push('scripts')
     <script>
+        const SCRIPT_HIDE_THRESHOLD_PX = 80;
         window.scriptEditor = window.scriptEditor || function (url, duration) {
             return {
                 audio: null,
@@ -82,6 +90,26 @@
                 playing: false,
                 active: 0,
                 starts: [],
+                // Drag-down-to-hide (replaces the ✕): the header follows the pointer, and
+                // releasing past the threshold hides the panel via the shared view store.
+                dragging: false,
+                dragY: 0,
+                _startY: 0,
+                dragStart(e) {
+                    this.dragging = true;
+                    this._startY = e.clientY;
+                    try { e.target.setPointerCapture?.(e.pointerId); } catch (_) { /* synthetic pointers throw */ }
+                },
+                dragMove(e) {
+                    if (!this.dragging) return;
+                    this.dragY = Math.max(0, e.clientY - this._startY);
+                },
+                dragEnd() {
+                    if (!this.dragging) return;
+                    if (this.dragY > SCRIPT_HIDE_THRESHOLD_PX) this.$store.view.hide('script');
+                    this.dragging = false;
+                    this.dragY = 0;
+                },
                 init() {
                     this.starts = [...this.$el.querySelectorAll('[data-start]')].map((e) => parseFloat(e.dataset.start));
                     if (!url) return;
