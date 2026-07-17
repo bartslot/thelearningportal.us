@@ -158,11 +158,13 @@ test.describe('wizard editor — painting picker (corpus-first)', () => {
     await settle(page, 800);
     await page.getByRole('button', { name: /Browse paintings/i }).click();
 
-    // Tiles arrive after the lazy match-target derivation — allow real latency.
+    // Tiles arrive after the lazy match-target derivation and stream in progressively —
+    // wait for the grid to STABILIZE before counting (counting at first paint undercounts).
     const tile = page.locator('[wire\\:click^="applyPainting"], button:has(img[alt])').filter({ has: page.locator('img') });
     await expect(tile.first()).toBeVisible({ timeout: 30_000 });
-    const count = await tile.count();
-    expect(count, 'picker should offer a healthy set of works').toBeGreaterThan(6);
+    await expect
+      .poll(async () => tile.count(), { timeout: 20_000, intervals: [1000] })
+      .toBeGreaterThan(6);
 
     // Region chips render (the corpus-first UI).
     await expect(page.getByRole('button', { name: 'Everything' })).toBeVisible();

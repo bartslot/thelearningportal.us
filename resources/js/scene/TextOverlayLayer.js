@@ -29,6 +29,10 @@
  */
 const URL_PATTERN = /^https?:\/\/\S+$/i
 const DRAG_THRESHOLD_PX = 4
+// A press INSIDE a focused text box is usually caret placement / word selection — only a
+// decisive pull should move the box. Keeps "add text → drag it into place" working (the
+// freshly added box is focused with its placeholder selected, which used to dead-end drags).
+const EDIT_DRAG_THRESHOLD_PX = 14
 // Safe margin (px) kept clear on every edge: text is placed 40px in and can never be dragged
 // past it, so teachers can't push a label off-canvas or into the letterbox and lose it.
 const SAFE_PAD_PX = 40
@@ -548,12 +552,20 @@ export class TextOverlayLayer {
     })
     node.appendChild(resize)
 
+    // Native drag-and-drop of selected text swallows the pointer stream BEFORE our threshold
+    // logic ever runs (the fresh-add placeholder is selected, so this hit every new box).
+    node.addEventListener('dragstart', (e) => e.preventDefault())
+
     // Drag anywhere on the box; a press that doesn't move stays a click-to-edit.
     node.addEventListener('pointerdown', (e) => {
       if (toolbar.contains(e.target)) return                              // toolbar clicks aren't drags
       if (e.target === resize) return                                     // resize handle isn't a move
       this.select(item.id)                                                // pressing a box selects it
-      if (edit.contains(e.target) && edit.contains(document.activeElement)) return  // typing (incl. list items) — don't hijack
+      // A press while the box is being edited USED to dead-end here ("don't hijack typing") —
+      // but a freshly added box is always focused, so "add text → drag it into place" silently
+      // did nothing. Now an editing press can still become a move: it just needs a decisive
+      // pull (bigger threshold), and a growing text selection always wins (stays native).
+      const editingPress = edit.contains(e.target) && edit.contains(document.activeElement)
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
       const origin = { x: item.x, y: item.y }
@@ -575,7 +587,20 @@ export class TextOverlayLayer {
 
       const onMove = (ev) => {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
-        if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+        if (!dragging && Math.hypot(dx, dy) < (editingPress ? EDIT_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX)) return
+        if (!dragging && editingPress) {
+          // If a PARTIAL text selection grew under this gesture the teacher is selecting text —
+          // let the native behaviour win. (The fresh-add "whole placeholder selected" state is
+          // NOT partial, so dragging a just-added box still moves it.)
+          const sel = document.getSelection()
+          const selText = sel && !sel.isCollapsed ? String(sel).trim() : ''
+          if (selText !== '' && selText !== (edit.innerText || '').trim()) {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            return
+          }
+          sel?.removeAllRanges()
+        }
         if (!dragging) { dragging = true; edit.blur(); try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ } }
         item.x = origin.x + (dx / rect.width) * 100
         item.y = origin.y + (dy / rect.height) * 100

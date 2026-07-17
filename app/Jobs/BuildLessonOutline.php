@@ -118,6 +118,34 @@ class BuildLessonOutline implements ShouldQueue
                 }
                 $text ??= '';
 
+                // The teacher's free-text focus ("De Domtoren van Utrecht — bouw, de storm van
+                // 1674…") often names a SPECIFIC subject with its own article that the broad topic
+                // article barely covers. The no-hallucination rule then makes the LLM ignore the
+                // focus entirely — a lesson "about the Dom Tower" without the Dom Tower. Fetch the
+                // focus as a second source so the outline has real facts to honour it with.
+                $focus = trim((string) ($lesson->focus ?? ''));
+                if ($focus !== '' && mb_strlen($focus) > 6) {
+                    // Teachers write prose ("De Domtoren van Utrecht — bouw (1254-1382), de storm
+                    // van 1674") that Wikipedia search chokes on. Try the raw text, then the first
+                    // clause (before any dash/colon/comma), then the first five words.
+                    $firstClause = trim(preg_split('/[—–:;,(]|\s-\s/u', $focus, 2)[0] ?? '');
+                    $firstWords = implode(' ', array_slice(preg_split('/\s+/u', $firstClause) ?: [], 0, 5));
+                    $focusText = null;
+                    foreach (array_unique(array_filter([$focus, $firstClause, $firstWords])) as $q) {
+                        if (mb_strlen($q) < 4) {
+                            continue;
+                        }
+                        $focusText = app(WikipediaService::class)->fetchFacts($q);
+                        if (is_string($focusText) && trim($focusText) !== '') {
+                            break;
+                        }
+                    }
+                    if (is_string($focusText) && trim($focusText) !== '') {
+                        $text = trim($text)."\n\n== Teacher's focus: {$focus} ==\n".mb_substr($focusText, 0, 6000);
+                        Log::info("BuildLessonOutline #{$lesson->id}: appended focus source for \"{$focus}\"");
+                    }
+                }
+
                 // For 'both' mode the document text was already extracted and stored
                 $combined = $source->kind === 'both'
                     ? trim($source->extracted_text."\n\n".$text)
@@ -199,6 +227,15 @@ class BuildLessonOutline implements ShouldQueue
                     $briefs,
                     fn ($brief) => ($brief['kind'] ?? 'narration') !== 'game',
                 ));
+            }
+
+            // Story game: the LLM's branch structure is only usable when every group is COMPLETE
+            // (question + option_a + option_b) and every option moves the meters. An orphaned
+            // question renders a choice overlay with no buttons (player dead-end); options with
+            // no branch_effects leave the class meters frozen for the whole lesson.
+            if ($isStoryGame) {
+                $briefs = $this->sanitizeBranchGroups($briefs);
+                $briefs = $this->ensureBranchEffects($llm, $briefs, $meterKeys, $lesson);
             }
 
             // Ignore any "order" the LLM emitted — assign sequential 1-based positions so
@@ -349,6 +386,116 @@ class BuildLessonOutline implements ShouldQueue
         }
 
         return $roles;
+    }
+
+    /**
+     * Keep branch markers only for COMPLETE groups: exactly one question, one option_a and one
+     * option_b. Briefs in orphaned/duplicated groups keep their narrative text but lose the
+     * marker — they become plain narration instead of a player dead-end.
+     *
+     * @param  list<array<string, mixed>>  $briefs
+     * @return list<array<string, mixed>>
+     */
+    private function sanitizeBranchGroups(array $briefs): array
+    {
+        $groups = [];
+        foreach ($briefs as $brief) {
+            $branch = $brief['branch'] ?? null;
+            if (! is_array($branch)) {
+                continue;
+            }
+            $group = is_numeric($branch['group'] ?? null) ? (int) $branch['group'] : 0;
+            $role = $branch['role'] ?? null;
+            if ($group >= 1 && $group <= self::MAX_BRANCH_GROUPS && in_array($role, self::BRANCH_ROLES, true)) {
+                $groups[$group][$role] = ($groups[$group][$role] ?? 0) + 1;
+            }
+        }
+
+        $complete = array_keys(array_filter(
+            $groups,
+            fn (array $roles) => ($roles['question'] ?? 0) === 1
+                && ($roles['option_a'] ?? 0) === 1
+                && ($roles['option_b'] ?? 0) === 1,
+        ));
+
+        return array_values(array_map(function (array $brief) use ($complete) {
+            $group = is_numeric(($brief['branch'] ?? [])['group'] ?? null) ? (int) $brief['branch']['group'] : 0;
+            if (is_array($brief['branch'] ?? null) && ! in_array($group, $complete, true)) {
+                \Log::warning('outline: dropped incomplete branch group', ['group' => $group]);
+                unset($brief['branch'], $brief['branch_effects']);
+            }
+
+            return $brief;
+        }, $briefs));
+    }
+
+    /**
+     * Every option in a complete branch group must move the class meters — otherwise the
+     * story game plays with a frozen HUD. Options missing branch_effects get ONE cheap LLM
+     * repair call (labels + meters -> deltas/consequence); if that fails, a deterministic
+     * mild fallback (option_a nudges the first meter up, option_b down) keeps the game alive.
+     *
+     * @param  list<array<string, mixed>>  $briefs
+     * @param  list<string>  $meterKeys
+     * @return list<array<string, mixed>>
+     */
+    private function ensureBranchEffects(OpenAiLlmService $llm, array $briefs, array $meterKeys, Lesson $lesson): array
+    {
+        if ($meterKeys === []) {
+            return $briefs;
+        }
+
+        $missing = [];
+        foreach ($briefs as $i => $brief) {
+            $role = ($brief['branch'] ?? [])['role'] ?? null;
+            if (in_array($role, ['option_a', 'option_b'], true) && ! is_array($brief['branch_effects'] ?? null)) {
+                $missing[$i] = [
+                    'index' => $i,
+                    'group' => (int) $brief['branch']['group'],
+                    'role' => $role,
+                    'label' => (string) ($brief['branch']['choice_label'] ?? ''),
+                    'summary' => mb_substr((string) ($brief['description'] ?? $brief['summary'] ?? ''), 0, 200),
+                ];
+            }
+        }
+        if ($missing === []) {
+            return $briefs;
+        }
+
+        $repaired = [];
+        try {
+            $out = $llm->json(
+                'You add game-meter consequences to choice options in a classroom history story game. '
+                .'Meters (keys): '.implode(', ', $meterKeys).'. For EVERY option given, return JSON '
+                .'{"options":[{"index":<int>,"deltas":{<meterKey>:<int -10..10>},"consequence_line":"<one short sentence, '
+                .'same language as the option label>","historical_note":"<one short factual sentence>"}]}. '
+                .'Deltas must be non-zero for at least one meter and reflect the choice\'s realistic consequence.',
+                json_encode(array_values($missing), JSON_UNESCAPED_UNICODE),
+            );
+            foreach (($out['options'] ?? []) as $opt) {
+                if (is_numeric($opt['index'] ?? null) && is_array($opt['deltas'] ?? null)) {
+                    $repaired[(int) $opt['index']] = $opt;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('outline: branch-effects repair call failed', ['error' => $e->getMessage()]);
+        }
+
+        foreach ($missing as $i => $meta) {
+            $fix = $repaired[$i] ?? null;
+            $briefs[$i]['branch_effects'] = is_array($fix) ? [
+                'deltas' => $fix['deltas'],
+                'consequence_line' => (string) ($fix['consequence_line'] ?? ''),
+                'historical_note' => (string) ($fix['historical_note'] ?? ''),
+            ] : [
+                // Deterministic fallback: a mild, visible swing so the HUD reacts to every choice.
+                'deltas' => [$meterKeys[0] => $meta['role'] === 'option_a' ? 5 : -5],
+                'consequence_line' => $meta['label'],
+                'historical_note' => '',
+            ];
+        }
+
+        return $briefs;
     }
 
     /**

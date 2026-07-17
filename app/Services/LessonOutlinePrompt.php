@@ -112,8 +112,10 @@ Story game additions — this lesson is a playable branching game ("spel-verhaal
     "choice_label": string (short imperative Dutch label, ONLY on option briefs) }
   There are EXACTLY 3 branch groups. Each group is ONE question brief IMMEDIATELY followed by its
   TWO option briefs (option_a, then option_b). All other scene briefs omit "branch" entirely.
-- on each option brief additionally "branch_effects":
-  { "deltas": object mapping EVERY meter key to an integer between -25 and 25,
+- on each option brief additionally "branch_effects" — REQUIRED on EVERY option brief, never
+  omit it (an option without effects freezes the game's meter HUD):
+  { "deltas": object mapping EVERY meter key to an integer between -25 and 25 (at least one
+    meter non-zero — every choice must visibly move the class meters),
     "consequence_line": string (1 dramatic Dutch sentence in the spoken voice of a game master),
     "historical_note": string (1 sentence stating what really happened) }
 
