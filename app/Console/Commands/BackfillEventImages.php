@@ -26,6 +26,7 @@ final class BackfillEventImages extends Command
         {--event= : a single event QID (Q123…)}
         {--used : only events referenced by a lesson topic (default scope)}
         {--all : every catalog event, most-notable first}
+        {--take= : cap the number of events processed (most-notable first)}
         {--min=3 : skip events that already have at least this many story images}
         {--limit=10 : max images to harvest per event}
         {--dry : resolve but do not write}';
@@ -82,7 +83,9 @@ final class BackfillEventImages extends Command
         }
 
         if ($this->option('all')) {
-            return $events->orderByDesc('sitelinks')->get(['qid', 'name', 'aliases'])->all();
+            return $events->orderByDesc('sitelinks')
+                ->when($this->option('take'), fn ($q) => $q->limit((int) $this->option('take')))
+                ->get(['qid', 'name', 'aliases'])->all();
         }
 
         // Default / --used: events that appear as a lesson topic.
