@@ -42,9 +42,10 @@
         <div id="lesson-map-preview" class="fixed inset-0 z-[5]" style="display:none" wire:ignore></div>
     </div>
 
-    {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (docked
-         narration 24rem, game 48rem, collapsed 14rem, or 0 when floating). The stage tracks it
-         via --work-right; a resize nudge lets the WebGL scene refit. --}}
+    {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (16rem
+         normal, 48rem for game scenes, 0 when hidden). The inspector is always docked (no
+         floating), so we reserve exactly its width. The stage tracks it via --work-right; a
+         resize nudge lets the WebGL scene refit. --}}
     @push('scripts')
     <script>
     (() => {
@@ -57,9 +58,8 @@
             const sync = () => {
                 raf = 0
                 const r = aside.getBoundingClientRect()
-                // Docked = pinned to the right edge near the top; floating panels reserve no space.
-                const docked = r.right >= window.innerWidth - 2 && r.top <= 140 && r.width > 0
-                root.style.setProperty('--work-right', docked ? `${Math.round(r.width)}px` : '0px')
+                // Docked panel → reserve its width; hidden (x-show off → 0 width) → reserve nothing.
+                root.style.setProperty('--work-right', r.width > 0 ? `${Math.round(r.width)}px` : '0px')
                 window.dispatchEvent(new Event('resize'))   // nudge the scene renderer to refit
             }
             const schedule = () => { if (!raf) raf = requestAnimationFrame(sync) }
@@ -611,8 +611,9 @@
             scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
             init() {
                 try { Object.assign(this, JSON.parse(localStorage.getItem('wizard.view') || '{}')); } catch (_) {}
-                const w = parseFloat(localStorage.getItem('wizard.rail.w'));
-                if (Number.isFinite(w)) this.scenes = w > 0;
+                // Fixed rail width (no drag-resize). Seed --rail-w from the persisted shown flag.
+                this.railLast = 176;
+                document.documentElement.style.setProperty('--rail-w', this.scenes ? this.railLast + 'px' : '0px');
             },
             _save() {
                 localStorage.setItem('wizard.view', JSON.stringify({
@@ -1037,11 +1038,11 @@
          x-data="{ note: '', key: 'wizard.notes.{{ $lesson->id }}',
                    init() { this.note = localStorage.getItem(this.key) || ''; },
                    save() { localStorage.setItem(this.key, this.note); } }"
-         class="fixed bottom-4 right-4 z-40 w-72 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
-         style="right: calc(var(--work-right, 16rem) + 0.75rem);">
-        <div class="flex items-center justify-between border-b border-slate-700/60 bg-slate-800/60 px-3 py-2">
+         class="fixed bottom-0 z-40 w-72 overflow-hidden border-l border-t border-slate-700 bg-base-300"
+         style="right: var(--work-right, 16rem);">
+        <div class="flex items-center justify-between border-b border-slate-700/60 bg-base-200/60 px-3 py-2">
             <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Internal notes') }}</span>
-            <button type="button" @click="$store.view.toggle('notes')" class="text-slate-500 hover:text-slate-200" aria-label="Close">✕</button>
+            <button type="button" @click="$store.view.hide('notes')" class="text-slate-500 hover:text-slate-200" aria-label="Close">✕</button>
         </div>
         <textarea x-model="note" @input.debounce.400ms="save()" rows="6"
                   placeholder="{{ __('Private notes for this lesson — only you see these.') }}"
@@ -1051,63 +1052,9 @@
     {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
-    {{-- Rail resize handle — drag to resize the scene rail; drag to the edge to hide it entirely.
-         Sits at the rail's right edge; when the rail is collapsed (0) it rests at the far left so
-         it can be dragged back out. --}}
-    {{-- Straddles the rail's own border (no extra line of its own → no double line). On hover the
-         panel edge lights up bright blue; the cursor already signals resize. --}}
-    <div id="rail-resize" wire:ignore
-         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize"
-         style="left: var(--rail-w, 11rem)"
-         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail') }}"
-         title="{{ __('Drag to resize · drag to the edge to hide') }}">
-        <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
-    </div>
-    @push('scripts')
-    <script>
-    (() => {
-        const KEY = 'wizard.rail.w';
-        const rootEl = document.documentElement;
-        const clamp = (v) => Math.max(0, Math.min(280, v));
-        const saved = parseFloat(localStorage.getItem(KEY));
-        if (Number.isFinite(saved)) rootEl.style.setProperty('--rail-w', saved + 'px');
-        const boot = () => {
-            const handle = document.getElementById('rail-resize');
-            if (!handle || handle.__wired) return;
-            handle.__wired = true;
-            let dragging = false;
-            handle.addEventListener('pointerdown', (e) => {
-                dragging = true; handle.setPointerCapture(e.pointerId);
-                document.body.style.userSelect = 'none';
-                e.preventDefault();
-            });
-            handle.addEventListener('pointermove', (e) => {
-                if (!dragging) return;
-                rootEl.style.setProperty('--rail-w', clamp(e.clientX) + 'px');
-            });
-            const end = (e) => {
-                if (!dragging) return;
-                dragging = false;
-                try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
-                document.body.style.userSelect = '';
-                let w = clamp(parseFloat(rootEl.style.getPropertyValue('--rail-w')) || 176);
-                if (w < 56) w = 0;                 // dragged to the edge → hide
-                else if (w < 120) w = 120;         // otherwise keep a usable minimum
-                rootEl.style.setProperty('--rail-w', w + 'px');
-                localStorage.setItem(KEY, String(w));
-                // Keep the View ▸ Scenes checkbox in sync with a drag-to-hide / drag-out.
-                const store = window.Alpine?.store('view');
-                if (store) { store.scenes = w > 0; if (w > 0) store.railLast = w; store._save?.(); }
-            };
-            handle.addEventListener('pointerup', end);
-            handle.addEventListener('pointercancel', end);
-        };
-        if (document.readyState !== 'loading') boot();
-        else document.addEventListener('DOMContentLoaded', boot);
-        document.addEventListener('livewire:navigated', boot);
-    })();
-    </script>
-    @endpush
+    {{-- The scene rail is a FIXED-width dock (no drag-to-resize) — "only fixed, no floating".
+         Show/hide is via View ▸ Scenes (store.toggleScenes toggles --rail-w between 0 and its
+         fixed width). store.init() seeds --rail-w from the persisted shown/hidden flag. --}}
 
     {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
          menu stayed opacity:0 on focus). Open state is Livewire-driven; tiles call addScene(). --}}
