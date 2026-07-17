@@ -45,13 +45,13 @@ trait SeedsCatalog
                      label AS name, osm_id AS qid, NULL::text AS parent_qid, wikipedia_url,
                      inception AS era_start, dissolution AS era_end,
                      region_lat, region_lng, region_label, NULL::text AS summary, sitelinks,
-                     'Borders: Cliopatria (CC-BY 4.0)' AS source_attribution
+                     'Borders: Cliopatria (CC-BY 4.0)' AS source_attribution, NULL::text AS aliases
               FROM public.polities
               WHERE wikipedia_url IS NOT NULL AND osm_id LIKE 'Q%' AND COALESCE(is_publishable, true)
             UNION ALL
               SELECT 'figure:'||qid||':'||parent_qid, 'figure', figure_kind, name, qid, parent_qid,
                      wikipedia_url, era_start, era_end, region_lat, region_lng, region_label,
-                     summary, sitelinks, 'Wikidata (CC0)'
+                     summary, sitelinks, 'Wikidata (CC0)', NULL::text
               FROM public.figures
               WHERE COALESCE(is_publishable, true)
         ");

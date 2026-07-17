@@ -52,16 +52,23 @@ class Topic extends Model
         $like = str_replace(['%', '_'], ['\%', '\_'], $term);
 
         return $query
-            ->whereRaw('(name ILIKE ? OR word_similarity(?, name) > 0.55)', ['%'.$like.'%', $term])
+            // Match the name OR any pipe-joined alias ("Black Plague"/"Spanish flu"/"The Great
+            // War"). Aliases are NULL for non-event rows, so COALESCE keeps them out of the way.
+            ->whereRaw(
+                '(name ILIKE ? OR word_similarity(?, name) > 0.55
+                  OR COALESCE(aliases, \'\') ILIKE ? OR word_similarity(?, COALESCE(aliases, \'\')) > 0.6)',
+                ['%'.$like.'%', $term, '%'.$like.'%', $term]
+            )
             ->orderByRaw(
                 'CASE
                     WHEN lower(name) = lower(?) THEN 0
                     WHEN name ILIKE ? THEN 1
                     WHEN name ILIKE ? THEN 2
                     WHEN word_similarity(?, name) > 0.55 THEN 3
-                    ELSE 4
+                    WHEN COALESCE(aliases, \'\') ILIKE ? THEN 4
+                    ELSE 5
                  END',
-                [$term, $like.'%', '% '.$like.'%', $term]
+                [$term, $like.'%', '% '.$like.'%', $term, '%'.$like.'%']
             )
             ->orderByDesc('sitelinks')
             ->limit($limit);

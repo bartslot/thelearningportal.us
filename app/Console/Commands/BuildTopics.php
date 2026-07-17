@@ -276,60 +276,11 @@ class BuildTopics extends Command
                 created_at timestamptz DEFAULT now()
             )');
 
-        // topics view: single source for the picker (polities UNION figures UNION places).
-        $corpus->statement('
-            CREATE OR REPLACE VIEW public.topics AS
-              SELECT
-                \'polity:\' || osm_id          AS id,
-                \'polity\'                      AS type,
-                NULL::text                     AS figure_kind,
-                label                          AS name,
-                osm_id                         AS qid,
-                NULL::text                     AS parent_qid,
-                wikipedia_url,
-                inception                      AS era_start,
-                dissolution                    AS era_end,
-                region_lat, region_lng, region_label,
-                summary, sitelinks,
-                \'Borders: Cliopatria (CC-BY 4.0) · Wikipedia (CC-BY-SA)\' AS source_attribution
-              FROM public.polities
-              WHERE wikipedia_url IS NOT NULL
-                AND osm_id LIKE \'Q%\'         -- canonical Cliopatria QID rows only (drop stale numeric-id dupes)
-                AND COALESCE(is_publishable, true)
-            UNION ALL
-              SELECT
-                \'figure:\' || qid || \':\' || parent_qid AS id,
-                \'figure\'                      AS type,
-                figure_kind,
-                name,
-                qid,
-                parent_qid,
-                wikipedia_url,
-                era_start, era_end,
-                region_lat, region_lng, region_label,
-                summary, sitelinks,
-                \'Wikidata (CC0) · Wikipedia (CC-BY-SA)\' AS source_attribution
-              FROM public.figures
-              WHERE COALESCE(is_publishable, true)
-            UNION ALL
-              SELECT
-                \'place:\' || qid               AS id,
-                \'place\'                       AS type,
-                NULL::text                     AS figure_kind,
-                name,
-                qid,
-                NULL::text                     AS parent_qid,
-                wikipedia_url,
-                NULL::integer                  AS era_start,
-                NULL::integer                  AS era_end,
-                lat                            AS region_lat,
-                lng                            AS region_lng,
-                summary                        AS region_label,
-                summary, sitelinks,
-                \'Wikidata (CC0) · Wikipedia (CC-BY-SA)\' AS source_attribution
-              FROM public.catalog_places
-              WHERE COALESCE(is_publishable, true)
-                AND wikipedia_url IS NOT NULL
-        ');
+        // Events catalog (wars/revolutions/epidemics — populated by `timemap:build-events`).
+        \App\Services\Corpus\CorpusCatalogSchema::ensureEventsTable($corpus);
+
+        // topics view: single source for the picker (polities UNION figures UNION places UNION
+        // events). Owned by CorpusCatalogSchema so both build commands emit the same shape.
+        $corpus->statement(\App\Services\Corpus\CorpusCatalogSchema::topicsViewSql());
     }
 }

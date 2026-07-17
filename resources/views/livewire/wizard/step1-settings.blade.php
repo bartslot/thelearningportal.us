@@ -56,7 +56,7 @@
                        x-on:focus="open = true"
                        x-on:blur="setTimeout(() => open = false, 150)"
                        x-on:keydown.escape="open = false; $el.blur()"
-                       placeholder="Search empires, kingdoms, rulers… e.g. Roman Empire"
+                       placeholder="Search topics, events, people… e.g. Black Death, French Revolution"
                        autocomplete="off"
                        class="input input-bordered bg-slate-900 mt-1 text-base w-full
                               @if($topicId) border-emerald-500/60 pr-10 @endif" />
@@ -101,6 +101,10 @@
                                 @elseif ($s['type'] === 'place')
                                     <span class="badge badge-sm badge-outline border-emerald-500/40 text-emerald-300 shrink-0">
                                         {{ __('Place') }}
+                                    </span>
+                                @elseif ($s['type'] === 'event')
+                                    <span class="badge badge-sm badge-outline border-amber-500/40 text-amber-300 shrink-0">
+                                        {{ __('Event') }}
                                     </span>
                                 @endif
                                 <span class="flex flex-col items-start gap-0.5">
