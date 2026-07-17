@@ -376,10 +376,19 @@ class OpenAiImageService
             // Pin HTTP/1.1: the multi-MB base64 image body trips a known OpenSSL 3.6 + HTTP/2
             // failure ("cURL 56: unexpected eof while reading"). HTTP/2 is renegotiated on every
             // retry, so retries alone never recover — forcing 1.1 does.
+            // Backoff retries (2s/8s/20s) + FRESH CONNECTION per attempt. The recurring
+            // "cURL 56: OpenSSL SSL_read" survives even spaced retries because the long-running
+            // queue worker's curl pool re-serves the SAME stale keep-alive TLS connection on every
+            // attempt (it idles ~90s during the previous render, then breaks identically each time).
+            // Forcing a new TCP+TLS handshake per attempt is what actually recovers — and reuse is
+            // worthless on 90-second requests anyway (scene-3 incident, 2026-07-17).
             $response = Http::withToken($key)
-                ->withOptions(['version' => '1.1'])
+                ->withOptions([
+                    'version' => '1.1',
+                    'curl' => [CURLOPT_FRESH_CONNECT => true, CURLOPT_FORBID_REUSE => true],
+                ])
                 ->timeout((int) config('services.openai.image_timeout', 180))
-                ->retry(times: 3, sleepMilliseconds: 2000, when: fn ($e, $req) => true, throw: false)
+                ->retry([2000, 8000, 20000], when: fn ($e, $req) => true, throw: false)
                 ->post(rtrim($base, '/').'/images/generations', $payload);
         } catch (\Throwable $e) {
             throw new RuntimeException('Image API request failed: '.$e->getMessage(), previous: $e);
@@ -398,7 +407,11 @@ class OpenAiImageService
             }
         }
         if (is_string($payload['url'] ?? null) && $payload['url'] !== '') {
-            $binary = Http::timeout(30)->get($payload['url']);
+            // Same HTTP/1.1 pin + backoff as the main call — this download is multi-MB too.
+            $binary = Http::withOptions(['version' => '1.1'])
+                ->timeout(60)
+                ->retry([2000, 8000], when: fn ($e, $req) => true, throw: false)
+                ->get($payload['url']);
             if (! $binary->successful()) {
                 throw new RuntimeException("Failed to download generated image: {$binary->status()}");
             }
