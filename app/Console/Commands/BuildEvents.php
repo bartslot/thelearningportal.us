@@ -50,29 +50,33 @@ class BuildEvents extends Command
             return self::FAILURE;
         }
 
-        $bar = $this->output->createProgressBar(count($rows));
-        $n = 0;
-        foreach ($rows as $e) {
-            $corpus->table('public.catalog_events')->updateOrInsert(
-                ['qid' => $e['qid']],
-                [
-                    'name' => $e['name'],
-                    'summary' => $e['summary'],
-                    'aliases' => $e['aliases'] ?? null,
-                    'wikipedia_url' => $e['wikipedia_url'],
-                    'era_start' => $e['era_start'],
-                    'era_end' => $e['era_end'],
-                    'sitelinks' => $e['sitelinks'],
-                    'is_publishable' => true,
-                    'updated_at' => now(),
-                ]
-            );
-            $n++;
-            $bar->advance();
+        // Chunked upsert (INSERT … ON CONFLICT) rather than a per-row round-trip: the Supabase
+        // pooler drops a long-running connection mid-loop, and ~1500 individual writes is both
+        // slow and fragile. A handful of batched statements is fast and resilient.
+        $now = now();
+        $payload = array_map(fn ($e) => [
+            'qid' => $e['qid'],
+            'name' => $e['name'],
+            'summary' => $e['summary'],
+            'aliases' => $e['aliases'] ?? null,
+            'wikipedia_url' => $e['wikipedia_url'],
+            'era_start' => $e['era_start'],
+            'era_end' => $e['era_end'],
+            'sitelinks' => $e['sitelinks'],
+            'is_publishable' => true,
+            'updated_at' => $now,
+        ], $rows);
+
+        $update = ['name', 'summary', 'aliases', 'wikipedia_url', 'era_start', 'era_end', 'sitelinks', 'is_publishable', 'updated_at'];
+
+        $bar = $this->output->createProgressBar(count($payload));
+        foreach (array_chunk($payload, 200) as $chunk) {
+            $corpus->table('public.catalog_events')->upsert($chunk, ['qid'], $update);
+            $bar->advance(count($chunk));
         }
         $bar->finish();
         $this->newLine();
-        $this->info("upserted {$n} events");
+        $this->info('upserted '.count($payload).' events');
 
         return self::SUCCESS;
     }

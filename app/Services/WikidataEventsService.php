@@ -78,31 +78,49 @@ class WikidataEventsService
     /**
      * The core SPARQL scan (name, dates, sitelinks, article) collapsed to one row per event.
      *
+     * Queried one class at a time with a one-level subclass walk (P31/P279?): the walk catches
+     * events whose P31 is a concrete subclass (e.g. "influenza pandemic" → pandemic, so the 1918
+     * flu is included) that a direct P31 misses, and per-class keeps each query fast — the same
+     * walk over all classes at once times out on the public endpoint.
+     *
      * @return list<array{qid:string,name:string,summary:?string,wikipedia_url:string,
      *                     era_start:?int,era_end:?int,sitelinks:int}>
      */
     private function fetchEvents(int $minSitelinks, int $limit): array
     {
-        $values = implode(' ', array_map(fn ($q) => "wd:{$q}", self::EVENT_CLASSES));
+        $perClass = min(1000, max(100, $limit));
+        $rows = [];
 
-        $sparql = <<<SPARQL
-        SELECT ?e ?eLabel ?eDescription ?sitelinks ?start ?end ?point ?article WHERE {
-          VALUES ?cls { {$values} }
-          ?e wdt:P31 ?cls ; wikibase:sitelinks ?sitelinks .
-          FILTER(?sitelinks >= {$minSitelinks})
-          ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> .
-          OPTIONAL { ?e wdt:P580 ?start. }
-          OPTIONAL { ?e wdt:P582 ?end. }
-          OPTIONAL { ?e wdt:P585 ?point. }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-        } ORDER BY DESC(?sitelinks) LIMIT {$limit}
-        SPARQL;
+        foreach (self::EVENT_CLASSES as $class) {
+            $sparql = <<<SPARQL
+            SELECT ?e ?eLabel ?eDescription ?sitelinks ?start ?end ?point ?article WHERE {
+              ?e wdt:P31/wdt:P279? wd:{$class} ; wikibase:sitelinks ?sitelinks .
+              FILTER(?sitelinks >= {$minSitelinks})
+              ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> .
+              OPTIONAL { ?e wdt:P580 ?start. }
+              OPTIONAL { ?e wdt:P582 ?end. }
+              OPTIONAL { ?e wdt:P585 ?point. }
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+            } ORDER BY DESC(?sitelinks) LIMIT {$perClass}
+            SPARQL;
 
-        $rows = $this->client()
-            ->get(self::SPARQL_ENDPOINT, ['query' => $sparql, 'format' => 'json'])
-            ->json('results.bindings', []);
+            try {
+                $batch = $this->client(60)
+                    ->get(self::SPARQL_ENDPOINT, ['query' => $sparql, 'format' => 'json'])
+                    ->json('results.bindings', []);
+                array_push($rows, ...$batch);
+            } catch (\Throwable $e) {
+                // A single class timing out shouldn't cost the whole build — skip it.
+                continue;
+            }
+        }
 
-        return $this->collapseRows($rows);
+        $events = $this->collapseRows($rows);
+
+        // Most-famous first, then apply the overall cap.
+        usort($events, fn ($a, $b) => $b['sitelinks'] <=> $a['sitelinks']);
+
+        return array_slice($events, 0, $limit);
     }
 
     /**

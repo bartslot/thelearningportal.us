@@ -121,16 +121,38 @@
         </div>
 
         {{-- Optional focus tags (thematic lenses) — capped at 3 (FocusTags::MAX_TAGS) --}}
-        @php $focusFull = count($focusTags) >= 3; @endphp
+        @php
+            $focusFull = count($focusTags) >= 3;
+            $focusAll = \App\Lessons\FocusTags::all();
+        @endphp
         <div class="form-control">
-            <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-2">
-                {{ __('Pick a focus (optional)') }}
-                <span @class([
-                    'normal-case tracking-normal',
-                    'text-amber-400/80' => $focusFull,
-                    'text-slate-500' => ! $focusFull,
-                ])>· {{ count($focusTags) }}/3</span>
-            </span>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400">
+                    {{ __('Pick a focus (optional)') }}
+                </span>
+                {{-- Three slots: fill as you pick (up to 3). Click a filled slot to clear it. --}}
+                <div class="flex items-center gap-1.5">
+                    @for ($i = 0; $i < 3; $i++)
+                        @php $slot = $focusTags[$i] ?? null; @endphp
+                        @if ($slot)
+                            <button type="button" wire:click="toggleFocusTag('{{ $slot }}')"
+                                    title="{{ __('Remove') }}"
+                                    class="group inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-300 transition hover:border-rose-400/60 hover:bg-rose-500/10 hover:text-rose-300">
+                                {{ __($focusAll[$slot]['label'] ?? $slot) }}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3 opacity-60 group-hover:opacity-100" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        @else
+                            <span class="inline-flex h-[26px] w-12 items-center justify-center rounded-md border border-dashed border-slate-600/70 text-slate-600" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                            </span>
+                        @endif
+                    @endfor
+                </div>
+            </div>
             <div class="flex flex-wrap gap-2">
                 @foreach (\App\Lessons\FocusTags::all() as $slug => $tag)
                     @php $isOn = in_array($slug, $focusTags, true); @endphp

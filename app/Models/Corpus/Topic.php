@@ -59,17 +59,23 @@ class Topic extends Model
                   OR COALESCE(aliases, \'\') ILIKE ? OR word_similarity(?, COALESCE(aliases, \'\')) > 0.6)',
                 ['%'.$like.'%', $term, '%'.$like.'%', $term]
             )
+            // Exact-name match always wins, whatever the type ("Napoleon" → the person, "Roman
+            // Empire" → the polity).
+            ->orderByRaw('CASE WHEN lower(name) = lower(?) THEN 0 ELSE 1 END', [$term])
+            // Then relevance (prefix → word-prefix → alias → fuzzy → other) with a one-tier boost
+            // for events, so a history lesson's usual subject — the event ("Black Death", "French
+            // Revolution") — leads over a person/place among non-exact matches.
             ->orderByRaw(
-                'CASE
-                    WHEN lower(name) = lower(?) THEN 0
+                '(CASE
                     WHEN name ILIKE ? THEN 1
                     WHEN name ILIKE ? THEN 2
-                    WHEN word_similarity(?, name) > 0.55 THEN 3
-                    WHEN COALESCE(aliases, \'\') ILIKE ? THEN 4
+                    WHEN COALESCE(aliases, \'\') ILIKE ? THEN 3
+                    WHEN word_similarity(?, name) > 0.55 THEN 4
                     ELSE 5
-                 END',
-                [$term, $like.'%', '% '.$like.'%', $term, '%'.$like.'%']
+                  END) - CASE WHEN type = \'event\' THEN 1 ELSE 0 END',
+                [$like.'%', '% '.$like.'%', '%'.$like.'%', $term]
             )
+            ->orderByRaw("CASE type WHEN 'event' THEN 0 WHEN 'figure' THEN 1 WHEN 'polity' THEN 2 ELSE 3 END")
             ->orderByDesc('sitelinks')
             ->limit($limit);
     }
