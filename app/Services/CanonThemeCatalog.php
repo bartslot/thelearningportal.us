@@ -125,6 +125,50 @@ final class CanonThemeCatalog
     }
 
     /**
+     * Netflix-style shelves for the lesson library: lessons grouped by the PLACE their history
+     * happens in (Netherlands / France / Spain / …), derived from topic text since lessons rarely
+     * carry a clean region value. First keyword match wins, in shelf order — so the Eighty Years'
+     * War (Netherlands AND Spain) lands on the Netherlands shelf, which is where a Dutch teacher
+     * looks for it. Unmatched lessons collect on a Europe shelf. Empty shelves are dropped.
+     *
+     * @param  \Illuminate\Support\Collection<int, Lesson>  $lessons
+     * @return list<array{label:string,lessons:\Illuminate\Support\Collection<int, Lesson>}>
+     */
+    public function placeShelves(\Illuminate\Support\Collection $lessons): array
+    {
+        $shelves = [
+            'Netherlands' => ['nederland', 'netherlands', 'dutch', 'holland', 'utrecht', 'amsterdam', 'rotterdam', 'brielle', 'oranje', 'domtoren'],
+            'France' => ['france', 'french', 'frankrijk', 'franse', 'napoleon', 'paris', 'parijs'],
+            'Spain' => ['spain', 'spanish', 'spanje', 'spaanse', 'madrid'],
+        ];
+
+        $grouped = $lessons->groupBy(function (Lesson $lesson) use ($shelves): string {
+            $haystack = Str::lower(implode(' ', array_filter([
+                $lesson->topic, $lesson->title, $lesson->region, $lesson->details, $lesson->focus,
+            ])));
+
+            foreach ($shelves as $label => $keywords) {
+                foreach ($keywords as $keyword) {
+                    if (str_contains($haystack, $keyword)) {
+                        return $label;
+                    }
+                }
+            }
+
+            return 'Europe';
+        });
+
+        return collect([...array_keys($shelves), 'Europe'])
+            ->map(fn (string $label): array => [
+                'label' => $label,
+                'lessons' => $grouped->get($label, collect())->sortByDesc('created_at')->values(),
+            ])
+            ->filter(fn (array $shelf): bool => $shelf['lessons']->isNotEmpty())
+            ->values()
+            ->all();
+    }
+
+    /**
      * Group lessons by Canon theme for the card grids (Dashboard + Lessons page). Lessons whose
      * stored theme is invalid get a suggestion from their topic text; empty groups are dropped.
      *

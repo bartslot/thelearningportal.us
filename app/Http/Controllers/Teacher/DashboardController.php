@@ -71,7 +71,7 @@ final class DashboardController extends Controller
             'lessonLimit' => self::LESSON_LIMIT,
             'narrator' => Avatar::active()->first(),
             'results' => $this->resultSummary($scores),
-            'themeGroups' => $catalog->groupLessons($lessons),
+            'shelves' => $catalog->placeShelves($lessons),
         ]);
     }
 

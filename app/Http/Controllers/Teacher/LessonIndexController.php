@@ -34,7 +34,7 @@ final class LessonIndexController extends Controller
         return view('teacher.lessons', [
             'lessonCount' => $lessonCount,
             'lessonLimit' => self::LESSON_LIMIT,
-            'themeGroups' => $catalog->groupLessons($lessons),
+            'shelves' => $catalog->placeShelves($lessons),
         ]);
     }
 }
