@@ -1151,7 +1151,8 @@ class Step3SceneConfigurator extends Component
         }
 
         $term = trim($this->paintingQuery);
-        $topicQid = preg_match('/^(?:figure|polity):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
+        $topicQid = preg_match('/^(?:figure|polity|event):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
+        $eventQid = preg_match('/^event:(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
         $location = trim((string) ($this->selectedScene['location'] ?? ''));
 
         $kind = $this->paintingKind ?: null;
@@ -1216,6 +1217,18 @@ class Step3SceneConfigurator extends Component
 
             return $suggested;
         });
+
+        // Hand-matched story images (scraped → resolved to open Commons originals) lead the
+        // grid for an event lesson — the teacher still sees the rest of the corpus below them.
+        // Skipped while searching so a typed term keeps priority.
+        if ($eventQid && $term === '') {
+            $curated = \App\Models\Corpus\Topic::resilient(
+                fn () => \App\Models\Corpus\Artwork::storyFor($eventQid, self::PAINTING_GRID_LIMIT, $kind)->get()
+            );
+            if ($curated->isNotEmpty()) {
+                $corpus = $curated->concat($corpus)->unique('qid')->values()->take(self::PAINTING_GRID_LIMIT);
+            }
+        }
 
         // "Correctness n/m": soft criteria satisfied (themes + actors + era) out of the total.
         $softMax = count($target['themes'] ?? []) + count($target['actor_qids'] ?? []) + (! empty($target['era']) ? 1 : 0);

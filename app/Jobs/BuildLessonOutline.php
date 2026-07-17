@@ -241,6 +241,12 @@ class BuildLessonOutline implements ShouldQueue
                 $briefs = $this->completeOrphanedGroups($llm, $briefs, $meterKeys);
                 $briefs = $this->sanitizeBranchGroups($briefs);
                 $briefs = $this->ensureBranchEffects($llm, $briefs, $meterKeys, $lesson);
+
+                // Re-persist the REPAIRED briefs: downstream consumers index briefs by scene
+                // position (ShotListPrompt::briefFor), so a stored outline that's missing the
+                // woven-in option briefs makes the extra scenes read past the array.
+                $outline['scene_briefs'] = $briefs;
+                $lesson->update(['outline' => $outline]);
             }
 
             // Ignore any "order" the LLM emitted — assign sequential 1-based positions so

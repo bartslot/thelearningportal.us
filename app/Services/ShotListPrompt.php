@@ -98,7 +98,9 @@ USR;
             ->values()
             ->search(fn (Scene $candidate) => $candidate->id === $scene->id);
 
-        return ($position !== false ? $briefs[$position] : null) ?? [];
+        // Null-safe index: a repaired outline can create more scenes than stored briefs, and a
+        // raw out-of-range access is a fatal ErrorException in the queue worker (fails the scene).
+        return ($position !== false ? ($briefs[$position] ?? null) : null) ?? [];
     }
 
     private static function bulletList(array $items): string

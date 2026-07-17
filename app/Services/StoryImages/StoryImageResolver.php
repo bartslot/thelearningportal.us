@@ -38,7 +38,7 @@ final class StoryImageResolver
             filePage: (string) ($hit['file_page'] ?? ''),
             license: (string) ($hit['license'] ?? 'Unknown'),
             creator: $hit['artist'] ?? $img->creator,
-            title: (string) ($hit['title'] ?? $img->title),
+            title: $this->cleanTitle((string) ($hit['title'] ?? $img->title)),
             sourceSite: $sourceSite,
             sourceCaption: $img->title,
             sourceUrl: $img->detailUrl,
@@ -108,6 +108,17 @@ final class StoryImageResolver
         ]));
 
         return array_values(array_unique($queries));
+    }
+
+    /**
+     * Commons ObjectName metadata often embeds Wikidata monolingual markup
+     * ('Portrait of X title QS:P1476,en:"…"label QS:…'). Keep only the clean lead.
+     */
+    private function cleanTitle(string $title): string
+    {
+        $title = (string) preg_split('/\s*(?:title|label)\s+QS:/u', $title, 2)[0];
+
+        return trim((string) preg_replace('/\s+/', ' ', $title));
     }
 
     /** @param list<string> $wanted @param array<string,mixed> $hit */

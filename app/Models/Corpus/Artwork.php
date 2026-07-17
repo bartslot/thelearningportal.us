@@ -89,6 +89,23 @@ class Artwork extends Model
     }
 
     /**
+     * Hand-matched story images for an entity (source = 'story:*'), linked via
+     * artwork_links. Unlike depicting() this does NOT gate on pd_likely — story
+     * images were already license-checked at resolve time (PD/CC0/CC-BY), so CC-BY
+     * works surface too (their attribution rides in extra->credit). These lead the
+     * scene picker for the lesson's event.
+     */
+    public function scopeStoryFor($query, string $targetQid, int $limit = 30, ?string $kind = null)
+    {
+        return $query
+            ->where('source', 'like', 'story:%')
+            ->when($kind, fn ($q) => $q->where('kind', $kind))
+            ->whereIn('qid', fn ($q) => $q->select('artwork_qid')->from('artwork_links')->where('target_qid', $targetQid))
+            ->orderByRaw('quality desc nulls last')
+            ->limit($limit);
+    }
+
+    /**
      * Paintings that depict a moment near a given year — for matching a scene's era
      * (e.g. "16th century" → ~1550). `span` is the half-window in years. PD works only,
      * best (museum-held, famous painter) first.

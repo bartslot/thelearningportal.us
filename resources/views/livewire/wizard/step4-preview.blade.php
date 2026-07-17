@@ -117,6 +117,25 @@
             total:   0,
             _bgAudio: null,
             _fadingOut: false,
+            // Elapsed-time readout state — the display was static before (set once at init):
+            // completed-scene seconds + wall-clock within the current scene, ticked every 500ms.
+            _elapsedBase: 0,
+            _sceneStart: null,
+            _readoutTimer: null,
+
+            _startReadout() {
+                clearInterval(this._readoutTimer);
+                this._readoutTimer = setInterval(() => {
+                    if (!this.playing || this._sceneStart === null) return;
+                    const now = this._elapsedBase + (Date.now() - this._sceneStart) / 1000;
+                    this.readout = `${this._fmt(Math.min(now, this.total))} / ${this._fmt(this.total)}`;
+                }, 500);
+            },
+            _stopReadout(reset = false) {
+                clearInterval(this._readoutTimer);
+                this._readoutTimer = null;
+                if (reset) { this._elapsedBase = 0; this._sceneStart = null; this.readout = `0:00 / ${this._fmt(this.total)}`; }
+            },
 
             async init() {
                 await window.loadLessonScene?.();
@@ -150,6 +169,13 @@
                     document.documentElement.style.setProperty('--playhead-scene-id', s.id);
                     this.$wire?.set('selectedSceneId', s.id, false);
 
+                    // Advance the elapsed readout: sum the durations of all scenes BEFORE this one.
+                    const scenes = this.stage.sequencer.scenes || [];
+                    const idx = scenes.findIndex(x => x.id === s.id);
+                    this._elapsedBase = scenes.slice(0, Math.max(0, idx))
+                        .reduce((acc, x) => acc + Math.max(0, x.duration_seconds || 0), 0);
+                    this._sceneStart = Date.now();
+
                     // Fade out music when a game scene starts; fade in for narration.
                     if (this._bgAudio) {
                         if (s.kind === 'game') {
@@ -162,6 +188,7 @@
                 this.stage.sequencer.on('timelineend', () => {
                     this.playing = false;
                     this._stopBgMusic();
+                    this._stopReadout(true);
                 });
             },
 
@@ -170,9 +197,13 @@
                 if (this.playing) {
                     this.stage.sequencer.pause();
                     this.playing = false;
+                    this._stopReadout();
                     if (this._bgAudio) this._bgAudio.pause();
                 } else {
                     this.playing = true;
+                    this._elapsedBase = 0;
+                    this._sceneStart = Date.now();
+                    this._startReadout();
                     if (this._bgAudio) {
                         this._bgAudio.currentTime = 0;
                         this._bgAudio.volume = 0.26;

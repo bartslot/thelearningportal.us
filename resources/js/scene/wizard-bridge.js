@@ -1105,6 +1105,23 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         },
     }
 
+    // No pipeline job writes scene.duration_seconds, so the sequencer's total/scrubber ran on
+    // zeros ("0:00 / 0:00" with a dead progress bar on every lesson). Resolve missing durations
+    // from each narration clip's metadata — bounded, in parallel, before the sequencer mounts.
+    await Promise.all(normalizedScenes
+        .filter(s => !(s.duration_seconds > 0) && s.audio_path)
+        .map(s => new Promise((resolve) => {
+            const a = audioWarmCache.get(s.audio_path) || new Audio(s.audio_path)
+            const done = () => {
+                if (Number.isFinite(a.duration) && a.duration > 0) s.duration_seconds = a.duration
+                resolve()
+            }
+            if (Number.isFinite(a.duration) && a.duration > 0) { done(); return }
+            a.addEventListener('loadedmetadata', done, { once: true })
+            a.addEventListener('error', () => resolve(), { once: true })
+            setTimeout(resolve, 4000)   // never block mount on a slow/missing clip
+        })))
+
     const sequencer = new Scene.SceneTimelinePlayer({ scenes: normalizedScenes, ...adapter })
 
     canvasEl.__lessonBridge = { player, sequencer, overlay, timer }
