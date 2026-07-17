@@ -38,4 +38,35 @@ final class ResolvedStoryImage
             .($this->creator ? ' — '.$this->creator : '')
             .' ('.$this->license.', via Wikimedia Commons)');
     }
+
+    /**
+     * Commons ObjectName metadata often embeds Wikidata monolingual markup
+     * ('Portrait of X title QS:P1476,en:"…"label QS:…'). Keep only the clean lead.
+     */
+    public static function cleanCommonsTitle(string $title): string
+    {
+        $title = (string) preg_split('/\s*(?:title|label)\s+QS:/u', $title, 2)[0];
+
+        return trim((string) preg_replace('/\s+/', ' ', $title));
+    }
+
+    /**
+     * Diacritic-insensitive, lower-cased content words (length > 3, minus a few
+     * generic connectors) — used for topical overlap tests.
+     *
+     * @return list<string>
+     */
+    public static function contentTokens(string $text): array
+    {
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        $ascii = strtolower($ascii !== false ? $ascii : $text);
+        $words = preg_split('/[^a-z0-9]+/', $ascii, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        $stop = ['with', 'from', 'this', 'that', 'into', 'voor', 'naar', 'door', 'deze', 'zijn', 'over', 'onze', 'komst'];
+
+        return array_values(array_unique(array_filter(
+            $words,
+            fn (string $w) => strlen($w) > 3 && ! in_array($w, $stop, true),
+        )));
+    }
 }

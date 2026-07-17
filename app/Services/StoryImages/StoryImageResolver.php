@@ -38,7 +38,7 @@ final class StoryImageResolver
             filePage: (string) ($hit['file_page'] ?? ''),
             license: (string) ($hit['license'] ?? 'Unknown'),
             creator: $hit['artist'] ?? $img->creator,
-            title: $this->cleanTitle((string) ($hit['title'] ?? $img->title)),
+            title: ResolvedStoryImage::cleanCommonsTitle((string) ($hit['title'] ?? $img->title)),
             sourceSite: $sourceSite,
             sourceCaption: $img->title,
             sourceUrl: $img->detailUrl,
@@ -76,7 +76,7 @@ final class StoryImageResolver
     private function bestMatch(ScrapedImage $img): ?array
     {
         foreach ($this->candidateQueries($img) as $query) {
-            $wanted = $this->tokens($query);
+            $wanted = ResolvedStoryImage::contentTokens($query);
             if ($wanted === []) {
                 continue;
             }
@@ -110,45 +110,14 @@ final class StoryImageResolver
         return array_values(array_unique($queries));
     }
 
-    /**
-     * Commons ObjectName metadata often embeds Wikidata monolingual markup
-     * ('Portrait of X title QS:P1476,en:"…"label QS:…'). Keep only the clean lead.
-     */
-    private function cleanTitle(string $title): string
-    {
-        $title = (string) preg_split('/\s*(?:title|label)\s+QS:/u', $title, 2)[0];
-
-        return trim((string) preg_replace('/\s+/', ' ', $title));
-    }
-
     /** @param list<string> $wanted @param array<string,mixed> $hit */
     private function sharesToken(array $wanted, array $hit): bool
     {
-        $haystack = $this->tokens(($hit['title'] ?? '').' '.($hit['file_title'] ?? '').' '.($hit['artist'] ?? ''));
+        $haystack = ResolvedStoryImage::contentTokens(($hit['title'] ?? '').' '.($hit['file_title'] ?? '').' '.($hit['artist'] ?? ''));
         if ($haystack === []) {
             return false;
         }
 
         return array_intersect($wanted, $haystack) !== [];
-    }
-
-    /**
-     * Diacritic-insensitive, lower-cased content words (length > 3, minus a few
-     * generic connectors) for overlap testing.
-     *
-     * @return list<string>
-     */
-    private function tokens(string $text): array
-    {
-        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
-        $ascii = strtolower($ascii !== false ? $ascii : $text);
-        $words = preg_split('/[^a-z0-9]+/', $ascii, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        $stop = ['with', 'from', 'this', 'that', 'into', 'voor', 'naar', 'door', 'deze', 'zijn', 'over', 'onze', 'komst'];
-
-        return array_values(array_unique(array_filter(
-            $words,
-            fn (string $w) => strlen($w) > 3 && ! in_array($w, $stop, true),
-        )));
     }
 }
