@@ -30,4 +30,17 @@ describe('SceneOverlay', () => {
     const badge = host.querySelector('.scene-overlay__year')
     expect(badge.style.opacity).toBe('0')
   })
+
+  it('uses container-relative caption sizing and hides the pin without a location', () => {
+    const host = document.createElement('div')
+    const overlay = new SceneOverlay(host)
+    overlay.mount()
+    overlay.update({ year: '1810', location: '   ' })
+
+    expect(host.style.containerType).toBe('size')
+    expect(host.innerHTML).toContain('cqw')
+    expect(host.querySelector('[data-location-pin]').style.display).toBe('none')
+    expect(host.querySelector('.scene-overlay__location').style.display).toBe('none')
+    expect(host.querySelector('[data-year]').textContent).toBe('1810')
+  })
 })

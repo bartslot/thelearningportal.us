@@ -593,7 +593,7 @@
 
     document.addEventListener('alpine:init', () => {
         Alpine.store('view', {
-            scenes: true, objects: false, rulers: false, notes: false, railLast: 176,
+            scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
             init() {
                 try { Object.assign(this, JSON.parse(localStorage.getItem('wizard.view') || '{}')); } catch (_) {}
                 const w = parseFloat(localStorage.getItem('wizard.rail.w'));
@@ -602,7 +602,7 @@
             _save() {
                 localStorage.setItem('wizard.view', JSON.stringify({
                     scenes: this.scenes, objects: this.objects, rulers: this.rulers,
-                    notes: this.notes, railLast: this.railLast,
+                    notes: this.notes, script: this.script, railLast: this.railLast,
                 }));
             },
             toggleScenes() {
@@ -656,6 +656,7 @@
                 <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Show') }}</p>
                 <template x-for="item in [
                     { k: 'scenes',  label: @js(__('Scenes')) },
+                    { k: 'script',  label: @js(__('Script')) },
                     { k: 'objects', label: @js(__('Object list')) },
                     { k: 'rulers',  label: @js(__('Rulers')) },
                     { k: 'notes',   label: @js(__('Internal notes')) },
@@ -1009,6 +1010,11 @@
             </template>
         </div>
     </div>
+
+    {{-- Script editing view — timecoded narration synced to a play bar (View ▸ Script). --}}
+    @if ($this->selectedSceneModel)
+        <x-lesson.script-editor :scene="$this->selectedSceneModel" wire:key="script-{{ $selectedSceneId }}" />
+    @endif
 
     {{-- Internal notes — the teacher's private per-lesson scratchpad (this browser). --}}
     <div x-show="$store.view.notes" x-cloak
