@@ -234,6 +234,11 @@ class BuildLessonOutline implements ShouldQueue
             // question renders a choice overlay with no buttons (player dead-end); options with
             // no branch_effects leave the class meters frozen for the whole lesson.
             if ($isStoryGame) {
+                // The outline model reliably emits the QUESTION briefs but often drops the two
+                // option briefs (observed across runs). Complete orphaned groups with a repair
+                // call first; sanitize guards whatever repair couldn't save; then guarantee
+                // meter effects on every option.
+                $briefs = $this->completeOrphanedGroups($llm, $briefs, $meterKeys);
                 $briefs = $this->sanitizeBranchGroups($briefs);
                 $briefs = $this->ensureBranchEffects($llm, $briefs, $meterKeys, $lesson);
             }
@@ -386,6 +391,112 @@ class BuildLessonOutline implements ShouldQueue
         }
 
         return $roles;
+    }
+
+    /**
+     * The outline model emits question briefs but frequently OMITS their two option briefs.
+     * For every group that has a question but is missing options, ask the LLM (one call for
+     * all orphans) to write the two options — label, one-sentence beat, meter effects — and
+     * insert them right after their question. Groups that still come back broken are handled
+     * by sanitizeBranchGroups afterwards.
+     *
+     * @param  list<array<string, mixed>>  $briefs
+     * @param  list<string>  $meterKeys
+     * @return list<array<string, mixed>>
+     */
+    private function completeOrphanedGroups(OpenAiLlmService $llm, array $briefs, array $meterKeys): array
+    {
+        // Map group -> present roles + the question brief's index.
+        $groups = [];
+        foreach ($briefs as $i => $brief) {
+            $branch = $brief['branch'] ?? null;
+            if (! is_array($branch)) {
+                continue;
+            }
+            $group = is_numeric($branch['group'] ?? null) ? (int) $branch['group'] : 0;
+            $role = $branch['role'] ?? null;
+            if ($group >= 1 && $group <= self::MAX_BRANCH_GROUPS && in_array($role, self::BRANCH_ROLES, true)) {
+                $groups[$group]['roles'][$role] = true;
+                if ($role === 'question') {
+                    $groups[$group]['qIndex'] = $i;
+                }
+            }
+        }
+
+        $orphans = [];
+        foreach ($groups as $g => $info) {
+            if (isset($info['qIndex']) && (! isset($info['roles']['option_a']) || ! isset($info['roles']['option_b']))) {
+                $q = $briefs[$info['qIndex']];
+                $orphans[] = [
+                    'group' => $g,
+                    'question_summary' => mb_substr((string) ($q['description'] ?? $q['summary'] ?? ''), 0, 300),
+                    'question_label' => (string) (($q['branch'] ?? [])['choice_label'] ?? ''),
+                ];
+            }
+        }
+        if ($orphans === []) {
+            return $briefs;
+        }
+
+        try {
+            $out = $llm->json(
+                'You complete choice points in a classroom history story game. For every group given, '
+                .'write the TWO options the class can choose between. The options differ in APPROACH, '
+                .'never in historical OUTCOME. Same language as the question summary. Meters: '
+                .implode(', ', $meterKeys).'. Return JSON {"groups":[{"group":<int>,'
+                .'"option_a":{"choice_label":"<short imperative>","description":"<1-2 sentence scene beat>",'
+                .'"branch_effects":{"deltas":{<meterKey>:<int -15..15, at least one non-zero>},'
+                .'"consequence_line":"<1 dramatic sentence>","historical_note":"<1 factual sentence>"}},'
+                .'"option_b":{...same shape...}}]}',
+                json_encode($orphans, JSON_UNESCAPED_UNICODE),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('outline: orphan-group completion call failed', ['error' => $e->getMessage()]);
+
+            return $briefs;
+        }
+
+        $byGroup = [];
+        foreach (($out['groups'] ?? []) as $fix) {
+            if (is_numeric($fix['group'] ?? null) && is_array($fix['option_a'] ?? null) && is_array($fix['option_b'] ?? null)) {
+                $byGroup[(int) $fix['group']] = $fix;
+            }
+        }
+
+        // Weave the new option briefs in right after their question (iterate a copy; track offset).
+        $result = [];
+        foreach ($briefs as $i => $brief) {
+            $result[] = $brief;
+            $branch = $brief['branch'] ?? null;
+            if (! is_array($branch) || ($branch['role'] ?? null) !== 'question') {
+                continue;
+            }
+            $g = (int) ($branch['group'] ?? 0);
+            $fix = $byGroup[$g] ?? null;
+            if (! $fix || (isset($groups[$g]['roles']['option_a']) && isset($groups[$g]['roles']['option_b']))) {
+                continue;
+            }
+            foreach (['option_a', 'option_b'] as $role) {
+                if (isset($groups[$g]['roles'][$role])) {
+                    continue;   // that option existed; only add the missing one(s)
+                }
+                $opt = $fix[$role];
+                $result[] = [
+                    'kind' => 'narration',
+                    'description' => (string) ($opt['description'] ?? ''),
+                    'image_prompt_seed' => (string) ($opt['description'] ?? ''),
+                    'branch' => [
+                        'group' => $g,
+                        'role' => $role,
+                        'choice_label' => (string) ($opt['choice_label'] ?? ''),
+                    ],
+                    'branch_effects' => is_array($opt['branch_effects'] ?? null) ? $opt['branch_effects'] : null,
+                ];
+            }
+            Log::info('outline: completed orphaned branch group', ['group' => $g]);
+        }
+
+        return $result;
     }
 
     /**

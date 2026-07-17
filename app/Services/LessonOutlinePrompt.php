@@ -140,6 +140,13 @@ SG;
             : 10;
         // Target one narration scene per ~75 seconds, with a hard floor of 3.
         $targetNarrationScenes = max(3, (int) round(($duration * 60) / 75));
+        if ($gameType === 'story_game') {
+            // 3 branch groups × (question + option_a + option_b) = 9 briefs consumed by the game
+            // structure alone. Without this headroom the scene target contradicts the "exactly 3
+            // groups" rule and the model silently drops option briefs — orphaned questions that
+            // the player can't answer.
+            $targetNarrationScenes += 9;
+        }
 
         $gameClause = '';
         if ($gameType === 'strategy' && $game instanceof StrategyGame && $splitCount > 0) {
