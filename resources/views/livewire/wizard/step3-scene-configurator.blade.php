@@ -239,31 +239,23 @@
     })()
     </script>
     @endpush
-    {{-- Draggable inspector. Game/quiz scenes get a WIDE workspace (managing 5+ questions in a
-         24rem sidebar was unusable) — narration/map scenes keep the compact panel. --}}
+    {{-- FIXED Format panel (was a draggable/dockable floating inspector — teachers lost it or
+         dragged it over the canvas). Always pinned to the right edge below the app header;
+         visibility is toggled by the toolbar "Format" button. Game/quiz scenes get a WIDE
+         workspace (managing 5+ questions in a 24rem sidebar was unusable). --}}
     @php $inspectorSceneModel = $this->selectedSceneModel; @endphp
     <aside x-cloak
            x-ref="inspectorPanel"
-           :style="inspectorPanelStyle()"
-           :class="[
-               inspectorOpen ? '{{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}' : 'w-56',
-               docked ? 'rounded-none border-r-0 border-t-0' : 'rounded-2xl'
-           ]"
-           class="card card-compact fixed z-50 overflow-hidden border border-slate-700 bg-base-300 shadow-2xl">
-        <header
-            @pointerdown="startInspectorDrag($event)"
-            class="card-title flex min-h-11 cursor-grab select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-2 text-sm active:cursor-grabbing">
-            {{-- Drag grip + Scene / Settings switch. These links swap the panel body between the
-                 per-scene editor and the lesson-global settings (Story + Music). --}}
+           x-show="inspectorOpen"
+           x-on:inspector-toggle.window="toggleInspector()"
+           style="right:0; left:auto; top:64px; bottom:0;"
+           class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
+                  {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
+        <header class="card-title flex min-h-11 select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-2 text-sm">
+            {{-- Scene / Settings switch — swaps the panel body between the per-scene editor
+                 and the lesson-global settings (Story + Music). --}}
             <div class="flex min-w-0 items-center gap-2">
-                <span class="flex shrink-0 items-center text-slate-600" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
-                        <circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/>
-                        <circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/>
-                        <circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>
-                    </svg>
-                </span>
-                <div class="flex items-center gap-0.5 rounded-lg bg-base-300 p-0.5" @pointerdown.stop>
+                <div class="flex items-center gap-0.5 rounded-lg bg-base-300 p-0.5">
                     <button type="button" @click.stop wire:click="$set('panelView', 'scene')"
                             @class([
                                 'rounded-md px-2.5 py-1 text-xs font-semibold transition',
@@ -278,34 +270,16 @@
                             ])>{{ __('Settings') }}</button>
                 </div>
             </div>
-            <div class="flex shrink-0 items-center gap-1">
-                <button type="button"
-                        @pointerdown.stop
-                        @click.stop="dockInspector()"
-                        class="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-slate-100"
-                        :class="docked && 'text-amber-300'"
-                        aria-label="Dock inspector to the right"
-                        title="Dock to right">
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M3 12a9 9 0 1 0 9-9" />
-                        <path d="M3 3v6h6" />
-                    </svg>
-                </button>
-                <button type="button"
-                        @pointerdown.stop
-                        @click.stop="toggleInspector()"
-                        class="btn btn-ghost btn-xs btn-square text-slate-300 hover:text-amber-300"
-                        :aria-label="inspectorOpen ? 'Collapse inspector' : 'Expand inspector'"
-                        :title="inspectorOpen ? 'Collapse inspector' : 'Expand inspector'">
-                    <svg class="h-4 w-4 transition-transform duration-200"
-                         :class="inspectorOpen ? 'rotate-0' : 'rotate-180'"
-                         viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="m15 18-6-6 6-6" />
-                    </svg>
-                </button>
-            </div>
+            <button type="button"
+                    @click.stop="toggleInspector()"
+                    class="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-slate-100"
+                    aria-label="{{ __('Hide the Format panel') }}"
+                    title="{{ __('Hide the Format panel') }}">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
         </header>
 
         <div x-show="inspectorOpen"
@@ -696,7 +670,7 @@
         {{-- Play → open the player (step 5) --}}
         <button type="button"
                 onclick="Livewire.dispatch('lesson:play')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-emerald-300 transition hover:bg-base-200"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
                 title="{{ __('Play the lesson') }}" aria-label="{{ __('Play the lesson') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
@@ -761,6 +735,19 @@
 
         {{-- Right group: global actions, pushed to the far right --}}
         <div class="flex items-stretch gap-0.5">
+        {{-- Format — show/hide the fixed inspector panel. The toolbar sits in its own small
+             Alpine scope (a SIBLING of step3SceneConfigurator), so this goes via a window
+             event the panel component listens for. --}}
+        <button type="button"
+                onclick="window.dispatchEvent(new CustomEvent('inspector-toggle'))"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                title="{{ __('Show or hide the Format panel') }}" aria-label="{{ __('Format') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Format') }}</span>
+        </button>
+
         {{-- Settings — global class/lesson settings (Story + Music). Lives on the toolbar, not
              inside the per-scene inspector. --}}
         <button type="button"
@@ -777,7 +764,7 @@
         {{-- Publish — make the lesson available (every scene must be ready) --}}
         <button type="button"
                 onclick="Livewire.dispatch('lesson:publish')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-emerald-300 transition hover:bg-slate-800"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
                 title="{{ __('Publish this lesson') }}" aria-label="{{ __('Publish') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
@@ -1151,14 +1138,25 @@
                         </button>
                     @endforeach
 
-                    <span class="mx-1 h-4 w-px flex-none bg-slate-700"></span>
-                    <span class="flex-none text-[10px] font-semibold uppercase tracking-wider text-slate-500">{{ __('Region') }}</span>
-                    @foreach (['' => __('Auto'), 'european' => __('Europe'), 'americas' => __('Americas'), 'asia' => __('Asia'), 'africa' => __('Africa'), 'all' => __('All')] as $regVal => $regLabel)
-                        <button type="button" wire:click="$set('paintingRegion', '{{ $regVal }}')"
-                                class="btn btn-xs flex-none {{ $paintingRegion === $regVal ? 'bg-sky-600 text-white border-0 hover:bg-sky-500' : 'btn-outline border-slate-600 text-slate-400 hover:border-sky-400 hover:text-sky-300' }}">
-                            {{ $regLabel }}
-                        </button>
-                    @endforeach
+                    <span class="mx-1 hidden h-4 w-px flex-none bg-slate-700 sm:block"></span>
+                    <span class="hidden flex-none text-[10px] font-semibold uppercase tracking-wider text-slate-500 lg:block">{{ __('Region') }}</span>
+                    {{-- Region chips need ~26rem — on smaller screens they overflowed the modal,
+                         so below lg they collapse into a compact dropdown. --}}
+                    <div class="hidden flex-none items-center gap-2 lg:flex">
+                        @foreach (['' => __('Auto'), 'european' => __('Europe'), 'americas' => __('Americas'), 'asia' => __('Asia'), 'africa' => __('Africa'), 'all' => __('All')] as $regVal => $regLabel)
+                            <button type="button" wire:click="$set('paintingRegion', '{{ $regVal }}')"
+                                    class="btn btn-xs flex-none {{ $paintingRegion === $regVal ? 'bg-sky-600 text-white border-0 hover:bg-sky-500' : 'btn-outline border-slate-600 text-slate-400 hover:border-sky-400 hover:text-sky-300' }}">
+                                {{ $regLabel }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <select class="select select-xs flex-none border-slate-600 bg-base-200 text-slate-300 lg:hidden"
+                            aria-label="{{ __('Region') }}"
+                            wire:change="$set('paintingRegion', $event.target.value)">
+                        @foreach (['' => __('Region: Auto'), 'european' => __('Europe'), 'americas' => __('Americas'), 'asia' => __('Asia'), 'africa' => __('Africa'), 'all' => __('All')] as $regVal => $regLabel)
+                            <option value="{{ $regVal }}" @selected($paintingRegion === $regVal)>{{ $regLabel }}</option>
+                        @endforeach
+                    </select>
 
                     <button type="button" x-show="!searching"
                             @click="searching = true; $nextTick(() => $refs.psearch.focus())"
@@ -1331,37 +1329,16 @@
             }));
 
             Alpine.data('step3SceneConfigurator', () => ({
+                // The Format panel is FIXED (docked right, below the header) — the old floating
+                // drag/dock machinery is gone; the toolbar "Format" button toggles visibility.
                 inspectorOpen: true,
-                // Docked (default): pinned flush to the right edge, full height below the header.
-                // Dragging the header pops it out into a free-floating panel.
                 docked: true,
-                inspectorX: 0,
-                inspectorY: 0,
-                inspectorDragging: false,
-                inspectorDragStartX: 0,
-                inspectorDragStartY: 0,
-                inspectorDragPanelX: 0,
-                inspectorDragPanelY: 0,
-                _inspectorMoveHandler: null,
-                _inspectorUpHandler: null,
-                _inspectorResizeHandler: null,
 
                 async init() {
                     this.inspectorOpen = (localStorage.getItem('wizard.inspector') ?? '1') === '1';
-                    // Docked is the standard state — default to it unless the teacher undocked before.
-                    this.docked = (localStorage.getItem('wizard.inspector.docked') ?? '1') === '1';
-                    this.restoreInspectorPosition();
                     this.$watch('inspectorOpen', v => {
                         localStorage.setItem('wizard.inspector', v ? '1' : '0');
-                        this.$nextTick(() => this.constrainInspectorPosition());
                     });
-
-                    this._inspectorMoveHandler = event => this.moveInspector(event);
-                    this._inspectorUpHandler = () => this.stopInspectorDrag();
-                    this._inspectorResizeHandler = () => this.constrainInspectorPosition();
-                    window.addEventListener('pointermove', this._inspectorMoveHandler);
-                    window.addEventListener('pointerup', this._inspectorUpHandler);
-                    window.addEventListener('resize', this._inspectorResizeHandler);
 
                     await window.loadLessonScene?.();
                     if (!window.LessonScene?.mountWizardScene) return;
@@ -1379,133 +1356,16 @@
                     });
                 },
 
-                destroy() {
-                    if (this._inspectorMoveHandler) window.removeEventListener('pointermove', this._inspectorMoveHandler);
-                    if (this._inspectorUpHandler) window.removeEventListener('pointerup', this._inspectorUpHandler);
-                    if (this._inspectorResizeHandler) window.removeEventListener('resize', this._inspectorResizeHandler);
-                },
-
-                // App nav height (h-16 = 64px) — the docked panel sits flush under it, no gap.
+                // App nav height (h-16 = 64px) — the fixed panel sits flush under it, no gap.
                 _headerOffset: 64,
 
-                inspectorPanelStyle() {
-                    if (this.docked) {
-                        // Flush right, below the header. Full height when open; just the bar when collapsed.
-                        return this.inspectorOpen
-                            ? `right:0; left:auto; top:${this._headerOffset}px; bottom:0;`
-                            : `right:0; left:auto; top:${this._headerOffset}px;`;
-                    }
-                    return `left:${this.inspectorX}px; top:${this.inspectorY}px;`;
-                },
-
                 inspectorBodyStyle() {
-                    const maxHeight = this.docked
-                        ? window.innerHeight - this._headerOffset - 44   // viewport − header − card title bar
-                        : Math.max(180, Math.min(680, window.innerHeight - this.inspectorY - 132));
-                    return `max-height:${maxHeight}px;`;
+                    // viewport − header − card title bar
+                    return `max-height:${window.innerHeight - this._headerOffset - 44}px;`;
                 },
 
                 toggleInspector() {
                     this.inspectorOpen = !this.inspectorOpen;
-                },
-
-                setDocked(v) {
-                    this.docked = v;
-                    localStorage.setItem('wizard.inspector.docked', v ? '1' : '0');
-                },
-
-                // Re-dock to the right edge (the ⟲ button / standard state).
-                dockInspector() {
-                    this.setDocked(true);
-                },
-
-                // Pop the panel out of the dock into a free-floating panel at its current spot.
-                undockInspector() {
-                    const rect = this.$refs.inspectorPanel?.getBoundingClientRect();
-                    this.inspectorX = rect ? rect.left : Math.max(8, window.innerWidth - this.inspectorPanelWidth() - 16);
-                    this.inspectorY = rect ? rect.top : this._headerOffset;
-                    this.setDocked(false);
-                },
-
-                resetInspectorPosition() {
-                    const panelWidth = this.inspectorPanelWidth();
-                    this.inspectorX = Math.max(8, window.innerWidth - panelWidth - 16);
-                    this.inspectorY = 16;
-                    this.$nextTick(() => this.constrainInspectorPosition());
-                },
-
-                restoreInspectorPosition() {
-                    if (this.docked) return;   // docked ignores stored free position
-                    let saved = null;
-                    try {
-                        saved = JSON.parse(localStorage.getItem('wizard.inspector.position') ?? 'null');
-                    } catch {
-                        saved = null;
-                    }
-
-                    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
-                        this.inspectorX = saved.x;
-                        this.inspectorY = saved.y;
-                    } else {
-                        this.resetInspectorPosition();
-                    }
-
-                    this.$nextTick(() => this.constrainInspectorPosition());
-                },
-
-                startInspectorDrag(event) {
-                    if (event.button !== undefined && event.button !== 0) return;
-                    // Grabbing the header of a docked panel pulls it out into free-floating mode.
-                    if (this.docked) this.undockInspector();
-                    this.inspectorDragging = true;
-                    this.inspectorDragStartX = event.clientX;
-                    this.inspectorDragStartY = event.clientY;
-                    this.inspectorDragPanelX = this.inspectorX;
-                    this.inspectorDragPanelY = this.inspectorY;
-                },
-
-                moveInspector(event) {
-                    if (!this.inspectorDragging) return;
-
-                    this.inspectorX = this.inspectorDragPanelX + (event.clientX - this.inspectorDragStartX);
-                    this.inspectorY = this.inspectorDragPanelY + (event.clientY - this.inspectorDragStartY);
-                    this.constrainInspectorPosition(false);
-                },
-
-                stopInspectorDrag() {
-                    if (!this.inspectorDragging) return;
-                    this.inspectorDragging = false;
-                    this.constrainInspectorPosition();
-                },
-
-                constrainInspectorPosition(save = true) {
-                    if (this.docked) return;   // docked panel is CSS-pinned, nothing to clamp
-                    const panel = this.$refs.inspectorPanel;
-                    const rect = panel?.getBoundingClientRect();
-                    const margin = 8;
-                    // Keep the panel clear of the vertical scene rail (w-44 = 176px) — also
-                    // migrates positions saved before the rail existed out of the overlap zone.
-                    const railReserve = 176 + margin;
-                    const bottomReserve = 112;
-                    const width = rect?.width || this.inspectorPanelWidth();
-                    const height = rect?.height || 44;
-                    const maxX = Math.max(railReserve, window.innerWidth - width - margin);
-                    const maxY = Math.max(margin, window.innerHeight - height - bottomReserve);
-
-                    this.inspectorX = this.clamp(this.inspectorX, railReserve, maxX);
-                    this.inspectorY = this.clamp(this.inspectorY, margin, maxY);
-
-                    if (save) {
-                        localStorage.setItem('wizard.inspector.position', JSON.stringify({
-                            x: Math.round(this.inspectorX),
-                            y: Math.round(this.inspectorY),
-                        }));
-                    }
-                },
-
-                inspectorPanelWidth() {
-                    if (!this.inspectorOpen) return 224;
-                    return Math.min(384, Math.max(224, window.innerWidth - 16));
                 },
 
                 clamp(value, min, max) {

@@ -138,11 +138,15 @@ test.describe('wizard editor — object list & caption', () => {
     const before = await captionVisible();
     const toggle = page.locator('label:has-text("Caption") input[type="checkbox"]').first();
     await toggle.click();
-    await settle(page, 1800);
-    const after = await captionVisible();
-    expect(after, 'caption visibility must flip when toggled').not.toBe(before);
+    // The toggle round-trips through scene:load before the canvas overlay updates — poll,
+    // don't snapshot (a fixed 2s window flakes on slow runs).
+    await expect
+      .poll(async () => captionVisible(), { timeout: 12_000, intervals: [1000] })
+      .not.toBe(before);
     await toggle.click(); // restore
-    await settle(page, 1200);
+    await expect
+      .poll(async () => captionVisible(), { timeout: 12_000, intervals: [1000] })
+      .toBe(before);
 
     expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([]);
   });
@@ -160,7 +164,9 @@ test.describe('wizard editor — painting picker (corpus-first)', () => {
 
     // Tiles arrive after the lazy match-target derivation and stream in progressively —
     // wait for the grid to STABILIZE before counting (counting at first paint undercounts).
-    const tile = page.locator('[wire\\:click^="applyPainting"], button:has(img[alt])').filter({ has: page.locator('img') });
+    // Scope to the OPEN modal: an unscoped button:has(img) also matches the scene-rail
+    // thumbnails behind it (click then dies against the modal overlay).
+    const tile = page.locator('.modal-open .modal-box button').filter({ has: page.locator('img') });
     await expect(tile.first()).toBeVisible({ timeout: 30_000 });
     await expect
       .poll(async () => tile.count(), { timeout: 20_000, intervals: [1000] })
@@ -170,9 +176,18 @@ test.describe('wizard editor — painting picker (corpus-first)', () => {
     await expect(page.getByRole('button', { name: 'Everything' })).toBeVisible();
 
     // Apply the first tile: background credit must be recorded server-side and the modal closes.
+    // DaisyUI "closed" modals keep opacity/layout (pointer-events:none) — visibility assertions
+    // never resolve; the reliable signal is the wrapper losing its open state.
     await tile.first().click();
-    await settle(page, 4000);
-    await expect(page.getByRole('button', { name: 'Everything' })).toBeHidden({ timeout: 15_000 });
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const wrap = [...document.querySelectorAll('.modal')]
+          .find(m => (m.textContent || '').includes('Everything'));
+        return wrap
+          ? (wrap.classList.contains('modal-open') || getComputedStyle(wrap).pointerEvents !== 'none')
+          : false;
+      }), { timeout: 30_000, intervals: [1500] })
+      .toBe(false);
 
     expect(errors, `console errors: ${errors.join(' | ')}`).toEqual([]);
   });
