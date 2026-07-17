@@ -21,7 +21,7 @@ export default defineConfig({
         host: '127.0.0.1',
         port: 5173,
         watch: {
-            ignored: ['**/storage/framework/views/**'],
+            ignored: ['**/storage/framework/views/**', '**/.claude/**'],
         },
         proxy: {
             '/fonts': 'http://127.0.0.1:8000',
