@@ -145,4 +145,70 @@ class Scene extends Model
         return $this->audio_path !== null
             && $this->audio_script_hash === sha1((string) $this->script_segment);
     }
+
+    /**
+     * The narration split into timed segments for the Script editing view — each
+     * paragraph paired with the start time (seconds) of its first character, derived
+     * from the character-level audio_alignment. Falls back to an even split across
+     * duration_seconds when there's no alignment yet.
+     *
+     * @return list<array{text:string,start:float,timecode:string}>
+     */
+    public function scriptSegments(): array
+    {
+        $text = trim((string) $this->script_segment);
+        if ($text === '') {
+            return [];
+        }
+
+        $chunks = array_values(array_filter(array_map(
+            'trim',
+            preg_split('/\n\s*\n/', $text) ?: [$text],
+        )));
+        if ($chunks === []) {
+            $chunks = [$text];
+        }
+
+        $align = is_array($this->audio_alignment) ? array_values($this->audio_alignment) : [];
+        $duration = (float) ($this->duration_seconds ?: 0);
+
+        $segments = [];
+        $cursor = 0;   // char offset into $text
+        foreach ($chunks as $i => $chunk) {
+            $at = mb_strpos($text, $chunk, $cursor);
+            $at = $at === false ? $cursor : $at;
+            $cursor = $at + mb_strlen($chunk);
+
+            $start = $this->timeAtChar($align, $at, $duration, mb_strlen($text), $i, count($chunks));
+            $segments[] = [
+                'text' => $chunk,
+                'start' => $start,
+                'timecode' => $this->formatTimecode($start),
+            ];
+        }
+
+        return $segments;
+    }
+
+    /** Start time (s) for a character offset — from alignment, else proportional to duration. */
+    private function timeAtChar(array $align, int $charOffset, float $duration, int $totalChars, int $index, int $count): float
+    {
+        if ($align !== []) {
+            $entry = $align[min($charOffset, count($align) - 1)] ?? null;
+
+            return (float) ($entry['start_time'] ?? $entry['startTime'] ?? 0.0);
+        }
+        if ($duration > 0 && $totalChars > 0) {
+            return round($duration * ($charOffset / $totalChars), 2);
+        }
+
+        return $count > 0 ? round($index * ($duration ?: $count) / $count, 2) : 0.0;
+    }
+
+    private function formatTimecode(float $seconds): string
+    {
+        $seconds = (int) round($seconds);
+
+        return sprintf('%02d:%02d', intdiv($seconds, 60), $seconds % 60);
+    }
 }
