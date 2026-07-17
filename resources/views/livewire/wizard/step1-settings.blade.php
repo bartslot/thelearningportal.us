@@ -116,26 +116,39 @@
             @endif
         </div>
 
-        {{-- Optional focus tags (thematic lenses) --}}
+        {{-- Optional focus tags (thematic lenses) — capped at 3 (FocusTags::MAX_TAGS) --}}
+        @php $focusFull = count($focusTags) >= 3; @endphp
         <div class="form-control">
-            <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2">
+            <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-2">
                 {{ __('Pick a focus (optional)') }}
+                <span @class([
+                    'normal-case tracking-normal',
+                    'text-amber-400/80' => $focusFull,
+                    'text-slate-500' => ! $focusFull,
+                ])>· {{ count($focusTags) }}/3</span>
             </span>
             <div class="flex flex-wrap gap-2">
                 @foreach (\App\Lessons\FocusTags::all() as $slug => $tag)
+                    @php $isOn = in_array($slug, $focusTags, true); @endphp
                     <button
                         type="button"
                         wire:click="toggleFocusTag('{{ $slug }}')"
+                        @disabled($focusFull && ! $isOn)
+                        title="{{ $focusFull && ! $isOn ? __('Up to 3 — deselect one to choose another') : '' }}"
                         @class([
                             'btn btn-xs',
-                            'btn-primary' => in_array($slug, $focusTags, true),
-                            'btn-outline' => ! in_array($slug, $focusTags, true),
+                            'btn-primary' => $isOn,
+                            'btn-outline' => ! $isOn,
+                            'opacity-40 cursor-not-allowed' => $focusFull && ! $isOn,
                         ])
                     >
                         {{ __($tag['label']) }}
                     </button>
                 @endforeach
             </div>
+            @if ($focusFull)
+                <span class="text-xs text-slate-500 mt-2">{{ __('Up to 3 focuses — deselect one to choose another.') }}</span>
+            @endif
         </div>
 
         {{-- Optional focus / angle (free text — complementary to tags) --}}
