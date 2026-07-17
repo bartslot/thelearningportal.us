@@ -64,34 +64,31 @@
         </div>
     @endif
 
-    {{-- ── Scene view tabs ─────────────────────────────────────────────────── --}}
-    <div>
-        <span class="text-[10px] uppercase tracking-widest text-slate-500 block mb-1.5">Scene View</span>
-        <div class="flex rounded-lg overflow-hidden border border-slate-700 text-[11px] font-medium">
-            @foreach (['slideshow' => 'Slideshow', 'skybox' => 'Panorama', 'world' => '3D World'] as $tabVal => $tabLabel)
-                <button type="button"
-                        @click="
-                            view = '{{ $tabVal }}';
-                            window.dispatchEvent(new CustomEvent('lesson:scene:view', { detail: {
-                                view:     '{{ $tabVal }}',
-                                imageUrl: {{ $scene->image_path ? json_encode(asset('storage/' . $scene->image_path)) : 'null' }},
-                                sceneId:  {{ $scene->id }},
-                                duration: {{ $scene->duration_seconds ?? 10 }},
-                            }}));
-                            @if ($tabVal === 'world')
-                            $wire.call('generateWorld', $wire.get('selectedSceneId'));
-                            @else
-                            $wire.call('setSceneView', '{{ $tabVal }}');
-                            @endif
-                        "
-                        :class="view === '{{ $tabVal }}'
-                            ? 'bg-amber-500 text-slate-950'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
-                        class="flex-1 py-1.5 transition-colors">
-                    {{ $tabLabel }}
-                </button>
-            @endforeach
-        </div>
+    {{-- ── Scene view — a dropdown (Figma): Slideshow · Panorama · 3D World. Keeps the
+         lesson:scene:view dispatch + setSceneView/generateWorld wiring. ─────────────── --}}
+    <div class="relative">
+        <span class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                <rect x="3" y="6" width="14" height="10" rx="1.5" /><path stroke-linecap="round" d="M20 8v8M17 6.5v11" />
+            </svg>
+        </span>
+        <select x-model="view"
+                @change="
+                    window.dispatchEvent(new CustomEvent('lesson:scene:view', { detail: {
+                        view:     view,
+                        imageUrl: {{ $scene->image_path ? json_encode(asset('storage/' . $scene->image_path)) : 'null' }},
+                        sceneId:  {{ $scene->id }},
+                        duration: {{ $scene->duration_seconds ?? 10 }},
+                    }}));
+                    view === 'world'
+                        ? $wire.call('generateWorld', $wire.get('selectedSceneId'))
+                        : $wire.call('setSceneView', view);
+                "
+                class="select select-sm select-bordered w-full bg-base-100 pl-9 font-medium text-slate-200">
+            <option value="slideshow">{{ __('Slideshow') }}</option>
+            <option value="skybox">{{ __('Panorama') }}</option>
+            <option value="world">{{ __('3D World') }}</option>
+        </select>
     </div>
 
     {{-- ── Slideshow tab ────────────────────────────────────────────────────── --}}
@@ -118,103 +115,60 @@
             </p>
         </div>
 
-        {{-- Current background preview + remove --}}
-        <div class="flex items-start gap-3">
-            @if ($scene->image_path)
-                <img src="{{ asset('storage/' . $scene->image_path) }}"
-                     class="w-20 h-12 rounded object-cover shrink-0" />
-                <button type="button"
-                        wire:click="deleteSceneImage({{ $scene->id }})"
-                        wire:confirm="{{ __('Remove this image? The scene will use a solid dark background instead.') }}"
-                        @disabled($isBusy)
-                        class="btn btn-xs btn-ghost text-rose-300 hover:text-rose-200 self-center"
-                        title="{{ __('Remove image — use solid background') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
-                </button>
-            @else
-                {{-- No image: solid backdrop. Click the swatch → hue picker + dark presets. --}}
-                <div class="relative shrink-0"
-                     x-data="{ pickerOpen: false, solidColor: @js($scene->background_color ?? '#0f172a') }">
-                    <button type="button" @click="pickerOpen = !pickerOpen"
-                            class="w-20 h-12 rounded ring-1 ring-slate-700 hover:ring-amber-400 flex items-center justify-center transition"
-                            :style="'background-color:' + solidColor"
-                            title="{{ __('Solid background — click to change color') }}">
-                        <span class="text-[9px] uppercase tracking-wider text-slate-400">{{ __('solid') }}</span>
-                    </button>
-
-                    <div x-show="pickerOpen" x-cloak @click.outside="pickerOpen = false"
-                         x-transition.opacity.duration.150ms
-                         class="absolute left-0 top-14 z-30 rounded-xl border border-slate-700 bg-base-300 p-3 shadow-2xl space-y-2 w-52">
-                        <span class="text-[10px] uppercase tracking-widest text-slate-500 block">{{ __('Background color') }}</span>
-                        <div class="flex items-center gap-1.5">
-                            @foreach (['#0f172a' => 'Dark blue', '#3f0d12' => 'Dark red', '#052e16' => 'Dark green', '#2e1065' => 'Dark purple', '#1c1917' => 'Charcoal'] as $preset => $presetLabel)
-                                <button type="button"
-                                        @click="solidColor = '{{ $preset }}';
-                                                $wire.setSceneBackgroundColor('{{ $preset }}')"
-                                        class="h-7 w-7 rounded-lg ring-1 transition"
-                                        :class="solidColor === '{{ $preset }}' ? 'ring-2 ring-amber-400' : 'ring-slate-600 hover:ring-slate-400'"
-                                        style="background-color: {{ $preset }}"
-                                        title="{{ __($presetLabel) }}"></button>
-                            @endforeach
-                        </div>
-                        <label class="flex items-center gap-2 cursor-pointer pt-1">
-                            <span class="w-7 h-7 rounded-lg border border-slate-600 overflow-hidden relative shrink-0"
-                                  :style="'background:' + solidColor">
-                                <input type="color" x-model="solidColor"
-                                       @change="$wire.setSceneBackgroundColor(String(solidColor))"
-                                       class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
-                            </span>
-                            <span class="text-xs text-slate-400">{{ __('Custom…') }}</span>
-                            <span class="text-[10px] font-mono text-amber-300 ml-auto" x-text="solidColor"></span>
-                        </label>
-                    </div>
-                </div>
-            @endif
-        </div>
-
         {{-- Background — how this scene is filled. Keynote model: a scene has ONE
              background (image / video / 3D). Clipart and other objects go ON TOP via
              the Insert tools, not here. --}}
-        <div x-data="{ bgType: @js(in_array($srcDefault, ['video', '3d'], true) ? $srcDefault : 'image'), imgSrc: @js(in_array($srcDefault, ['ai', 'paintings', 'url'], true) ? $srcDefault : 'ai') }" class="space-y-2">
-            <span class="block text-[10px] uppercase tracking-widest text-slate-500">{{ __('Background') }}</span>
-            <div class="flex overflow-hidden rounded-lg border border-slate-700 text-[10px] font-medium">
-                @foreach (['image' => __('Image'), 'video' => __('Video'), '3d' => __('3D')] as $bv => $bl)
-                    <button type="button" @click="bgType = '{{ $bv }}'"
-                            :class="bgType === '{{ $bv }}' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
-                            class="flex-1 whitespace-nowrap px-1 py-1.5 transition-colors">{{ $bl }}</button>
-                @endforeach
-            </div>
+        <div x-data="{ bgType: @js(in_array($srcDefault, ['video', '3d'], true) ? $srcDefault : 'image'), imgSrc: @js(in_array($srcDefault, ['ai', 'paintings', 'url'], true) ? $srcDefault : 'ai'), promptOpen: false }" class="space-y-2">
+            {{-- Background type — a dropdown (Figma "Background image"). --}}
+            <select x-model="bgType"
+                    class="select select-sm select-bordered w-full bg-base-100 font-medium text-slate-200">
+                <option value="image">{{ __('Background image') }}</option>
+                <option value="video">{{ __('Background video') }}</option>
+                <option value="3d">{{ __('3D background') }}</option>
+            </select>
 
-          {{-- Image — where the background image comes from: generate, a painting, or a URL --}}
+          {{-- Image — where the background image comes from: AI, a painting, or a drawing --}}
           <div x-show="bgType === 'image'" x-cloak class="space-y-2">
-            <div class="flex overflow-hidden rounded-lg border border-slate-700/70 text-[10px] font-medium">
-                @foreach (['ai' => __('AI generated'), 'paintings' => __('Paintings'), 'url' => __('URL')] as $sv => $sl)
+            <div class="flex overflow-hidden rounded-lg border border-slate-700/70 text-[11px] font-medium">
+                @foreach (['ai' => __('AI Gen'), 'paintings' => __('Paintings'), 'url' => __('Drawing')] as $sv => $sl)
                     <button type="button" @click="imgSrc = '{{ $sv }}'"
-                            :class="imgSrc === '{{ $sv }}' ? 'bg-slate-700 text-amber-300' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
-                            class="flex-1 whitespace-nowrap px-1 py-1 transition-colors">{{ $sl }}</button>
+                            :class="imgSrc === '{{ $sv }}' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                            class="flex-1 whitespace-nowrap px-1 py-1.5 transition-colors">{{ $sl }}</button>
                 @endforeach
             </div>
 
-            {{-- AI generated --}}
+            {{-- AI generated — the current image + Regenerate / Edit prompt (Figma item 5) --}}
             <div x-show="imgSrc === 'ai'" x-cloak class="space-y-2">
-                <button type="button"
-                        wire:click="regenerate({{ $scene->id }}, 'image')"
-                        wire:loading.attr="disabled" wire:target="regenerate"
-                        @disabled($isBusy)
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-                    @if ($isGenerating)
-                        <x-icons.spinner class="w-3 h-3 animate-spin" />
-                        <span>{{ __('Generating…') }}</span>
+                <span class="block text-[11px] font-medium text-slate-300">{{ __('AI Generated image') }}</span>
+                <div class="flex items-start gap-3">
+                    @if ($scene->image_path)
+                        <img src="{{ asset('storage/' . $scene->image_path) }}"
+                             class="h-14 w-24 shrink-0 rounded object-cover ring-1 ring-slate-700" alt="" />
                     @else
-                        <x-icons.regenerate class="w-3 h-3" />
-                        <span>{{ $scene->image_path ? __('Regenerate') : __('Generate image') }}</span>
+                        <div class="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-slate-800 text-[9px] uppercase tracking-wider text-slate-500 ring-1 ring-dashed ring-slate-600">{{ __('none') }}</div>
                     @endif
-                </button>
-                <details class="text-xs">
-                    <summary class="cursor-pointer text-slate-400">{{ __('Prompt') }}</summary>
-                    <textarea wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
-                              class="textarea textarea-sm textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
-                </details>
+                    <div class="flex flex-col gap-1.5">
+                        <button type="button"
+                                wire:click="regenerate({{ $scene->id }}, 'image')"
+                                wire:loading.attr="disabled" wire:target="regenerate"
+                                @disabled($isBusy)
+                                class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300 disabled:opacity-50">
+                            @if ($isGenerating)
+                                <x-icons.spinner class="h-3.5 w-3.5 animate-spin" /><span>{{ __('Generating…') }}</span>
+                            @else
+                                <x-icons.regenerate class="h-3.5 w-3.5" /><span>{{ $scene->image_path ? __('Regenerate') : __('Generate') }}</span>
+                            @endif
+                        </button>
+                        <button type="button" @click="promptOpen = !promptOpen"
+                                class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                            <span>{{ __('Edit prompt') }}</span>
+                        </button>
+                    </div>
+                </div>
+                <textarea x-show="promptOpen" x-cloak
+                          wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"
+                          class="textarea textarea-sm textarea-bordered mt-1 w-full bg-slate-900"></textarea>
             </div>
 
             {{-- Paintings (curated public-domain / museum works) as the background image --}}
@@ -231,18 +185,17 @@
                 <p class="text-[10px] text-slate-500">{{ __('Public-domain paintings & museum works, matched to the scene’s era and place.') }}</p>
             </div>
 
-            {{-- URL (paste a direct image link) --}}
-            <div x-show="imgSrc === 'url'" x-cloak x-data="{ imageUrl: '' }" class="space-y-1.5">
-                <input type="url" x-model="imageUrl" placeholder="https://…/image.jpg"
-                       class="input input-xs input-bordered bg-slate-900 w-full" />
+            {{-- Drawing — render the background as a hand-drawn ink line-art animation.
+                 (The 'url' imgSrc key labels the Drawing tab; the paste-a-URL flow via
+                 applyImageUrl still exists on the component, just not surfaced in Format.) --}}
+            <div x-show="imgSrc === 'url'" x-cloak class="space-y-1.5">
                 <button type="button"
-                        @click="imageUrl && $wire.applyImageUrl({{ $scene->id }}, imageUrl)"
-                        wire:loading.attr="disabled" wire:target="applyImageUrl"
-                        class="btn btn-xs bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 inline-flex items-center gap-1.5">
-                    <span wire:loading wire:target="applyImageUrl"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
-                    <span>{{ __('Use image URL') }}</span>
+                        @click="$wire.call('setSlideshowMode', 'drawing')"
+                        class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    <span>{{ __('Draw this background') }}</span>
                 </button>
-                <p class="text-[10px] text-slate-500">{{ __('Paste a direct image link — it’s downloaded and saved to this lesson.') }}</p>
+                <p class="text-[10px] text-slate-500">{{ __('The scene draws itself as an ink line-art animation (sets the render mode to Drawing).') }}</p>
             </div>
           </div>{{-- /image sub-sources --}}
 
@@ -259,60 +212,6 @@
             </div>
         </div>
 
-        {{-- Layers — objects placed ON TOP of the background. Clipart is added from the
-             Insert tools on the canvas; each layer keeps its own depth, kind and controls.
-             (Keynote model: objects live above the slide background, not inside it.) --}}
-        @if (count($this->sceneArtworkLayers()) > 0)
-            <div class="space-y-1.5">
-                {{-- Layers are just names here; click one to edit it in the inspector (its settings
-                     take over the aside — Keynote's "Format the selection"). --}}
-                <span class="block text-[10px] uppercase tracking-widest text-slate-500">{{ __('Layers') }}</span>
-                @foreach ($this->sceneArtworkLayers() as $layer)
-                    @php($aid = $layer['asset_id'])
-                    <div wire:key="layer-{{ $aid }}"
-                         x-on:click="window.__lessonArtworkLayer?.select?.('art_{{ $aid }}'); $wire.call('setActiveLayer', {{ $aid }})"
-                         @class([
-                             'group flex cursor-pointer items-center gap-2 rounded p-1.5 text-[11px] transition',
-                             'bg-amber-500/15 ring-1 ring-amber-500/40' => $this->activeLayerId === $aid,
-                             'bg-slate-800/50 hover:bg-slate-800' => $this->activeLayerId !== $aid,
-                         ])>
-                        <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] }}"
-                             class="h-7 w-7 shrink-0 rounded bg-base-100 object-contain" />
-                        <span class="min-w-0 flex-1 truncate font-medium text-slate-300">{{ $layer['title'] }}</span>
-                        <button type="button" wire:click.stop="detachArtwork({{ $aid }})"
-                                class="btn btn-ghost btn-xs btn-square text-slate-500 opacity-0 transition hover:text-rose-400 group-hover:opacity-100"
-                                aria-label="{{ __('Remove layer') }}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                @endforeach
-            </div>
-        @endif
-
-        {{-- Background motion: Animated toggle + Ken Burns direction — applies to any image. --}}
-        @if ($scene->image_path)
-            <div class="flex flex-wrap items-center gap-3 pt-1"
-                 x-data="{ animated: @js((bool) ($scene->kb_animated ?? true)) }">
-                <label class="flex cursor-pointer items-center gap-2">
-                    <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Animated') }}</span>
-                    <input type="checkbox" class="toggle toggle-sm toggle-warning"
-                           x-on:change="animated = $el.checked"
-                           wire:model.live="selectedScene.kb_animated"
-                           wire:change="saveSelected" />
-                </label>
-                <select x-show="animated" x-transition.opacity.duration.150ms
-                        wire:model.live="selectedScene.kb_direction" wire:change="saveSelected"
-                        class="select select-xs select-bordered bg-slate-900">
-                    <option value="">{{ __('Auto (varied pans)') }}</option>
-                    <option value="left_right">{{ __('Moving left → right') }}</option>
-                    <option value="right_left">{{ __('Moving right → left') }}</option>
-                    <option value="zoom_in">{{ __('Slow zoom in') }}</option>
-                    <option value="zoom_out">{{ __('Slow zoom out') }}</option>
-                </select>
-            </div>
-        @endif
     </div>
 
     {{-- ── Skybox tab ───────────────────────────────────────────────────────── --}}

@@ -1752,6 +1752,12 @@ class Step3SceneConfigurator extends Component
         $this->panelView = 'settings';
     }
 
+    #[On('open-lesson-format')]
+    public function openFormat(): void
+    {
+        $this->panelView = 'scene';
+    }
+
     /**
      * Publish the lesson from the toolbar. Gate: every scene must be "ready".
      * NOTE: public-visibility moderation (abuse/adult-content screening) is a

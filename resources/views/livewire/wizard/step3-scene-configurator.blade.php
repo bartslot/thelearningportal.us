@@ -256,25 +256,12 @@
            style="right:0; left:auto; top:64px; bottom:0;"
            class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
-        <header class="card-title flex min-h-11 select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-2 text-sm">
-            {{-- Scene / Settings switch — swaps the panel body between the per-scene editor
-                 and the lesson-global settings (Story + Music). --}}
-            <div class="flex min-w-0 items-center gap-2">
-                <div class="flex items-center gap-0.5 rounded-lg bg-base-300 p-0.5">
-                    <button type="button" @click.stop wire:click="$set('panelView', 'scene')"
-                            @class([
-                                'rounded-md px-2.5 py-1 text-xs font-semibold transition',
-                                'bg-amber-500 text-slate-950' => $panelView === 'scene',
-                                'text-slate-400 hover:text-slate-100' => $panelView !== 'scene',
-                            ])>{{ __('Scene') }}</button>
-                    <button type="button" @click.stop wire:click="$set('panelView', 'settings')"
-                            @class([
-                                'rounded-md px-2.5 py-1 text-xs font-semibold transition',
-                                'bg-amber-500 text-slate-950' => $panelView === 'settings',
-                                'text-slate-400 hover:text-slate-100' => $panelView !== 'settings',
-                            ])>{{ __('Settings') }}</button>
-                </div>
-            </div>
+        <header class="card-title flex min-h-9 select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-1.5 text-sm">
+            {{-- No Scene/Settings tabs (Figma): the toolbar Format/Settings buttons drive which
+                 view shows (panelView), via open-lesson-format / open-lesson-settings. --}}
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                {{ $panelView === 'settings' ? __('Settings') : __('Format') }}
+            </span>
             <div class="flex items-center gap-0.5">
                 {{-- Cogwheel — a second entry point to the Script editing view (View ▸ Script is
                      the other). Amber when the script panel is showing. --}}
@@ -766,9 +753,9 @@
              Alpine scope (a SIBLING of step3SceneConfigurator), so this goes via a window
              event the panel component listens for. --}}
         <button type="button"
-                onclick="window.dispatchEvent(new CustomEvent('inspector-toggle'))"
+                onclick="Livewire.dispatch('open-lesson-format'); window.dispatchEvent(new CustomEvent('inspector-toggle'))"
                 class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
-                :class="fmtOpen && 'bg-sky-500/15 text-sky-300'"
+                :class="fmtOpen && fmtView !== 'settings' && 'bg-sky-500/15 text-sky-300'"
                 title="{{ __('Show or hide the Format panel') }}" aria-label="{{ __('Format') }}">
             {{-- Painting/picture icon (Noun Project, filled) — reads as "scene formatting". --}}
             <svg viewBox="0 0 100 100" fill="currentColor" class="h-6 w-6" aria-hidden="true">
