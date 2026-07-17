@@ -1,9 +1,9 @@
-<div class="space-y-4 pt-6">
+<div class="space-y-4 pt-6" x-data="wizardFlow()" x-on:flow-next.window="advance()">
 
     {{-- ═══════════════════════════════════════════════
          TOPIC (always visible, hero field)
     ════════════════════════════════════════════════ --}}
-    <div class="bg-base-300 rounded-2xl p-6 space-y-3">
+    <div data-flow-group class="wizard-flow-group bg-base-300 rounded-2xl p-6 space-y-3">
 
         {{-- Curated STORY catalog — the preferred path: human-reviewed stories with
              learning objectives and real narrative sources. --}}
@@ -80,6 +80,12 @@
                 <ul
                     data-topic-suggestions
                     x-show="open"
+                    {{-- This list is INSERTED by a Livewire morph after the teacher focused the
+                         input, and the morph can reset/miss the Alpine `open` flag — leaving
+                         perfect results hidden while the teacher keeps typing (the dropdown only
+                         appeared after blur + refocus). Re-open on insert while the input has
+                         focus so results always show the moment they arrive. --}}
+                    x-init="if (document.activeElement && document.activeElement.id === 'lw-topic') open = true"
                     x-transition:enter="transition ease-out duration-100"
                     x-transition:enter-start="opacity-0 -translate-y-1"
                     x-transition:enter-end="opacity-100 translate-y-0"
@@ -117,6 +123,18 @@
                         </li>
                     @endforeach
                 </ul>
+            @elseif (strlen(trim($topic)) >= 2 && ! $topicId)
+                {{-- Empty state: without this, a miss (e.g. "Domtoren") was a silent dead end —
+                     no list, no message, just the "select an entry" hint pointing at nothing. --}}
+                <div x-show="open"
+                     x-init="if (document.activeElement && document.activeElement.id === 'lw-topic') open = true"
+                     style="display:none"
+                     class="absolute z-50 w-full top-full mt-1 rounded-box border border-white/10 bg-base-200 p-3 shadow-xl">
+                    <p class="text-xs text-slate-300">
+                        {{ __('No catalog matches for') }} “{{ $topic }}”.
+                        {{ __('Pick a broader topic — a place, person or event (e.g. Utrecht) — and put the specifics, like a building or object, under “Anything specific?”.') }}
+                    </p>
+                </div>
             @endif
         </div>
 
@@ -153,41 +171,78 @@
                     @endfor
                 </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-                @foreach (\App\Lessons\FocusTags::all() as $slug => $tag)
-                    @php $isOn = in_array($slug, $focusTags, true); @endphp
-                    <button
-                        type="button"
-                        wire:click="toggleFocusTag('{{ $slug }}')"
-                        @disabled($focusFull && ! $isOn)
-                        title="{{ $focusFull && ! $isOn ? __('Up to 3 — deselect one to choose another') : '' }}"
-                        @class([
-                            'btn btn-xs',
-                            'btn-primary' => $isOn,
-                            'btn-outline' => ! $isOn,
-                            'opacity-40 cursor-not-allowed' => $focusFull && ! $isOn,
-                        ])
-                    >
-                        {{ __($tag['label']) }}
-                    </button>
-                @endforeach
-            </div>
-            @if ($focusFull)
-                <span class="text-xs text-slate-500 mt-2">{{ __('Up to 3 focuses — deselect one to choose another.') }}</span>
+            {{-- Once all 3 slots are filled the grid collapses away — the slots above are the
+                 control; clear one (its ✕) to bring the choices back. --}}
+            @if (! $focusFull)
+                <div class="flex flex-wrap gap-2">
+                    @foreach ($focusAll as $slug => $tag)
+                        @php $isOn = in_array($slug, $focusTags, true); @endphp
+                        <button
+                            type="button"
+                            wire:click="toggleFocusTag('{{ $slug }}')"
+                            @class([
+                                'btn btn-xs',
+                                'btn-primary' => $isOn,
+                                'btn-outline' => ! $isOn,
+                            ])
+                        >
+                            {{ __($tag['label']) }}
+                        </button>
+                    @endforeach
+                </div>
+            @else
+                <span class="text-xs text-slate-500">{{ __('3 of 3 chosen — clear a slot above to swap.') }}</span>
             @endif
         </div>
 
-        {{-- Optional focus / angle (free text — complementary to tags) --}}
-        <div class="form-control">
+        {{-- Optional focus / angle (free text) — focusing the field offers ready-made angles,
+             like the topic picker. The teacher can click one or keep typing their own. --}}
+        @php
+            $angleSuggestions = [
+                __('Causes and consequences'),
+                __('Key people involved'),
+                __('Daily life of ordinary people'),
+                __('The turning point'),
+                __('Build-up and aftermath'),
+                __('Winners and losers'),
+                __('Why it still matters today'),
+                __('Myths vs. reality'),
+            ];
+        @endphp
+        <div class="form-control relative" x-data="{ open: false }">
             <span class="label-text text-xs uppercase tracking-wider text-slate-400">
                 {{ __('Anything specific?') }} <span class="normal-case tracking-normal text-slate-500">· {{ __('optional') }}</span>
             </span>
             <input type="text" name="focus"
                    wire:model.blur="focus"
+                   x-on:focus="open = true"
+                   x-on:blur="setTimeout(() => open = false, 150)"
+                   x-on:keydown.escape="open = false; $el.blur()"
                    placeholder="e.g. daily life of a soldier, the road to revolution…"
                    maxlength="200"
+                   autocomplete="off"
                    class="input input-bordered bg-slate-900 mt-1 text-sm w-full" />
             @error('focus') <span class="text-rose-400 text-xs mt-1">{{ $message }}</span> @enderror
+
+            {{-- Angle suggestions --}}
+            <div x-show="open" style="display:none"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 class="absolute z-50 top-full mt-1 w-full rounded-box border border-white/10 bg-base-200 p-2 shadow-xl">
+                <p class="px-1 pb-1.5 text-[10px] uppercase tracking-wider text-slate-500">{{ __('Popular angles') }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                    @foreach ($angleSuggestions as $angle)
+                        <button type="button"
+                                x-on:mousedown.prevent
+                                wire:click="$set('focus', @js($angle))"
+                                x-on:click="open = false"
+                                class="btn btn-xs btn-outline border-white/15 font-normal normal-case text-slate-300 hover:border-amber-500/50 hover:text-amber-300">
+                            {{ $angle }}
+                        </button>
+                    @endforeach
+                </div>
+            </div>
         </div>
 
         {{-- Region & era enrichment --}}
@@ -240,7 +295,7 @@
     {{-- ═══════════════════════════════════════════════
          AUDIENCE (always visible)
     ════════════════════════════════════════════════ --}}
-    <div class="bg-base-300 rounded-2xl p-6">
+    <div data-flow-group class="wizard-flow-group bg-base-300 rounded-2xl p-6">
         <div class="form-control">
             <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2">
                 Target audience
@@ -469,7 +524,9 @@
 
     {{-- ═══════════════════════════════════════════════
          OPTIONAL SECTIONS — DaisyUI collapse accordions
+         (final flow group: refinements + the Generate action)
     ════════════════════════════════════════════════ --}}
+    <div data-flow-group class="wizard-flow-group space-y-4">
 
     {{-- Tone & Details --}}
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
@@ -749,6 +806,8 @@
         </button>
     </div>
 
+    </div>{{-- /final flow group --}}
+
     @if ($errors->any())
         <div class="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4 text-sm text-rose-200 space-y-1">
             <p class="font-semibold">Cannot continue yet — fix these:</p>
@@ -760,4 +819,42 @@
         </div>
     @endif
 
+    {{-- Progressive-disclosure flow: each setting group is ~75vh so one is in focus at a time;
+         the others dim. Picking a topic/story auto-scrolls + focuses the next group.
+         The CSS lives in app.css (not an inline <style>) so Livewire morphs on the
+         wire:model.live topic field can't strip it mid-session. --}}
+    <script>
+        window.wizardFlow = window.wizardFlow || function () {
+            return {
+                groups: [],
+                _io: null,
+                init() {
+                    this.groups = Array.from(this.$el.querySelectorAll('[data-flow-group]'));
+                    // Whichever group is centred in the viewport is "active"; dim the rest.
+                    this._io = new IntersectionObserver((entries) => {
+                        entries.forEach((e) => {
+                            if (e.isIntersecting && e.intersectionRatio >= 0.5) this._activate(e.target);
+                        });
+                    }, { threshold: [0, 0.5, 1], rootMargin: '-8% 0px -8% 0px' });
+                    this.groups.forEach((g) => this._io.observe(g));
+                    if (this.groups[0]) this._activate(this.groups[0]);
+                },
+                destroy() { this._io && this._io.disconnect(); },
+                _activate(el) {
+                    this.groups.forEach((g) => g.classList.toggle('flow-dim', g !== el));
+                },
+                // Scroll to the group after the active one and focus its first field.
+                advance() {
+                    const active = this.groups.find((g) => !g.classList.contains('flow-dim')) || this.groups[0];
+                    const next = this.groups[this.groups.indexOf(active) + 1];
+                    if (!next) return;
+                    next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    setTimeout(() => {
+                        const f = next.querySelector('input:not([type=checkbox]):not([disabled]), select, textarea, [contenteditable]');
+                        if (f) f.focus({ preventScroll: true });
+                    }, 550);
+                },
+            };
+        };
+    </script>
 </div>

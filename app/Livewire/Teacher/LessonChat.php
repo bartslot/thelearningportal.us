@@ -11,20 +11,21 @@ use App\Models\Avatar;
 use App\Models\Lesson;
 use App\Models\LessonSource;
 use App\Models\Story;
+use App\Services\LessonGoalContextResolver;
 use App\Services\LessonGoalParser;
+use App\Services\Support\HistoryTaxonomy;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
- * K-12 agentic lesson creation: a short, server-driven chat — the teacher types ONE
- * learning goal, everything else is tappable chips backed by LessonPresets (K-13).
- * Not a freeform agent: a four-state machine (goal → proposals → confirm → creating)
- * with exactly one LLM call (LessonGoalParser) that only suggests, never decides.
+ * K-12 agentic lesson creation: a short, server-driven dialogue. The teacher types
+ * a learning goal, then chooses focus, era, lesson type, age, and grounding with buttons.
+ * LessonGoalParser makes one suggestion-only LLM call; every decision stays with the teacher.
  */
 class LessonChat extends Component
 {
-    /** Grade chips — canonical Step1Settings "Age N" values, one per band. */
+    /** Canonical Step1Settings "Age N" values, presented here as two-year age bands. */
     public const GRADE_CHIP_AGES = [6, 8, 10, 12, 14, 16];
 
     private const DEFAULT_AGE = 12;
@@ -33,16 +34,30 @@ class LessonChat extends Component
 
     private const GOAL_AS_DETAILS_LIMIT = 500;
 
-    public string $state = 'goal';   // goal | proposals | confirm | creating
+    public string $state = 'goal';
 
     public string $goal = '';
 
-    // ── Suggestions from the single LLM call (null = no suggestion, manual chips) ──
+    public string $goalSummary = '';
+
+    public ?string $subjectDescription = null;
+
+    public ?string $region = null;
+
+    public ?string $regionLabel = null;
+
+    public ?string $detectedEra = null;
+
+    public ?int $periodStart = null;
+
+    public ?int $periodEnd = null;
+
+    public ?string $era = null;
+
     public ?string $suggestedPresetKey = null;
 
     public ?string $storyQuery = null;
 
-    // ── Teacher selections (chips; editable until Create) ─────────────────────────
     public ?string $presetKey = null;
 
     public string $gradeLevel = 'Age '.self::DEFAULT_AGE;
@@ -55,26 +70,36 @@ class LessonChat extends Component
 
     public array $focusTags = [];
 
+    public ?string $focusChoice = null;
+
+    public ?string $eraChoice = null;
+
+    public ?string $presetAnswer = null;
+
+    public ?string $presetChoice = null;
+
+    public ?string $ageAnswer = null;
+
+    public ?string $ageChoice = null;
+
+    public ?string $groundingChoice = null;
+
     /** Idempotency guard — the second click of a double-click redirects, never re-creates. */
     public ?int $createdLessonId = null;
 
-    // ── Step 1: goal ───────────────────────────────────────────────────────────────
-
     public function toggleFocusTag(string $slug): void
     {
-        if ($this->createdLessonId !== null) {
+        if ($this->state !== 'focus' || $this->createdLessonId !== null) {
             return;
         }
 
         $this->focusTags = \App\Lessons\FocusTags::toggle($this->focusTags, $slug);
     }
 
-    public function submitGoal(LessonGoalParser $parser): void
+    public function submitGoal(LessonGoalParser $parser, LessonGoalContextResolver $contextResolver): void
     {
-        // Allow submit when goal is empty BUT tags are selected.
         $goalText = trim($this->goal);
-        $hasTags = count($this->focusTags) > 0;
-        if ($goalText === '' && ! $hasTags) {
+        if ($goalText === '') {
             $this->addError('goal', __('validation.required', ['attribute' => __('goal')]));
 
             return;
@@ -94,45 +119,100 @@ class LessonChat extends Component
             return;
         }
 
-        // Build parser input: prepend focus labels to goal if tags exist.
-        $parserInput = $goalText;
-        if ($hasTags) {
-            $focusLabels = \App\Lessons\FocusTags::labels($this->focusTags);
-            $parserInput = "Focus themes: {$focusLabels}. {$goalText}";
-        }
-
-        $parsed = $parser->parse($parserInput, app()->getLocale());
+        $parsed = $parser->parse($goalText, app()->getLocale());
+        $context = $contextResolver->resolve($goalText, $parsed['topic']);
 
         $this->suggestedPresetKey = $parsed['preset_key'];
-        $this->presetKey = $parsed['preset_key'];
+        $this->presetKey = null;
         $this->storyQuery = $parsed['story_query'];
         $this->gradeLevel = 'Age '.$this->snapToGradeChip($parsed['age'] ?? self::DEFAULT_AGE);
-        // Fallback: without a parsed topic the goal itself is the free-topic label.
-        $this->topic = $parsed['topic'] ?? Str::limit($goalText ?: $focusLabels, 80, '');
+        $this->topic = $context['canonical_subject'] ?? $parsed['topic'] ?? Str::limit($goalText, 80, '');
+        $this->goalSummary = $parsed['summary'] ?? $this->topic;
+        $this->subjectDescription = $context['description'];
+        $this->region = $context['region'];
+        $this->regionLabel = $context['region_label'];
+        $this->detectedEra = $context['era'];
+        $this->periodStart = $context['period_start'];
+        $this->periodEnd = $context['period_end'];
+        $this->era = null;
 
-        $this->state = 'proposals';
+        $this->state = 'focus';
     }
 
-    // ── Step 2: proposals (chips) ──────────────────────────────────────────────────
-
-    /** @return list<array{key: string, label: string, description: string, suggested: bool}> */
+    /** @return list<array{key: string, label: string, pitch: string}> */
     #[Computed]
-    public function presetChips(): array
+    public function presetOptions(): array
     {
-        return collect(LessonPresets::all())->map(fn (LessonPreset $preset): array => [
-            'key' => $preset->key,
-            'label' => $preset->label,
-            'description' => $preset->description,
-            'suggested' => $preset->key === $this->suggestedPresetKey,
-        ])->values()->all();
+        return collect(LessonPresets::all())
+            ->values()
+            ->map(fn (LessonPreset $preset): array => [
+                'key' => $preset->key,
+                'label' => __($preset->label),
+                'pitch' => $this->presetPitch($preset->key),
+            ])
+            ->all();
+    }
+
+    /** @return list<array{age: int, label: string}> */
+    #[Computed]
+    public function ageOptions(): array
+    {
+        return array_map(
+            fn (int $age): array => [
+                'age' => $age,
+                'label' => $this->ageBand($age),
+            ],
+            self::GRADE_CHIP_AGES,
+        );
+    }
+
+    /** @return list<array{index: int, value: string, label: string, suggested: bool}> */
+    #[Computed]
+    public function eraOptions(): array
+    {
+        $eras = $this->region !== null
+            ? HistoryTaxonomy::erasFor($this->region)
+            : [];
+
+        if ($this->detectedEra !== null && ! in_array($this->detectedEra, $eras, true)) {
+            array_unshift($eras, $this->detectedEra);
+        }
+
+        if ($eras === []) {
+            $eras = [
+                'Ancient world (before 500)',
+                'Middle Ages (500–1500)',
+                'Early modern period (1500–1800)',
+                'Modern era (1800–1945)',
+                'Contemporary era (1945–present)',
+            ];
+        }
+
+        if ($this->detectedEra !== null) {
+            $eras = array_values(array_unique([
+                $this->detectedEra,
+                ...array_filter($eras, fn (string $era): bool => $era !== $this->detectedEra),
+            ]));
+        }
+
+        return array_map(
+            fn (string $era, int $index): array => [
+                'index' => $index,
+                'value' => $era,
+                'label' => $this->displayEraLabel($era),
+                'suggested' => $era === $this->detectedEra,
+            ],
+            $eras,
+            array_keys($eras),
+        );
     }
 
     /**
      * Published catalog stories matching the LLM's story_query (or the topic), top 3 —
-     * the "Ground in: <story>" chips. Matches PER WORD (≥4 chars), not the whole phrase:
+     * the "Ground in: <story>" options. Matches PER WORD (≥4 chars), not the whole phrase:
      * a goal like "Romeinse limes en soldaten" must still find the story titled
      * "De Romeinse Limes" (whole-phrase ILIKE silently missed it — caught in smoke test).
-     * Includes tag labels in the word list so tag-only submissions still surface stories.
+     * Includes selected focus labels so those themes can also surface relevant stories.
      *
      * @return list<array{id: int, title: string, subtitle: ?string}>
      */
@@ -175,53 +255,167 @@ class LessonChat extends Component
             ])->all();
     }
 
+    /** @return list<array{type: string, id: ?int, label: string}> */
+    #[Computed]
+    public function groundingOptions(): array
+    {
+        $options = collect($this->storyMatches)
+            ->values()
+            ->map(fn (array $story): array => [
+                'type' => 'story',
+                'id' => $story['id'],
+                'label' => $story['title'],
+            ])
+            ->all();
+
+        $options[] = [
+            'type' => 'free_topic',
+            'id' => null,
+            'label' => $this->topic,
+        ];
+
+        return $options;
+    }
+
+    public function continueAfterFocus(): void
+    {
+        if ($this->state !== 'focus' || $this->createdLessonId !== null) {
+            return;
+        }
+
+        $this->focusChoice = $this->focusTags === []
+            ? __('No optional focus')
+            : \App\Lessons\FocusTags::labels($this->focusTags);
+        $this->state = 'era';
+    }
+
+    public function selectEra(int $index): void
+    {
+        if ($this->state !== 'era' || $this->createdLessonId !== null) {
+            return;
+        }
+
+        $option = $this->eraOptions[$index] ?? null;
+        if ($option === null) {
+            return;
+        }
+
+        $this->era = $option['value'];
+        $this->eraChoice = $option['label'];
+        $this->state = $this->suggestedPresetKey !== null
+            ? 'preset_confirmation'
+            : 'preset_options';
+    }
+
+    public function continueWithSuggestedPreset(): void
+    {
+        if (
+            $this->state !== 'preset_confirmation'
+            || $this->suggestedPresetKey === null
+            || $this->createdLessonId !== null
+        ) {
+            return;
+        }
+
+        $this->presetAnswer = 'continue';
+        $this->presetKey = $this->suggestedPresetKey;
+        $this->state = 'age_confirmation';
+    }
+
+    public function showPresetOptions(): void
+    {
+        if ($this->state !== 'preset_confirmation' || $this->createdLessonId !== null) {
+            return;
+        }
+
+        $this->presetAnswer = 'change';
+        $this->presetKey = null;
+        $this->state = 'preset_options';
+    }
+
+    public function continueWithSuggestedAge(): void
+    {
+        if ($this->state !== 'age_confirmation' || $this->createdLessonId !== null) {
+            return;
+        }
+
+        $this->ageAnswer = 'continue';
+        $this->advanceAfterAge();
+    }
+
+    public function showAgeOptions(): void
+    {
+        if ($this->state !== 'age_confirmation' || $this->createdLessonId !== null) {
+            return;
+        }
+
+        $this->ageAnswer = 'change';
+        $this->state = 'age_options';
+    }
+
+    private function advanceAfterAge(): void
+    {
+        if ($this->storyMatches === []) {
+            $this->storyId = null;
+            $this->freeTopic = true;
+            $this->state = 'confirm';
+
+            return;
+        }
+
+        $this->state = 'grounding_options';
+    }
+
     public function selectPreset(string $key): void
     {
-        if (LessonPresets::find($key) === null || $this->createdLessonId !== null) {
+        $preset = LessonPresets::find($key);
+        if ($preset === null || $this->state !== 'preset_options' || $this->createdLessonId !== null) {
             return;
         }
 
         $this->presetKey = $key;
-        $this->maybeAdvanceToConfirm();
+        $this->presetChoice = __($preset->label);
+        $this->state = 'age_confirmation';
     }
 
     public function selectGrade(int $age): void
     {
-        if (! in_array($age, self::GRADE_CHIP_AGES, true) || $this->createdLessonId !== null) {
+        if (
+            ! in_array($age, self::GRADE_CHIP_AGES, true)
+            || $this->state !== 'age_options'
+            || $this->createdLessonId !== null
+        ) {
             return;
         }
 
         $this->gradeLevel = 'Age '.$age;
-        $this->maybeAdvanceToConfirm();
+        $this->ageChoice = $this->ageBand($age);
+        $this->advanceAfterAge();
     }
 
     public function selectStory(int $id): void
     {
-        if ($this->createdLessonId !== null || ! Story::published()->whereKey($id)->exists()) {
+        $story = Story::published()->find($id);
+        if ($this->state !== 'grounding_options' || $this->createdLessonId !== null || $story === null) {
             return;
         }
 
         $this->storyId = $id;
         $this->freeTopic = false;
-        $this->maybeAdvanceToConfirm();
+        $this->groundingChoice = $story->title;
+        $this->state = 'confirm';
     }
 
     public function selectFreeTopic(): void
     {
-        if ($this->createdLessonId !== null) {
+        if ($this->state !== 'grounding_options' || $this->createdLessonId !== null) {
             return;
         }
 
         $this->storyId = null;
         $this->freeTopic = true;
-        $this->maybeAdvanceToConfirm();
-    }
-
-    private function maybeAdvanceToConfirm(): void
-    {
-        if ($this->presetKey !== null && ($this->storyId !== null || $this->freeTopic)) {
-            $this->state = 'confirm';
-        }
+        $this->groundingChoice = __('Research as a free topic');
+        $this->state = 'confirm';
     }
 
     #[Computed]
@@ -231,12 +425,167 @@ class LessonChat extends Component
     }
 
     #[Computed]
+    public function suggestedPreset(): ?LessonPreset
+    {
+        return $this->suggestedPresetKey !== null ? LessonPresets::find($this->suggestedPresetKey) : null;
+    }
+
+    #[Computed]
     public function selectedStory(): ?Story
     {
         return $this->storyId !== null ? Story::published()->find($this->storyId) : null;
     }
 
-    // ── Step 4: create ─────────────────────────────────────────────────────────────
+    #[Computed]
+    public function openingProposalMessage(): string
+    {
+        if ($this->suggestedPreset === null) {
+            return $this->presetOptionsMessage;
+        }
+
+        return __(
+            'I suggest a :type lesson. :pitch',
+            [
+                'type' => __($this->suggestedPreset->label),
+                'pitch' => $this->presetPitch($this->suggestedPreset->key),
+            ],
+        );
+    }
+
+    #[Computed]
+    public function goalContextMessage(): string
+    {
+        if (
+            $this->subjectDescription !== null
+            && $this->periodStart !== null
+            && $this->periodEnd !== null
+            && $this->regionLabel !== null
+        ) {
+            $message = __('Ah, :subject — :description, from :start to :end in :region.', [
+                'subject' => $this->topic,
+                'description' => $this->subjectDescription,
+                'start' => $this->periodStart,
+                'end' => $this->periodEnd,
+                'region' => $this->regionLabel,
+            ]);
+        } elseif ($this->detectedEra !== null && $this->regionLabel !== null) {
+            $message = __('Ah, :subject. I found the period :era in :region.', [
+                'subject' => $this->topic,
+                'era' => $this->displayEraLabel($this->detectedEra),
+                'region' => $this->regionLabel,
+            ]);
+        } else {
+            $message = __('Ah, :subject. I found the subject, but you’ll choose the historical era.', [
+                'subject' => $this->topic,
+            ]);
+        }
+
+        return $message."\n\n".__(
+            'You can now add up to three optional focus points, or continue without one.'
+        );
+    }
+
+    #[Computed]
+    public function eraPrompt(): string
+    {
+        if ($this->detectedEra !== null) {
+            return __('I suggest :era. Choose it below, or select another era.', [
+                'era' => $this->displayEraLabel($this->detectedEra),
+            ]);
+        }
+
+        return __('Which historical era should this lesson cover?');
+    }
+
+    #[Computed]
+    public function presetOptionsMessage(): string
+    {
+        return __('Choose the lesson type that fits your class best.');
+    }
+
+    #[Computed]
+    public function agePrompt(): string
+    {
+        return __('What age should we focus on? I suggest ages :ages.', [
+            'ages' => $this->ageBand($this->selectedAge()),
+        ]);
+    }
+
+    #[Computed]
+    public function ageOptionsMessage(): string
+    {
+        return __('Which age range fits your class?');
+    }
+
+    #[Computed]
+    public function groundingPrompt(): string
+    {
+        return __('I found source options for this lesson. Which should I use?');
+    }
+
+    #[Computed]
+    public function confirmationMessage(): string
+    {
+        $preset = $this->selectedPreset;
+        if ($preset === null) {
+            return '';
+        }
+
+        $subject = $this->selectedStory?->title ?? $this->topic;
+        $message = __('Great. I’ll build a :minutes-minute :type lesson for ages :ages about :topic.', [
+            'minutes' => $preset->durationTargetMinutes,
+            'type' => __($preset->label),
+            'ages' => $this->ageBand($this->selectedAge()),
+            'topic' => $subject,
+        ]);
+
+        $message .= match ($preset->gameType) {
+            'quiz' => ' '.__('It includes a quiz.'),
+            'story_game' => ' '.__('It includes a branching story game.'),
+            default => '',
+        };
+
+        if ($this->era !== null) {
+            $message .= ' '.__('The historical setting is :era.', [
+                'era' => $this->displayEraLabel($this->era),
+            ]);
+        }
+
+        $message .= "\n\n".($this->selectedStory !== null
+            ? __('I’ll ground it in the curated story “:story”.', ['story' => $this->selectedStory->title])
+            : __('I’ll research the topic from vetted sources.'));
+
+        return $message.' '.__('You can review everything before students see it.');
+    }
+
+    private function presetPitch(string $key): string
+    {
+        return match ($key) {
+            'story' => __('It tells the topic as a story and ends with a short quiz.'),
+            'game_story' => __('Teams steer a branching story through choices that shape the plot.'),
+            'comprehension_check' => __('It keeps the lesson short and checks understanding as students go.'),
+            'deep_dive' => __('It follows the rise and fall in depth and ends with a quiz.'),
+            default => __('It turns the learning goal into a focused lesson.'),
+        };
+    }
+
+    private function selectedAge(): int
+    {
+        return (int) Str::after($this->gradeLevel, 'Age ');
+    }
+
+    private function ageBand(int $age): string
+    {
+        return $age.'–'.min($age + 2, 18);
+    }
+
+    private function displayEraLabel(string $era): string
+    {
+        return match ($era) {
+            'Opstand & Tachtigjarige Oorlog (1568–1648)' => __("Eighty Years' War (1568–1648)"),
+            default => $era,
+        };
+    }
 
     public function create(): void
     {
@@ -277,6 +626,8 @@ class LessonChat extends Component
             'details' => Str::limit(trim($this->goal), self::GOAL_AS_DETAILS_LIMIT, '') ?: null,
             'focus_tags' => count($this->focusTags) > 0 ? $this->focusTags : null,
             'focus' => count($this->focusTags) > 0 ? \App\Lessons\FocusTags::labels($this->focusTags) : null,
+            'region' => $this->region,
+            'era' => $this->era,
             'source_mode' => 'internet',
             'avatar_id' => Avatar::where('is_active', true)->orderBy('sort_order')->value('id'),
             'lesson_code' => strtoupper(Str::random(6)),

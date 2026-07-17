@@ -42,9 +42,70 @@ class LessonChatTest extends TestCase
         $this->get('/teacher/lessons/chat')->assertRedirect('/login');
     }
 
-    public function test_goal_submit_reaches_proposals_with_all_preset_chips_and_llm_suggestion(): void
+    public function test_chat_shell_keeps_a_scrollable_transcript_above_a_fixed_action_footer(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->assertSeeHtml('x-ref="transcript"')
+            ->assertSeeHtml('overflow-y-auto')
+            ->assertSeeHtml('shrink-0 border-t')
+            ->assertSeeHtml('MutationObserver')
+            ->assertDontSee('Optional focus');
+    }
+
+    public function test_eighty_years_war_goal_is_resolved_before_focus_era_and_lesson_type(): void
     {
         $this->mockLlm([
+            'summary' => 'The 80 years war',
+            'topic' => '80 years war', 'age' => null, 'preset_key' => 'deep_dive',
+            'story_query' => '80 years war', 'language' => 'en',
+        ]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->set('goal', 'the 80 years war')
+            ->call('submitGoal')
+            ->assertSet('state', 'focus')
+            ->assertSet('topic', "The Eighty Years' War")
+            ->assertSet('region', 'netherlands')
+            ->assertSet('regionLabel', 'the Netherlands')
+            ->assertSet('detectedEra', 'Opstand & Tachtigjarige Oorlog (1568–1648)')
+            ->assertSet('periodStart', 1568)
+            ->assertSet('periodEnd', 1648)
+            ->assertSet('suggestedPresetKey', 'deep_dive')
+            ->assertSet('presetKey', null)
+            ->assertSet('gradeLevel', 'Age 12')
+            ->assertSee("Ah, The Eighty Years' War — the Dutch revolt against Spanish rule, from 1568 to 1648 in the Netherlands.")
+            ->assertSee('You can now add up to three optional focus points')
+            ->assertSee('Optional focus')
+            ->assertSee('Continue')
+            ->assertDontSee('I suggest a Deep dive lesson.')
+            ->assertDontSee('Type 1 for yes');
+
+        $component
+            ->call('toggleFocusTag', 'revolution')
+            ->call('toggleFocusTag', 'rights')
+            ->call('continueAfterFocus')
+            ->assertSet('state', 'era')
+            ->assertSet('focusChoice', 'Revolution, Rights')
+            ->assertSee("I suggest Eighty Years' War (1568–1648).")
+            ->assertSee("Eighty Years' War (1568–1648)")
+            ->call('selectEra', 0)
+            ->assertSet('state', 'preset_confirmation')
+            ->assertSet('era', 'Opstand & Tachtigjarige Oorlog (1568–1648)')
+            ->assertSee('I suggest a Deep dive lesson.')
+            ->assertSee('It follows the rise and fall in depth and ends with a quiz.')
+            ->assertSee('Change')
+            ->call('continueWithSuggestedPreset')
+            ->assertSet('state', 'age_confirmation')
+            ->assertSet('presetKey', 'deep_dive')
+            ->assertSee('What age should we focus on? I suggest ages 12–14.');
+    }
+
+    public function test_change_shows_lesson_type_buttons_and_selects_an_alternative(): void
+    {
+        $this->mockLlm([
+            'summary' => 'The Dutch Revolt and its causes',
             'topic' => 'Dutch Revolt', 'age' => 8, 'preset_key' => 'game_story',
             'story_query' => 'Willem', 'language' => 'nl',
         ]);
@@ -53,20 +114,23 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students understand why the Dutch revolted against Spain')
             ->call('submitGoal')
-            ->assertSet('state', 'proposals')
-            ->assertSet('suggestedPresetKey', 'game_story')
-            ->assertSet('presetKey', 'game_story')
-            ->assertSet('gradeLevel', 'Age 8')
-            ->assertSet('topic', 'Dutch Revolt')
-            // One chip per LessonPresets entry, suggestion highlighted
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('showPresetOptions')
+            ->assertSet('state', 'preset_options')
+            ->assertSet('presetAnswer', 'change')
+            ->assertSee('Choose the lesson type that fits your class best.')
             ->assertSee('Story lesson')
             ->assertSee('Spel-verhaal')
             ->assertSee('Comprehension check')
             ->assertSee('Deep dive')
-            ->assertSee('Suggested');
+            ->call('selectPreset', 'deep_dive')
+            ->assertSet('state', 'age_confirmation')
+            ->assertSet('presetKey', 'deep_dive')
+            ->assertSet('presetChoice', 'Deep dive');
     }
 
-    public function test_llm_failure_still_reaches_proposals_with_manual_chips_and_no_suggestion(): void
+    public function test_llm_failure_still_reaches_lesson_type_buttons_with_no_suggestion(): void
     {
         $this->mock(OpenAiLlmService::class, function ($mock): void {
             $mock->shouldReceive('json')->once()->andThrow(new RuntimeException('LLM down'));
@@ -76,15 +140,19 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students understand the fall of Rome')
             ->call('submitGoal')
-            ->assertSet('state', 'proposals')
+            ->assertSet('state', 'focus')
+            ->call('continueAfterFocus')
+            ->assertSet('state', 'era')
+            ->call('selectEra', 0)
+            ->assertSet('state', 'preset_options')
             ->assertSet('suggestedPresetKey', null)
             ->assertSet('presetKey', null)
             ->assertSet('gradeLevel', 'Age 12')
-            // Free-topic fallback label = the raw goal
             ->assertSet('topic', 'Students understand the fall of Rome')
             ->assertSee('Story lesson')
-            ->assertSee('Deep dive')
-            ->assertDontSee('Suggested');
+            ->assertSee('Spel-verhaal')
+            ->assertSee('Comprehension check')
+            ->assertSee('Deep dive');
     }
 
     public function test_nonsense_llm_output_is_whitelisted_server_side(): void
@@ -98,12 +166,14 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Something about pyramids')
             ->call('submitGoal')
-            ->assertSet('state', 'proposals')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->assertSet('state', 'preset_options')
             ->assertSet('suggestedPresetKey', null)
             ->assertSet('gradeLevel', 'Age 12');
     }
 
-    public function test_published_story_matches_appear_as_chips_but_draft_stories_never_do(): void
+    public function test_published_story_matches_appear_as_buttons_but_drafts_never_do(): void
     {
         Story::create(['slug' => 'willem', 'title' => 'Willem van Oranje', 'status' => 'published']);
         Story::create(['slug' => 'willem-draft', 'title' => 'Willem de Draft', 'status' => 'draft']);
@@ -117,6 +187,12 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students understand the Dutch Revolt')
             ->call('submitGoal')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
+            ->assertSet('state', 'grounding_options')
+            ->assertSee('Use Willem van Oranje')
             ->assertSee('Willem van Oranje')
             ->assertDontSee('Willem de Draft');
     }
@@ -135,6 +211,11 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Waarom was de limes de noordgrens en hoe leefden soldaten daar')
             ->call('submitGoal')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
+            ->assertSet('state', 'grounding_options')
             ->assertSee('De Romeinse Limes');
     }
 
@@ -155,7 +236,10 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students understand the Dutch Revolt')
             ->call('submitGoal')
-            ->call('selectGrade', 10)
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
             ->call('selectStory', $story->id)
             ->assertSet('state', 'confirm')
             ->call('create');
@@ -173,6 +257,8 @@ class LessonChatTest extends TestCase
         $this->assertSame('Willem van Oranje', $lesson->topic);
         $this->assertSame('Willem van Oranje', $lesson->protagonist_name);
         $this->assertSame('Age 10', $lesson->grade_level);
+        $this->assertSame('netherlands', $lesson->region);
+        $this->assertSame('Opstand & Tachtigjarige Oorlog (1568–1648)', $lesson->era);
         $this->assertNull($lesson->title); // pipeline titles it
 
         // Pipeline started exactly like the wizard: source attached, SourceReady, outline queued
@@ -195,8 +281,12 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students learn how the pyramids were built')
             ->call('submitGoal')
-            ->call('selectFreeTopic')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
             ->assertSet('state', 'confirm')
+            ->assertSet('freeTopic', true)
             ->call('create');
 
         $lesson = Lesson::where('teacher_id', $this->teacher->id)->sole();
@@ -220,11 +310,41 @@ class LessonChatTest extends TestCase
             ->test(LessonChat::class)
             ->set('goal', 'Students learn how the pyramids were built')
             ->call('submitGoal')
-            ->call('selectFreeTopic')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
             ->call('create')
             ->call('create');
 
         $this->assertSame(1, Lesson::where('teacher_id', $this->teacher->id)->count());
         Bus::assertDispatchedTimes(BuildLessonOutline::class, 1);
+    }
+
+    public function test_change_age_shows_age_buttons_and_uses_the_selected_band(): void
+    {
+        $this->mockLlm([
+            'topic' => 'French Revolution', 'age' => 12, 'preset_key' => 'deep_dive',
+            'story_query' => null, 'language' => 'en',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->set('goal', 'Students understand the rise and fall of Napoleon')
+            ->call('submitGoal')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('showAgeOptions')
+            ->assertSet('state', 'age_options')
+            ->assertSet('ageAnswer', 'change')
+            ->assertSee('6–8')
+            ->assertSee('12–14')
+            ->assertSee('16–18')
+            ->call('selectGrade', 14)
+            ->assertSet('state', 'confirm')
+            ->assertSet('gradeLevel', 'Age 14')
+            ->assertSet('ageChoice', '14–16')
+            ->assertSet('freeTopic', true);
     }
 }

@@ -235,6 +235,34 @@
     .alert-success { background: rgba(52,211,153,0.10); border-color: rgba(52,211,153,0.25); }
     .alert-warning { background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.30); }
     .alert-error   { background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.25); }
+
+    /* Chat bubble size adjustment for tighter bubbles */
+    .chat-bubble,
+    .chat-bubble-primary {
+        min-height: auto;
+        min-width: 0;
+        padding: 0.75rem;
+        line-height: 1.25;
+    }
+    .chat-bubble::before {
+        width: 0.65rem;
+        height: 0.65rem;
+        bottom: 0.15rem;
+    }
+}
+
+/* ─── Wizard progressive-disclosure flow (step 1 settings) ───────────
+   Each setting group is ~75vh so one is in focus at a time; the rest dim.
+   Lives here (not an inline <style>) so Livewire DOM morphs — triggered on
+   every keystroke by the wire:model.live topic field — can never strip it. */
+.wizard-flow-group {
+    min-height: 75vh;
+    scroll-margin-top: 5rem;
+    transition: opacity .35s ease, filter .35s ease;
+}
+.wizard-flow-group.flow-dim { opacity: .38; filter: saturate(.55); }
+@media (prefers-reduced-motion: reduce) {
+    .wizard-flow-group { transition: none; }
 }
 
 /* ─── Voice card gradients (used in AvatarLab + AvatarStudio) ───────── */

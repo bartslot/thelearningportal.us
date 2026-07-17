@@ -350,6 +350,9 @@ class Step1Settings extends Component
                 $this->era = $topic->eraLabel() ?: $this->era;
             }
         }
+
+        // Guided flow: advance to the next setting group (audience).
+        $this->dispatch('flow-next');
     }
 
     /** Back to free-topic mode ("request a new story"). */
@@ -393,6 +396,9 @@ class Step1Settings extends Component
         if ($this->region || $this->era) {
             $this->show_region_era = true;
         }
+
+        // Guided flow: a topic is chosen → advance to the next setting group (audience).
+        $this->dispatch('flow-next');
     }
 
     #[Computed]

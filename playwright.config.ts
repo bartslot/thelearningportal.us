@@ -8,7 +8,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'tests/playwright/report', open: 'never' }]],
 
   use: {
-    baseURL: 'http://localhost:8000',
+    baseURL: process.env.PW_BASE_URL ?? 'http://localhost:8000',
     headless: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

@@ -205,6 +205,30 @@
         })
         window.addEventListener('lesson:add-text', () => ensureTextLayer()?.addText())
         window.addEventListener('lesson:add-rect', (e) => ensureTextLayer()?.addRect(e.detail?.side || 'left'))
+
+        // Eager init: the initial scene:load (dispatched during Livewire hydration) can fire
+        // BEFORE this boot registers its listener on slow devices/headless browsers — then the
+        // text layer never exists and scene 1's saved text boxes don't render until the teacher
+        // clicks away and back. Seed scene 1 from the bootstrap JSON. Retries because the Vite
+        // bundle (window.LessonScene) also races this script on slow loads — ensureTextLayer()
+        // returns null until it lands. The guard on textSceneId keeps a scene:load that DID
+        // arrive first authoritative.
+        let eagerTries = 0
+        const eagerSeed = () => {
+            const layer = ensureTextLayer()
+            if (!layer) { if (++eagerTries < 60) setTimeout(eagerSeed, 500); return }
+            if (textSceneId !== null) return   // a real scene:load already seeded — done
+            try {
+                const scenes = JSON.parse(document.getElementById('step3-scenes-data')?.textContent || '[]')
+                const first = scenes[0]
+                if (first) {
+                    textSceneId = first.id
+                    lastAppliedTexts = JSON.stringify(first.config?.texts || [])
+                    layer.setTexts(first.config?.texts || [])
+                }
+            } catch (e) { /* malformed bootstrap JSON — scene:load will still seed on next poll */ }
+        }
+        eagerSeed()
     }
     // Livewire defers stacked scripts, so `livewire:initialized` has often ALREADY fired by the time
     // this runs — boot immediately in that case; otherwise wait for the event. (Same footgun the

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Wizard;
 
 use App\Enums\LessonStatus;
-use App\Jobs\BuildLessonOutline;
 use App\Lessons\FocusTags;
 use App\Livewire\Teacher\LessonChat;
 use App\Livewire\Wizard\Step1Settings;
@@ -111,21 +110,47 @@ class LessonFocusTagsTest extends TestCase
         $this->assertSame(['power', 'war', 'revolution'], $result);
     }
 
-    public function test_chat_tag_only_submission_without_goal_text(): void
+    public function test_chat_focus_picker_keeps_three_slots_open_and_allows_a_swap(): void
     {
         $this->mockLlm([
-            'topic' => 'Power Structures', 'age' => 12, 'preset_key' => 'story',
-            'story_query' => 'Power', 'language' => 'en',
+            'topic' => 'Revolutions', 'age' => 12, 'preset_key' => 'story',
+            'story_query' => 'Revolutions', 'language' => 'en',
         ]);
 
+        $component = Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->assertDontSee('Selected focus points')
+            ->set('goal', 'Students understand why revolutions happen')
+            ->call('submitGoal')
+            ->assertSet('state', 'focus')
+            ->assertSee('Selected focus points')
+            ->assertDontSeeHtml('<details')
+            ->call('toggleFocusTag', 'power')
+            ->assertSet('focusTags', ['power'])
+            ->assertSee('War')
+            ->call('toggleFocusTag', 'war')
+            ->call('toggleFocusTag', 'revolution')
+            ->call('toggleFocusTag', 'rights')
+            ->assertSet('focusTags', ['power', 'war', 'revolution'])
+            ->assertSee('3 of 3 chosen — clear a slot above to swap.');
+
+        $component
+            ->call('toggleFocusTag', 'war')
+            ->assertSet('focusTags', ['power', 'revolution'])
+            ->assertSee('Rights')
+            ->call('toggleFocusTag', 'rights')
+            ->assertSet('focusTags', ['power', 'revolution', 'rights']);
+    }
+
+    public function test_chat_ignores_focus_interaction_before_a_goal_is_submitted(): void
+    {
         Livewire::actingAs($this->teacher)
             ->test(LessonChat::class)
             ->call('toggleFocusTag', 'power')
             ->call('toggleFocusTag', 'empire')
-            ->call('submitGoal')
-            ->assertSet('state', 'proposals')
-            // When no goal text but tags exist, the LLM's returned topic is used as fallback
-            ->assertSet('topic', 'Power Structures');
+            ->assertSet('state', 'goal')
+            ->assertSet('focusTags', [])
+            ->assertDontSee('Optional focus');
     }
 
     public function test_chat_empty_goal_without_tags_fails_validation(): void
@@ -146,11 +171,14 @@ class LessonFocusTagsTest extends TestCase
 
         Livewire::actingAs($this->teacher)
             ->test(LessonChat::class)
-            ->call('toggleFocusTag', 'power')
-            ->call('toggleFocusTag', 'war')
             ->set('goal', 'Understand why wars happen')
             ->call('submitGoal')
-            ->call('selectFreeTopic')
+            ->call('toggleFocusTag', 'power')
+            ->call('toggleFocusTag', 'war')
+            ->call('continueAfterFocus')
+            ->call('selectEra', 0)
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
             ->assertSet('state', 'confirm')
             ->call('create');
 
@@ -159,12 +187,8 @@ class LessonFocusTagsTest extends TestCase
         $this->assertSame('Power, War', $lesson->focus);
     }
 
-    public function test_chat_prepends_focus_labels_to_parser_input(): void
+    public function test_chat_collects_focus_only_after_goal_analysis(): void
     {
-        // Verify that when tags are set, they are prepended to the goal text sent to the LLM.
-        // We can't easily intercept the LLM call, so we verify indirectly:
-        // If focus tags are passed to the parser and the parser returns a topic,
-        // and the chat reaches the proposals state, then the parser was called successfully.
         $this->mockLlm([
             'topic' => 'Leadership Studies', 'age' => 12, 'preset_key' => 'story',
             'story_query' => 'Leadership', 'language' => 'en',
@@ -173,11 +197,16 @@ class LessonFocusTagsTest extends TestCase
         Livewire::actingAs($this->teacher)
             ->test(LessonChat::class)
             ->call('toggleFocusTag', 'power')
+            ->assertSet('focusTags', [])
             ->set('goal', 'Students learn leadership')
             ->call('submitGoal')
-            ->assertSet('state', 'proposals')
-            // If we reach proposals, the prepended focus labels were included in the parser call
-            ->assertSet('focusTags', ['power']);
+            ->assertSet('state', 'focus')
+            ->assertSet('topic', 'Leadership Studies')
+            ->call('toggleFocusTag', 'power')
+            ->assertSet('focusTags', ['power'])
+            ->call('continueAfterFocus')
+            ->assertSet('state', 'era')
+            ->assertSet('focusChoice', 'Power');
     }
 
     public function test_outline_prompt_includes_focus_block_when_tags_present(): void

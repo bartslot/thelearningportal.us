@@ -13,7 +13,7 @@ use Throwable;
  * K-12 creation chat: turns a teacher's one-sentence learning goal into lesson-setup
  * suggestions via a single LLM call. Every field is validated/whitelisted server-side;
  * any LLM failure or nonsense degrades to nulls so the chat falls through to manual
- * chips — this class must never throw.
+ * button options — this class must never throw.
  */
 class LessonGoalParser
 {
@@ -26,14 +26,14 @@ class LessonGoalParser
     public function __construct(private readonly OpenAiLlmService $llm) {}
 
     /**
-     * @return array{topic: ?string, age: ?int, preset_key: ?string, story_query: ?string, language: ?string}
+     * @return array{summary: ?string, topic: ?string, age: ?int, preset_key: ?string, story_query: ?string, language: ?string}
      */
     public function parse(string $goal, string $locale): array
     {
         try {
             $raw = $this->llm->json($this->systemPrompt(), $this->userPrompt($goal, $locale));
         } catch (Throwable $e) {
-            Log::warning('[LessonGoalParser] LLM call failed — falling back to manual chips', [
+            Log::warning('[LessonGoalParser] LLM call failed — falling back to button options', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -41,6 +41,7 @@ class LessonGoalParser
         }
 
         return [
+            'summary' => $this->cleanText($raw['summary'] ?? null),
             'topic' => $this->cleanText($raw['topic'] ?? null),
             'age' => $this->cleanAge($raw['age'] ?? null),
             'preset_key' => $this->cleanPresetKey($raw['preset_key'] ?? null),
@@ -49,10 +50,17 @@ class LessonGoalParser
         ];
     }
 
-    /** @return array{topic: null, age: null, preset_key: null, story_query: null, language: null} */
+    /** @return array{summary: null, topic: null, age: null, preset_key: null, story_query: null, language: null} */
     public static function empty(): array
     {
-        return ['topic' => null, 'age' => null, 'preset_key' => null, 'story_query' => null, 'language' => null];
+        return [
+            'summary' => null,
+            'topic' => null,
+            'age' => null,
+            'preset_key' => null,
+            'story_query' => null,
+            'language' => null,
+        ];
     }
 
     private function systemPrompt(): string
@@ -64,13 +72,15 @@ class LessonGoalParser
         return <<<PROMPT
         You convert a teacher's one-sentence learning goal into lesson setup suggestions.
         Reply with ONLY a JSON object, no prose:
-        {"topic": string|null, "age": number|null, "preset_key": string|null, "story_query": string|null, "language": "nl"|"en"|null}
+        {"summary": string|null, "topic": string|null, "age": number|null, "preset_key": string|null, "story_query": string|null, "language": "nl"|"en"|null}
 
         Rules:
-        - topic: the historical subject in 2-6 words, in the teacher's own language.
+        - summary: restate the full learning goal as one natural phrase of at most 18 words, in the teacher's language. Preserve every requested angle. Do not praise or add facts.
+        - topic: the historical subject in 2-6 words, in the teacher's own language. Normalize informal names and numeric aliases to the canonical historical subject (for example, "80 years war" means "Eighty Years' War").
         - age: the student age (4-18) only if the goal implies one (grade, group, age), else null.
         - preset_key: the best-fitting lesson type key from this list, else null:
         {$types}
+        - Prefer deep_dive when the goal combines a major historical transformation, a person's rise or fall, and long-term effects such as legal reform.
         - story_query: 1-3 keywords to search a curated story catalog, else null.
         - language: the language the goal is written in.
         Never invent facts. When uncertain about any field, use null.
