@@ -57,53 +57,36 @@
                         };
                     @endphp
 
-                    <div class="w-[17rem] shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-950/70 transition hover:-translate-y-0.5 hover:border-amber-500/30 sm:w-[19rem]">
-                        <a href="{{ route('teacher.lessons.show', $lesson) }}" class="group block">
-                            <div class="relative aspect-[16/9] overflow-hidden bg-slate-900">
-                                @if($cardImage)
-                                    <img
-                                        src="{{ $cardImage }}"
-                                        alt=""
-                                        loading="lazy"
-                                        decoding="async"
-                                        class="h-full w-full object-cover opacity-80 transition duration-500 group-hover:scale-[1.03] group-hover:opacity-100"
-                                    >
-                                @else
-                                    <div class="flex h-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950">
-                                        <x-icons.building-library class="h-8 w-8 text-slate-600" />
-                                    </div>
-                                @endif
-                                <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
-                                <div class="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-slate-950/80 px-2.5 py-1 backdrop-blur-sm">
-                                    <span class="h-1.5 w-1.5 rounded-full {{ $statusClass }} {{ $isGenerating ? 'animate-pulse' : '' }}"></span>
-                                    <span class="text-[0.65rem] text-slate-300">{{ $lesson->status->label() }}</span>
-                                </div>
+                    {{-- Poster card: full-height image, title-only over a bottom shadow scrim.
+                         The whole card links to the lesson dashboard (settings + configurator). --}}
+                    <a href="{{ route('teacher.lessons.show', $lesson) }}"
+                       class="group relative aspect-[2/3] w-[13rem] shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
+                        @if($cardImage)
+                            <img
+                                src="{{ $cardImage }}"
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                                class="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                            >
+                        @else
+                            <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950">
+                                <x-icons.building-library class="h-10 w-10 text-slate-600" />
                             </div>
+                        @endif
 
-                            <div class="p-4">
-                                <p class="truncate text-[0.65rem] font-medium uppercase tracking-wider text-amber-400/80">
-                                    {{ $lesson->subject }}
-                                    @if($lesson->grade_level)
-                                        · {{ $lesson->grade_level }}
-                                    @endif
-                                </p>
-                                <h4 class="mt-2 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-100 group-hover:text-amber-300">
-                                    {{ $lesson->title ?: $lesson->topic }}
-                                </h4>
-                                <p class="mt-2 text-xs text-slate-600">{{ $lesson->created_at->diffForHumans() }}</p>
-                            </div>
-                        </a>
+                        {{-- Shadow fading in over the image — the only backdrop the title gets. --}}
+                        <div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-950 via-slate-950/55 to-transparent"></div>
 
-                        <div class="flex items-center justify-between border-t border-slate-800 px-4 py-3">
-                            <a href="{{ route('teacher.lessons.show', $lesson) }}" class="text-xs text-slate-400 hover:text-slate-200">
-                                {{ __('Open lesson') }}
-                            </a>
-                            <a href="{{ route('teacher.lessons.results', $lesson) }}" class="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300">
-                                <x-icons.chart-bar class="h-3.5 w-3.5" />
-                                {{ __('Results') }}
-                            </a>
+                        <div class="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-slate-950/80 px-2.5 py-1 backdrop-blur-sm">
+                            <span class="h-1.5 w-1.5 rounded-full {{ $statusClass }} {{ $isGenerating ? 'animate-pulse' : '' }}"></span>
+                            <span class="text-[0.65rem] text-slate-300">{{ $lesson->status->label() }}</span>
                         </div>
-                    </div>
+
+                        <h4 class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
+                            {{ $lesson->title ?: $lesson->topic }}
+                        </h4>
+                    </a>
                 @endforeach
             </div>
         </div>
