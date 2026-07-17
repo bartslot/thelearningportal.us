@@ -248,6 +248,11 @@
            x-ref="inspectorPanel"
            x-show="inspectorOpen"
            x-on:inspector-toggle.window="toggleInspector()"
+           x-on:inspector-open-settings.window="inspectorOpen = true"
+           {{-- Broadcast open-state + active tab to the toolbar (sibling scope, wire:ignore) so
+                its Format/Settings buttons can render an open state. Re-runs when inspectorOpen
+                flips AND when a Livewire morph rewrites the literal panelView below. --}}
+           x-effect="window.dispatchEvent(new CustomEvent('inspector-state', { detail: { open: inspectorOpen, view: '{{ $panelView }}' } }))"
            style="right:0; left:auto; top:64px; bottom:0;"
            class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
@@ -628,14 +633,18 @@
     <div class="fixed right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg"
          style="left: max(var(--rail-w, 11rem), 3.25rem)"
          wire:ignore
-         x-data="{ rectOpen: false, viewOpen: false }">
+         {{-- fmtOpen/fmtView mirror the Format panel's state (broadcast by the aside via
+              inspector-state) so toolbar buttons can show a proper OPEN state — the toolbar is
+              wire:ignore and a sibling Alpine scope, so it can't read the panel directly. --}}
+         x-data="{ rectOpen: false, viewOpen: false, fmtOpen: false, fmtView: 'scene' }"
+         x-on:inspector-state.window="fmtOpen = $event.detail.open; if ($event.detail.view) fmtView = $event.detail.view">
         {{-- Left group: View menu + Play + insert tools --}}
         <div class="flex items-stretch gap-0.5">
         {{-- View menu — show/hide workspace surfaces (Keynote's View) --}}
         <div class="relative">
             <button type="button" @click="viewOpen = !viewOpen"
                     class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
-                    :class="viewOpen && 'text-amber-300'"
+                    :class="viewOpen && 'bg-sky-500/15 text-sky-300'"
                     title="{{ __('Show or hide workspace panels') }}" aria-label="{{ __('View') }}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
@@ -695,7 +704,7 @@
         <div class="relative">
             <button type="button" @click="rectOpen = !rectOpen"
                     class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                    :class="rectOpen && 'text-amber-300'"
+                    :class="rectOpen && 'bg-sky-500/15 text-sky-300'"
                     title="{{ __('Add a panel (left or right half) behind your text') }}" aria-label="{{ __('Add panel') }}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m-4.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
@@ -741,9 +750,11 @@
         <button type="button"
                 onclick="window.dispatchEvent(new CustomEvent('inspector-toggle'))"
                 class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                :class="fmtOpen && 'bg-sky-500/15 text-sky-300'"
                 title="{{ __('Show or hide the Format panel') }}" aria-label="{{ __('Format') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z" />
+            {{-- Painting/picture icon (Noun Project, filled) — reads as "scene formatting". --}}
+            <svg viewBox="0 0 100 100" fill="currentColor" class="h-6 w-6" aria-hidden="true">
+                <path d="m79.168 26.043h-12.203l-7.8867-11.793c-1.9961-3.0508-5.3828-4.875-9.0742-4.875s-7.0781 1.8242-9.0547 4.8477l-7.9023 11.82h-12.203c-6.3203 0-11.457 5.1367-11.457 11.457v41.668c0 6.3203 5.1367 11.457 11.457 11.457h58.332c6.3203 0 11.457-5.1367 11.457-11.457v-41.668c0-6.3203-5.1367-11.457-11.457-11.457zm-33.008-8.375c1.6445-2.5195 6.0195-2.5508 7.6992 0.027343l5.582 8.3477h-18.883zm38.215 61.5c0 2.8711-2.3359 5.207-5.207 5.207h-58.336c-2.8711 0-5.207-2.3359-5.207-5.207v-2.457l13.109-8.4141c2.8125-1.4141 6.1172-1.3125 9.0273 0.35156l18.918 9.168c0.4375 0.21094 0.90234 0.3125 1.3633 0.3125 1.1602 0 2.2734-0.64453 2.8125-1.7617 0.75391-1.5547 0.10547-3.4219-1.4492-4.1758l-0.66406-0.32031 4.7578-1.1914c1.9258-0.47656 3.9141-0.34766 5.7539 0.39062l15.113 6.0469v2.0508zm0-8.7852-12.797-5.1172c-3.0703-1.2344-6.3906-1.4531-9.5898-0.64844l-12.016 3.0039-9.2891-4.4961c-4.543-2.6172-10.059-2.7656-15.035-0.25781l-10.023 6.4219v-31.789c0-2.8711 2.3359-5.207 5.207-5.207h58.332c2.8711 0 5.207 2.3359 5.207 5.207v32.883zm-30.207-31.84c-6.3203 0-11.457 5.1367-11.457 11.457s5.1367 11.457 11.457 11.457c6.3203 0 11.457-5.1367 11.457-11.457s-5.1367-11.457-11.457-11.457zm0 16.668c-2.8711 0-5.207-2.3359-5.207-5.207s2.3359-5.207 5.207-5.207c2.8711 0 5.207 2.3359 5.207 5.207s-2.3359 5.207-5.207 5.207z"/>
             </svg>
             <span class="text-[10px] font-medium">{{ __('Format') }}</span>
         </button>
@@ -751,8 +762,9 @@
         {{-- Settings — global class/lesson settings (Story + Music). Lives on the toolbar, not
              inside the per-scene inspector. --}}
         <button type="button"
-                onclick="Livewire.dispatch('open-lesson-settings')"
+                onclick="Livewire.dispatch('open-lesson-settings'); window.dispatchEvent(new CustomEvent('inspector-open-settings'))"
                 class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                :class="fmtOpen && fmtView === 'settings' && 'bg-sky-500/15 text-sky-300'"
                 title="{{ __('Class & lesson settings') }}" aria-label="{{ __('Settings') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
