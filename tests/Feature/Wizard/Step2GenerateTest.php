@@ -14,6 +14,8 @@ use App\Models\Scene;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -80,6 +82,9 @@ class Step2GenerateTest extends TestCase
     {
         Livewire::actingAs($this->teacher)
             ->test(Step2Generate::class, ['lesson' => $this->lesson])
+            ->assertSee('History Portal time machine')
+            ->assertSee('Finding and creating images')
+            ->assertSee('Creating narration')
             ->assertSee('Scene 1')
             ->assertSee('Scene 2')
             ->assertSee('Scene 3')
@@ -126,5 +131,91 @@ class Step2GenerateTest extends TestCase
         Livewire::actingAs($this->teacher)
             ->test(Step2Generate::class, ['lesson' => $this->lesson])
             ->assertNoRedirect();
+    }
+
+    public function test_warns_when_generation_has_not_reported_progress(): void
+    {
+        $lesson = Lesson::create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'The Eighty Years War',
+            'subject' => 'history',
+            'grade_level' => '9th',
+            'status' => LessonStatus::SourceReady,
+            'wizard_step' => 3,
+        ]);
+        DB::table('lessons')->where('id', $lesson->id)->update([
+            'updated_at' => now()->subMinutes(4),
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step2Generate::class, ['lesson' => $lesson->fresh()])
+            ->assertSet('isStalled', true)
+            ->assertSee('taking longer than expected')
+            ->assertSee('No progress has been reported for 4 minutes')
+            ->assertSee('Remove session and start a new lesson');
+    }
+
+    public function test_recent_generation_is_not_marked_as_stalled(): void
+    {
+        $lesson = Lesson::create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'The Eighty Years War',
+            'subject' => 'history',
+            'grade_level' => '9th',
+            'status' => LessonStatus::SourceReady,
+            'wizard_step' => 3,
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step2Generate::class, ['lesson' => $lesson])
+            ->assertSet('isStalled', false)
+            ->assertDontSee('Remove session and start a new lesson');
+    }
+
+    public function test_starting_over_removes_stale_lesson_and_its_queue_records(): void
+    {
+        $lesson = Lesson::create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'The Eighty Years War',
+            'subject' => 'history',
+            'grade_level' => '9th',
+            'status' => LessonStatus::SourceReady,
+            'wizard_step' => 3,
+        ]);
+        DB::table('lessons')->where('id', $lesson->id)->update([
+            'updated_at' => now()->subMinutes(4),
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'command' => serialize(new BuildLessonOutline($lesson->id)),
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        DB::table('jobs')->insert([
+            'queue' => 'default',
+            'payload' => $payload,
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => now()->timestamp,
+            'created_at' => now()->timestamp,
+        ]);
+        DB::table('failed_jobs')->insert([
+            'uuid' => (string) Str::uuid(),
+            'connection' => 'database',
+            'queue' => 'default',
+            'payload' => $payload,
+            'exception' => 'Worker timed out.',
+            'failed_at' => now(),
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step2Generate::class, ['lesson' => $lesson->fresh()])
+            ->call('startNewLesson')
+            ->assertRedirect(route('teacher.lessons.chat'));
+
+        $this->assertNull(Lesson::withTrashed()->find($lesson->id));
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertDatabaseCount('failed_jobs', 0);
     }
 }

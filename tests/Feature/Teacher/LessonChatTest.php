@@ -7,6 +7,7 @@ namespace Tests\Feature\Teacher;
 use App\Enums\LessonStatus;
 use App\Jobs\BuildLessonOutline;
 use App\Livewire\Teacher\LessonChat;
+use App\Models\Classroom;
 use App\Models\Lesson;
 use App\Models\LessonSource;
 use App\Models\Story;
@@ -50,6 +51,9 @@ class LessonChatTest extends TestCase
             ->assertSeeHtml('overflow-y-auto')
             ->assertSeeHtml('shrink-0 border-t')
             ->assertSeeHtml('MutationObserver')
+            ->assertSeeHtml('goal-ring-composer')
+            ->assertSeeHtml('goal-ring-composer__ring')
+            ->assertDontSeeHtml('goalPlaceholderExamples')
             ->assertDontSee('Optional focus');
     }
 
@@ -86,12 +90,13 @@ class LessonChatTest extends TestCase
             ->call('toggleFocusTag', 'revolution')
             ->call('toggleFocusTag', 'rights')
             ->call('continueAfterFocus')
-            ->assertSet('state', 'era')
-            ->assertSet('focusChoice', 'Revolution, Rights')
-            ->assertSee("I suggest Eighty Years' War (1568–1648).")
-            ->assertSee("Eighty Years' War (1568–1648)")
-            ->call('selectEra', 0)
             ->assertSet('state', 'preset_confirmation')
+            ->assertSet('focusChoice', 'Revolution, Rights')
+            ->assertSet('eraChoice', "Eighty Years' War (1568–1648)")
+            ->assertSeeHtml('I suggest Eighty Years&#039; War (1568–1648).')
+            ->assertSeeHtml('Eighty Years&#039; War (1568–1648)')
+            ->call('continueWithSuggestedPreset')
+            ->assertSet('state', 'age_confirmation')
             ->assertSet('era', 'Opstand & Tachtigjarige Oorlog (1568–1648)')
             ->assertSee('I suggest a Deep dive lesson.')
             ->assertSee('It follows the rise and fall in depth and ends with a quiz.')
@@ -128,6 +133,99 @@ class LessonChatTest extends TestCase
             ->assertSet('state', 'age_confirmation')
             ->assertSet('presetKey', 'deep_dive')
             ->assertSet('presetChoice', 'Deep dive');
+    }
+
+    public function test_dutch_teacher_sees_canon_recommendation_and_real_coverage(): void
+    {
+        $this->teacher->update(['locale' => 'nl']);
+
+        $taughtLesson = Lesson::factory()->create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => "The Eighty Years' War",
+            'canon_theme' => 'governance',
+        ]);
+        Lesson::factory()->create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'Rembrandt',
+            'canon_theme' => 'word-and-image',
+        ]);
+        $classroom = Classroom::factory()->create(['teacher_id' => $this->teacher->id]);
+        $classroom->lessons()->attach($taughtLesson->id);
+
+        $this->mockLlm([
+            'summary' => 'The 80 years war',
+            'topic' => '80 years war',
+            'age' => 12,
+            'preset_key' => 'deep_dive',
+            'story_query' => '80 years war',
+            'language' => 'nl',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->set('goal', 'the 80 years war')
+            ->call('submitGoal')
+            ->assertSet('suggestedCanonTheme', 'governance')
+            ->call('continueAfterFocus')
+            ->assertSet('state', 'canon_theme')
+            ->assertSee('This goal best fits Hoofdlijn 6')
+            ->assertSee('Leven in een kwetsbare delta')
+            ->assertSee('Wie bestuurt er?')
+            ->assertSee('Taught · 1 lesson')
+            ->assertSee('Prepared · not taught yet')
+            ->assertSee('Not taught yet')
+            ->call('selectCanonTheme', 'governance')
+            ->assertSet('canonTheme', 'governance')
+            ->assertSet('canonIntent', 'strengthen')
+            ->assertSet('state', 'preset_confirmation')
+            ->assertSee('Hoofdlijn 6 · Wie bestuurt er? — strengthen');
+    }
+
+    public function test_dutch_canon_choice_is_saved_on_the_created_lesson(): void
+    {
+        $this->teacher->update(['locale' => 'nl']);
+        $story = Story::create([
+            'slug' => 'willem-canon',
+            'title' => 'Willem van Oranje',
+            'status' => 'published',
+        ]);
+        $this->mockLlm([
+            'topic' => 'Dutch Revolt',
+            'age' => 10,
+            'preset_key' => 'story',
+            'story_query' => 'Willem',
+            'language' => 'nl',
+        ]);
+        Bus::fake();
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonChat::class)
+            ->set('goal', 'Students understand the Dutch Revolt')
+            ->call('submitGoal')
+            ->call('continueAfterFocus')
+            ->call('selectCanonTheme', 'governance')
+            ->call('continueWithSuggestedPreset')
+            ->call('continueWithSuggestedAge')
+            ->call('selectStory', $story->id)
+            ->call('create');
+
+        $lesson = Lesson::where('teacher_id', $this->teacher->id)->sole();
+        $this->assertSame('governance', $lesson->canon_theme);
+        $this->assertSame('introduce', $lesson->canon_intent);
+    }
+
+    public function test_dutch_lessons_created_outside_chat_are_automatically_tagged(): void
+    {
+        $this->teacher->update(['locale' => 'nl']);
+
+        $lesson = Lesson::factory()->create([
+            'teacher_id' => $this->teacher->id,
+            'topic' => 'Napoleon and the Dutch constitution',
+            'details' => 'How French law changed government in the Netherlands',
+            'canon_theme' => null,
+        ]);
+
+        $this->assertSame('governance', $lesson->canon_theme);
     }
 
     public function test_llm_failure_still_reaches_lesson_type_buttons_with_no_suggestion(): void

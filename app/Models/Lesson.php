@@ -37,6 +37,8 @@ class Lesson extends Model
         'topic',
         'topic_id',
         'story_id',
+        'canon_theme',
+        'canon_intent',
         'focus',
         'focus_tags',
         'title_bg_path',
@@ -82,6 +84,19 @@ class Lesson extends Model
                     $code = strtoupper(Str::random(6));
                 } while (static::where('lesson_code', $code)->exists());
                 $lesson->lesson_code = $code;
+            }
+
+            if (empty($lesson->canon_theme) && $lesson->teacher_id) {
+                $teacher = User::query()->find($lesson->teacher_id);
+                $catalog = app(\App\Services\CanonThemeCatalog::class);
+
+                if ($catalog->isDutchTeacher($teacher)) {
+                    $lesson->canon_theme = $catalog->suggest(
+                        $lesson->topic,
+                        $lesson->details,
+                        $lesson->focus,
+                    );
+                }
             }
         });
 
@@ -206,6 +221,11 @@ class Lesson extends Model
     public function studentProgress(): HasMany
     {
         return $this->hasMany(StudentProgress::class);
+    }
+
+    public function quizScores(): HasMany
+    {
+        return $this->hasMany(QuizScore::class);
     }
 
     public function scenes(): HasMany

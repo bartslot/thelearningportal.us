@@ -16,6 +16,8 @@
     <div class="pointer-events-none absolute inset-0 z-[5]"
          style="mix-blend-mode:overlay;opacity:0.2;background-image:url('{{ asset('timemap/parchment.png') }}');background-repeat:repeat;background-size:360px 360px"></div>
 
+    {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
+
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
     <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false, selected: [] }"
            x-show="polity || loading"

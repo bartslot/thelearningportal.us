@@ -19,11 +19,16 @@ final class StoryImageResolver
     /** Politeness delay between Commons lookups when resolving a whole article (µs). */
     private const THROTTLE_US = 200_000;
 
-    public function __construct(private readonly CommonsImageService $commons) {}
+    public function __construct(
+        private readonly CommonsImageService $commons,
+        private readonly WikidataEntityResolver $wikidata,
+    ) {}
 
-    public function resolve(ScrapedImage $img, string $sourceSite = ''): ?ResolvedStoryImage
+    public function resolve(ScrapedImage $img, string $sourceSite = '', string $lang = 'en'): ?ResolvedStoryImage
     {
-        $hit = $this->bestMatch($img);
+        // QID-anchored first (precise: the subject's own portrait / a depicts-tagged
+        // image), then fall back to full-text Commons search.
+        $hit = $this->qidMatch($img, $lang) ?? $this->bestMatch($img);
         if ($hit === null) {
             return null;
         }
@@ -55,7 +60,7 @@ final class StoryImageResolver
     {
         $resolved = [];
         foreach ($article->images() as $img) {
-            $r = $this->resolve($img, $article->source);
+            $r = $this->resolve($img, $article->source, $article->lang);
             if ($r !== null) {
                 $resolved[] = $r;
             }
@@ -63,6 +68,49 @@ final class StoryImageResolver
         }
 
         return $resolved;
+    }
+
+    /**
+     * Resolve the caption's SUBJECT to a Wikidata entity, then take that entity's
+     * canonical image (P18 — e.g. a person's portrait) or a Commons file that
+     * structurally depicts it (P180). Both come back license-filtered.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function qidMatch(ScrapedImage $img, string $lang): ?array
+    {
+        foreach ($this->subjectQueries($img) as $subject) {
+            $qid = $this->wikidata->qidFor($subject, $lang);
+            if ($qid === null) {
+                continue;
+            }
+
+            $file = $this->wikidata->imageFile($qid);
+            if ($file !== null && ($meta = $this->commons->fileMeta($file)) !== null) {
+                return $meta;
+            }
+
+            $depicts = $this->commons->searchDepicting($qid, 3);
+            if ($depicts !== []) {
+                return $depicts[0];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Subject-only phrases for entity lookup — the lead clause (the person/place name),
+     * then the whole title. Deliberately excludes the creator so "Philip II of Spain by
+     * Moro" resolves to Philip II, not the painter Antonio Moro.
+     *
+     * @return list<string>
+     */
+    private function subjectQueries(ScrapedImage $img): array
+    {
+        $lead = trim((string) preg_split('/[,.;:–—-]/u', $img->title, 2)[0]);
+
+        return array_values(array_unique(array_filter([$lead, $img->title])));
     }
 
     /**

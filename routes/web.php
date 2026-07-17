@@ -4,6 +4,7 @@ use App\Enums\LessonStatus as LessonStatusEnum;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
+use App\Http\Controllers\Teacher\DashboardController;
 use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\LessonWizard;
 use App\Models\Avatar;
@@ -82,14 +83,7 @@ Route::middleware(['auth'])->get('/settings', \App\Livewire\Settings::class)->na
 
 Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function () {
 
-    Route::get('/dashboard', function () {
-        $lessons = \App\Models\Lesson::where('teacher_id', auth()->id())
-            ->with(['source', 'firstScene'])
-            ->latest()
-            ->paginate(24);
-
-        return view('teacher.dashboard', compact('lessons'));
-    })->name('dashboard');
+    Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 

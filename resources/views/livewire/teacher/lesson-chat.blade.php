@@ -1,14 +1,8 @@
 <div class="mx-auto max-w-3xl px-0 py-2 sm:px-4 sm:py-8">
-    <header class="mb-7">
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{{ __('Teacher workspace') }}</p>
-        <h1 class="mt-2 font-history text-3xl font-semibold sm:text-4xl">{{ __('Build a lesson together') }}</h1>
-        <p class="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
-            {{ __('Describe the learning goal. I’ll suggest a lesson and ask one question at a time.') }}
-        </p>
-    </header>
+    <h1 class="mb-6 text-3xl font-semibold text-base-content sm:text-4xl">{{ __('New lesson') }}</h1>
 
     <section
-        class="relative flex h-[clamp(32rem,72dvh,48rem)] flex-col overflow-hidden rounded-2xl border border-base-content/10 bg-base-200/70 shadow-2xl shadow-black/20"
+        class="relative flex h-auto max-h-[calc(100vh-11rem)] min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-base-content/10 bg-base-200/70 shadow-2xl shadow-black/20"
         x-data="{
             pinnedToBottom: true,
             transcriptObserver: null,
@@ -55,8 +49,9 @@
                 const computed = getComputedStyle(textarea);
                 const lineHeight = parseFloat(computed.lineHeight) || 24;
                 const padding = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom);
+                const minHeight = Math.round(lineHeight + padding);
                 const maxHeight = Math.round(lineHeight * 2 + padding);
-                const desiredHeight = Math.min(textarea.scrollHeight, maxHeight);
+                const desiredHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
 
                 textarea.style.height = `${desiredHeight}px`;
                 textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
@@ -127,6 +122,21 @@
                     <div class="chat chat-end" wire:key="focus-choice">
                         <div class="chat-header mb-1 text-xs text-base-content/55">{{ __('You') }}</div>
                         <div class="chat-bubble chat-bubble-primary p-3">{{ $focusChoice }}</div>
+                    </div>
+                @endif
+
+                @if ($this->usesCanon && in_array($state, ['canon_theme', 'era', 'preset_confirmation', 'preset_options', 'age_confirmation', 'age_options', 'grounding_options', 'confirm', 'creating'], true))
+                    <x-teacher.typed-chat-message
+                        :message="$this->canonThemePrompt"
+                        :animate="$state === 'canon_theme'"
+                        wire:key="canon-theme-prompt"
+                    />
+                @endif
+
+                @if ($canonThemeChoice !== null)
+                    <div class="chat chat-end" wire:key="canon-theme-choice">
+                        <div class="chat-header mb-1 text-xs text-base-content/55">{{ __('You') }}</div>
+                        <div class="chat-bubble chat-bubble-primary p-3">{{ $canonThemeChoice }}</div>
                     </div>
                 @endif
 
@@ -236,18 +246,35 @@
 
         <div class="shrink-0 border-t border-base-content/10 bg-base-200/95 p-3 shadow-[0_-16px_32px_rgba(2,6,23,0.35)] backdrop-blur sm:p-4">
             @if ($state === 'goal')
-                <form wire:submit="submitGoal" class="space-y-3">
-                    <textarea
-                        x-ref="goalInput"
-                        wire:model="goal"
-                        rows="1"
-                        class="textarea textarea-bordered w-full resize-none text-base leading-6"
-                        placeholder="{{ __('Type the learning goal…') }}"
-                        aria-label="{{ __('Learning goal') }}"
-                        autofocus
-                        @input="$root.resizeGoalTextarea()"
-                        @keydown="if ($event.key === 'Enter') { if ($event.ctrlKey || $event.metaKey || $event.shiftKey) { $event.preventDefault(); const start = $el.selectionStart; const end = $el.selectionEnd; const value = $el.value; $el.value = `${value.slice(0, start)}\n${value.slice(end)}`; $el.setSelectionRange(start + 1, start + 1); $el.dispatchEvent(new Event('input', { bubbles: true })); } else { $event.preventDefault(); const form = $el.form; if (form) { if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); } } } }"
-                    ></textarea>
+                <form wire:submit="submitGoal" class="space-y-2">
+                    <div class="goal-ring-composer">
+                        <textarea
+                            x-ref="goalInput"
+                            wire:model="goal"
+                            rows="1"
+                            class="goal-ring-composer__input textarea textarea-bordered w-full resize-none text-base leading-6 min-h-[2.5rem] max-h-[4.5rem] h-auto"
+                            placeholder="{{ __('Type the learning goal…') }}"
+                            aria-label="{{ __('Learning goal') }}"
+                            autofocus
+                            @input="$root.resizeGoalTextarea()"
+                            @keydown="handleGoalTextareaKeydown($event)"
+                        ></textarea>
+
+                        <svg
+                            class="goal-ring-composer__art"
+                            viewBox="0 0 64 48"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--out" style="--ring-delay: -0.15s; --ring-opacity: .72" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--out" style="--ring-delay: -1.8s; --ring-opacity: .42" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--out" style="--ring-delay: -3.45s; --ring-opacity: .2" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--in" style="--ring-delay: -0.92s; --ring-opacity: .52" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--in" style="--ring-delay: -2.57s; --ring-opacity: .3" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__ring goal-ring-composer__ring--in" style="--ring-delay: -4.22s; --ring-opacity: .14" cx="32" cy="24" r="7" />
+                            <circle class="goal-ring-composer__core" cx="32" cy="24" r="1.7" />
+                        </svg>
+                    </div>
 
                     @error('goal')
                         <p class="text-sm text-error">{{ $message }}</p>
@@ -339,7 +366,61 @@
                         </button>
                     </div>
                 </div>
-            @elseif ($state === 'era')
+            @elseif ($state === 'canon_theme')
+                <div class="space-y-3">
+                    <div
+                        class="grid max-h-[46vh] gap-px overflow-x-hidden overflow-y-auto border border-base-content/10 bg-base-content/10 sm:grid-cols-2"
+                        aria-label="{{ __('Canon themes and teaching coverage') }}"
+                    >
+                        @foreach ($this->canonThemeOptions as $option)
+                            <button
+                                type="button"
+                                wire:click="selectCanonTheme('{{ $option['slug'] }}')"
+                                class="group flex min-h-28 flex-col items-start bg-base-200 px-4 py-3.5 text-left transition hover:bg-base-300 focus-visible:relative focus-visible:z-10"
+                            >
+                                <span class="flex w-full items-center justify-between gap-3">
+                                    <span class="text-[0.62rem] font-semibold uppercase tracking-[0.13em] text-base-content/45">
+                                        {{ __('Hoofdlijn :number', ['number' => $option['number']]) }}
+                                    </span>
+                                    @if ($option['suggested'])
+                                        <span class="rounded-full bg-primary/15 px-2 py-0.5 text-[0.6rem] font-semibold text-primary">
+                                            {{ __('Suggested') }}
+                                        </span>
+                                    @endif
+                                </span>
+                                <strong class="mt-2 text-sm font-semibold text-base-content">
+                                    {{ $option['label'] }}
+                                </strong>
+                                <span class="mt-0.5 text-xs text-base-content/50">{{ $option['subtitle'] }}</span>
+                                <span @class([
+                                    'mt-auto pt-3 text-[0.68rem] font-medium',
+                                    'text-emerald-300' => $option['status'] === 'taught',
+                                    'text-sky-300' => $option['status'] === 'prepared',
+                                    'text-amber-300' => $option['status'] === 'untaught',
+                                ])>
+                                    {{ $option['status_label'] }}
+                                </span>
+                            </button>
+                        @endforeach
+                    </div>
+
+                    <div class="flex items-center justify-between gap-4">
+                        <p class="max-w-md text-xs leading-5 text-base-content/45">
+                            {{ __('Use Other only when the lesson genuinely falls outside the seven Canon themes.') }}
+                        </p>
+                        <button
+                            type="button"
+                            wire:click="selectCanonTheme('{{ \App\Services\CanonThemeCatalog::OTHER }}')"
+                            class="btn btn-ghost btn-sm shrink-0"
+                        >
+                            {{ __('Other') }}
+                            @if ($suggestedCanonTheme === \App\Services\CanonThemeCatalog::OTHER)
+                                <span class="text-primary">· {{ __('Suggested') }}</span>
+                            @endif
+                        </button>
+                    </div>
+                </div>
+            @elseif ($state === 'era' && $detectedEra === null)
                 <div class="flex flex-wrap justify-end gap-2">
                     @foreach ($this->eraOptions as $option)
                         <button

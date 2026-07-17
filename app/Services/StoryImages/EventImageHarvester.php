@@ -24,9 +24,11 @@ final class EventImageHarvester
     public function __construct(private readonly CommonsImageService $commons) {}
 
     /**
+     * @param  string  $eventQid  the event's Wikidata QID — its structurally "depicts"-tagged
+     *                             images (P180) lead, before the name/alias text fallback
      * @return list<ResolvedStoryImage> up to $limit distinct free Commons images
      */
-    public function harvest(string $eventName, ?string $aliases, int $limit = 10): array
+    public function harvest(string $eventQid, string $eventName, ?string $aliases, int $limit = 10): array
     {
         // Topic vocabulary from the event name + aliases; a modern licensed photo must
         // hit one of these words, PD historical works get in regardless (their filenames
@@ -37,8 +39,17 @@ final class EventImageHarvester
         $seenTitle = [];
         $out = [];
 
-        foreach ($this->queries($eventName, $aliases) as $query) {
-            foreach ($this->commons->searchText($query, $limit) as $hit) {
+        // (1) Structured "depicts" hits first — precise when the data exists. (2) Then the
+        // name/alias full-text fallback, which covers the many events with no P180 data.
+        $depicts = $eventQid !== '' ? $this->commons->searchDepicting($eventQid, $limit) : [];
+        $batches = array_merge(
+            [$depicts],
+            array_map(fn (string $q) => $this->commons->searchText($q, $limit), $this->queries($eventName, $aliases)),
+        );
+
+        foreach ($batches as $index => $hits) {
+            $structured = $index === 0;   // depicts batch is trusted without the topic guard
+            foreach ($hits as $hit) {
                 $file = (string) ($hit['file_title'] ?? '');
                 if ($file === '' || isset($seenFile[$file])) {
                     continue;
@@ -49,7 +60,7 @@ final class EventImageHarvester
                 if ($titleKey !== '' && isset($seenTitle[$titleKey])) {
                     continue;   // collapse near-identical scans (e.g. 4× the same Boccaccio miniature)
                 }
-                if (! $this->isOnTopic($img, $topic)) {
+                if (! $structured && ! $this->isOnTopic($img, $topic)) {
                     continue;   // drop off-topic modern photos (e.g. the band "Darkthrone")
                 }
 

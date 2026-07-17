@@ -512,6 +512,176 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
   };
 
+  const createCloudSphereLayer = () => {
+    const latBands = 16;
+    const lonBands = 32;
+    const altitude = 12000;
+    const positions = [];
+    const normals = [];
+    const indices = [];
+
+    for (let latIdx = 0; latIdx <= latBands; latIdx++) {
+      const theta = Math.PI * latIdx / latBands;
+      const sinTheta = Math.sin(theta);
+      const cosTheta = Math.cos(theta);
+      const lat = 90 - theta * 180 / Math.PI;
+
+      for (let lonIdx = 0; lonIdx <= lonBands; lonIdx++) {
+        const phi = 2 * Math.PI * lonIdx / lonBands;
+        const lon = phi * 180 / Math.PI - 180;
+        const x = sinTheta * Math.cos(phi);
+        const y = cosTheta;
+        const z = sinTheta * Math.sin(phi);
+        const coord = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], altitude);
+        positions.push(coord.x, coord.y, coord.z);
+        normals.push(x, y, z);
+      }
+    }
+
+    for (let latIdx = 0; latIdx < latBands; latIdx++) {
+      for (let lonIdx = 0; lonIdx < lonBands; lonIdx++) {
+        const first = latIdx * (lonBands + 1) + lonIdx;
+        const second = first + lonBands + 1;
+        indices.push(first, second, first + 1, second, second + 1, first + 1);
+      }
+    }
+
+    return {
+      id: 'tm-clouds',
+      type: 'custom',
+      renderingMode: '3d',
+      onAdd(map, gl) {
+        const vertexShader = `#version 100
+          attribute vec3 a_position;
+          attribute vec3 a_normal;
+          uniform mat4 u_matrix;
+          varying vec3 v_normal;
+          varying vec3 v_world;
+          void main() {
+            v_normal = normalize(a_normal);
+            v_world = a_position;
+            gl_Position = u_matrix * vec4(a_position, 1.0);
+          }
+        `;
+        const fragmentShader = `#version 100
+          precision highp float;
+          varying vec3 v_normal;
+          varying vec3 v_world;
+          uniform float u_time;
+
+          float hash(vec3 p) {
+            return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
+          }
+          float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float n000 = hash(i + vec3(0.0, 0.0, 0.0));
+            float n100 = hash(i + vec3(1.0, 0.0, 0.0));
+            float n010 = hash(i + vec3(0.0, 1.0, 0.0));
+            float n110 = hash(i + vec3(1.0, 1.0, 0.0));
+            float n001 = hash(i + vec3(0.0, 0.0, 1.0));
+            float n101 = hash(i + vec3(1.0, 0.0, 1.0));
+            float n011 = hash(i + vec3(0.0, 1.0, 1.0));
+            float n111 = hash(i + vec3(1.0, 1.0, 1.0));
+            float nx00 = mix(n000, n100, f.x);
+            float nx10 = mix(n010, n110, f.x);
+            float nx01 = mix(n001, n101, f.x);
+            float nx11 = mix(n011, n111, f.x);
+            float nxy0 = mix(nx00, nx10, f.y);
+            float nxy1 = mix(nx01, nx11, f.y);
+            return mix(nxy0, nxy1, f.z);
+          }
+          float fbm(vec3 p) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            for (int i = 0; i < 5; i++) {
+              value += amplitude * noise(p);
+              p *= 2.0;
+              amplitude *= 0.5;
+            }
+            return value;
+          }
+          void main() {
+            vec3 normal = normalize(v_normal);
+            float cloudTex = fbm(v_world * 0.00014 + vec3(u_time * 0.01));
+            float rim = pow(max(dot(normal, normalize(vec3(0.3, 0.6, 0.8))), 0.0), 2.0);
+            float coverage = smoothstep(0.35, 0.62, cloudTex + 0.2 * rim);
+            float alpha = coverage * 0.45;
+            vec3 base = mix(vec3(0.75, 0.78, 0.82), vec3(1.0), coverage);
+            gl_FragColor = vec4(base, alpha);
+          }
+        `;
+
+        const compileShader = (type, source) => {
+          const shader = gl.createShader(type);
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(shader));
+          }
+          return shader;
+        };
+        const program = gl.createProgram();
+        const vShader = compileShader(gl.VERTEX_SHADER, vertexShader);
+        const fShader = compileShader(gl.FRAGMENT_SHADER, fragmentShader);
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program));
+        }
+
+        this.program = program;
+        this.positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        this.normalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+        this.indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+        this.aPosition = gl.getAttribLocation(program, 'a_position');
+        this.aNormal = gl.getAttribLocation(program, 'a_normal');
+        this.uMatrix = gl.getUniformLocation(program, 'u_matrix');
+        this.uTime = gl.getUniformLocation(program, 'u_time');
+        this.indexCount = indices.length;
+      },
+      render(gl, matrix) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+
+        gl.useProgram(this.program);
+        gl.uniformMatrix4fv(this.uMatrix, false, matrix);
+        gl.uniform1f(this.uTime, performance.now() * 0.001);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.enableVertexAttribArray(this.aPosition);
+        gl.vertexAttribPointer(this.aPosition, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+        gl.enableVertexAttribArray(this.aNormal);
+        gl.vertexAttribPointer(this.aNormal, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
+
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+
+        map.triggerRepaint();
+        return true;
+      },
+    };
+  };
+
   window.__timemapSpeak = (id, text) => {
     window.__timemapStopSpeak();
     if (!window.__timemapSoundOn || !id || !text) return;
@@ -618,6 +788,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
+    map.addLayer(createCloudSphereLayer(), 'boundaries-label');
     map.on('mouseenter', 'markers-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
 

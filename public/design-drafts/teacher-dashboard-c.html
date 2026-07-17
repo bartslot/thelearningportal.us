@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Teacher dashboard design draft C — minimal class activity, chart-led results, and lessons grouped by theme.">
+    <title>Dashboard draft C — Minimal class overview</title>
+    <style>
+        @font-face {
+            font-family: History;
+            src: url("/fonts/History-Light.woff2") format("woff2");
+            font-weight: 300;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: History;
+            src: url("/fonts/History-SemiBold.woff2") format("woff2");
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: Portal;
+            src: url("/fonts/inter/inter-400.woff2") format("woff2");
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: Portal;
+            src: url("/fonts/inter/inter-600.woff2") format("woff2");
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        :root {
+            color-scheme: dark;
+            --ink: #f0eee7;
+            --muted: #8e9aab;
+            --night: #060a12;
+            --navy: #0b1321;
+            --navy-2: #111d30;
+            --navy-3: #18263c;
+            --line: rgba(191, 207, 229, .14);
+            --amber: #e4a84f;
+            --amber-pale: #f0c97d;
+            --blue: #6ca8c5;
+            --green: #72b693;
+            --rose: #d77b72;
+        }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            margin: 0;
+            min-width: 320px;
+            background: var(--night);
+            color: var(--ink);
+            font-family: Portal, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button, a { font: inherit; }
+        button { color: inherit; }
+        :focus-visible { outline: 2px solid var(--amber-pale); outline-offset: 3px; }
+
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            border-bottom: 1px solid var(--line);
+            background: rgba(6, 10, 18, .88);
+            backdrop-filter: blur(18px);
+        }
+
+        .header-inner {
+            width: min(100% - 2rem, 1180px);
+            min-height: 70px;
+            margin: auto;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .wordmark {
+            font-family: History, serif;
+            font-size: 1.05rem;
+            letter-spacing: -.02em;
+            white-space: nowrap;
+        }
+
+        .wordmark span { color: var(--amber); }
+
+        .main-nav {
+            display: flex;
+            align-items: center;
+            gap: 1.4rem;
+        }
+
+        .main-nav a {
+            color: var(--muted);
+            font-size: .78rem;
+            transition: color .2s ease;
+        }
+
+        .main-nav a:hover,
+        .main-nav a[aria-current="page"] { color: var(--ink); }
+
+        .utility {
+            position: relative;
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: .85rem;
+        }
+
+        .lesson-button {
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            padding: 0 1rem;
+            border-radius: 999px;
+            background: var(--amber);
+            color: #111722;
+            font-size: .75rem;
+            font-weight: 600;
+            transition: transform .2s ease, background .2s ease;
+        }
+
+        .lesson-button:hover { transform: translateY(-2px); background: var(--amber-pale); }
+
+        .narrator {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--navy);
+            cursor: pointer;
+            transition: border-color .2s ease, transform .2s ease;
+        }
+
+        .narrator:hover { border-color: var(--amber); transform: translateY(-2px); }
+        .narrator img { width: 100%; height: 100%; object-fit: cover; }
+
+        .narrator-card {
+            position: absolute;
+            right: 0;
+            top: 50px;
+            width: min(290px, calc(100vw - 2rem));
+            padding: 1rem;
+            border: 1px solid var(--line);
+            border-radius: 16px 4px 16px 16px;
+            background: var(--navy-2);
+            box-shadow: 0 24px 70px rgba(0,0,0,.42);
+            animation: drop .2s ease-out both;
+        }
+
+        .narrator-card[hidden] { display: none; }
+        .narrator-card strong { font-size: .82rem; }
+        .narrator-card p { margin: .35rem 0 0; color: var(--muted); font-size: .72rem; line-height: 1.5; }
+
+        @keyframes drop {
+            from { opacity: 0; transform: translateY(-6px); }
+        }
+
+        main {
+            width: min(100% - 2rem, 1180px);
+            margin: 0 auto;
+            padding: clamp(2.6rem, 5vw, 4.5rem) 0 5rem;
+        }
+
+        .dashboard-summary {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 2rem;
+            margin-bottom: clamp(3.2rem, 7vw, 5.6rem);
+        }
+
+        .draft {
+            color: var(--blue);
+            font-size: .67rem;
+            font-weight: 600;
+            letter-spacing: .13em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: .65rem 0 0;
+            font-family: History, serif;
+            font-size: clamp(2.4rem, 5vw, 4.25rem);
+            font-weight: 300;
+            line-height: 1;
+            letter-spacing: -.045em;
+        }
+
+        .dashboard-summary p {
+            max-width: 54ch;
+            margin: .85rem 0 0;
+            color: var(--muted);
+            font-size: .78rem;
+            line-height: 1.65;
+        }
+
+        .dashboard-facts {
+            display: flex;
+            align-items: center;
+            gap: 1.35rem;
+            padding-bottom: .3rem;
+            color: var(--muted);
+            font-size: .67rem;
+            white-space: nowrap;
+        }
+
+        .dashboard-facts span {
+            display: flex;
+            align-items: baseline;
+            gap: .35rem;
+        }
+
+        .dashboard-facts strong {
+            color: var(--ink);
+            font-family: History, serif;
+            font-size: 1.1rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-head h2 {
+            margin: 0;
+            font-family: History, serif;
+            font-size: clamp(1.65rem, 3vw, 2.2rem);
+            font-weight: 300;
+            letter-spacing: -.03em;
+        }
+
+        .section-head p { margin: .35rem 0 0; color: var(--muted); font-size: .69rem; }
+        .section-head a { color: var(--amber-pale); font-size: .7rem; white-space: nowrap; }
+
+        .class-list {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            border-block: 1px solid var(--line);
+        }
+
+        .class-choice {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: 40px minmax(0, 1fr);
+            align-items: center;
+            gap: .9rem;
+            padding: 1.15rem 1.2rem;
+            border: 0;
+            border-right: 1px solid var(--line);
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+            transition: background .2s ease, color .2s ease;
+        }
+
+        .class-choice:last-child { border-right: 0; }
+        .class-choice:hover { background: rgba(17, 29, 48, .54); }
+        .class-choice.selected { background: var(--navy); }
+
+        .class-code {
+            width: 36px;
+            height: 36px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            color: var(--muted);
+            font-size: .68rem;
+            font-weight: 600;
+        }
+
+        .class-choice.selected .class-code {
+            border-color: rgba(228, 168, 79, .55);
+            color: var(--amber-pale);
+        }
+
+        .class-choice strong { display: block; font-size: .8rem; }
+        .class-choice small { display: block; margin-top: .28rem; color: var(--muted); font-size: .64rem; }
+
+        .class-status {
+            grid-column: 2;
+            display: block;
+            margin-top: .55rem;
+            color: var(--muted);
+            font-family: History, serif;
+            font-size: 1.15rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .class-choice.selected .class-status { color: var(--amber-pale); }
+
+        .results {
+            margin-top: clamp(4.5rem, 9vw, 7.5rem);
+        }
+
+        .range-control {
+            padding: .5rem .75rem;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            color: var(--muted);
+            font-size: .65rem;
+        }
+
+        .results-overview {
+            display: grid;
+            grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr);
+            gap: clamp(2rem, 5vw, 4.5rem);
+            padding-top: 1.75rem;
+            border-top: 1px solid var(--line);
+        }
+
+        .trend-panel { min-width: 0; }
+
+        .result-metrics {
+            display: flex;
+            align-items: start;
+            gap: clamp(1.4rem, 4vw, 3.4rem);
+        }
+
+        .metric b {
+            display: block;
+            font-family: History, serif;
+            font-size: clamp(1.75rem, 4vw, 2.8rem);
+            font-weight: 300;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .metric:first-child b { color: var(--amber-pale); }
+        .metric small { display: block; margin-top: .45rem; color: var(--muted); font-size: .61rem; }
+
+        .trend-chart {
+            display: block;
+            width: 100%;
+            height: auto;
+            margin-top: 2.3rem;
+            overflow: visible;
+        }
+
+        .chart-grid { stroke: rgba(191, 207, 229, .1); stroke-width: 1; }
+        .chart-line {
+            fill: none;
+            stroke: var(--amber);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: d .25s ease, opacity .25s ease;
+        }
+
+        .chart-dot {
+            fill: var(--night);
+            stroke: var(--amber-pale);
+            stroke-width: 2;
+            transition: cx .25s ease, cy .25s ease;
+        }
+
+        .chart-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: .65rem;
+            color: var(--muted);
+            font-size: .58rem;
+        }
+
+        .lesson-breakdown {
+            padding-left: clamp(1.4rem, 4vw, 3rem);
+            border-left: 1px solid var(--line);
+        }
+
+        .lesson-breakdown h3 {
+            margin: 0;
+            font-size: .76rem;
+            font-weight: 600;
+        }
+
+        .lesson-breakdown > p { margin: .4rem 0 1.5rem; color: var(--muted); font-size: .62rem; }
+
+        .lesson-result { margin-top: 1.15rem; }
+        .lesson-result:first-of-type { margin-top: 0; }
+
+        .lesson-result-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: .55rem;
+            font-size: .65rem;
+        }
+
+        .lesson-result-head span:first-child {
+            max-width: 26ch;
+            overflow: hidden;
+            color: var(--muted);
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .lesson-result-head b {
+            font-family: History, serif;
+            font-size: .82rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mini-bar { height: 2px; background: var(--navy-3); }
+        .mini-bar span { display: block; height: 100%; background: var(--green); transition: width .25s ease; }
+        .mini-bar.warning span { background: var(--rose); }
+
+        .attention-link {
+            display: block;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--line);
+            color: var(--amber-pale);
+            font-size: .68rem;
+            line-height: 1.5;
+        }
+
+        .workspace {
+            margin-top: clamp(4.5rem, 10vw, 8.5rem);
+        }
+
+        .workspace-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 1rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .workspace-head h2 {
+            margin: .4rem 0 0;
+            font-family: History, serif;
+            font-size: clamp(1.8rem, 4vw, 2.7rem);
+            font-weight: 300;
+            letter-spacing: -.035em;
+        }
+
+        .workspace-head a { color: var(--amber-pale); font-size: .72rem; }
+
+        .workspace-actions { display: flex; gap: .55rem; }
+
+        .theme-arrow {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            transition: color .2s ease, border-color .2s ease, transform .2s ease;
+        }
+
+        .theme-arrow:hover { color: var(--amber-pale); border-color: var(--amber); transform: translateY(-2px); }
+
+        .theme-carousel {
+            display: flex;
+            gap: 1rem;
+            overflow-x: auto;
+            overscroll-behavior-inline: contain;
+            scroll-snap-type: inline mandatory;
+            scrollbar-width: none;
+        }
+
+        .theme-carousel::-webkit-scrollbar { display: none; }
+
+        .theme-slide {
+            flex: 0 0 100%;
+            min-width: 0;
+            scroll-snap-align: start;
+        }
+
+        .theme-slide-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: .75rem;
+            padding: 0 .1rem;
+        }
+
+        .theme-slide-head span {
+            color: var(--blue);
+            font-size: .62rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .theme-slide-head h3 {
+            margin: .35rem 0 0;
+            font-family: History, serif;
+            font-size: 1.35rem;
+            font-weight: 300;
+        }
+
+        .theme-slide-head small { color: var(--muted); font-size: .64rem; }
+
+        .lesson-stack {
+            display: grid;
+            grid-template-columns: 1.35fr 1fr;
+            gap: 1rem;
+        }
+
+        .feature-lesson {
+            position: relative;
+            min-height: 360px;
+            overflow: hidden;
+            border-radius: 22px 7px 22px 22px;
+            background: var(--navy);
+        }
+
+        .feature-lesson img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: .5;
+            filter: saturate(.7);
+            transition: transform .65s cubic-bezier(.2,.8,.2,1);
+        }
+
+        .feature-lesson:hover img { transform: scale(1.045); }
+
+        .feature-lesson::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(110deg, rgba(6,10,18,.97) 8%, rgba(6,10,18,.4) 70%);
+        }
+
+        .feature-copy {
+            position: absolute;
+            z-index: 1;
+            inset: auto auto 0 0;
+            max-width: 560px;
+            padding: clamp(1.3rem, 4vw, 2.4rem);
+        }
+
+        .feature-copy span { color: var(--amber-pale); font-size: .65rem; letter-spacing: .1em; text-transform: uppercase; }
+        .feature-copy h3 { margin: .55rem 0 .7rem; font-family: History, serif; font-size: clamp(1.8rem, 4.5vw, 3.1rem); font-weight: 300; line-height: 1; }
+        .feature-copy p { margin: 0; color: var(--muted); font-size: .72rem; }
+
+        .side-lessons { display: grid; grid-template-rows: 1fr 1fr; gap: 1rem; }
+
+        .compact-lesson {
+            display: grid;
+            grid-template-columns: 120px minmax(0, 1fr);
+            min-height: 0;
+            border: 1px solid var(--line);
+            background: var(--navy);
+            transition: border-color .2s ease, transform .2s ease;
+        }
+
+        .compact-lesson:first-child { border-radius: 7px 22px 7px 7px; }
+        .compact-lesson:last-child { border-radius: 7px 7px 22px 7px; }
+        .compact-lesson:hover { transform: translateX(4px); border-color: rgba(228,168,79,.42); }
+        .compact-lesson img { width: 100%; height: 100%; object-fit: cover; opacity: .65; filter: saturate(.72); }
+
+        .compact-copy { align-self: end; padding: 1rem; }
+        .compact-copy span { color: var(--amber-pale); font-size: .6rem; text-transform: uppercase; }
+        .compact-copy h3 { margin: .4rem 0 .35rem; font-family: History, serif; font-size: 1.13rem; line-height: 1.05; }
+        .compact-copy p { margin: 0; color: var(--muted); font-size: .63rem; }
+
+        .theme-badge {
+            position: absolute;
+            z-index: 2;
+            top: 1rem;
+            left: 1rem;
+            padding: .38rem .55rem;
+            border-radius: 8px;
+            background: rgba(6,10,18,.82);
+            color: var(--blue);
+            font-size: .57rem;
+            letter-spacing: .06em;
+            backdrop-filter: blur(8px);
+        }
+
+        .draft-switcher {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem;
+            margin-top: 4rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: .7rem;
+        }
+
+        .draft-switcher a:hover { color: var(--amber-pale); }
+
+        @media (max-width: 850px) {
+            .main-nav { display: none; }
+            .dashboard-summary { align-items: start; flex-direction: column; }
+            .class-list { grid-template-columns: 1fr; }
+            .class-choice { border-right: 0; border-bottom: 1px solid var(--line); }
+            .class-choice:last-child { border-bottom: 0; }
+            .results-overview { grid-template-columns: 1fr; }
+            .lesson-breakdown { padding: 2rem 0 0; border-top: 1px solid var(--line); border-left: 0; }
+            .lesson-stack { grid-template-columns: 1fr; }
+            .side-lessons { grid-template-columns: 1fr 1fr; grid-template-rows: none; }
+        }
+
+        @media (max-width: 600px) {
+            .wordmark { display: none; }
+            .utility { width: 100%; justify-content: flex-end; }
+            .dashboard-facts { align-items: start; flex-direction: column; gap: .5rem; }
+            .section-head { align-items: start; }
+            .result-metrics { justify-content: space-between; gap: .7rem; }
+            .side-lessons { grid-template-columns: 1fr; }
+            .compact-lesson { min-height: 160px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <a class="wordmark" href="/teacher/dashboard"><span>The</span> Learning Portal</a>
+            <nav class="main-nav" aria-label="Teacher navigation">
+                <a href="/teacher/timemap">Time-Map</a>
+                <a href="/teacher/dashboard" aria-current="page">Dashboard</a>
+                <a href="/teacher/classes">Classes</a>
+                <a href="/teacher/results">Results</a>
+            </nav>
+            <div class="utility">
+                <a class="lesson-button" href="/teacher/lessons/chat"><span>＋</span> New lesson</a>
+                <button class="narrator" id="narrator-c" type="button" aria-label="Open narrator information" aria-expanded="false">
+                    <img src="/avatars/31/thumbnail.webp" alt="Julian, your narrator">
+                </button>
+                <div class="narrator-card" id="narrator-card-c" hidden>
+                    <strong>Julian is ready when a lesson is.</strong>
+                    <p>The narrator introduction no longer interrupts the dashboard. Click his portrait whenever you want voice details or feedback.</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="dashboard-summary" aria-labelledby="dashboard-title">
+            <div>
+                <span class="draft">Teacher dashboard</span>
+                <h1 id="dashboard-title">Good morning, Thomas.</h1>
+                <p>Class activity and learning results are up to date. Group 7A has four students who may need support before the next lesson.</p>
+            </div>
+            <div class="dashboard-facts" aria-label="Dashboard summary">
+                <span><strong>73</strong> students</span>
+                <span><strong>10</strong> lessons in progress</span>
+                <span>Updated 09:12</span>
+            </div>
+        </section>
+
+        <section class="classes" aria-labelledby="classes-title">
+            <header class="section-head">
+                <div>
+                    <h2 id="classes-title">Classes</h2>
+                    <p>Attendance and recent performance at a glance.</p>
+                </div>
+                <a href="/teacher/classes">Manage classes →</a>
+            </header>
+
+            <div class="class-list" role="list" aria-label="Class result filters">
+                <button class="class-choice selected" type="button" aria-pressed="true" data-name="Group 7A" data-average="76%" data-active="23" data-help="4" data-points="12,92 70,80 128,84 186,62 244,67 302,41 360,48 418,31" data-lesson-scores="84,73,58">
+                    <span class="class-code">7A</span>
+                    <span>
+                        <strong>Group 7A</strong>
+                        <small>28 students · 3 lessons in progress</small>
+                        <span class="class-status">76% average</span>
+                    </span>
+                </button>
+                <button class="class-choice" type="button" aria-pressed="false" data-name="Group 8B" data-average="81%" data-active="21" data-help="3" data-points="12,81 70,72 128,75 186,59 244,51 302,45 360,35 418,24" data-lesson-scores="88,79,67">
+                    <span class="class-code">8B</span>
+                    <span>
+                        <strong>Group 8B</strong>
+                        <small>26 students · 2 lessons in progress</small>
+                        <span class="class-status">81% average</span>
+                    </span>
+                </button>
+                <button class="class-choice" type="button" aria-pressed="false" data-name="History elective" data-average="88%" data-active="18" data-help="1" data-points="12,72 70,63 128,58 186,48 244,42 302,29 360,24 418,16" data-lesson-scores="92,86,81">
+                    <span class="class-code">HE</span>
+                    <span>
+                        <strong>History elective</strong>
+                        <small>19 students · 5 lessons in progress</small>
+                        <span class="class-status">88% average</span>
+                    </span>
+                </button>
+            </div>
+        </section>
+
+        <section class="results" aria-labelledby="results-title" aria-live="polite">
+            <header class="section-head">
+                <div>
+                    <h2 id="results-title">Results</h2>
+                    <p id="result-subtitle">Group 7A · quiz performance over the last 30 days</p>
+                </div>
+                <span class="range-control">Last 30 days</span>
+            </header>
+
+            <div class="results-overview">
+                <article class="trend-panel" aria-label="Class quiz score trend">
+                    <div class="result-metrics">
+                        <div class="metric">
+                            <b id="result-average">76%</b>
+                            <small>average score</small>
+                        </div>
+                        <div class="metric">
+                            <b id="result-active">23</b>
+                            <small>students active</small>
+                        </div>
+                        <div class="metric">
+                            <b id="result-help">4</b>
+                            <small>need attention</small>
+                        </div>
+                    </div>
+
+                    <svg class="trend-chart" viewBox="0 0 430 112" role="img" aria-labelledby="chart-title chart-description">
+                        <title id="chart-title">Average quiz score trend for Group 7A</title>
+                        <desc id="chart-description">Scores have improved over the last four weeks.</desc>
+                        <path class="chart-grid" d="M12 16H418M12 54H418M12 92H418" fill="none"/>
+                        <polyline id="result-trend" class="chart-line" points="12,92 70,80 128,84 186,62 244,67 302,41 360,48 418,31"/>
+                        <circle id="result-trend-dot" class="chart-dot" cx="418" cy="31" r="4"/>
+                    </svg>
+                    <div class="chart-labels" aria-hidden="true">
+                        <span>18 Jun</span>
+                        <span>25 Jun</span>
+                        <span>2 Jul</span>
+                        <span>9 Jul</span>
+                        <span>Today</span>
+                    </div>
+                </article>
+
+                <aside class="lesson-breakdown" aria-labelledby="lesson-performance-title">
+                    <h3 id="lesson-performance-title">Lesson performance</h3>
+                    <p>Average result per completed lesson.</p>
+
+                    <div class="lesson-result">
+                        <div class="lesson-result-head"><span>The French Revolution & Napoleon</span><b>84%</b></div>
+                        <div class="mini-bar"><span style="width:84%"></span></div>
+                    </div>
+                    <div class="lesson-result">
+                        <div class="lesson-result-head"><span>Understanding the Black Death</span><b>73%</b></div>
+                        <div class="mini-bar"><span style="width:73%"></span></div>
+                    </div>
+                    <div class="lesson-result">
+                        <div class="lesson-result-head"><span>The Union of Utrecht</span><b>58%</b></div>
+                        <div class="mini-bar warning"><span style="width:58%"></span></div>
+                    </div>
+
+                    <a class="attention-link" href="/teacher/results">
+                        <span id="attention-copy">Review the four students who need support</span> →
+                    </a>
+                </aside>
+            </div>
+        </section>
+
+        <section class="workspace" aria-labelledby="workspace-title">
+            <header class="workspace-head">
+                <div>
+                    <span class="draft">Canon van Nederland</span>
+                    <h2 id="workspace-title">Lessons by theme</h2>
+                </div>
+                <div class="workspace-actions">
+                    <button class="theme-arrow" type="button" data-carousel-prev="c" aria-label="Previous lesson theme">←</button>
+                    <button class="theme-arrow" type="button" data-carousel-next="c" aria-label="Next lesson theme">→</button>
+                </div>
+            </header>
+
+            <div class="theme-carousel" data-carousel="c" tabindex="0" aria-label="Lessons grouped by Canon van Nederland theme">
+                <article class="theme-slide">
+                    <header class="theme-slide-head">
+                        <div>
+                            <span>Hoofdlijn 6 · Automatic match</span>
+                            <h3>Wie bestuurt er?</h3>
+                        </div>
+                        <small>3 lessons</small>
+                    </header>
+                    <div class="lesson-stack">
+                        <a class="feature-lesson" href="/teacher/dashboard">
+                            <span class="theme-badge">Automatically assigned</span>
+                            <img src="/history/popular1thepunicwars.jpg" alt="Historical battle scene">
+                            <div class="feature-copy">
+                                <span>Continue setup · Age 14</span>
+                                <h3>The 80 Year War in the Netherlands Against Spain</h3>
+                                <p>Era and learning goal saved · Continue from lesson configuration</p>
+                            </div>
+                        </a>
+
+                        <div class="side-lessons">
+                            <a class="compact-lesson" href="/teacher/dashboard">
+                                <img src="/history/9history.jpg" alt="Historic council chamber">
+                                <div class="compact-copy">
+                                    <span>Scenes ready</span>
+                                    <h3>The Union of Utrecht</h3>
+                                    <p>Preview lesson →</p>
+                                </div>
+                            </a>
+                            <a class="compact-lesson" href="/teacher/dashboard">
+                                <img src="/history/6history.webp" alt="Revolutionary historical scene">
+                                <div class="compact-copy">
+                                    <span>Configuring</span>
+                                    <h3>The French Revolution & Napoleon</h3>
+                                    <p>Continue setup →</p>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="theme-slide">
+                    <header class="theme-slide-head">
+                        <div>
+                            <span>Hoofdlijn 3 · Automatic match</span>
+                            <h3>Woord en beeld verbinden</h3>
+                        </div>
+                        <small>2 lessons</small>
+                    </header>
+                    <div class="lesson-stack">
+                        <a class="feature-lesson" href="/teacher/dashboard">
+                            <span class="theme-badge">Automatically assigned</span>
+                            <img src="/history/24history.webp" alt="Historic European city">
+                            <div class="feature-copy">
+                                <span>Published · Age 12</span>
+                                <h3>De Domtoren van Utrecht</h3>
+                                <p>Open the lesson and view its latest class results</p>
+                            </div>
+                        </a>
+
+                        <div class="side-lessons">
+                            <a class="compact-lesson" href="/teacher/dashboard">
+                                <img src="/history/12history.webp" alt="Historic Dutch city">
+                                <div class="compact-copy">
+                                    <span>Previewable</span>
+                                    <h3>The Story of Utrecht and the Dom Tower</h3>
+                                    <p>Open lesson →</p>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="theme-slide">
+                    <header class="theme-slide-head">
+                        <div>
+                            <span>No reliable Canon match · System fallback</span>
+                            <h3>Other</h3>
+                        </div>
+                        <small>1 lesson</small>
+                    </header>
+                    <div class="lesson-stack">
+                        <a class="feature-lesson" href="/teacher/dashboard">
+                            <span class="theme-badge">Fallback theme</span>
+                            <img src="/history/18history.webp" alt="Medieval historical scene">
+                            <div class="feature-copy">
+                                <span>Scenes ready · Age 12</span>
+                                <h3>Understanding the Black Death</h3>
+                                <p>No reliable Canon van Nederland match was found</p>
+                            </div>
+                        </a>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <nav class="draft-switcher" aria-label="Dashboard draft switcher">
+            <span>Compare:</span>
+            <a href="/design-drafts/teacher-dashboard-a.html">Draft A</a>
+            <a href="/design-drafts/teacher-dashboard-b.html">Draft B</a>
+            <strong>Draft C</strong>
+        </nav>
+    </main>
+
+    <script>
+        const classChoices = [...document.querySelectorAll('.class-choice')];
+        const resultSubtitle = document.querySelector('#result-subtitle');
+        const resultAverage = document.querySelector('#result-average');
+        const resultActive = document.querySelector('#result-active');
+        const resultHelp = document.querySelector('#result-help');
+        const resultTrend = document.querySelector('#result-trend');
+        const resultTrendDot = document.querySelector('#result-trend-dot');
+        const chartTitle = document.querySelector('#chart-title');
+        const attentionCopy = document.querySelector('#attention-copy');
+        const lessonResults = [...document.querySelectorAll('.lesson-result')];
+
+        classChoices.forEach((choice) => {
+            choice.addEventListener('click', () => {
+                classChoices.forEach((item) => {
+                    item.classList.remove('selected');
+                    item.setAttribute('aria-pressed', 'false');
+                });
+
+                choice.classList.add('selected');
+                choice.setAttribute('aria-pressed', 'true');
+                resultSubtitle.textContent = `${choice.dataset.name} · quiz performance over the last 30 days`;
+                resultAverage.textContent = choice.dataset.average;
+                resultActive.textContent = choice.dataset.active;
+                resultHelp.textContent = choice.dataset.help;
+                resultTrend.setAttribute('points', choice.dataset.points);
+                const finalPoint = choice.dataset.points.trim().split(' ').at(-1).split(',');
+                resultTrendDot.setAttribute('cx', finalPoint[0]);
+                resultTrendDot.setAttribute('cy', finalPoint[1]);
+                chartTitle.textContent = `Average quiz score trend for ${choice.dataset.name}`;
+                attentionCopy.textContent = `Review the ${choice.dataset.help} ${choice.dataset.help === '1' ? 'student' : 'students'} who need support`;
+                choice.dataset.lessonScores.split(',').forEach((score, index) => {
+                    lessonResults[index].querySelector('b').textContent = `${score}%`;
+                    lessonResults[index].querySelector('.mini-bar span').style.width = `${score}%`;
+                });
+            });
+        });
+
+        const narratorButton = document.querySelector('#narrator-c');
+        const narratorCard = document.querySelector('#narrator-card-c');
+
+        narratorButton.addEventListener('click', () => {
+            narratorCard.hidden = !narratorCard.hidden;
+            narratorButton.setAttribute('aria-expanded', String(!narratorCard.hidden));
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!narratorCard.hidden && !narratorCard.contains(event.target) && !narratorButton.contains(event.target)) {
+                narratorCard.hidden = true;
+                narratorButton.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        const lessonThemeCarousel = document.querySelector('[data-carousel="c"]');
+        const scrollLessonThemes = (direction) => {
+            lessonThemeCarousel.scrollBy({ left: direction * lessonThemeCarousel.clientWidth, behavior: 'smooth' });
+        };
+
+        document.querySelector('[data-carousel-prev="c"]').addEventListener('click', () => scrollLessonThemes(-1));
+        document.querySelector('[data-carousel-next="c"]').addEventListener('click', () => scrollLessonThemes(1));
+    </script>
+</body>
+</html>

@@ -11,11 +11,21 @@ use App\Jobs\GenerateSceneImage;
 use App\Jobs\GenerateSceneScript;
 use App\Models\Lesson;
 use App\Models\Scene;
+use App\Services\LessonGenerationRecovery;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 class Step2Generate extends Component
 {
+    private const STALL_THRESHOLDS = [
+        LessonStatus::SourceReady->value => 3,
+        LessonStatus::FetchingSources->value => 6,
+        LessonStatus::Outlining->value => 6,
+        LessonStatus::ScenesGenerating->value => 15,
+    ];
+
     public Lesson $lesson;
 
     public function mount(Lesson $lesson): void
@@ -65,6 +75,8 @@ class Step2Generate extends Component
      */
     public function checkAndAutoAdvance(): void
     {
+        $this->lesson->refresh();
+
         if (! $this->autoAdvanceActive) {
             return;
         }
@@ -101,6 +113,23 @@ class Step2Generate extends Component
         return (int) floor(($done / max(1, $total)) * 100);
     }
 
+    #[Computed]
+    public function isStalled(): bool
+    {
+        $threshold = self::STALL_THRESHOLDS[$this->lesson->status->value] ?? null;
+        if ($threshold === null) {
+            return false;
+        }
+
+        return $this->latestProgressAt()->lte(now()->subMinutes($threshold));
+    }
+
+    #[Computed]
+    public function stalledForMinutes(): int
+    {
+        return max(0, (int) floor($this->latestProgressAt()->diffInSeconds(now()) / 60));
+    }
+
     public function retryAsset(int $sceneId, string $asset): void
     {
         $scene = Scene::where('lesson_id', $this->lesson->id)->findOrFail($sceneId);
@@ -114,8 +143,9 @@ class Step2Generate extends Component
         };
     }
 
-    public function retryOutline(): void
+    public function retryOutline(LessonGenerationRecovery $recovery): void
     {
+        $recovery->purgeQueuedJobs($this->lesson);
         $this->lesson->scenes()->delete();
         $this->lesson->update([
             'status' => LessonStatus::SourceReady,
@@ -123,6 +153,19 @@ class Step2Generate extends Component
             'outline' => null,
         ]);
         BuildLessonOutline::dispatch($this->lesson->id);
+    }
+
+    public function startNewLesson(LessonGenerationRecovery $recovery): void
+    {
+        if ($this->lesson->status !== LessonStatus::Failed && ! $this->isStalled) {
+            return;
+        }
+
+        $recovery->abandon($this->lesson);
+        session()->flash('success', __('The stalled lesson session was removed. You can start again.'));
+
+        $this->skipRender();
+        $this->redirectRoute('teacher.lessons.chat', navigate: true);
     }
 
     public function continueToConfigure(): void
@@ -134,5 +177,20 @@ class Step2Generate extends Component
     public function render()
     {
         return view('livewire.wizard.step2-generate');
+    }
+
+    private function latestProgressAt(): CarbonInterface
+    {
+        $latest = $this->lesson->updated_at->copy();
+        $sceneUpdatedAt = $this->lesson->scenes()->max('updated_at');
+
+        if ($sceneUpdatedAt !== null) {
+            $sceneActivity = Carbon::parse($sceneUpdatedAt);
+            if ($sceneActivity->gt($latest)) {
+                $latest = $sceneActivity;
+            }
+        }
+
+        return $latest;
     }
 }

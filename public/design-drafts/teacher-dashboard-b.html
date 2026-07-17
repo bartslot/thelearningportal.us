@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Teacher dashboard design draft B — class-first editorial ledger.">
+    <title>Dashboard draft B — Classroom ledger</title>
+    <style>
+        @font-face {
+            font-family: History;
+            src: url("/fonts/History-SemiBold.woff2") format("woff2");
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: Portal;
+            src: url("/fonts/inter/inter-400.woff2") format("woff2");
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: Portal;
+            src: url("/fonts/inter/inter-600.woff2") format("woff2");
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        :root {
+            color-scheme: dark;
+            --paper: #e8e2d3;
+            --paper-muted: #aaa592;
+            --night: #070b12;
+            --blue-black: #0b111d;
+            --blue: #101a2a;
+            --blue-light: #1a273b;
+            --rule: rgba(232, 226, 211, .16);
+            --gold: #d5a34a;
+            --rust: #b96754;
+            --sage: #7ca58f;
+            --focus: #f4c972;
+        }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            margin: 0;
+            min-width: 320px;
+            color: var(--paper);
+            background:
+                linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+                var(--night);
+            background-size: 100% 38px;
+            font-family: Portal, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button, a { font: inherit; }
+        button { color: inherit; }
+        :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+        .shell {
+            min-height: 100dvh;
+            display: grid;
+            grid-template-columns: 84px minmax(0, 1fr);
+        }
+
+        .rail {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1.25rem 0;
+            border-right: 1px solid var(--rule);
+            background: rgba(7, 11, 18, .94);
+            backdrop-filter: blur(16px);
+        }
+
+        .monogram {
+            width: 42px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(213, 163, 74, .55);
+            color: var(--gold);
+            font-family: History, serif;
+            font-size: 1rem;
+        }
+
+        .rail-nav {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            justify-content: center;
+            gap: .8rem;
+        }
+
+        .rail-link {
+            position: relative;
+            width: 42px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            color: var(--paper-muted);
+            transition: color .2s ease, background .2s ease;
+        }
+
+        .rail-link:hover,
+        .rail-link[aria-current="page"] {
+            color: var(--paper);
+            background: var(--blue);
+        }
+
+        .rail-link[aria-current="page"]::before {
+            content: "";
+            position: absolute;
+            left: -21px;
+            width: 2px;
+            height: 24px;
+            background: var(--gold);
+        }
+
+        .narrator-wrap { position: relative; }
+
+        .narrator {
+            width: 42px;
+            height: 42px;
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid var(--rule);
+            border-radius: 50%;
+            background: var(--blue);
+            cursor: pointer;
+            transition: border-color .2s ease, transform .2s ease;
+        }
+
+        .narrator:hover { border-color: var(--gold); transform: scale(1.04); }
+        .narrator img { width: 100%; height: 100%; object-fit: cover; }
+
+        .narrator-note {
+            position: absolute;
+            left: 58px;
+            bottom: 0;
+            z-index: 40;
+            width: 270px;
+            padding: .9rem 1rem;
+            border: 1px solid var(--rule);
+            background: var(--blue);
+            box-shadow: 0 25px 70px rgba(0,0,0,.48);
+        }
+
+        .narrator-note[hidden] { display: none; }
+        .narrator-note strong { font-size: .82rem; }
+        .narrator-note p { margin: .35rem 0 0; color: var(--paper-muted); font-size: .72rem; line-height: 1.5; }
+
+        .page { min-width: 0; }
+
+        .masthead {
+            min-height: 86px;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            padding: 0 clamp(1.2rem, 4vw, 4rem);
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .brand {
+            font-family: History, serif;
+            font-size: 1.08rem;
+            letter-spacing: -.02em;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: .65rem;
+            color: var(--paper-muted);
+            font-size: .75rem;
+        }
+
+        .breadcrumb b { color: var(--paper); font-weight: 600; }
+        .masthead-actions { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+
+        .new-lesson {
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            padding: 0 1rem;
+            border: 1px solid var(--gold);
+            color: var(--focus);
+            font-size: .78rem;
+            font-weight: 600;
+            transition: background .2s ease, color .2s ease, transform .2s ease;
+        }
+
+        .new-lesson:hover { background: var(--gold); color: var(--night); transform: translateY(-2px); }
+
+        main {
+            width: min(100% - clamp(2rem, 6vw, 7rem), 1380px);
+            margin: 0 auto;
+            padding: clamp(2.5rem, 5vw, 5rem) 0 5rem;
+        }
+
+        .intro {
+            display: grid;
+            grid-template-columns: minmax(0, 1.3fr) minmax(220px, .7fr);
+            gap: 2rem;
+            align-items: end;
+            padding-bottom: clamp(2.5rem, 5vw, 4.8rem);
+        }
+
+        .kicker {
+            color: var(--gold);
+            font-size: .66rem;
+            font-weight: 600;
+            letter-spacing: .15em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            max-width: 780px;
+            margin: .65rem 0 0;
+            font-family: History, serif;
+            font-size: clamp(2.7rem, 6.5vw, 6rem);
+            font-weight: 600;
+            line-height: .9;
+            letter-spacing: -.055em;
+            text-wrap: balance;
+        }
+
+        .intro-note {
+            margin: 0;
+            padding-left: 1.15rem;
+            border-left: 1px solid var(--gold);
+            color: var(--paper-muted);
+            font-size: .82rem;
+            line-height: 1.65;
+        }
+
+        .ledger {
+            display: grid;
+            grid-template-columns: minmax(245px, .7fr) minmax(0, 1.8fr);
+            border-top: 1px solid var(--rule);
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .class-index {
+            padding: 1.7rem 1.5rem 1.8rem 0;
+            border-right: 1px solid var(--rule);
+        }
+
+        .section-no {
+            display: inline-block;
+            color: var(--gold);
+            font-family: History, serif;
+            font-size: 1.1rem;
+        }
+
+        .section-title {
+            margin: .55rem 0 1.4rem;
+            font-family: History, serif;
+            font-size: 1.6rem;
+        }
+
+        .class-button {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 1rem;
+            padding: 1rem 0;
+            border: 0;
+            border-top: 1px solid var(--rule);
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+            transition: padding-left .2s ease, color .2s ease;
+        }
+
+        .class-button:last-of-type { border-bottom: 1px solid var(--rule); }
+        .class-button:hover { padding-left: .35rem; color: var(--focus); }
+        .class-button.active { color: var(--focus); }
+
+        .class-button.active .arrow { transform: translateX(4px); opacity: 1; }
+        .class-button small { display: block; margin-top: .25rem; color: var(--paper-muted); font-size: .66rem; }
+        .arrow { color: var(--gold); opacity: .45; transition: transform .2s ease, opacity .2s ease; }
+
+        .add-class {
+            display: inline-block;
+            margin-top: 1.15rem;
+            color: var(--paper-muted);
+            font-size: .72rem;
+        }
+
+        .add-class:hover { color: var(--focus); }
+
+        .results {
+            min-width: 0;
+            padding: 1.7rem 0 2rem clamp(1.4rem, 4vw, 3.5rem);
+        }
+
+        .results-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .results-head h2 {
+            margin: .55rem 0 0;
+            font-family: History, serif;
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            letter-spacing: -.035em;
+        }
+
+        .date-range {
+            color: var(--paper-muted);
+            font-size: .69rem;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+        }
+
+        .result-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            margin-bottom: 2.2rem;
+            background: var(--blue-black);
+        }
+
+        .metric {
+            min-width: 0;
+            padding: 1.1rem 1.2rem 1.3rem;
+            border-right: 1px solid var(--rule);
+        }
+
+        .metric:last-child { border-right: 0; }
+        .metric span { display: block; font-family: History, serif; font-size: clamp(2rem, 5vw, 3.2rem); font-variant-numeric: tabular-nums; }
+        .metric small { color: var(--paper-muted); font-size: .66rem; }
+
+        .chart {
+            display: grid;
+            grid-template-columns: minmax(120px, .55fr) minmax(0, 1.45fr);
+            gap: clamp(1.2rem, 3vw, 3rem);
+            align-items: end;
+        }
+
+        .chart-copy h3 { margin: 0 0 .7rem; font-family: History, serif; font-size: 1.25rem; }
+        .chart-copy p { margin: 0; color: var(--paper-muted); font-size: .75rem; line-height: 1.6; }
+        .chart-copy a { display: inline-block; margin-top: 1.1rem; color: var(--focus); font-size: .72rem; }
+
+        .bars {
+            height: 180px;
+            display: flex;
+            align-items: end;
+            gap: clamp(.4rem, 1.5vw, 1rem);
+            padding-bottom: 1.7rem;
+            border-bottom: 1px solid var(--rule);
+            background-image: linear-gradient(to top, var(--rule) 1px, transparent 1px);
+            background-size: 100% 25%;
+        }
+
+        .bar {
+            position: relative;
+            flex: 1;
+            min-width: 8px;
+            background: var(--gold);
+            opacity: .76;
+            transition: opacity .2s ease, transform .2s ease;
+        }
+
+        .bar:hover { opacity: 1; transform: scaleY(1.02); transform-origin: bottom; }
+        .bar:nth-child(3n) { background: var(--sage); }
+        .bar:nth-child(5n) { background: var(--rust); }
+
+        .bar::after {
+            content: attr(data-day);
+            position: absolute;
+            top: calc(100% + .55rem);
+            left: 50%;
+            color: var(--paper-muted);
+            font-size: .58rem;
+            transform: translateX(-50%);
+        }
+
+        .lesson-register {
+            margin-top: clamp(4rem, 8vw, 7.5rem);
+        }
+
+        .register-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .register-head h2 { margin: .35rem 0 0; font-family: History, serif; font-size: 1.8rem; }
+        .register-actions { display: flex; gap: .55rem; }
+
+        .register-arrow {
+            width: 36px;
+            height: 36px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--rule);
+            background: transparent;
+            cursor: pointer;
+            transition: color .2s ease, border-color .2s ease, transform .2s ease;
+        }
+
+        .register-arrow:hover { color: var(--focus); border-color: var(--gold); transform: translateY(-2px); }
+
+        .theme-carousel {
+            display: flex;
+            gap: 1rem;
+            overflow-x: auto;
+            overscroll-behavior-inline: contain;
+            scroll-snap-type: inline mandatory;
+            scrollbar-width: none;
+        }
+
+        .theme-carousel::-webkit-scrollbar { display: none; }
+
+        .theme-volume {
+            flex: 0 0 min(500px, 76vw);
+            min-width: 0;
+            scroll-snap-align: start;
+        }
+
+        .volume-head {
+            min-height: 91px;
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 1rem;
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .volume-head span {
+            color: var(--gold);
+            font-size: .6rem;
+            letter-spacing: .11em;
+            text-transform: uppercase;
+        }
+
+        .volume-head h3 {
+            margin: .38rem 0 0;
+            font-family: History, serif;
+            font-size: 1.35rem;
+        }
+
+        .volume-head small { color: var(--paper-muted); font-size: .62rem; white-space: nowrap; }
+
+        .volume-lessons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .volume-lesson {
+            position: relative;
+            min-width: 0;
+            min-height: 220px;
+            overflow: hidden;
+            border-right: 1px solid var(--rule);
+            background: var(--blue-black);
+        }
+
+        .volume-lesson:last-child { border-right: 0; }
+
+        .volume-lesson img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: .42;
+            filter: saturate(.62);
+            transition: transform .55s ease;
+        }
+
+        .volume-lesson:hover img { transform: scale(1.045); }
+
+        .volume-lesson::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(7,11,18,.98), transparent 78%);
+        }
+
+        .volume-copy {
+            position: absolute;
+            z-index: 1;
+            inset: auto .9rem .9rem;
+        }
+
+        .volume-copy span { color: var(--focus); font-size: .57rem; letter-spacing: .06em; text-transform: uppercase; }
+        .volume-copy h4 { margin: .4rem 0 .35rem; font-size: .78rem; line-height: 1.25; }
+        .volume-copy p { margin: 0; color: var(--paper-muted); font-size: .62rem; }
+
+        .theme-fallback {
+            display: inline-block;
+            margin-top: .35rem;
+            color: var(--rust);
+            font-size: .58rem;
+        }
+
+        .draft-switcher {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem;
+            margin-top: 3.5rem;
+            color: var(--paper-muted);
+            font-size: .7rem;
+        }
+
+        .draft-switcher a:hover { color: var(--focus); }
+
+        @media (max-width: 900px) {
+            .shell { grid-template-columns: 62px minmax(0, 1fr); }
+            .rail-link[aria-current="page"]::before { left: -11px; }
+            .intro { grid-template-columns: 1fr; }
+            .ledger { grid-template-columns: 1fr; }
+            .class-index { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+            .results { padding-left: 0; }
+        }
+
+        @media (max-width: 600px) {
+            .masthead { padding-inline: 1rem; }
+            .brand, .breadcrumb { display: none; }
+            .masthead-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+            main { width: calc(100% - 2rem); }
+            .result-strip { grid-template-columns: 1fr; }
+            .metric { display: flex; justify-content: space-between; align-items: baseline; border-right: 0; border-bottom: 1px solid var(--rule); }
+            .metric:last-child { border-bottom: 0; }
+            .chart { grid-template-columns: 1fr; }
+            .results-head { align-items: start; flex-direction: column; }
+            .theme-volume { flex-basis: 82vw; }
+            .volume-lessons { grid-template-columns: 1fr; }
+            .volume-lesson { min-height: 240px; border-right: 0; }
+            .volume-lesson:nth-child(n+2) { display: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <aside class="rail" aria-label="Quick navigation">
+            <a class="monogram" href="/teacher/dashboard" aria-label="The Learning Portal">LP</a>
+            <nav class="rail-nav">
+                <a class="rail-link" href="/teacher/timemap" aria-label="Time-Map">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <circle cx="12" cy="12" r="8"></circle><path d="M4 12h16M12 4c2.2 2.3 3.3 5 3.3 8S14.2 17.7 12 20c-2.2-2.3-3.3-5-3.3-8S9.8 6.3 12 4Z"></path>
+                    </svg>
+                </a>
+                <a class="rail-link" href="/teacher/dashboard" aria-current="page" aria-label="Dashboard">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <path d="M4 5h6v6H4zM14 5h6v10h-6zM4 15h6v4H4zM14 19h6"></path>
+                    </svg>
+                </a>
+                <a class="rail-link" href="/teacher/classes" aria-label="Classes">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <circle cx="9" cy="8" r="3"></circle><path d="M3.5 19c.5-4 2.4-6 5.5-6s5 2 5.5 6M16 6.5a2.5 2.5 0 0 1 0 5M16.5 13c2.4.4 3.7 2.4 4 6"></path>
+                    </svg>
+                </a>
+                <a class="rail-link" href="/teacher/results" aria-label="Results">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <path d="M5 20V10M12 20V4M19 20v-7"></path>
+                    </svg>
+                </a>
+            </nav>
+
+            <div class="narrator-wrap">
+                <button class="narrator" id="narrator-b" type="button" aria-label="Narrator Julian" aria-expanded="false">
+                    <img src="/avatars/31/thumbnail.webp" alt="Julian, your narrator">
+                </button>
+                <div class="narrator-note" id="narrator-note-b" hidden>
+                    <strong>Julian · lesson narrator</strong>
+                    <p>Narrator details and voice feedback stay tucked behind this portrait instead of taking dashboard space.</p>
+                </div>
+            </div>
+        </aside>
+
+        <div class="page">
+            <header class="masthead">
+                <a class="brand" href="/teacher/dashboard">The Learning Portal</a>
+                <div class="breadcrumb" aria-label="Breadcrumb">
+                    <span>Teacher workspace</span>
+                    <span>›</span>
+                    <b>Dashboard</b>
+                </div>
+                <div class="masthead-actions">
+                    <a class="new-lesson" href="/teacher/lessons/chat">
+                        <span>＋</span>
+                        New lesson
+                    </a>
+                </div>
+            </header>
+
+            <main>
+                <section class="intro">
+                    <div>
+                        <span class="kicker">Draft B · Classroom ledger</span>
+                        <h1>Classes first.<br>Results in context.</h1>
+                    </div>
+                    <p class="intro-note">A quieter, more editorial dashboard. Select a class on the left and its latest results become the main story.</p>
+                </section>
+
+                <section class="ledger" aria-label="Class selection and results">
+                    <div class="class-index">
+                        <span class="section-no">01</span>
+                        <h2 class="section-title">Classes</h2>
+
+                        <button class="class-button active" type="button" data-class="Group 7A" data-students="28" data-score="76%" data-help="4">
+                            <span>Group 7A<small>28 students · Grade 7</small></span>
+                            <span class="arrow">→</span>
+                        </button>
+                        <button class="class-button" type="button" data-class="Group 8B" data-students="26" data-score="81%" data-help="3">
+                            <span>Group 8B<small>26 students · Grade 8</small></span>
+                            <span class="arrow">→</span>
+                        </button>
+                        <button class="class-button" type="button" data-class="History elective" data-students="19" data-score="88%" data-help="1">
+                            <span>History elective<small>19 students · Mixed age</small></span>
+                            <span class="arrow">→</span>
+                        </button>
+
+                        <a class="add-class" href="/teacher/classes">＋ Add or manage classes</a>
+                    </div>
+
+                    <div class="results">
+                        <header class="results-head">
+                            <div>
+                                <span class="section-no">02</span>
+                                <h2><span id="active-class">Group 7A</span> results</h2>
+                            </div>
+                            <span class="date-range">Last 30 days</span>
+                        </header>
+
+                        <div class="result-strip" aria-label="Class result metrics">
+                            <div class="metric"><span id="student-count">28</span><small>students</small></div>
+                            <div class="metric"><span id="average-score">76%</span><small>average score</small></div>
+                            <div class="metric"><span id="help-count">4</span><small>need attention</small></div>
+                        </div>
+
+                        <div class="chart">
+                            <div class="chart-copy">
+                                <h3>Participation over two weeks</h3>
+                                <p>Activity rises after each assigned lesson. Friday’s dip is consistent across this class.</p>
+                                <a href="/teacher/results">See student detail →</a>
+                            </div>
+                            <div class="bars" aria-label="Participation bar chart">
+                                <span class="bar" style="height:42%" data-day="M"></span>
+                                <span class="bar" style="height:58%" data-day="T"></span>
+                                <span class="bar" style="height:74%" data-day="W"></span>
+                                <span class="bar" style="height:66%" data-day="T"></span>
+                                <span class="bar" style="height:38%" data-day="F"></span>
+                                <span class="bar" style="height:64%" data-day="M"></span>
+                                <span class="bar" style="height:78%" data-day="T"></span>
+                                <span class="bar" style="height:91%" data-day="W"></span>
+                                <span class="bar" style="height:82%" data-day="T"></span>
+                                <span class="bar" style="height:52%" data-day="F"></span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="lesson-register" aria-labelledby="lesson-register-title">
+                    <header class="register-head">
+                        <div>
+                            <span class="kicker">Canon van Nederland</span>
+                            <h2 id="lesson-register-title">Lessons grouped by theme</h2>
+                        </div>
+                        <div class="register-actions">
+                            <button class="register-arrow" type="button" data-carousel-prev="b" aria-label="Previous lesson theme">←</button>
+                            <button class="register-arrow" type="button" data-carousel-next="b" aria-label="Next lesson theme">→</button>
+                        </div>
+                    </header>
+
+                    <div class="theme-carousel" data-carousel="b" tabindex="0" aria-label="Lessons grouped by Canon van Nederland theme">
+                        <article class="theme-volume">
+                            <header class="volume-head">
+                                <div>
+                                    <span>Hoofdlijn 6 · Automatic match</span>
+                                    <h3>Wie bestuurt er?</h3>
+                                </div>
+                                <small>3 lessons</small>
+                            </header>
+                            <div class="volume-lessons">
+                                <a class="volume-lesson" href="/teacher/dashboard">
+                                    <img src="/history/popular1thepunicwars.jpg" alt="Historical battle">
+                                    <div class="volume-copy">
+                                        <span>Age 14 · Configuring</span>
+                                        <h4>The 80 Year War in the Netherlands Against Spain</h4>
+                                        <p>Continue →</p>
+                                    </div>
+                                </a>
+                                <a class="volume-lesson" href="/teacher/dashboard">
+                                    <img src="/history/9history.jpg" alt="Historic council chamber">
+                                    <div class="volume-copy">
+                                        <span>Age 12 · Scenes ready</span>
+                                        <h4>The Union of Utrecht</h4>
+                                        <p>Preview →</p>
+                                    </div>
+                                </a>
+                            </div>
+                        </article>
+
+                        <article class="theme-volume">
+                            <header class="volume-head">
+                                <div>
+                                    <span>Hoofdlijn 3 · Automatic match</span>
+                                    <h3>Woord en beeld verbinden</h3>
+                                </div>
+                                <small>2 lessons</small>
+                            </header>
+                            <div class="volume-lessons">
+                                <a class="volume-lesson" href="/teacher/dashboard">
+                                    <img src="/history/24history.webp" alt="Historic city">
+                                    <div class="volume-copy">
+                                        <span>Age 12 · Published</span>
+                                        <h4>De Domtoren van Utrecht</h4>
+                                        <p>Open →</p>
+                                    </div>
+                                </a>
+                                <a class="volume-lesson" href="/teacher/dashboard">
+                                    <img src="/history/12history.webp" alt="Historic Dutch city">
+                                    <div class="volume-copy">
+                                        <span>Age 12 · Previewable</span>
+                                        <h4>The Story of Utrecht and the Dom Tower</h4>
+                                        <p>Open →</p>
+                                    </div>
+                                </a>
+                            </div>
+                        </article>
+
+                        <article class="theme-volume">
+                            <header class="volume-head">
+                                <div>
+                                    <span>No reliable Canon match</span>
+                                    <h3>Other</h3>
+                                    <span class="theme-fallback">System fallback</span>
+                                </div>
+                                <small>1 lesson</small>
+                            </header>
+                            <div class="volume-lessons">
+                                <a class="volume-lesson" href="/teacher/dashboard">
+                                    <img src="/history/18history.webp" alt="Medieval historical scene">
+                                    <div class="volume-copy">
+                                        <span>Age 12 · Scenes ready</span>
+                                        <h4>Understanding the Black Death</h4>
+                                        <p>Preview →</p>
+                                    </div>
+                                </a>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <nav class="draft-switcher" aria-label="Dashboard draft switcher">
+                    <span>Compare:</span>
+                    <a href="/design-drafts/teacher-dashboard-a.html">Draft A</a>
+                    <strong>Draft B</strong>
+                    <a href="/design-drafts/teacher-dashboard-c.html">Draft C</a>
+                </nav>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const classButtons = [...document.querySelectorAll('.class-button')];
+        const activeClass = document.querySelector('#active-class');
+        const studentCount = document.querySelector('#student-count');
+        const averageScore = document.querySelector('#average-score');
+        const helpCount = document.querySelector('#help-count');
+
+        classButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                classButtons.forEach((item) => item.classList.remove('active'));
+                button.classList.add('active');
+                activeClass.textContent = button.dataset.class;
+                studentCount.textContent = button.dataset.students;
+                averageScore.textContent = button.dataset.score;
+                helpCount.textContent = button.dataset.help;
+            });
+        });
+
+        const narratorButton = document.querySelector('#narrator-b');
+        const narratorNote = document.querySelector('#narrator-note-b');
+
+        narratorButton.addEventListener('click', () => {
+            narratorNote.hidden = !narratorNote.hidden;
+            narratorButton.setAttribute('aria-expanded', String(!narratorNote.hidden));
+        });
+
+        const themeCarousel = document.querySelector('[data-carousel="b"]');
+        const scrollThemes = (direction) => {
+            themeCarousel.scrollBy({ left: direction * themeCarousel.clientWidth * .78, behavior: 'smooth' });
+        };
+
+        document.querySelector('[data-carousel-prev="b"]').addEventListener('click', () => scrollThemes(-1));
+        document.querySelector('[data-carousel-next="b"]').addEventListener('click', () => scrollThemes(1));
+    </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ use App\Models\Avatar;
 use App\Models\Lesson;
 use App\Models\LessonSource;
 use App\Models\Story;
+use App\Services\CanonThemeCatalog;
 use App\Services\LessonGoalContextResolver;
 use App\Services\LessonGoalParser;
 use App\Services\Support\HistoryTaxonomy;
@@ -20,7 +21,8 @@ use Livewire\Component;
 
 /**
  * K-12 agentic lesson creation: a short, server-driven dialogue. The teacher types
- * a learning goal, then chooses focus, era, lesson type, age, and grounding with buttons.
+ * a learning goal, then chooses focus, Canon theme (Dutch teachers), era, lesson type,
+ * age, and grounding with buttons.
  * LessonGoalParser makes one suggestion-only LLM call; every decision stays with the teacher.
  */
 class LessonChat extends Component
@@ -84,6 +86,14 @@ class LessonChat extends Component
 
     public ?string $groundingChoice = null;
 
+    public ?string $suggestedCanonTheme = null;
+
+    public ?string $canonTheme = null;
+
+    public ?string $canonIntent = null;
+
+    public ?string $canonThemeChoice = null;
+
     /** Idempotency guard — the second click of a double-click redirects, never re-creates. */
     public ?int $createdLessonId = null;
 
@@ -96,8 +106,11 @@ class LessonChat extends Component
         $this->focusTags = \App\Lessons\FocusTags::toggle($this->focusTags, $slug);
     }
 
-    public function submitGoal(LessonGoalParser $parser, LessonGoalContextResolver $contextResolver): void
-    {
+    public function submitGoal(
+        LessonGoalParser $parser,
+        LessonGoalContextResolver $contextResolver,
+        CanonThemeCatalog $canon,
+    ): void {
         $goalText = trim($this->goal);
         if ($goalText === '') {
             $this->addError('goal', __('validation.required', ['attribute' => __('goal')]));
@@ -134,9 +147,62 @@ class LessonChat extends Component
         $this->detectedEra = $context['era'];
         $this->periodStart = $context['period_start'];
         $this->periodEnd = $context['period_end'];
-        $this->era = null;
+        $this->era = $this->detectedEra;
+        $this->suggestedCanonTheme = $this->usesCanon
+            ? $canon->suggest($goalText, $this->topic, $this->goalSummary)
+            : null;
 
         $this->state = 'focus';
+    }
+
+    #[Computed]
+    public function usesCanon(): bool
+    {
+        return app(CanonThemeCatalog::class)->isDutchTeacher(auth()->user());
+    }
+
+    /**
+     * @return list<array{
+     *     slug:string,
+     *     number:int,
+     *     label:string,
+     *     subtitle:string,
+     *     lesson_count:int,
+     *     taught_count:int,
+     *     status:string,
+     *     status_label:string,
+     *     suggested:bool
+     * }>
+     */
+    #[Computed]
+    public function canonThemeOptions(): array
+    {
+        $teacher = auth()->user();
+        if (! $this->usesCanon || $teacher === null) {
+            return [];
+        }
+
+        return collect(app(CanonThemeCatalog::class)->coverageFor($teacher))
+            ->map(function (array $theme, string $slug): array {
+                $statusLabel = match ($theme['status']) {
+                    'taught' => trans_choice(
+                        'Taught · :count lesson|Taught · :count lessons',
+                        $theme['taught_count'],
+                        ['count' => $theme['taught_count']],
+                    ),
+                    'prepared' => __('Prepared · not taught yet'),
+                    default => __('Not taught yet'),
+                };
+
+                return [
+                    'slug' => $slug,
+                    ...$theme,
+                    'status_label' => $statusLabel,
+                    'suggested' => $slug === $this->suggestedCanonTheme,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /** @return list<array{key: string, label: string, pitch: string}> */
@@ -286,7 +352,49 @@ class LessonChat extends Component
         $this->focusChoice = $this->focusTags === []
             ? __('No optional focus')
             : \App\Lessons\FocusTags::labels($this->focusTags);
-        $this->state = 'era';
+
+        if ($this->usesCanon) {
+            $this->suggestedCanonTheme = app(CanonThemeCatalog::class)->suggest(
+                $this->goal,
+                $this->topic,
+                $this->goalSummary,
+                \App\Lessons\FocusTags::labels($this->focusTags),
+            );
+            $this->state = 'canon_theme';
+
+            return;
+        }
+
+        $this->advanceToEra();
+    }
+
+    public function selectCanonTheme(string $slug, CanonThemeCatalog $canon): void
+    {
+        if (
+            $this->state !== 'canon_theme'
+            || $this->createdLessonId !== null
+            || ! $canon->isValidTheme($slug)
+        ) {
+            return;
+        }
+
+        $option = collect($this->canonThemeOptions)->firstWhere('slug', $slug);
+        $this->canonTheme = $slug;
+        $this->canonIntent = ($option['taught_count'] ?? 0) > 0 ? 'strengthen' : 'introduce';
+
+        if ($slug === CanonThemeCatalog::OTHER) {
+            $this->canonThemeChoice = __('Other · no reliable Canon match');
+        } else {
+            $this->canonThemeChoice = __('Hoofdlijn :number · :theme — :intent', [
+                'number' => $option['number'],
+                'theme' => $option['label'],
+                'intent' => $this->canonIntent === 'strengthen'
+                    ? __('strengthen')
+                    : __('introduce'),
+            ]);
+        }
+
+        $this->advanceToEra();
     }
 
     public function selectEra(int $index): void
@@ -489,7 +597,7 @@ class LessonChat extends Component
     public function eraPrompt(): string
     {
         if ($this->detectedEra !== null) {
-            return __('I suggest :era. Choose it below, or select another era.', [
+            return __('I suggest :era.', [
                 'era' => $this->displayEraLabel($this->detectedEra),
             ]);
         }
@@ -524,6 +632,26 @@ class LessonChat extends Component
     }
 
     #[Computed]
+    public function canonThemePrompt(): string
+    {
+        $suggested = collect($this->canonThemeOptions)
+            ->firstWhere('slug', $this->suggestedCanonTheme);
+
+        if ($suggested !== null) {
+            $message = __('This goal best fits Hoofdlijn :number — :theme.', [
+                'number' => $suggested['number'],
+                'theme' => $suggested['label'],
+            ]);
+        } else {
+            $message = __('I could not match this goal confidently to a Canon theme.');
+        }
+
+        return $message.' '.__(
+            'Choose the theme you want to teach or strengthen. “Not taught yet” means there is no classroom activity for that theme in your workspace.'
+        );
+    }
+
+    #[Computed]
     public function confirmationMessage(): string
     {
         $preset = $this->selectedPreset;
@@ -549,6 +677,16 @@ class LessonChat extends Component
             $message .= ' '.__('The historical setting is :era.', [
                 'era' => $this->displayEraLabel($this->era),
             ]);
+        }
+
+        if ($this->canonTheme !== null && $this->canonTheme !== CanonThemeCatalog::OTHER) {
+            $theme = app(CanonThemeCatalog::class)->themes()[$this->canonTheme] ?? null;
+            if ($theme !== null) {
+                $message .= ' '.__('I’ll connect it to Hoofdlijn :number — :theme.', [
+                    'number' => $theme['number'],
+                    'theme' => $theme['label'],
+                ]);
+            }
         }
 
         $message .= "\n\n".($this->selectedStory !== null
@@ -622,6 +760,8 @@ class LessonChat extends Component
             'teacher_id' => auth()->id(),
             'topic' => $story?->title ?? trim($this->topic),
             'subject' => 'history',
+            'canon_theme' => $this->usesCanon ? ($this->canonTheme ?? CanonThemeCatalog::OTHER) : null,
+            'canon_intent' => $this->usesCanon ? $this->canonIntent : null,
             'grade_level' => $this->gradeLevel,
             'details' => Str::limit(trim($this->goal), self::GOAL_AS_DETAILS_LIMIT, '') ?: null,
             'focus_tags' => count($this->focusTags) > 0 ? $this->focusTags : null,
@@ -694,6 +834,18 @@ class LessonChat extends Component
             route('teacher.lessons.wizard', ['lesson' => $lessonId, 'step' => 3]),
             navigate: true,
         );
+    }
+
+    private function advanceToEra(): void
+    {
+        $this->state = 'era';
+
+        if ($this->detectedEra !== null && $this->era === $this->detectedEra) {
+            $this->eraChoice = $this->displayEraLabel($this->detectedEra);
+            $this->state = $this->suggestedPresetKey !== null
+                ? 'preset_confirmation'
+                : 'preset_options';
+        }
     }
 
     private function snapToGradeChip(int $age): int

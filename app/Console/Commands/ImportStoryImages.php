@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\CommonsImageService;
 use App\Services\StoryImages\HistoriekSource;
 use App\Services\StoryImages\StoryImageResolver;
 use App\Services\StoryImages\StoryImageStore;
@@ -40,7 +39,7 @@ final class ImportStoryImages extends Command
         $this->info("Event: {$eventName} ({$eventQid})".($this->option('dry') ? '  [dry run]' : ''));
 
         $sources = [new WorldHistorySource(), new HistoriekSource()];
-        $resolver = new StoryImageResolver(new CommonsImageService());
+        $resolver = app(StoryImageResolver::class);
         $stored = 0;
         $rows = [];
 

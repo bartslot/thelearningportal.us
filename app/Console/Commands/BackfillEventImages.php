@@ -55,7 +55,7 @@ final class BackfillEventImages extends Command
                 continue;
             }
 
-            $images = $harvester->harvest($ev->name, $ev->aliases ?? null, $limit);
+            $images = $harvester->harvest($ev->qid, $ev->name, $ev->aliases ?? null, $limit);
             $stored = 0;
             foreach ($images as $img) {
                 if (! $dry) {
