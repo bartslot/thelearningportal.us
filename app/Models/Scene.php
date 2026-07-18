@@ -186,6 +186,7 @@ class Scene extends Model
 
         $align = is_array($this->audio_alignment) ? array_values($this->audio_alignment) : [];
         $duration = (float) ($this->duration_seconds ?: 0);
+        $totalChars = max(1, mb_strlen($text));
 
         $segments = [];
         $cursor = 0;   // char offset into $text
@@ -194,11 +195,15 @@ class Scene extends Model
             $at = $at === false ? $cursor : $at;
             $cursor = $at + mb_strlen($chunk);
 
-            $start = $this->timeAtChar($align, $at, $duration, mb_strlen($text), $i, count($chunks));
+            $start = $this->timeAtChar($align, $at, $duration, $totalChars, $i, count($chunks));
             $segments[] = [
                 'text' => $chunk,
                 'start' => $start,
                 'timecode' => $this->formatTimecode($start),
+                // Character position as a fraction of the whole script. The Script view uses this
+                // to spread timecodes over the REAL audio length (the client knows the true
+                // duration; duration_seconds is often null), so lines don't cluster at 00:00-04.
+                'fraction' => round($at / $totalChars, 4),
             ];
         }
 

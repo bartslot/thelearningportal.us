@@ -17,12 +17,12 @@
          work-area sync script below) so the stage always fills exactly the gap between them and
          never slides under either panel. Defaults match the rail (11rem) + docked inspector (24rem). --}}
     <div class="fixed z-0 bg-slate-950" id="lesson-canvas-root"
-         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 16rem;
+         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 16rem; --work-bottom: 0px;
                 --top-inset: calc(4rem + var(--ruler-w, 0px));
                 --lbw: calc(100vw - var(--work-left) - var(--work-right));
-                --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset)));
+                --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset) - var(--work-bottom)));
                 left: var(--work-left); right: var(--work-right);
-                height: var(--lbh); top: calc(var(--top-inset) + (100vh - var(--top-inset) - var(--lbh)) / 2);"
+                height: var(--lbh); top: calc(var(--top-inset) + (100vh - var(--top-inset) - var(--work-bottom) - var(--lbh)) / 2);"
          data-character-url=""
          data-territory="{{ $lesson->topic }}"
          data-flag="{{ $lesson->territoryFlagUrl() }}"
@@ -256,37 +256,12 @@
            style="right:0; left:auto; top:64px; bottom:0;"
            class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
-        <header class="card-title flex min-h-9 select-none items-center justify-between gap-3 border-b border-slate-700/50 bg-base-200 px-3 py-1.5 text-sm">
-            {{-- No Scene/Settings tabs (Figma): the toolbar Format/Settings buttons drive which
-                 view shows (panelView), via open-lesson-format / open-lesson-settings. --}}
+        <header class="card-title flex min-h-9 select-none items-center border-b border-slate-700/50 bg-base-200 px-3 py-1.5 text-sm">
+            {{-- Minimal header (Figma): just the current view name — no cogwheel, no close button.
+                 The toolbar Format/Settings buttons drive panelView + open/close. --}}
             <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
                 {{ $panelView === 'settings' ? __('Settings') : __('Format') }}
             </span>
-            <div class="flex items-center gap-0.5">
-                {{-- Cogwheel — a second entry point to the Script editing view (View ▸ Script is
-                     the other). Amber when the script panel is showing. --}}
-                <button type="button"
-                        @click.stop="$store.view.toggle('script')"
-                        :class="$store.view.script ? 'text-amber-300' : 'text-slate-400 hover:text-slate-100'"
-                        class="btn btn-ghost btn-xs btn-square"
-                        aria-label="{{ __('Show or hide the script panel') }}"
-                        title="{{ __('Show or hide the script panel') }}">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                    </svg>
-                </button>
-                <button type="button"
-                        @click.stop="toggleInspector()"
-                        class="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-slate-100"
-                        aria-label="{{ __('Hide the Format panel') }}"
-                        title="{{ __('Hide the Format panel') }}">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
         </header>
 
         <div x-show="inspectorOpen"
