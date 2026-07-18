@@ -248,6 +248,7 @@
            x-ref="inspectorPanel"
            x-show="inspectorOpen"
            x-on:inspector-toggle.window="toggleInspector()"
+           x-on:inspector-open.window="inspectorOpen = true"
            x-on:inspector-open-settings.window="inspectorOpen = true"
            {{-- Broadcast open-state + active tab to the toolbar (sibling scope, wire:ignore) so
                 its Format/Settings buttons can render an open state. Re-runs when inspectorOpen
@@ -722,8 +723,12 @@
         {{-- Format — show/hide the fixed inspector panel. The toolbar sits in its own small
              Alpine scope (a SIBLING of step3SceneConfigurator), so this goes via a window
              event the panel component listens for. --}}
+        {{-- Selector, not a blind toggle: open + switch to Format; only close when Format is
+             already the shown view (so Settings → Format switches instead of closing). --}}
         <button type="button"
-                onclick="Livewire.dispatch('open-lesson-format'); window.dispatchEvent(new CustomEvent('inspector-toggle'))"
+                @click="fmtOpen && fmtView !== 'settings'
+                    ? window.dispatchEvent(new CustomEvent('inspector-toggle'))
+                    : (Livewire.dispatch('open-lesson-format'), window.dispatchEvent(new CustomEvent('inspector-open')))"
                 class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
                 :class="fmtOpen && fmtView !== 'settings' && 'bg-sky-500/15 text-sky-300'"
                 title="{{ __('Show or hide the Format panel') }}" aria-label="{{ __('Format') }}">
@@ -737,7 +742,9 @@
         {{-- Settings — global class/lesson settings (Story + Music). Lives on the toolbar, not
              inside the per-scene inspector. --}}
         <button type="button"
-                onclick="Livewire.dispatch('open-lesson-settings'); window.dispatchEvent(new CustomEvent('inspector-open-settings'))"
+                @click="fmtOpen && fmtView === 'settings'
+                    ? window.dispatchEvent(new CustomEvent('inspector-toggle'))
+                    : (Livewire.dispatch('open-lesson-settings'), window.dispatchEvent(new CustomEvent('inspector-open')))"
                 class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
                 :class="fmtOpen && fmtView === 'settings' && 'bg-sky-500/15 text-sky-300'"
                 title="{{ __('Class & lesson settings') }}" aria-label="{{ __('Settings') }}">
