@@ -2023,9 +2023,32 @@ class Step3SceneConfigurator extends Component
     #[On('lesson:publish')]
     public function publish(): void
     {
-        if ($this->lesson->scenes()->where('status', '!=', 'ready')->exists()) {
+        $notReady = $this->lesson->scenes()
+            ->where('status', '!=', 'ready')
+            ->orderBy('order')
+            ->get(['id', 'order', 'kind', 'game_type', 'status']);
+
+        if ($notReady->isNotEmpty()) {
+            // Name the offending scenes (and why) so the teacher knows exactly what to fix,
+            // instead of a blanket "every scene must be ready".
+            $labels = $notReady->map(function (Scene $s): string {
+                $kind = $s->kind === 'game'
+                    ? ucfirst((string) ($s->game_type ?: 'game'))
+                    : ucfirst((string) $s->kind);
+                $why = match ((string) $s->status) {
+                    'generating' => __('still generating'),
+                    'failed'     => __('failed — regenerate it'),
+                    'pending'    => __('not generated yet'),
+                    default      => (string) $s->status,
+                };
+
+                return __('Scene :n (:kind): :why', ['n' => $s->order, 'kind' => $kind, 'why' => $why]);
+            })->all();
+
             $this->publishOk = false;
-            $this->publishNotice = __('Every scene must be ready before publishing.');
+            $this->publishNotice = __('These scenes aren\'t ready: :list. Generate or remove them, then publish.', [
+                'list' => implode('; ', $labels),
+            ]);
 
             return;
         }

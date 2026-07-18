@@ -9,6 +9,7 @@ import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
+import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 
 // Cliopatria reuses one QID across different polities (e.g. Q1068371 = Han Dynasty AND Chauhan
 // Dynasty) — rewrite (QID, Name) to the right item before enrichment. QID-only overrides are
@@ -60,6 +61,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // True coastline (NE 50m, light-simplified) for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
+        // Explorer voyage routes (curated GeoJSON, baked at import time from voyages.json).
+        ...voyageStyleSources(),
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
@@ -84,6 +87,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { id: 'lake-line', type: 'line', source: 'lakes', 'source-layer': 'lakes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3a2c1a', 'line-width': 0.7, 'line-opacity': 0.8 } },
         // Bold coast outline — the crisp ink shore line, above land + lakes, below the political layers.
         { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2f2418', 'line-width': 1.1 } },
+        // Voyage routes — declared style-time (runtime-added GeoJSON line layers don't render in
+        // this pipeline); initVoyages() lifts them above the runtime boundary layers on load.
+        ...voyageStyleLayers(['Cinzel']),
       ],
     },
     center: [8.23, 46.8], // Switzerland
@@ -96,6 +102,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     maxZoom: 7,
     attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
   });
+
+  // Exposed for dev tooling and the Playwright spec (layer/feature introspection).
+  window.__tmMap = map;
 
   // Dark "space" behind the globe: a very-dark-blue centre fading to near-black at the corners (a
   // vignette). The WebGL canvas is transparent outside the globe, so this container background shows
@@ -177,6 +186,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
+    applyVoyageYear(map, year);
     const inkF = MAP_STYLES[currentStyleName] && MAP_STYLES[currentStyleName].borderSource ? borderDateFilter(year) : polityFilter(year);
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.setFilter(`ink-${i}`, inkF); }
     scheduleSettle(); // recompute labels + prefetch articles for the new era (after tiles settle)
@@ -278,8 +288,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const inkWidth = (min, max) => ['interpolate', ['linear'],
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
-    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, voyage: '#1f5f8f', paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, voyage: '#274f66', paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
     'pen-ink': {
       palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
       shore: { color: '#2f2418', width: 1.15, shadow: '#574631', shadowWidth: 2.9, dy: 2 },
@@ -299,9 +309,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { color: '#33261a', width: inkWidth(0.4, 1.2), opacity: 0.8, blur: 0.2 },
         { color: '#2a1f12', width: 0.6, opacity: 0.32, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
       ],
-      text: { color: '#33271a', halo: '#efe2c4' }, paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
+      text: { color: '#33271a', halo: '#efe2c4' }, voyage: '#2f4e66', paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
     },
-    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, paper: 0, vignette: 'rgba(0,0,0,0.45)' },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
@@ -456,6 +466,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
       map.setPaintProperty('markers-label', 'text-halo-color', s.text.halo);
     }
+    applyVoyageStyle(map, { color: s.voyage, halo: s.text && s.text.halo });
     // Hand-drawn ink: several stacked strokes (per-feature varying width + bleed + broken dashes)
     // so borders read as uneven pen work rather than uniform vector lines.
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.removeLayer(`ink-${i}`); }
@@ -775,6 +786,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then(() => addVolcanoLayer(map, { beforeId: 'boundaries-label', visibility: 'none' }))
       .then(() => applyMapStyle(currentStyleName));
 
+    // Explorer voyages / trade routes (voyages.json) — arrowed sea paths, era-filtered like
+    // polities; clicking one opens the info panel via its Wikidata QID. Their sources/layers live
+    // in the initial style; this lifts them above the boundary layers (markers, added next, stay
+    // on top) and applies the era filter.
+    initVoyages(map, { year: state.year });
+
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
     map.addSource('markers', { type: 'geojson', data: supplementalMarkers });
@@ -845,6 +862,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           inception: p.inception, dissolution: p.dissolution,
         },
       }));
+      return;
+    }
+
+    // Voyage routes next (wide invisible hit line): open the panel via the voyage's QID.
+    const voyage = map.getLayer('voyage-hit') && map.queryRenderedFeatures(box, { layers: ['voyage-hit'] })[0];
+    if (voyage) {
+      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+      const p = voyage.properties;
+      state.selectedRegion = p.qid;
+      sync();
+      window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: p.qid, name: `${p.name} (${p.years})`, qid: p.qid } }));
       return;
     }
 

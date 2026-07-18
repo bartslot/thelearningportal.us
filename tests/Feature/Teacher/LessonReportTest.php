@@ -19,6 +19,7 @@ class LessonReportTest extends TestCase
     use RefreshDatabase;
 
     private User $teacher;
+
     private Lesson $lesson;
 
     protected function setUp(): void
@@ -57,7 +58,24 @@ class LessonReportTest extends TestCase
             ->set('tab', 'players')
             ->call('openPlayer', QuizScore::sole()->id)
             ->assertSee('Why X?')
-            ->assertSee('B');
+            ->assertSee('Their answer')
+            ->assertSee('B')
+            ->assertSee('Correct answer')
+            ->assertSee('A');
+    }
+
+    public function test_leaderboard_student_review_opens_the_player_answer_view(): void
+    {
+        $scoreId = QuizScore::sole()->id;
+
+        Livewire::actingAs($this->teacher)
+            ->test(LessonReport::class, ['lesson' => $this->lesson])
+            ->call('viewPlayer', $scoreId)
+            ->assertSet('tab', 'players')
+            ->assertSet('openScoreId', $scoreId)
+            ->assertSee('Daan B.')
+            ->assertSee('Why X?')
+            ->assertSee('Correct answer');
     }
 
     public function test_csv_download_streams_rows(): void

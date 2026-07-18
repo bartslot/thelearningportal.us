@@ -106,6 +106,12 @@ class LessonReport extends Component
         $this->openScoreId = $this->openScoreId === $scoreId ? null : $scoreId;
     }
 
+    public function viewPlayer(int $scoreId): void
+    {
+        $this->tab = 'players';
+        $this->openScoreId = $scoreId;
+    }
+
     public function requiz(): void
     {
         $difficult = collect($this->results()->difficultQuestions())

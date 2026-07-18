@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
+  <style>html,body,#map{margin:0;height:100%;}</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  // Minimal repro for invisible GeoJSON line layers. Toggle style features via URL params:
+  // ?noglobe ?nopitch ?nosky ?hillshade ?land ?extended
+  const q = new URLSearchParams(location.search);
+  const style = {
+    version: 8,
+    glyphs: `${location.origin}/fonts/{fontstack}/{range}.pbf`,
+    sources: {
+      route: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: {
+        type: 'LineString', coordinates: [[-9, 38], [-20, 15], [-10, -20], [18, -34], [40, -4], [75, 11]] } } },
+    },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#cfd8cf' } },
+      { id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#ff0000', 'line-width': 5 } },
+    ],
+  };
+  if (q.has('extended')) {
+    // A second feature with beyond-±360 longitudes (Magellan-style continuity coords).
+    style.sources.route.data = { type: 'FeatureCollection', features: [
+      style.sources.route.data,
+      { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[-340, 10], [-370, 20], [-383, 15]] } },
+    ] };
+  }
+  if (q.has('hillshade')) {
+    style.sources.dem = { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 12 };
+    style.layers.splice(1, 0, { id: 'hillshade', type: 'hillshade', source: 'dem', paint: { 'hillshade-exaggeration': 0.45 } });
+  }
+  if (q.has('land')) {
+    style.sources.land = { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 };
+    style.layers.splice(1, 0, { id: 'land', type: 'fill', source: 'land', 'source-layer': 'land', paint: { 'fill-color': '#efe6d0' } });
+  }
+  if (!q.has('noglobe')) style.projection = { type: 'globe' };
+  if (!q.has('nosky')) style.sky = {
+    'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 2, 0.5, 4, 0.35, 6, 0.12, 7, 0.04],
+    'sky-color': '#0a1230', 'sky-horizon-blend': 0.5, 'horizon-color': '#1a2c5a',
+    'horizon-fog-blend': 0.5, 'fog-color': '#dcc9a0',
+  };
+  const map = new maplibregl.Map({
+    container: 'map', style,
+    center: [20, 2], zoom: 2.2,
+    pitch: q.has('nopitch') ? 0 : 28,
+  });
+  window.__testMap = map;
+</script>
+</body>
+</html>

@@ -346,6 +346,51 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertCount(2, $component->get('quizDraft'), 'Draft keeps the incomplete question');
     }
 
+    public function test_quiz_autosave_marks_the_scene_ready_once_it_has_a_complete_question(): void
+    {
+        // A manually added quiz scene starts 'pending'; without this it never becomes ready and
+        // silently blocks the whole lesson from publishing.
+        $this->s2->update(['game_type' => 'quiz', 'status' => 'pending']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.question', 'Why did the empire fall?')
+            ->set('quizDraft.0.options', ['Overexpansion', 'A lost bet', 'Bad weather', 'Aliens'])
+            ->set('quizDraft.0.correct_index', 0);
+
+        $this->assertSame('ready', $this->s2->fresh()->status);
+    }
+
+    public function test_quiz_autosave_keeps_the_scene_pending_while_it_has_no_complete_question(): void
+    {
+        $this->s2->update(['game_type' => 'quiz', 'status' => 'pending']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.question', 'half typed, no options');
+
+        $this->assertSame('pending', $this->s2->fresh()->status, 'an empty quiz is not ready');
+    }
+
+    public function test_publish_names_the_scenes_that_are_not_ready(): void
+    {
+        $this->s1->update(['status' => 'ready']);
+        $this->s2->update(['status' => 'pending', 'game_type' => 'quiz']);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('lesson:publish');
+
+        $notice = (string) $component->get('publishNotice');
+        $this->assertFalse($component->get('publishOk'));
+        $this->assertStringContainsString('Scene 2', $notice, 'the message names the offending scene by number');
+        $this->assertStringContainsString('Quiz', $notice, 'and its kind');
+    }
+
     public function test_deleting_the_scene_image_falls_back_to_brand_navy(): void
     {
         \Illuminate\Support\Facades\Storage::fake('public');

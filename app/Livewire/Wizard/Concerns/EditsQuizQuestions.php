@@ -410,6 +410,16 @@ trait EditsQuizQuestions
             }
         });
 
+        // Flip the quiz scene's readiness with its content: a quiz is "ready" once it has at
+        // least one complete question, otherwise it stays "pending". Without this a manually
+        // added quiz scene never leaves 'pending' and silently blocks the whole lesson from
+        // publishing (the publish gate requires every scene to be 'ready').
+        if ($this->quizDraftSceneId) {
+            $this->lesson->scenes()
+                ->whereKey($this->quizDraftSceneId)
+                ->update(['status' => $clean === [] ? 'pending' : 'ready']);
+        }
+
         // No draft reload: reloading would clobber half-typed questions mid-edit.
         $this->quizSaved = true;
     }

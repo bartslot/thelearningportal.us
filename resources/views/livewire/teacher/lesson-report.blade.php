@@ -57,13 +57,19 @@
 
         <div class="grid gap-5 md:grid-cols-2">
             <div>
-                <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider opacity-60">{{ __('Leaderboard') }}</h2>
+                <h2 class="text-xs font-semibold uppercase tracking-wider opacity-60">{{ __('Leaderboard') }}</h2>
+                <p class="mb-2 text-xs opacity-60">{{ __('Select a student to review their answers.') }}</p>
                 <div class="space-y-1.5">
                     @forelse ($o['leaderboard'] as $i => $row)
                         <div class="flex items-center gap-2 rounded-xl border px-3 py-2
                                     {{ $row['needs_help'] ? 'border-error/40' : 'border-base-300' }}">
                             <span class="w-6 text-sm font-bold opacity-60">{{ $i + 1 }}</span>
-                            <span class="flex-1 truncate font-medium">{{ $row['name'] }}</span>
+                            <button type="button" wire:click="viewPlayer({{ $row['score_id'] }})"
+                                    class="group flex min-w-0 flex-1 items-center gap-1 text-left font-medium hover:text-warning focus-visible:outline-none focus-visible:underline">
+                                <span class="truncate">{{ $row['name'] }}</span>
+                                <span class="hidden text-xs font-medium opacity-0 transition-opacity group-hover:opacity-70 sm:inline">{{ __('Review') }}</span>
+                                <x-icons.chevron-right class="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70 group-focus-visible:opacity-70" />
+                            </button>
                             <x-results.integrity-chips :integrity="$row['integrity']" :source="$row['source']" />
                             <span class="font-bold text-warning">{{ $row['score'] }}</span>
                             <span class="text-xs opacity-60">{{ $row['correct'] }}/{{ $row['total'] }}</span>
@@ -123,25 +129,34 @@
         <div class="space-y-1.5">
             @forelse ($this->players as $row)
                 <div class="rounded-xl border {{ $row['needs_help'] ? 'border-error/40' : 'border-base-300' }} px-3 py-2">
-                    <button wire:click="openPlayer({{ $row['score_id'] }})" class="flex w-full items-center gap-2 text-left">
+                    <button type="button" wire:click="openPlayer({{ $row['score_id'] }})" class="flex w-full items-center gap-2 text-left">
                         <span class="flex-1 font-medium">{{ $row['name'] }}</span>
                         <x-results.integrity-chips :integrity="$row['integrity']" :source="$row['source']" />
                         <span class="text-sm">{{ $row['pct'] }}%</span>
                         <span class="text-xs opacity-60">{{ $row['played_at']->format('d M H:i') }}</span>
                     </button>
                     @if ($openScoreId === $row['score_id'])
-                        <div class="mt-2 space-y-1 border-t border-base-300 pt-2 text-sm">
+                        <div class="mt-2 space-y-1.5 border-t border-base-300 pt-2 text-sm" role="region" aria-label="{{ __('Answer review for :name', ['name' => $row['name']]) }}">
+                            <p class="px-1 text-xs font-semibold uppercase tracking-wider opacity-60">{{ __('Answer review') }}</p>
                             @foreach ($this->drilldown as $a)
-                                <div class="flex items-start gap-2">
-                                    @if($a['was_correct'])
-                                        <x-icons.check-circle class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
-                                    @else
-                                        <x-icons.x-circle class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
-                                    @endif
-                                    <span class="flex-1">{{ $a['asks_ahead'] ? '⤳ ' : '' }}{{ $a['question_text'] }}
-                                        <span class="opacity-60">— {{ $a['chosen_text'] }}@if(!$a['was_correct']) ({{ __('correct') }}: {{ $a['correct_text'] }})@endif</span>
-                                    </span>
-                                    @if ($a['response_ms'] !== null)<span class="text-xs opacity-50">{{ round($a['response_ms'] / 1000, 1) }}s</span>@endif
+                                <div class="rounded-lg bg-base-200/60 px-2.5 py-2">
+                                    <div class="flex items-start gap-2">
+                                        @if($a['was_correct'])
+                                            <x-icons.check-circle class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                                        @else
+                                            <x-icons.x-circle class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
+                                        @endif
+                                        <span class="flex-1">{{ $a['asks_ahead'] ? '⤳ ' : '' }}{{ $a['question_text'] }}</span>
+                                        @if ($a['response_ms'] !== null)<span class="text-xs opacity-50">{{ round($a['response_ms'] / 1000, 1) }}s</span>@endif
+                                    </div>
+                                    <div class="ml-6 mt-1.5 space-y-1 text-xs">
+                                        <p class="{{ $a['was_correct'] ? 'text-success' : 'text-error' }}">
+                                            <span class="opacity-70">{{ __('Their answer') }}:</span> {{ $a['chosen_text'] ?: __('No answer') }}
+                                        </p>
+                                        @unless ($a['was_correct'])
+                                            <p class="text-success"><span class="opacity-70">{{ __('Correct answer') }}:</span> {{ $a['correct_text'] }}</p>
+                                        @endunless
+                                    </div>
                                 </div>
                             @endforeach
                         </div>
