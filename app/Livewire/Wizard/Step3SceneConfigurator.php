@@ -1759,6 +1759,17 @@ class Step3SceneConfigurator extends Component
         $this->panelView = 'scene';
     }
 
+    /** Inline script edit from the Script panel — persist the edited narration text. */
+    #[On('scene:update-script')]
+    public function updateSceneScript(string $text): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        $this->selectedScene['script_segment'] = trim($text);
+        $this->saveSelected();
+    }
+
     /**
      * Publish the lesson from the toolbar. Gate: every scene must be "ready".
      * NOTE: public-visibility moderation (abuse/adult-content screening) is a

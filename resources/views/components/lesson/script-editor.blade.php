@@ -31,17 +31,21 @@
     @if ($segments === [])
         <p class="px-4 py-6 text-center text-xs text-slate-500">{{ __('No narration yet for this scene.') }}</p>
     @else
-        {{-- Timecoded narration --}}
-        <div class="overflow-y-auto px-3 py-3" style="max-height: 30vh;">
+        {{-- Timecoded narration. focusout (bubbles) saves whenever any edited line loses focus. --}}
+        <div class="overflow-y-auto px-3 py-3" style="max-height: 30vh;" x-on:focusout="saveScript()">
             <div class="space-y-3">
                 @foreach ($segments as $i => $seg)
                     <div class="flex gap-3">
+                        {{-- Timecode seeks; the text line is editable in place. --}}
                         <button type="button" x-on:click="seek({{ $i }})"
-                                class="mt-0.5 w-9 shrink-0 text-right font-mono text-[10px] tabular-nums text-slate-500 transition hover:text-amber-300"
+                                class="mt-0.5 w-9 shrink-0 cursor-pointer text-right font-mono text-[10px] tabular-nums text-slate-500 transition hover:text-amber-300"
                                 x-text="fmt(starts[{{ $i }}] ?? {{ $seg['start'] }})">{{ $seg['timecode'] }}</button>
-                        <p x-on:click="seek({{ $i }})"
-                           :class="active === {{ $i }} ? 'text-amber-100' : 'text-slate-300 hover:text-slate-100'"
-                           class="cursor-pointer font-serif text-[15px] leading-relaxed transition">{{ $seg['text'] }}</p>
+                        {{-- Inline-editable narration (no textarea): edit the words, blur saves.
+                             Empty a line to delete that sentence. Re-narrate to refresh the audio. --}}
+                        <p data-line contenteditable="true" spellcheck="false"
+                           x-on:keydown.escape.stop.prevent="$event.target.blur()"
+                           :class="active === {{ $i }} ? 'text-amber-100' : 'text-slate-300'"
+                           class="flex-1 cursor-text rounded font-serif text-[15px] leading-relaxed transition hover:bg-white/5 focus:bg-white/10 focus:outline-none focus:ring-1 focus:ring-amber-500/40">{{ $seg['text'] }}</p>
                     </div>
                 @endforeach
             </div>
@@ -81,10 +85,11 @@
                 _startY: 0,
                 _ro: null,
                 _waveRo: null,
+                _lastSaved: '',
 
                 async init() {
                     this.starts = this.fractions.map(() => 0);
-                    this.$nextTick(() => this.reserveSpace());
+                    this.$nextTick(() => { this.reserveSpace(); this._lastSaved = this._currentScriptText(); });
                     // Keep the reserved bottom space in sync with the panel's real height + its
                     // shown/hidden state, so the stage always sits ABOVE the script panel.
                     this._ro = new ResizeObserver(() => this.reserveSpace());
@@ -120,6 +125,21 @@
                         this._waveRo.observe(this.$refs.waveform);
                     } catch (_) { /* WaveSurfer failed to load — leave the play bar disabled */ }
                 },
+
+                // Inline script editing — gather the editable lines and persist on blur.
+                _currentScriptText() {
+                    return [...this.$el.querySelectorAll('[data-line]')]
+                        .map((el) => el.textContent.replace(/\s+/g, ' ').trim())
+                        .filter(Boolean)
+                        .join(' ');
+                },
+                saveScript() {
+                    const text = this._currentScriptText();
+                    if (text === this._lastSaved) return;   // no change → no round-trip
+                    this._lastSaved = text;
+                    try { window.Livewire.dispatch('scene:update-script', { text }); } catch (_) {}
+                },
+
                 refreshWave() {
                     if (!this.ws || !this.$refs.waveform) return;
                     const width = this.$refs.waveform.clientWidth;
