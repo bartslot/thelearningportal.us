@@ -8,6 +8,14 @@ import { addScatterLayer } from '../map-scatter.js';
 import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
+import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
+
+// Cliopatria reuses one QID across different polities (e.g. Q1068371 = Han Dynasty AND Chauhan
+// Dynasty) — rewrite (QID, Name) to the right item before enrichment. QID-only overrides are
+// applied server-side, where the enrichment row stays keyed by the tile QID.
+const QID_FOR_NAME = new Map(
+  qidOverrides.overrides.filter((o) => o.name).map((o) => [`${o.qid}|${o.name}`, o.use]),
+);
 
 // Mounted by the Blade view via x-init. `wire` is the Livewire component proxy ($wire).
 window.initTimeMap = function initTimeMap(el, wire, initialYear) {
@@ -848,8 +856,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (selectedId !== null) setSelected(selectedId, true);
     refreshLabels(); // re-rank labels so the newly-selected territory's name wins collision
 
-    const qid = hit ? hit.properties.Wikidata : null;
+    const tileQid = hit ? hit.properties.Wikidata : null;
     const name = hit ? hit.properties.Name : null;
+    const qid = tileQid ? QID_FOR_NAME.get(`${tileQid}|${name}`) || tileQid : null;
     state.selectedRegion = qid;
     sync();
     // QID drives enrichment (Cliopatria carries it natively); pass it as both id and qid.

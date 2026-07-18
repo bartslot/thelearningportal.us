@@ -30,9 +30,9 @@ Route::get('/', function () {
         'home.playable_lessons',
         now()->addMinutes(10),
         fn () => Lesson::whereIn('status', [
-                LessonStatusEnum::Published->value,
-                LessonStatusEnum::Previewable->value,
-            ])
+            LessonStatusEnum::Published->value,
+            LessonStatusEnum::Previewable->value,
+        ])
             ->whereNotNull('lesson_code')
             // Only lessons that actually play — at least one narrated scene. Excludes empty
             // stubs that would open the player to a perpetual "audio generating" screen.
@@ -126,8 +126,13 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         // features pass a `name` (Wikidata search). Prefer the QID when present.
         if (! $p && ($request->filled('qid') || $request->filled('name'))) {
             $resolver = app(\App\Services\WikidataPolityResolver::class);
+            // Cliopatria mistags some polygons (wrong-era or shared QIDs) — resolve through the
+            // committed override table so lazy enrichment matches what the sync would write.
             $data = $request->filled('qid')
-                ? $resolver->resolveByQid($request->string('qid')->toString())
+                ? $resolver->resolveByQid(app(\App\Services\CliopatriaQidOverrides::class)->resolve(
+                    $request->string('qid')->toString(),
+                    $request->filled('name') ? $request->string('name')->toString() : null,
+                ))
                 : $resolver->resolve($request->string('name')->toString());
             // Era = the Cliopatria span the tiles render by (see CliopatriaSpans), so the panel
             // matches the map; Wikidata P571/P576 is only a fallback for non-list polities.
@@ -158,11 +163,11 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
                 ->limit(12)
                 ->get(['qid', 'name', 'figure_kind', 'image_url', 'era_start', 'era_end'])
                 ->map(fn ($f) => [
-                    'qid'       => $f->qid,
-                    'name'      => $f->name,
-                    'kind'      => $f->figure_kind,
+                    'qid' => $f->qid,
+                    'name' => $f->name,
+                    'kind' => $f->figure_kind,
                     'image_url' => $f->image_url,
-                    'era'       => ($f->era_start !== null || $f->era_end !== null)
+                    'era' => ($f->era_start !== null || $f->era_end !== null)
                         ? trim(($f->era_start ?? '?').'–'.($f->era_end ?? '?'), '–')
                         : null,
                 ])->all();

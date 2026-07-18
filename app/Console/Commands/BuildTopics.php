@@ -72,7 +72,7 @@ class BuildTopics extends Command
             $done = collect();  // never skip an explicitly-requested polity
         }
 
-        $polities = $query->get(['osm_id', 'label', 'region_lat']);
+        $polities = $query->get(['osm_id', 'label', 'region_lat', 'wikidata_id']);
         $limit = (int) $this->option('limit');
         if ($limit > 0) {
             $polities = $polities->take($limit);
@@ -90,8 +90,13 @@ class BuildTopics extends Command
                 continue;
             }
 
+            // Enrichment may resolve a mistagged tile QID to a corrected Wikidata item (see
+            // CliopatriaQidOverrides) — query Wikidata against that item, keep figures keyed
+            // by the tile QID the map clicks with.
+            $sourceQid = is_string($p->wikidata_id) && str_starts_with($p->wikidata_id, 'Q') ? $p->wikidata_id : $qid;
+
             try {
-                $data = $figures->polityFigures($qid);
+                $data = $figures->polityFigures($sourceQid);
 
                 // 1. Backfill polity region (resolve country QID → label).
                 $region = $data['region'];
@@ -116,7 +121,7 @@ class BuildTopics extends Command
                 // for the hero picker anyway.
                 $people = [];
                 try {
-                    $people = $figures->peopleFor($qid, $peopleLimit);
+                    $people = $figures->peopleFor($sourceQid, $peopleLimit);
                 } catch (\Throwable $e) {
                     $this->newLine();
                     $this->warn("polity {$qid}: people fetch failed ({$e->getMessage()}) — keeping rulers only");
@@ -127,7 +132,7 @@ class BuildTopics extends Command
                 // like the people query so a timeout never costs us the rest.
                 $positionRulers = [];
                 try {
-                    $positionRulers = $figures->rulersByPosition($qid, $peopleLimit);
+                    $positionRulers = $figures->rulersByPosition($sourceQid, $peopleLimit);
                 } catch (\Throwable $e) {
                     $this->newLine();
                     $this->warn("polity {$qid}: position-ruler fetch failed ({$e->getMessage()})");

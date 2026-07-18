@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\CliopatriaQidOverrides;
 use App\Services\CliopatriaSpans;
 use App\Services\WikidataPolityResolver;
 use Illuminate\Console\Command;
@@ -19,13 +20,13 @@ use Illuminate\Support\Facades\Http;
  */
 class SyncCliopatriaPolities extends Command
 {
-    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)} {--resume : Skip QIDs already enriched (have a summary)} {--dates-only : Realign every polity era to the Cliopatria span + rewrite the snapshot, no Wikidata calls}';
+    protected $signature = 'timemap:sync-cliopatria-polities {--limit=0 : Cap the number enriched (0 = all)} {--resume : Skip QIDs already enriched (have a summary)} {--dates-only : Realign every polity era to the Cliopatria span + rewrite the snapshot, no Wikidata calls} {--qid=* : Only these tile QIDs (targeted repair, e.g. after an override change)}';
 
     protected $description = 'Enrich Cliopatria polities (by Wikidata QID) into polities + download flags';
 
     private const UA = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
 
-    public function handle(WikidataPolityResolver $resolver, CliopatriaSpans $spans): int
+    public function handle(WikidataPolityResolver $resolver, CliopatriaSpans $spans, CliopatriaQidOverrides $overrides): int
     {
         $list = json_decode(File::get(database_path('data/cliopatria-polities.json')), true);
         if (! is_array($list)) {
@@ -33,9 +34,22 @@ class SyncCliopatriaPolities extends Command
 
             return self::FAILURE;
         }
+        // QIDs the list itself enriches — a named override targeting one of these never needs its
+        // own row (built from the FULL list, before any --qid/--limit narrowing).
+        $listQids = array_flip(array_column($list, 'qid'));
+
+        $only = array_values(array_filter((array) $this->option('qid')));
+        if ($only !== []) {
+            $list = array_values(array_filter($list, fn (array $row): bool => in_array($row['qid'] ?? null, $only, true)));
+        }
         $limit = (int) $this->option('limit');
+        $named = $overrides->namedEntries();
         if ($limit > 0) {
             $list = array_slice($list, 0, $limit);
+            $named = []; // --limit is a sampling tool; keep the run bounded to the list slice
+        }
+        if ($only !== []) {
+            $named = array_values(array_filter($named, fn (array $e): bool => in_array($e['qid'], $only, true) || in_array($e['use'], $only, true)));
         }
 
         $this->ensureTable();
@@ -55,7 +69,7 @@ class SyncCliopatriaPolities extends Command
             ? $corpus->table('public.polities')->whereNotNull('summary')->whereNotNull('osm_id')->pluck('osm_id')->flip()
             : collect();
 
-        $bar = $this->output->createProgressBar(count($list));
+        $bar = $this->output->createProgressBar(count($list) + count($named));
         $count = 0;
         foreach ($list as $row) {
             $qid = $row['qid'] ?? null;
@@ -66,7 +80,9 @@ class SyncCliopatriaPolities extends Command
                 continue;
             }
 
-            $data = $resolver->resolveByQid($qid);
+            // QID-only overrides redirect a mistagged lineage (e.g. Kingdom of France → the
+            // Bourbon Restoration item) to the right entity; the row stays keyed by the tile QID.
+            $data = $resolver->resolveByQid($overrides->resolve($qid));
 
             $flagPath = null;
             if (! empty($data['flag_commons'])) {
@@ -89,6 +105,38 @@ class SyncCliopatriaPolities extends Command
                     // Wikidata P571/P576 is only a fallback for polities the list does not span.
                     'inception' => $row['from'] ?? $data['inception'],
                     'dissolution' => $row['to'] ?? $data['dissolution'],
+                    'predecessor' => $data['predecessor'],
+                    'successor' => $data['successor'],
+                    'sitelinks' => $data['sitelinks'],
+                    'significant' => true,
+                    'updated_at' => now(),
+                ]
+            );
+            $count++;
+            $bar->advance();
+        }
+
+        // Standalone rows for the carved-out variants of shared QIDs (the map rewrites those
+        // clicks to the `use` QID — see CliopatriaQidOverrides). Era comes from the override
+        // entry (the polygon span), not CliopatriaSpans, which only knows the keeper row.
+        foreach ($named as $entry) {
+            $target = $entry['use'];
+            if (isset($listQids[$target]) || ($resume && $done->has($target))) {
+                $bar->advance();
+
+                continue; // a list row already enriches this QID
+            }
+            $data = $resolver->resolveByQid($target);
+            $corpus->table('public.polities')->updateOrInsert(
+                ['osm_id' => $target],
+                [
+                    'polity_id' => $target,
+                    'label' => $entry['name'],
+                    'wikidata_id' => $data['wikidata_id'] ?? $target,
+                    'summary' => $data['summary'],
+                    'wikipedia_url' => $data['wikipedia_url'],
+                    'inception' => $entry['from'] ?? $data['inception'],
+                    'dissolution' => $entry['to'] ?? $data['dissolution'],
                     'predecessor' => $data['predecessor'],
                     'successor' => $data['successor'],
                     'sitelinks' => $data['sitelinks'],

@@ -68,6 +68,31 @@ class PolityEndpointTest extends TestCase
         $this->assertNotNull(DB::connection('pgsql_corpus')->table('public.polities')->where('osm_id', '-71')->first());
     }
 
+    public function test_lazy_enrichment_applies_qid_overrides(): void
+    {
+        // Cliopatria keys its Kingdom-of-France lineage to Q207162 (the Bourbon Restoration
+        // period item) — lazy enrichment must resolve the override target instead, while the
+        // row stays keyed (and dated) by the tile QID.
+        Http::preventStrayRequests();
+        Http::fake([
+            'www.wikidata.org/wiki/Special:EntityData/Q70972.json' => Http::response(['entities' => ['Q70972' => ['claims' => [], 'labels' => ['en' => ['value' => 'Kingdom of France']], 'sitelinks' => ['enwiki' => ['title' => 'Kingdom of France']]]]]),
+            'en.wikipedia.org/*' => Http::response(['extract' => 'The Kingdom of France was a medieval and early modern monarchy.', 'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Kingdom_of_France']]]),
+            'www.wikidata.org/w/api.php*' => Http::response(['entities' => []]),
+        ]);
+
+        $teacher = User::factory()->create(['role' => 'teacher']);
+
+        $this->actingAs($teacher)
+            ->getJson('/teacher/timemap/polity/Q207162?name='.urlencode('Kingdom of France').'&qid=Q207162')
+            ->assertOk()
+            ->assertJsonPath('label', 'Kingdom of France')
+            ->assertJsonPath('summary', 'The Kingdom of France was a medieval and early modern monarchy.')
+            ->assertJsonPath('inception', 990); // Cliopatria span for the tile QID, not Wikidata's 1815
+
+        $row = DB::connection('pgsql_corpus')->table('public.polities')->where('osm_id', 'Q207162')->first();
+        $this->assertSame('Q70972', $row->wikidata_id);
+    }
+
     public function test_supplemental_marker_lazy_enriches_by_qid(): void
     {
         // A marker passes an explicit QID; enrichment must go through resolveByQid (no name search).

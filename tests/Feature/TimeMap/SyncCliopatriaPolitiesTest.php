@@ -81,6 +81,71 @@ class SyncCliopatriaPolitiesTest extends TestCase
         @unlink(public_path("flags/{$qid}.png"));
     }
 
+    public function test_overridden_qid_enriches_from_the_corrected_entity(): void
+    {
+        $this->fakeWikidataByQid();
+
+        $this->artisan('timemap:sync-cliopatria-polities --qid=Q207162')->assertExitCode(0);
+
+        // The row stays keyed by the tile QID but is enriched from the Kingdom of France item —
+        // never from Q207162, the Bourbon Restoration period item Cliopatria mistagged it with
+        // (which put an 1815 restoration article on medieval France).
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'Special:EntityData/Q70972.json'));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'Special:EntityData/Q207162.json'));
+
+        $row = DB::connection('pgsql_corpus')->table('public.polities')->where('osm_id', 'Q207162')->first();
+        $this->assertSame('Q70972', $row->wikidata_id);
+        $this->assertSame('Kingdom of France', $row->label);   // Cliopatria era-name, not the target label
+        $this->assertSame('Summary of Article Q70972', $row->summary);
+        $this->assertSame(990, $row->inception);               // era = the Cliopatria span the tiles render by
+        $this->assertSame(1847, $row->dissolution);
+    }
+
+    public function test_named_override_writes_a_standalone_row_for_the_carved_out_variant(): void
+    {
+        $this->fakeWikidataByQid();
+
+        $this->artisan('timemap:sync-cliopatria-polities --qid=Q1068371')->assertExitCode(0);
+
+        $corpus = DB::connection('pgsql_corpus');
+
+        // Keeper row: Q1068371 genuinely is the Chauhan dynasty, so the list row keeps it.
+        $keeper = $corpus->table('public.polities')->where('osm_id', 'Q1068371')->first();
+        $this->assertSame('Q1068371', $keeper->wikidata_id);
+        $this->assertSame('Chauhan Dynasty', $keeper->label);
+
+        // Carved-out variant: the map rewrites Han Dynasty clicks to Q7209, so it gets its own
+        // row with the polygon's own era from the override entry.
+        $han = $corpus->table('public.polities')->where('osm_id', 'Q7209')->first();
+        $this->assertNotNull($han);
+        $this->assertSame('Han Dynasty', $han->label);
+        $this->assertSame(-202, $han->inception);
+        $this->assertSame(237, $han->dissolution);
+    }
+
+    /** Fake Wikidata/Wikipedia so every entity resolves to per-QID marker content (no flags). */
+    private function fakeWikidataByQid(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (preg_match('~Special:EntityData/(Q\d+)\.json~', $url, $m)) {
+                return Http::response(['entities' => [$m[1] => [
+                    'claims' => [],
+                    'labels' => ['en' => ['value' => "Label {$m[1]}"]],
+                    'sitelinks' => ['enwiki' => ['title' => "Article {$m[1]}"]],
+                ]]]);
+            }
+            if (str_contains($url, 'en.wikipedia.org')) {
+                preg_match('~page/summary/(.+)$~', $url, $m);
+
+                return Http::response(['extract' => 'Summary of '.rawurldecode($m[1] ?? ''), 'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Test']]]);
+            }
+
+            return Http::response(['entities' => []]); // wbgetentities labels
+        });
+    }
+
     public function test_dates_only_realigns_stale_eras_to_the_cliopatria_span(): void
     {
         Http::preventStrayRequests(); // --dates-only must never touch the network

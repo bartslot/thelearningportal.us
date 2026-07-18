@@ -50,6 +50,30 @@ trait SeedsCorpusFixtures
                 updated_at timestamptz
             )');
 
+        // The polity endpoint reads figures for the People tab — recreate it at the CURRENT
+        // schema (mirrors BuildTopics::ensureSchema) so a stale table from an old run can't
+        // fail every endpoint test with an undefined-column error.
+        $corpus->statement('DROP TABLE IF EXISTS public.figures');
+        $corpus->statement('
+            CREATE TABLE public.figures (
+                qid text NOT NULL,
+                parent_qid text NOT NULL,
+                name text,
+                figure_kind text,
+                wikipedia_url text,
+                summary text,
+                era_start integer,
+                era_end integer,
+                region_lat numeric,
+                region_lng numeric,
+                region_label text,
+                sitelinks integer default 0,
+                is_publishable boolean default true,
+                image_url text,
+                updated_at timestamptz,
+                PRIMARY KEY (qid, parent_qid)
+            )');
+
         // The topics catalog view (A2) depends on polities — drop it first so the table can go.
         $corpus->statement('DROP VIEW IF EXISTS public.topics');
         $corpus->statement('DROP TABLE IF EXISTS public.polities CASCADE');
