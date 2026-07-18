@@ -26,6 +26,7 @@ trait EditsSceneArtwork
     public function setActiveLayer(int $assetId): void
     {
         $this->activeLayerId = $assetId;
+        $this->activeTextId = null;
         $this->panelView = 'scene';   // never on the global Settings tab while editing a layer
     }
 

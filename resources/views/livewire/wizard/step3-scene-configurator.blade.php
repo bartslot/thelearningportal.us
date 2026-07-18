@@ -183,18 +183,32 @@
             if (!layerHost || !window.LessonScene?.TextOverlayLayer) return null
             textLayer = new window.LessonScene.TextOverlayLayer(layerHost, {
                 editable: true,
-                onChange: (texts) => {
+                onChange: (texts, selectedTextId) => {
                     lastAppliedTexts = JSON.stringify(texts)
                     localDirtyUntil = Date.now() + 2500
                     // sceneId may still be null before the first scene:load — the server
                     // falls back to the currently selected scene in that case.
-                    window.Livewire.dispatch('sceneTextsChanged', { sceneId: textSceneId ?? null, texts })
+                    window.Livewire.dispatch('sceneTextsChanged', { sceneId: textSceneId ?? null, texts, selectedTextId })
                 },
             })
             window.__lessonTextLayer = textLayer
             wireTextProjector()   // a map block may already be live — pin labels to it now
             return textLayer
         }
+        window.Livewire.on('scene:text-updated', (e) => {
+            const payload = Array.isArray(e) ? e[0] : e
+            if (!payload || payload.sceneId !== textSceneId) return
+            const layer = ensureTextLayer()
+            layer?.patch?.(payload.textId, payload.text)
+            if (layer) lastAppliedTexts = JSON.stringify(layer._texts)
+        })
+        window.Livewire.on('scene:text-removed', (e) => {
+            const payload = Array.isArray(e) ? e[0] : e
+            if (!payload || payload.sceneId !== textSceneId) return
+            const layer = ensureTextLayer()
+            layer?.remove?.(payload.textId)
+            if (layer) lastAppliedTexts = JSON.stringify(layer._texts)
+        })
         window.Livewire.on('scene:load', (e) => {
             const p = Array.isArray(e) ? e[0]?.payload : e?.payload
             if (!p) return
@@ -269,7 +283,10 @@
              x-transition.opacity.duration.150ms
              class="card-body overflow-y-auto p-4"
              :style="inspectorBodyStyle()">
-            @if ($activeLayerId && ($al = $this->activeLayer))
+            @if ($activeTextId && ($activeText = $this->activeText))
+            {{-- Text and backing-panel controls live in Format, never over the canvas object. --}}
+            <x-lesson.scene-text-inspector :text="$activeText" :scene="$this->selectedSceneModel" />
+            @elseif ($activeLayerId && ($al = $this->activeLayer))
             {{-- A clipart layer is selected → its settings take over the inspector. --}}
             <x-lesson.scene-layer-inspector :layer="$al" :scene="$this->selectedSceneModel" />
             @elseif ($panelView === 'scene')
@@ -560,22 +577,31 @@
         };
     };
 
-    // Bridge canvas/object-list selection → the Livewire inspector. Selecting a clipart layer
-    // makes it the "active layer" (its settings fill the aside); selecting text/panel/background
-    // (or nothing) clears it. Guarded so we only round-trip when the active layer actually changes.
+    // One selection bridge owns the inspector target. Text, backing panels, and clipart each
+    // select their own Format controls; the background or empty stage returns to scene settings.
     (() => {
-        let lastActive = null;
+        if (window.__lessonSelectionBridgeMounted) return;
+        window.__lessonSelectionBridgeMounted = true;
+
+        let lastSelection = Symbol('initial-selection');
         window.addEventListener('scene-object-selected', (e) => {
             const id = (e.detail && e.detail.id) || '';
-            const assetId = id.indexOf('art_') === 0 ? Number(id.slice(4)) : null;
-            if (assetId === lastActive) return;
-            lastActive = assetId;
-            if (assetId != null) window.Livewire.dispatch('layer:selected', { assetId });
-            else window.Livewire.dispatch('layer:deselected');
+            const isArtwork = id.indexOf('art_') === 0;
+            const isText = !!window.__lessonTextLayer?._texts?.some((text) => text.id === id);
+            const objectId = (isArtwork || isText) ? id : '';
+            if (objectId) window.dispatchEvent(new CustomEvent('inspector-open'));
+            if (objectId === lastSelection) return;
+            lastSelection = objectId;
+            window.Livewire?.dispatch('scene:selection-changed', { objectId });
         });
-        // Called when the layer is deselected via a non-canvas path (the inspector "Scene" back
-        // button) so re-selecting the SAME layer isn't blocked by the dedupe guard above.
-        window.__clearLayerGuard = () => { lastActive = null; };
+        // Empty canvas / background selection is scene-level formatting, not object formatting.
+        document.addEventListener('pointerdown', (e) => {
+            const target = e.target instanceof Element ? e.target : null;
+            if (!target?.closest('#lesson-canvas-root') || target.closest('[data-text-id], [data-layer-id]')) return;
+            window.__lessonTextLayer?.select?.('__bg__');
+        });
+        // Called from an inspector's Back button so selecting the same object later reopens it.
+        window.__clearLayerGuard = () => { lastSelection = Symbol('cleared-selection'); };
     })();
 
     document.addEventListener('alpine:init', () => {

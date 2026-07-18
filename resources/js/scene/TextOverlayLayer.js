@@ -1,11 +1,9 @@
 /**
  * TextOverlayLayer — Freeform-style text annotations on a scene.
  *
- * Editable (Configure): the [T] tool adds a text box that is focused immediately;
- * drag to reposition (pointer moves > 4px = drag, otherwise it's a click-to-edit).
- * Focusing a box shows a small toolbar: font style, size, and — on map scenes —
- * whether the label is pinned to the map (moves with pan/zoom) or stuck to the
- * screen. Positions are stored as percentages so they survive any viewport size.
+ * Editable (Configure): the [T] tool adds a canvas-editable text box and selects its Format
+ * controls; drag to reposition (pointer moves > 4px = drag, otherwise it's a text edit).
+ * Positions are stored as percentages so they survive any viewport size.
  *
  * Readonly (player/preview): plain labels; a text that IS a URL renders as a link
  * chip that opens the page in an iframe modal (with an "open in new tab" escape
@@ -29,9 +27,6 @@
  */
 const URL_PATTERN = /^https?:\/\/\S+$/i
 const DRAG_THRESHOLD_PX = 4
-// A press INSIDE a focused text box is usually caret placement / word selection — only a
-// decisive pull should move the box. Keeps "add text → drag it into place" working (the
-// freshly added box is focused with its placeholder selected, which used to dead-end drags).
 const EDIT_DRAG_THRESHOLD_PX = 14
 // Safe margin (px) kept clear on every edge: text is placed 40px in and can never be dragged
 // past it, so teachers can't push a label off-canvas or into the letterbox and lose it.
@@ -51,13 +46,10 @@ const SIZES = {
 const fontOf = (item) => FONTS[item.font] || FONTS.sans
 const sizeOf = (item) => SIZES[item.size] || SIZES.md
 
-const ALIGN_CYCLE = { left: 'center', center: 'right', right: 'left' }
 const alignOf = (item) => (item.align === 'center' || item.align === 'right') ? item.align : 'left'
-const ALIGN_ICON = { left: '⭰', center: '☰', right: '⭲' }
 
 // Bullet / numbered lists: each line of item.text is one list item. Storage stays
 // plain text (no HTML), so there's nothing to sanitize on the way back in.
-const LIST_CYCLE = { none: 'bullet', bullet: 'number', number: 'none' }
 const listOf = (item) => (item.list === 'bullet' || item.list === 'number') ? item.list : 'none'
 const listTag = (list) => (list === 'number' ? 'ol' : 'ul')
 
@@ -70,28 +62,6 @@ const hexToRgba = (hex, alpha) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`
 }
 
-// Small toolbar controls shared by the text-box glass and the panel styling.
-function makeSwatch(value, onChange) {
-  const input = document.createElement('input')
-  input.type = 'color'
-  input.value = /^#[0-9a-f]{6}$/i.test(value || '') ? value : '#0f172a'
-  input.title = 'Background colour'
-  input.style.cssText = `width:24px; height:22px; padding:0; border:1px solid rgba(255,255,255,0.2);
-    border-radius:6px; background:none; cursor:pointer;`
-  input.addEventListener('input', () => onChange(input.value))
-  return input
-}
-function makeOpacity(value, onInput, onCommit) {
-  const input = document.createElement('input')
-  input.type = 'range'
-  input.min = '0.1'; input.max = '0.95'; input.step = '0.05'
-  input.value = String(Number.isFinite(value) ? value : 0.5)
-  input.title = 'Opacity'
-  input.style.cssText = 'width:64px; accent-color:#f59e0b; cursor:pointer;'
-  input.addEventListener('input', () => onInput(Number(input.value)))
-  input.addEventListener('change', () => onCommit(Number(input.value)))
-  return input
-}
 // The rgba fill of a text box's glass card.
 const glassFill = (item) =>
   hexToRgba(item.bgColor || '#0f172a', Number.isFinite(item.bgOpacity) ? item.bgOpacity : 0.3)
@@ -144,6 +114,22 @@ export class TextOverlayLayer {
     this._texts = (Array.isArray(texts) ? texts : [])
       .filter(t => t && (t.kind === 'rect' || typeof t.text === 'string'))
       .map(t => ({ ...t }))
+    this._render()
+  }
+
+  // Apply a server-originated Format-panel edit without sending it back again.
+  patch(id, patch) {
+    const item = this._texts.find(text => text.id === id)
+    if (!item || !patch || typeof patch !== 'object') return
+    Object.assign(item, patch)
+    this._render()
+  }
+
+  remove(id) {
+    const count = this._texts.length
+    this._texts = this._texts.filter(text => text.id !== id)
+    if (this._texts.length === count) return
+    if (this._selectedId === id) this._selectedId = null
     this._render()
   }
 
@@ -226,15 +212,16 @@ export class TextOverlayLayer {
     }
     this._texts.push(item)
     this._render()
-    // Focus the fresh box and select the placeholder so the teacher just types over it.
-    const el = this.host.querySelector(`[data-text-id="${item.id}"] [contenteditable]`)
-    if (el) {
-      el.focus()
+    this._emitChange()
+    this.select(item.id)
+    const edit = this.host.querySelector(`[data-text-id="${item.id}"] [contenteditable]`)
+    if (edit) {
+      edit.focus()
       const range = document.createRange()
-      range.selectNodeContents(el)
-      const sel = window.getSelection()
-      sel.removeAllRanges()
-      sel.addRange(range)
+      range.selectNodeContents(edit)
+      const selection = window.getSelection()
+      selection.removeAllRanges()
+      selection.addRange(range)
     }
   }
 
@@ -254,6 +241,7 @@ export class TextOverlayLayer {
     this._texts.push(item)
     this._render()
     this._emitChange()
+    this.select(item.id)
   }
 
   clear() { this.setTexts([]) }
@@ -262,7 +250,8 @@ export class TextOverlayLayer {
     this.onChange?.(
       this._texts
         .filter(t => t.kind === 'rect' || (typeof t.text === 'string' && t.text.trim() !== ''))
-        .map(t => ({ ...t }))
+        .map(t => ({ ...t })),
+      this._selectedId
     )
   }
 
@@ -327,63 +316,8 @@ export class TextOverlayLayer {
     const node = document.createElement('div')
     node.dataset.textId = item.id
     node.style.cssText = this._rectStyle(item) +
-      'pointer-events:auto; outline:1.5px dashed rgba(245,158,11,0.5); outline-offset:-3px;'
-    // Clicking the panel (anywhere but its toolbar) selects it.
-    node.addEventListener('pointerdown', (e) => { if (!bar.contains(e.target)) this.select(item.id) })
-
-    const bar = document.createElement('div')
-    const inset = item.side === 'right' ? 'right:16px;' : 'left:16px;'
-    bar.style.cssText = `position:absolute; top:16px; ${inset} display:flex; align-items:center; gap:8px;
-      padding:6px 10px; border-radius:10px; background:#0f172a; border:1px solid rgba(245,158,11,0.45);
-      box-shadow:0 6px 20px rgba(0,0,0,0.5); font-family:'Inter', sans-serif; font-size:12px; color:#e2e8f0;`
-    bar.addEventListener('pointerdown', (e) => e.stopPropagation())
-
-    const btnCss = `background:#1e293b; color:#e2e8f0; border:1px solid rgba(255,255,255,0.15);
-      border-radius:7px; padding:3px 8px; font-size:12px; cursor:pointer;`
-
-    const sideBtn = document.createElement('button')
-    sideBtn.type = 'button'
-    sideBtn.style.cssText = btnCss
-    const paintSide = () => { sideBtn.textContent = item.side === 'right' ? '▐ Right' : 'Left ▌' }
-    paintSide()
-    sideBtn.title = 'Switch side'
-    sideBtn.addEventListener('click', () => {
-      item.side = item.side === 'right' ? 'left' : 'right'
-      this._render()
-      this._emitChange()
-    })
-    bar.appendChild(sideBtn)
-
-    const swatch = makeSwatch(item.color || '#0f172a', (c) => {
-      item.color = c
-      node.style.background = hexToRgba(c, Number.isFinite(item.opacity) ? item.opacity : 0.5)
-      this._emitChange()
-    })
-    bar.appendChild(swatch)
-
-    const opacity = makeOpacity(
-      Number.isFinite(item.opacity) ? item.opacity : 0.5,
-      (v) => { item.opacity = v; node.style.background = hexToRgba(item.color || '#0f172a', v) },
-      () => this._emitChange()
-    )
-    opacity.title = 'Panel opacity'
-    opacity.style.width = '76px'
-    bar.appendChild(opacity)
-
-    const del = document.createElement('button')
-    del.type = 'button'
-    del.textContent = '✕'
-    del.title = 'Remove panel'
-    del.setAttribute('aria-label', 'Remove panel')
-    del.style.cssText = `${btnCss} color:#fbbf24; border-color:rgba(245,158,11,0.5);`
-    del.addEventListener('click', () => {
-      this._texts = this._texts.filter(t => t.id !== item.id)
-      this._render()
-      this._emitChange()
-    })
-    bar.appendChild(del)
-
-    node.appendChild(bar)
+      'pointer-events:auto; cursor:pointer;'
+    node.addEventListener('pointerdown', () => this.select(item.id))
     return node
   }
 
@@ -474,6 +408,7 @@ export class TextOverlayLayer {
   _editableNode(item) {
     const node = this._baseNode(item)
     node.style.cursor = 'move'
+    node.style.touchAction = 'none'
 
     const edit = this._makeEditEl(item)
     edit.addEventListener('focus', () => { edit.style.borderColor = '#f59e0b' })
@@ -481,7 +416,7 @@ export class TextOverlayLayer {
       edit.style.borderColor = 'rgba(245,158,11,0.6)'
       item.text = this._readEditText(edit)
       if (item.text === '') {
-        this._texts = this._texts.filter(t => t.id !== item.id)
+        this._texts = this._texts.filter(text => text.id !== item.id)
         this._render()
       }
       this._emitChange()
@@ -491,80 +426,13 @@ export class TextOverlayLayer {
     })
     node.appendChild(edit)
 
-    // Options toolbar (font / size / pin) — appears while the box has focus.
-    const toolbar = this._toolbarNode(item, node)
-    node.appendChild(toolbar)
-    node.addEventListener('focusin', () => { toolbar.style.display = 'flex' })
-    node.addEventListener('focusout', (e) => {
-      if (!node.contains(e.relatedTarget)) toolbar.style.display = 'none'
-    })
-
-    // Small × top-right to delete the box (pointerdown so it beats the blur/drag handlers).
-    const remove = document.createElement('button')
-    remove.type = 'button'
-    remove.textContent = '✕'
-    remove.title = 'Remove text'
-    remove.setAttribute('aria-label', 'Remove text')
-    remove.style.cssText = `position:absolute; top:-10px; right:-10px; width:22px; height:22px;
-      display:flex; align-items:center; justify-content:center; border-radius:999px;
-      background:#0f172a; border:1px solid rgba(245,158,11,0.6); color:#fbbf24;
-      font-size:11px; line-height:1; cursor:pointer; opacity:0.55; transition:opacity 0.15s;`
-    node.addEventListener('pointerenter', () => { remove.style.opacity = '1' })
-    node.addEventListener('pointerleave', () => { remove.style.opacity = '0.55' })
-    remove.addEventListener('pointerdown', (e) => {
-      e.stopPropagation()
-      e.preventDefault()
-      this._texts = this._texts.filter(t => t.id !== item.id)
-      this._render()
-      this._emitChange()
-    })
-    node.appendChild(remove)
-
-    // Resize handle (bottom-right) — drag to set the box width; the text reflows to it.
-    const resize = document.createElement('div')
-    resize.title = 'Drag to resize'
-    resize.style.cssText = `position:absolute; bottom:-7px; right:-7px; width:16px; height:16px;
-      border-radius:4px; background:#0f172a; border:1.5px solid rgba(245,158,11,0.7);
-      cursor:nwse-resize; opacity:0.55; transition:opacity 0.15s; touch-action:none; z-index:6;`
-    node.addEventListener('pointerenter', () => { resize.style.opacity = '1' })
-    node.addEventListener('pointerleave', () => { resize.style.opacity = '0.55' })
-    resize.addEventListener('pointerdown', (e) => {
-      e.stopPropagation()           // never start a move-drag from the handle
-      e.preventDefault()
-      const hostRect = this.host.getBoundingClientRect()
-      const startX = e.clientX
-      const startWidthPx = node.getBoundingClientRect().width
-      try { resize.setPointerCapture?.(e.pointerId) } catch (_) { /* synthetic/edge pointers throw */ }
-      const onMove = (ev) => {
-        const newPx = Math.max(80, startWidthPx + (ev.clientX - startX))
-        const wPct = Math.min(90, Math.max(10, (newPx / hostRect.width) * 100))
-        item.w = wPct
-        node.style.width = `${wPct}%`
-        node.style.maxWidth = 'none'
-      }
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
-        this._emitChange()
-      }
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
-    })
-    node.appendChild(resize)
-
     // Native drag-and-drop of selected text swallows the pointer stream BEFORE our threshold
     // logic ever runs (the fresh-add placeholder is selected, so this hit every new box).
     node.addEventListener('dragstart', (e) => e.preventDefault())
 
     // Drag anywhere on the box; a press that doesn't move stays a click-to-edit.
     node.addEventListener('pointerdown', (e) => {
-      if (toolbar.contains(e.target)) return                              // toolbar clicks aren't drags
-      if (e.target === resize) return                                     // resize handle isn't a move
-      this.select(item.id)                                                // pressing a box selects it
-      // A press while the box is being edited USED to dead-end here ("don't hijack typing") —
-      // but a freshly added box is always focused, so "add text → drag it into place" silently
-      // did nothing. Now an editing press can still become a move: it just needs a decisive
-      // pull (bigger threshold), and a growing text selection always wins (stays native).
+      this.select(item.id)
       const editingPress = edit.contains(e.target) && edit.contains(document.activeElement)
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
@@ -589,19 +457,20 @@ export class TextOverlayLayer {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
         if (!dragging && Math.hypot(dx, dy) < (editingPress ? EDIT_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX)) return
         if (!dragging && editingPress) {
-          // If a PARTIAL text selection grew under this gesture the teacher is selecting text —
-          // let the native behaviour win. (The fresh-add "whole placeholder selected" state is
-          // NOT partial, so dragging a just-added box still moves it.)
-          const sel = document.getSelection()
-          const selText = sel && !sel.isCollapsed ? String(sel).trim() : ''
-          if (selText !== '' && selText !== (edit.innerText || '').trim()) {
+          const selection = document.getSelection()
+          const selectedText = selection && !selection.isCollapsed ? String(selection).trim() : ''
+          if (selectedText !== '' && selectedText !== (edit.innerText || '').trim()) {
             window.removeEventListener('pointermove', onMove)
             window.removeEventListener('pointerup', onUp)
             return
           }
-          sel?.removeAllRanges()
+          selection?.removeAllRanges()
         }
-        if (!dragging) { dragging = true; edit.blur(); try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ } }
+        if (!dragging) {
+          dragging = true
+          edit.blur()
+          try { node.setPointerCapture?.(ev.pointerId) } catch (_) { /* synthetic/edge pointers throw */ }
+        }
         item.x = origin.x + (dx / rect.width) * 100
         item.y = origin.y + (dy / rect.height) * 100
         clamp()

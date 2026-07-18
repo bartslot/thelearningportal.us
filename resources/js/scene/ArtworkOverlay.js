@@ -1,12 +1,12 @@
 /**
  * ArtworkOverlay — editor-only layer for clipart/artwork placed ON TOP of a scene.
  *
- * The wizard renders each artwork layer here as a free-positioned, draggable, scalable
+ * The wizard renders each artwork layer here as a free-positioned, draggable
  * element (centre-anchored, positions stored as % of the stage so they survive resize).
  * This is the EDIT surface; playback renders the same layers through ParallaxScene with
  * the parallax motion added. Interaction mirrors TextOverlayLayer:
  *   • drag anywhere on the layer to move it (x/y %)
- *   • drag the bottom-right handle to scale it
+ *   • Format panel controls set scale and visual treatment
  *   • a press selects it (sky ring), broadcast via `scene-object-selected`
  *   • magnetic snap to ruler guides via window.__guides.snap
  *
@@ -59,7 +59,7 @@ export class ArtworkOverlay {
 
   // Base node transform: centre-anchored translate only (+ optional parallax offset).
   // The layer's *scale* is applied to the node HEIGHT, not here — so the node's border-box
-  // equals the on-screen image box and the selection ring / handles never scale with it.
+  // equals the on-screen image box and the selection ring never scales with it.
   _transform(item, dx = 0, dy = 0) {
     return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
   }
@@ -122,7 +122,6 @@ export class ArtworkOverlay {
       if (!el) continue
       const on = artObjId(item.asset_id) === this._selectedId
       el.style.boxShadow = on ? '0 0 0 2px #38bdf8' : ''
-      for (const handle of el.querySelectorAll('[data-scale-handle]')) handle.style.display = on ? 'block' : 'none'
     }
   }
 
@@ -147,30 +146,11 @@ export class ArtworkOverlay {
     img.alt = item.title
     img.draggable = false
     img.style.cssText = 'height:100%; width:auto; display:block; pointer-events:none; user-select:none;'
-    // Depth-of-field blur + opacity preview (the Format sliders — previously ignored here).
-    // Applied to the IMG, not the node, so the selection ring + scale handle stay crisp.
+    // Depth-of-field blur + opacity preview from the Format panel.
+    // Applied to the IMG, not the node, so the selection ring stays crisp.
     if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
     node.appendChild(img)
-
-    // Round resize handles on ALL FOUR corners — shown only while selected, each with its own
-    // cursor. Dragging a corner keeps the OPPOSITE corner anchored (not centre-scaling).
-    const CORNERS = [
-      { name: 'tl', pos: 'top:-5px; left:-5px;',     cursor: 'nwse-resize' },
-      { name: 'tr', pos: 'top:-5px; right:-5px;',    cursor: 'nesw-resize' },
-      { name: 'bl', pos: 'bottom:-5px; left:-5px;',  cursor: 'nesw-resize' },
-      { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
-    ]
-    for (const c of CORNERS) {
-      const handle = document.createElement('div')
-      handle.dataset.scaleHandle = '1'
-      handle.title = 'Drag to resize'
-      handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
-        border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
-        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
-      node.appendChild(handle)
-      this._wireScale(item, node, handle, c.name)
-    }
 
     this._wireDrag(item, node)
     return node
@@ -179,7 +159,6 @@ export class ArtworkOverlay {
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
   _wireDrag(item, node) {
     node.addEventListener('pointerdown', (e) => {
-      if (e.target.dataset && e.target.dataset.scaleHandle) return   // corner handles resize, not drag
       this.select(artObjId(item.asset_id))
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()

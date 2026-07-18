@@ -33,12 +33,15 @@
         </button>
     </div>
 
-    <p class="text-[11px] leading-tight text-slate-500">{{ __('Drag on the canvas to move; corner handles to resize. Reorder in the object list.') }}</p>
+    <p class="text-[11px] leading-tight text-slate-500">{{ __('Drag on the canvas to move. Adjust placement and size here; reorder in the object list.') }}</p>
 
-    {{-- Sliders. Depth only applies in Parallax mode; move/scale are on-canvas. --}}
+    {{-- Placement, size, and visual treatment stay in the Format panel. --}}
     @foreach (array_merge(
         $parallax ? [['depth', __('Depth'), 0.4, 2.5, 0.05, 1.3]] : [],
         [
+            ['x', __('Horizontal'), 0, 100, 1, 50],
+            ['y', __('Vertical'), 0, 100, 1, 58],
+            ['scale', __('Size'), 0.2, 3, 0.05, 1.0],
             ['opacity', __('Opacity'), 0.05, 1, 0.05, 1.0],
             ['blur', __('Blur'), 0, 2.5, 0.1, 0],
         ]

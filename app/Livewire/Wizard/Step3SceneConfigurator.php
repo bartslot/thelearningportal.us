@@ -50,6 +50,9 @@ class Step3SceneConfigurator extends Component
     /** @var array<string,mixed>|null */
     public ?array $selectedScene = null;
 
+    /** Text or backing-panel id whose controls fill the Format inspector. */
+    public ?string $activeTextId = null;
+
     public bool $inspectorOpen = true;
 
     public bool $addSceneOpen = false;
@@ -154,6 +157,11 @@ class Step3SceneConfigurator extends Component
 
     private function selectSceneInternal(int $id): void
     {
+        if ($this->selectedSceneId !== $id) {
+            $this->activeLayerId = null;
+            $this->activeTextId = null;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($id);
         $this->selectedSceneId = $id;
         $this->selectedScene = $this->snapshot($scene);
@@ -625,8 +633,133 @@ class Step3SceneConfigurator extends Component
     }
 
     /** Teacher text annotations ([T] tool) — persisted per scene in config['texts']. */
+    #[On('scene:selection-changed')]
+    public function selectInspectorTarget(?string $objectId = null): void
+    {
+        $this->activeLayerId = null;
+        $this->activeTextId = null;
+        $this->panelView = 'scene';
+
+        if (! $objectId) {
+            return;
+        }
+
+        if (preg_match('/^art_(\d+)$/', $objectId, $matches)) {
+            $assetId = (int) $matches[1];
+            if (collect($this->sceneArtworkLayers())->contains('asset_id', $assetId)) {
+                $this->activeLayerId = $assetId;
+            }
+
+            return;
+        }
+
+        if (collect($this->selectedScene['config']['texts'] ?? [])
+            ->contains(fn ($text) => is_array($text) && ($text['id'] ?? null) === $objectId)) {
+            $this->activeTextId = $objectId;
+        }
+    }
+
+    public function clearActiveText(): void
+    {
+        $this->activeTextId = null;
+    }
+
+    /** The selected text box or backing panel, read from the current scene snapshot. */
+    #[Computed]
+    public function activeText(): ?array
+    {
+        if (! $this->activeTextId) {
+            return null;
+        }
+
+        return collect($this->selectedScene['config']['texts'] ?? [])
+            ->first(fn ($text) => is_array($text) && ($text['id'] ?? null) === $this->activeTextId);
+    }
+
+    /** Update one selected text or backing-panel formatting property from the Format panel. */
+    public function updateSceneText(string $textId, string $field, mixed $value): void
+    {
+        if (! $this->selectedSceneId || $textId === '') {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $config = $scene->config ?? [];
+        $texts = array_values((array) ($config['texts'] ?? []));
+        $index = collect($texts)->search(fn ($text) => is_array($text) && ($text['id'] ?? null) === $textId);
+
+        if ($index === false || ! is_array($texts[$index])) {
+            return;
+        }
+
+        $text = $texts[$index];
+        $isPanel = ($text['kind'] ?? null) === 'rect';
+        $valid = $isPanel
+            ? ['side', 'color', 'opacity']
+            : ['font', 'size', 'align', 'list', 'bg', 'bgColor', 'bgOpacity', 'x', 'y', 'w'];
+
+        if (! in_array($field, $valid, true)) {
+            return;
+        }
+
+        $next = match ($field) {
+            'font' => in_array($value, ['sans', 'history', 'cinzel'], true) ? $value : $text['font'] ?? 'sans',
+            'size' => in_array($value, ['sm', 'md', 'lg', 'xl'], true) ? $value : $text['size'] ?? 'md',
+            'align' => in_array($value, ['left', 'center', 'right'], true) ? $value : $text['align'] ?? 'left',
+            'list' => in_array($value, ['none', 'bullet', 'number'], true) ? $value : $text['list'] ?? 'none',
+            'bg' => $value === true || $value === '1' || $value === 1 ? 'glass' : 'none',
+            'bgColor', 'color' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value)
+                ? (string) $value : ($text[$field] ?? '#0f172a'),
+            'bgOpacity', 'opacity' => max(0.05, min(0.95, (float) $value)),
+            'side' => $value === 'right' ? 'right' : 'left',
+            'x', 'y' => max(0.0, min(100.0, (float) $value)),
+            'w' => max(5.0, min(95.0, (float) $value)),
+        };
+
+        $text[$field] = $next;
+        $texts[$index] = $text;
+        $config['texts'] = $texts;
+        $scene->update(['config' => $config]);
+
+        if ($this->selectedScene !== null) {
+            $this->selectedScene['config'] = $config;
+        }
+        unset($this->activeText);
+
+        $this->dispatch('scene:text-updated', sceneId: $scene->id, textId: $textId, text: $text);
+    }
+
+    public function deleteSceneText(string $textId): void
+    {
+        if (! $this->selectedSceneId || $textId === '') {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $config = $scene->config ?? [];
+        $texts = collect($config['texts'] ?? [])
+            ->reject(fn ($text) => is_array($text) && ($text['id'] ?? null) === $textId)
+            ->values()
+            ->all();
+
+        if (count($texts) === count($config['texts'] ?? [])) {
+            return;
+        }
+
+        $config['texts'] = $texts;
+        $scene->update(['config' => $config]);
+        if ($this->selectedScene !== null) {
+            $this->selectedScene['config'] = $config;
+        }
+        $this->activeTextId = null;
+        unset($this->activeText);
+
+        $this->dispatch('scene:text-removed', sceneId: $scene->id, textId: $textId);
+    }
+
+    /** Teacher text annotations ([T] tool) — persisted per scene in config['texts']. */
     #[On('sceneTextsChanged')]
-    public function saveSceneTexts(?int $sceneId, array $texts): void
+    public function saveSceneTexts(?int $sceneId, array $texts, ?string $selectedTextId = null): void
     {
         // Fall back to the open scene — the JS layer can fire before its first scene:load
         // has stamped a scene id (e.g. [T] pressed right after page load).
@@ -707,6 +840,13 @@ class Step3SceneConfigurator extends Component
 
         if ($this->selectedSceneId === $sceneId && $this->selectedScene !== null) {
             $this->selectedScene['config'] = array_merge($this->selectedScene['config'] ?? [], ['texts' => $clean]);
+        }
+
+        if ($selectedTextId && collect($clean)->contains(fn ($text) => ($text['id'] ?? null) === $selectedTextId)) {
+            $this->activeLayerId = null;
+            $this->activeTextId = $selectedTextId;
+            $this->panelView = 'scene';
+            unset($this->activeText);
         }
     }
 

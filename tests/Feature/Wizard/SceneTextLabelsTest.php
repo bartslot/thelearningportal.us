@@ -132,4 +132,54 @@ class SceneTextLabelsTest extends TestCase
         $this->assertLessThanOrEqual(64, mb_strlen($texts[0]['id']),
             'a hostile client must not be able to bloat scene config through the id field');
     }
+
+    public function test_format_panel_follows_text_selection_and_returns_to_scene_settings(): void
+    {
+        $this->scene->update(['config' => [
+            'texts' => [['id' => 'txt_rome', 'text' => 'Rome', 'x' => 40, 'y' => 40]],
+        ]]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('scene:selection-changed', objectId: 'txt_rome')
+            ->assertSet('activeTextId', 'txt_rome')
+            ->assertSee('Edit content directly on the canvas.')
+            ->assertSeeHtml("new CustomEvent('inspector-open')")
+            ->dispatch('scene:selection-changed', objectId: '__bg__')
+            ->assertSet('activeTextId', null)
+            ->assertSee('Scene details')
+            ->assertSeeHtml('wire:ignore.self');
+    }
+
+    public function test_format_panel_updates_a_selected_text_without_losing_other_properties(): void
+    {
+        $this->scene->update(['config' => [
+            'texts' => [[
+                'id' => 'txt_rome', 'text' => 'Rome', 'x' => 40, 'y' => 40,
+                'font' => 'sans', 'size' => 'md', 'anchor' => 'screen',
+            ]],
+        ]]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('scene:selection-changed', objectId: 'txt_rome')
+            ->call('updateSceneText', 'txt_rome', 'font', 'cinzel')
+            ->call('updateSceneText', 'txt_rome', 'w', 60);
+
+        $text = $this->scene->fresh()->config['texts'][0];
+        $this->assertSame('Rome', $text['text']);
+        $this->assertSame('cinzel', $text['font']);
+        $this->assertEquals(60.0, $text['w']);
+    }
+
+    public function test_saving_a_newly_selected_text_opens_its_format_controls(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('sceneTextsChanged', sceneId: $this->scene->id, selectedTextId: 'txt_rome', texts: [
+                ['id' => 'txt_rome', 'text' => 'Rome', 'x' => 40, 'y' => 40],
+            ])
+            ->assertSet('activeTextId', 'txt_rome')
+            ->assertSee('Edit content directly on the canvas.');
+    }
 }

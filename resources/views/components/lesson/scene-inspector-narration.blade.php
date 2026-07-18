@@ -10,7 +10,10 @@
 
     {{-- Scene details — collapsed by default so the Format panel stays minimal (Figma).
          Year, location, caption, the editable script + re-narrate, and delete live here. --}}
-    <details class="border-t border-slate-700/50 pt-2">
+    {{-- The wizard polls every three seconds. Ignore attributes on this native disclosure so
+         Livewire never removes its browser-managed `open` state mid-edit; its fields still
+         receive normal Livewire updates, and switching scenes replaces this keyed inspector. --}}
+    <details wire:ignore.self class="border-t border-slate-700/50 pt-2">
         <summary class="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-widest text-slate-500 transition hover:text-slate-300">
             {{ __('Scene details') }}
         </summary>
@@ -24,13 +27,13 @@
             </label>
 
             <label class="form-control">
-                <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Year') }}</span>
+                <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Era') }}</span>
                 <input type="text" wire:model.blur="selectedScene.year" wire:change="saveSelected"
                        class="input input-sm input-bordered bg-slate-900 mt-1" />
             </label>
 
             <label class="form-control">
-                <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Location') }}</span>
+                <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Caption location') }}</span>
                 <input type="text" wire:model.blur="selectedScene.location" wire:change="saveSelected"
                        class="input input-sm input-bordered bg-slate-900 mt-1" />
             </label>

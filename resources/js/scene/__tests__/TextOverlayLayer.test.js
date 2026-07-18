@@ -110,3 +110,34 @@ describe('TextOverlayLayer map pinning', () => {
     expect(node.style.top).toBe('40%')
   })
 })
+
+describe('TextOverlayLayer editor selection', () => {
+  it('keeps text formatting controls in the Format panel while content stays editable on canvas', () => {
+    const el = host()
+    const layer = new TextOverlayLayer(el, { editable: true })
+    const selected = vi.fn()
+    const listener = (event) => selected(event.detail.id)
+    window.addEventListener('scene-object-selected', listener)
+
+    layer.setTexts([{ id: 'title', text: 'Rome', x: 10, y: 10 }])
+    layer.select('title')
+
+    expect(selected).toHaveBeenCalledWith('title')
+    expect(el.querySelector('[data-text-id="title"] > div')?.contentEditable).toBe('true')
+    expect(el.querySelector('[data-text-id="title"] button')).toBeNull()
+
+    window.removeEventListener('scene-object-selected', listener)
+  })
+
+  it('applies an inspector patch without emitting a duplicate save', () => {
+    const onChange = vi.fn()
+    const el = host()
+    const layer = new TextOverlayLayer(el, { editable: true, onChange })
+    layer.setTexts([{ id: 'title', text: 'Rome', x: 10, y: 10 }])
+
+    layer.patch('title', { font: 'cinzel', size: 'xl' })
+
+    expect(layer._texts[0]).toMatchObject({ font: 'cinzel', size: 'xl' })
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})
