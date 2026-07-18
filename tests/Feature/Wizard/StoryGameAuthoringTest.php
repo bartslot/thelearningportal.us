@@ -79,11 +79,16 @@ class StoryGameAuthoringTest extends TestCase
         $component = Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson]);
 
-        // Mount selects the question scene: meters panel yes, effects panel no.
-        $component->assertSee(__('Class meters'))
-            ->assertDontSee(__('Game effects'));
+        // Mount selects the question scene: no effects panel (that's for option scenes).
+        $component->assertDontSee(__('Game effects'));
 
-        $component->call('selectScene', $this->optionA->id)
+        // Class meters are a lesson-level setting → they live in the Settings view now,
+        // not the per-scene Format panel.
+        $component->set('panelView', 'settings')->assertSee(__('Class meters'));
+
+        // Option scene → the game-effects editor with the meter labels.
+        $component->set('panelView', 'scene')
+            ->call('selectScene', $this->optionA->id)
             ->assertSee(__('Game effects'))
             ->assertSee('Moreel');
     }
