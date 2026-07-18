@@ -62,7 +62,7 @@
                                'text-slate-300': active !== i,
                                'border-l-2 border-amber-500/60 pl-2': p.dirty,
                            }"
-                           class="min-w-0 flex-1 cursor-text whitespace-pre-wrap rounded font-serif text-[15px] leading-relaxed transition hover:bg-white/5 focus:bg-white/10 focus:outline-none focus:ring-1 focus:ring-amber-500/40"></p>
+                           class="min-h-[1.6em] min-w-0 flex-1 cursor-text whitespace-pre-wrap rounded font-serif text-[15px] leading-relaxed transition hover:bg-white/5 focus:bg-white/10 focus:outline-none focus:ring-1 focus:ring-amber-500/40"></p>
                     </div>
                 </template>
             </div>
@@ -438,8 +438,23 @@
                 _focusPara(i, offset) {
                     const el = this._boxes()[i];
                     if (!el) return;
-                    el.focus();
+                    el.focus({ preventScroll: true });
+                    this.focusedPara = i;
+                    this.active = i;
                     this._setCaret(el, offset ?? 0);
+                    // Defer the scroll until AFTER the focus toolbar (shown by focusedPara) has laid
+                    // out — it shrinks the scroller from the bottom, so scrolling any earlier leaves
+                    // the caret hidden behind it. $nextTick flushes Alpine; rAF flushes browser layout.
+                    this.$nextTick(() => requestAnimationFrame(() => this._scrollBoxIntoView(el)));
+                },
+                // Explicitly scroll the panel's own scroller (nested scrollIntoView is unreliable) so
+                // the target box + caret are visible.
+                _scrollBoxIntoView(el) {
+                    const scroller = el.closest('.overflow-y-auto');
+                    if (!scroller) return;
+                    const er = el.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
+                    if (er.bottom > sr.bottom) scroller.scrollTop += (er.bottom - sr.bottom) + 12;
+                    else if (er.top < sr.top) scroller.scrollTop -= (sr.top - er.top) + 12;
                 },
 
                 // ── Script-editing toolbar (regenerate paragraph / summarize to list) ──

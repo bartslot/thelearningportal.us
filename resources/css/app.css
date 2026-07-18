@@ -73,6 +73,8 @@
     --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
     --font-history: 'History', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --color-dropdown: #18293f;
+    --color-dropdown-border: #2e425a;
 }
 
 @font-face {
@@ -194,6 +196,44 @@
         border: 1px solid rgba(255,255,255,0.1);
         color: #f8fafc;
     }
+
+    .select {
+        background-color: var(--color-dropdown) !important;
+        border-color: var(--color-dropdown-border) !important;
+        color: #f8fafc;
+    }
+
+    .select:not([multiple]) {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='%23b9c7d7'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m8.25 15 3.75 3.75L15.75 15m0-6L12 5.25 8.25 9'/%3E%3C/svg%3E") !important;
+        background-position: right 0.75rem center !important;
+        background-repeat: no-repeat !important;
+        background-size: 1.25rem !important;
+        padding-right: 3rem !important;
+    }
+
+    .select.select-sm:not([multiple]) {
+        background-position: right 0.55rem center !important;
+        background-size: 1rem !important;
+        padding-right: 2.35rem !important;
+    }
+
+    .select.select-xs:not([multiple]) {
+        background-position: right 0.45rem center !important;
+        background-size: 0.875rem !important;
+        padding-right: 2rem !important;
+    }
+
+    .select option {
+        background-color: var(--color-dropdown);
+        color: #f8fafc;
+    }
+
+    .dropdown-content {
+        background-color: var(--color-dropdown) !important;
+        border: 1px solid var(--color-dropdown-border) !important;
+    }
+
     .input:focus, .select:focus, .textarea:focus {
         border-color: rgba(245,158,11,0.55);
         box-shadow: 0 0 0 2px rgba(245,158,11,0.18);
