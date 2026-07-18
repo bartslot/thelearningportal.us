@@ -285,11 +285,59 @@
                 <svg class="shrink-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" width="16" height="20" viewBox="0 0 21 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M10.3329 0C4.63543 0 0 4.63543 0 10.3329C0 19.3812 9.58334 25.4792 9.9913 25.735L10.334 25.9493L10.6767 25.735C11.0848 25.4795 20.668 19.3812 20.668 10.3329C20.668 4.63543 16.0326 0 10.3351 0H10.3329ZM10.3329 15.5C7.47996 15.5 5.16584 13.1871 5.16584 10.3329C5.16584 7.47996 7.47872 5.16584 10.3329 5.16584C13.1859 5.16584 15.5 7.47872 15.5 10.3329C15.5 13.1859 13.1871 15.5 10.3329 15.5Z" fill="white"/>
                 </svg>
-                <span x-text="lessonLocation" class="font-history font-bold text-xl text-[#E1EEF4] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"></span>
+                {{-- The per-chapter name (changes each scene) replaces the repeating location. --}}
+                <span x-text="currentChapterName || lessonLocation" class="font-history font-bold text-xl text-[#E1EEF4] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"></span>
             </div>
 
             {{-- Era / year --}}
             <span x-show="lessonYear" x-text="lessonYear" class="pl-6 font-history font-semibold text-base text-[#E1EEF4]/90 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"></span>
+        </div>
+
+        {{-- ── Chapter bar (Micrio-style serial-tour): segmented progress + chapter list ── --}}
+        <div
+            x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE') && chapters.length > 1"
+            x-cloak
+            class="absolute bottom-4 left-1/2 w-[min(720px,92vw)] -translate-x-1/2 pointer-events-auto"
+            style="z-index:46"
+        >
+            {{-- Chapter list (toggled by the button) — numbered names, active highlighted. --}}
+            <div x-show="chaptersOpen" x-transition
+                 @click.outside="chaptersOpen = false"
+                 class="mb-3 max-h-[46vh] overflow-y-auto rounded-xl border border-white/10 bg-black/70 p-1.5 backdrop-blur-md">
+                <template x-for="(c, i) in chapters" :key="i">
+                    <button type="button" @click="goToChapter(i)"
+                            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-white/10"
+                            :class="i === _sceneIndex ? 'text-amber-300' : 'text-white/70'">
+                        <span class="w-6 shrink-0 font-mono text-xs tabular-nums opacity-70" x-text="String(i + 1).padStart(2, '0')"></span>
+                        <span class="text-sm" :class="i === _sceneIndex ? 'font-bold' : 'font-medium'" x-text="c.name"></span>
+                    </button>
+                </template>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+                {{-- Chapter-list toggle --}}
+                <button type="button" @click="chaptersOpen = !chaptersOpen" title="{{ __('Chapters') }}"
+                        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white/80 transition hover:text-white"
+                        :class="chaptersOpen && 'border-amber-400/60 text-amber-300'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
+                        <path stroke-linecap="round" d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+                    </svg>
+                </button>
+
+                {{-- Segmented progress — one bar per chapter, width ∝ duration; click to jump. --}}
+                <div class="flex flex-1 items-center gap-1">
+                    <template x-for="(c, i) in chapters" :key="i">
+                        <button type="button" @click="goToChapter(i)" :title="c.name"
+                                class="group relative flex items-center py-2" style="flex-grow: 1; flex-basis: 0"
+                                :style="`flex-grow:${c.dur || 1}`">
+                            <span class="relative block h-1.5 w-full overflow-hidden rounded-full bg-white/25 transition group-hover:bg-white/40">
+                                <span class="absolute inset-y-0 left-0 rounded-full bg-amber-400 transition-all duration-150"
+                                      :style="`width:${ i < _sceneIndex ? 100 : (i === _sceneIndex ? sceneProgress * 100 : 0) }%`"></span>
+                            </span>
+                        </button>
+                    </template>
+                </div>
+            </div>
         </div>
 
         {{-- ── TITLE SCREEN — Netflix style ────────────────────────────── --}}

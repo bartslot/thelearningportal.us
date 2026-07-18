@@ -150,6 +150,12 @@ Alpine.data('lessonGame', (lesson) => ({
     audioMuted: false,
     _audioMutedVolume: 1.0,  // remember pre-mute volume
 
+    // Chapters (Micrio-style serial-tour bar + list)
+    chapters:          [],   // [{name, dur}] aligned with _sceneIndex
+    currentChapterName: '',
+    sceneProgress:     0,    // 0-1 through the current chapter's audio
+    chaptersOpen:      false,
+
     // Map block
     showMapContinue: false,  // interactive map slide → show the Continue button
 
@@ -698,6 +704,11 @@ Alpine.data('lessonGame', (lesson) => ({
     _processShots () {
       if (!this._audio) return
 
+      // Chapter progress (drives the active segment fill in the chapter bar).
+      this.sceneProgress = this._audio.duration
+        ? Math.min(1, this._audio.currentTime / this._audio.duration)
+        : 0
+
       // Drive the layered-scene parallax from narration progress (same tick as anchors).
       if (_parallax && this._audio.duration) {
         _parallax.update(this._audio.currentTime / this._audio.duration)
@@ -742,6 +753,8 @@ Alpine.data('lessonGame', (lesson) => ({
             branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
             branch_choice_label: s.branch_choice_label ?? null,
             audio_url: s.audio_url, script: s.script, image_url: s.image_url,
+            chapter_name: s.chapter_name ?? null, year: s.year ?? null,
+            duration_seconds: s.duration_seconds ?? null,
             // shots entries carry image_url + anchor_sentence, plus optional bg_url/hero_url
             // (layered parallax shots, E3b) — the whole array passes through untouched.
             shots: s.shots ?? null, alignment: s.alignment ?? null,
@@ -753,6 +766,13 @@ Alpine.data('lessonGame', (lesson) => ({
       }
 
       if (!_sceneQueue.length) return
+
+      // Chapter list for the Micrio-style serial-tour bar (index aligns with _sceneIndex).
+      this.chapters = _sceneQueue.map((s, i) => ({
+        name: s.chapter_name || ('Chapter ' + (i + 1)),
+        dur:  Number(s.duration_seconds) || 0,
+      }))
+      this.currentChapterName = this.chapters[0]?.name || ''
 
       // A map block can be first in the queue — only preload audio when the first scene has it.
       if (!_sceneQueue[0].audio_url) return
@@ -811,9 +831,21 @@ Alpine.data('lessonGame', (lesson) => ({
 
     _sceneIndex: 0,
 
+    // Jump to a chapter from the bar / list.
+    goToChapter (i) {
+      this.chaptersOpen = false
+      if (i == null || i < 0 || i >= _sceneQueue.length || i === this._sceneIndex) return
+      this._sceneIndex = i
+      this._playScene(i)
+    },
+
     _playScene (index) {
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
+
+      // Chapter caption + bar (Micrio serial-tour).
+      this.currentChapterName = this.chapters?.[index]?.name || ''
+      this.sceneProgress = 0
 
       // Story game: 'hold' = engine shows its choice overlay and resumes via onAdvanceTo;
       // a number = skip a non-chosen branch option to the reconvergence index.
