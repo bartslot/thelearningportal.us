@@ -25,7 +25,6 @@
          x-on:pointerup.window="dragEnd($event)"
          x-on:pointercancel.window="dragEnd($event)"
          role="button" aria-label="{{ __('Drag down to hide the script') }}">
-        <span class="pointer-events-none absolute left-3 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Script') }}</span>
         <span class="h-1 w-9 rounded-full bg-slate-600" aria-hidden="true"></span>
     </div>
 

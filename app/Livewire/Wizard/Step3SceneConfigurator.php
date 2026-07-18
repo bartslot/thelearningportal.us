@@ -33,7 +33,7 @@ class Step3SceneConfigurator extends Component
 
     private const EDITABLE_FIELDS = [
         'config',
-        'year', 'location', 'script_segment', 'image_prompt', 'image_style',
+        'year', 'location', 'chapter_name', 'script_segment', 'image_prompt', 'image_style',
         'animation_clip_id', 'duration_seconds',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
         'skybox_blur', 'skybox_opacity', 'background_color', 'kb_animated', 'kb_direction', 'scene_view',
@@ -176,6 +176,7 @@ class Step3SceneConfigurator extends Component
             'animationClipUrl' => $this->animationGlbUrlFor($scene),
             'year' => $scene->year,
             'location' => $scene->location,
+            'chapter_name' => $scene->chapter_name,
             // Editable scene identity: a per-scene title override + a hide flag.
             'identityTitle' => $scene->config['identity_title'] ?? null,
             'hideIdentity' => (bool) ($scene->config['hide_identity'] ?? false),

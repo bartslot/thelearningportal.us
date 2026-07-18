@@ -12,7 +12,7 @@ class Scene extends Model
     protected $fillable = [
         'lesson_id', 'order', 'kind', 'config',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',
-        'year', 'location', 'script_segment',
+        'year', 'location', 'chapter_name', 'script_segment',
         'image_prompt', 'image_path', 'shots', 'skybox_image_path', 'skybox_candidates', 'image_style',
         'skybox_blur', 'skybox_opacity', 'background_color', 'kb_animated', 'kb_direction', 'scene_view',
         'animation_clip_id',
@@ -144,6 +144,24 @@ class Scene extends Model
     {
         return $this->audio_path !== null
             && $this->audio_script_hash === sha1((string) $this->script_segment);
+    }
+
+    /**
+     * Short chapter name for the Micrio-style serial-tour player. Uses the stored
+     * (auto-derived, editable) name; falls back to the location or a numbered label so
+     * the chapter bar/list always has something readable.
+     */
+    public function chapterName(): string
+    {
+        $name = trim((string) $this->chapter_name);
+        if ($name !== '') {
+            return $name;
+        }
+        if (trim((string) $this->location) !== '') {
+            return trim((string) $this->location);
+        }
+
+        return 'Chapter '.($this->order ?? '');
     }
 
     /**

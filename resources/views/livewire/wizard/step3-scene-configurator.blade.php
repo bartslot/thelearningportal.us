@@ -256,14 +256,6 @@
            style="right:0; left:auto; top:64px; bottom:0;"
            class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
-        <header class="card-title flex min-h-9 select-none items-center border-b border-slate-700/50 bg-base-200 px-3 py-1.5 text-sm">
-            {{-- Minimal header (Figma): just the current view name — no cogwheel, no close button.
-                 The toolbar Format/Settings buttons drive panelView + open/close. --}}
-            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {{ $panelView === 'settings' ? __('Settings') : __('Format') }}
-            </span>
-        </header>
-
         <div x-show="inspectorOpen"
              x-transition.opacity.duration.150ms
              class="card-body overflow-y-auto p-4"

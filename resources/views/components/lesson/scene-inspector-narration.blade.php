@@ -16,6 +16,14 @@
         </summary>
         <div class="mt-3 space-y-3">
             <label class="form-control">
+                <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Chapter name') }}</span>
+                <input type="text" wire:model.blur="selectedScene.chapter_name" wire:change="saveSelected"
+                       placeholder="{{ $scene->chapterName() }}"
+                       class="input input-sm input-bordered bg-slate-900 mt-1" />
+                <span class="mt-1 text-[10px] text-slate-500">{{ __('Shown in the player chapter bar. Auto-named from the narration; edit to taste.') }}</span>
+            </label>
+
+            <label class="form-control">
                 <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Year') }}</span>
                 <input type="text" wire:model.blur="selectedScene.year" wire:change="saveSelected"
                        class="input input-sm input-bordered bg-slate-900 mt-1" />
