@@ -1021,9 +1021,58 @@
     {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
 
-    {{-- The scene rail is a FIXED-width dock (no drag-to-resize) — "only fixed, no floating".
-         Show/hide is via View ▸ Scenes (store.toggleScenes toggles --rail-w between 0 and its
-         fixed width). store.init() seeds --rail-w from the persisted shown/hidden flag. --}}
+    {{-- Rail resize handle — drag the rail's right edge to resize it; drag it under 24px (near
+         the edge) and it disappears completely. Sits at the rail's right edge; when the rail is
+         hidden (0) it rests at the far left so it can be dragged back out. --}}
+    <div id="rail-resize" wire:ignore
+         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize"
+         style="left: var(--rail-w, 11rem)"
+         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail') }}"
+         title="{{ __('Drag to resize · drag to the edge to hide') }}">
+        <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
+    </div>
+    @push('scripts')
+    <script>
+    (() => {
+        const KEY = 'wizard.rail.w';
+        const rootEl = document.documentElement;   // --rail-w lives on <html> so panels inherit it
+        const clamp = (v) => Math.max(0, Math.min(280, v));
+        const boot = () => {
+            const handle = document.getElementById('rail-resize');
+            if (!handle || handle.__wired) return;
+            handle.__wired = true;
+            let dragging = false;
+            handle.addEventListener('pointerdown', (e) => {
+                dragging = true; handle.setPointerCapture(e.pointerId);
+                document.body.style.userSelect = 'none'; e.preventDefault();
+            });
+            handle.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                rootEl.style.setProperty('--rail-w', clamp(e.clientX) + 'px');
+            });
+            const end = (e) => {
+                if (!dragging) return;
+                dragging = false;
+                try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+                document.body.style.userSelect = '';
+                let w = clamp(parseFloat(rootEl.style.getPropertyValue('--rail-w')) || 176);
+                if (w < 24) w = 0;                 // dragged under 24px → hide completely
+                else if (w < 120) w = 120;         // otherwise keep a usable minimum
+                rootEl.style.setProperty('--rail-w', w + 'px');
+                localStorage.setItem(KEY, String(w));
+                // Keep the View ▸ Scenes checkbox in sync with a drag-to-hide / drag-out.
+                const store = window.Alpine?.store('view');
+                if (store) { store.scenes = w > 0; if (w > 0) store.railLast = w; store._save?.(); }
+            };
+            handle.addEventListener('pointerup', end);
+            handle.addEventListener('pointercancel', end);
+        };
+        if (document.readyState !== 'loading') boot();
+        else document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('livewire:navigated', boot);
+    })();
+    </script>
+    @endpush
 
     {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
          menu stayed opacity:0 on focus). Open state is Livewire-driven; tiles call addScene(). --}}

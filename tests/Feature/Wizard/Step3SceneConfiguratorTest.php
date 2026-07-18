@@ -96,6 +96,39 @@ class Step3SceneConfiguratorTest extends TestCase
         Bus::assertDispatched(GenerateSceneAudio::class, fn ($j) => $j->sceneId === $this->s1->id);
     }
 
+    public function test_scene_renarrate_re_generates_audio_and_flips_status(): void
+    {
+        // Script panel edit → Play re-narrates: the scene flips to "generating" and the
+        // audio job is queued. The status poll then re-fires scene:load with fresh audio.
+        Bus::fake();
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('scene:renarrate', sceneId: $this->s1->id);
+
+        Bus::assertDispatched(GenerateSceneAudio::class, fn ($j) => $j->sceneId === $this->s1->id);
+        $this->assertSame('generating', $this->s1->fresh()->status);
+    }
+
+    public function test_scene_renarrate_ignores_a_foreign_scene(): void
+    {
+        Bus::fake();
+        $foreign = Scene::create([
+            'lesson_id' => Lesson::create([
+                'teacher_id' => User::factory()->create()->id,
+                'topic' => 'Y', 'subject' => 'history', 'grade_level' => '9th',
+            ])->id,
+            'order' => 1, 'kind' => 'narration', 'script_segment' => 'x', 'status' => 'ready',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('scene:renarrate', sceneId: $foreign->id);
+
+        Bus::assertNotDispatched(GenerateSceneAudio::class);
+        $this->assertSame('ready', $foreign->fresh()->status);
+    }
+
     public function test_adds_a_blank_narration_scene_at_the_end(): void
     {
         Livewire::actingAs($this->teacher)

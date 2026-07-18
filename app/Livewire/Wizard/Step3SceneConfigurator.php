@@ -1771,6 +1771,21 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
+     * Re-narrate a scene's audio after its script was edited in the Script panel.
+     * Flips the scene to "generating"; the status poll re-fires scene:load with the
+     * fresh audio URL, and the Script panel reloads its waveform from that payload.
+     */
+    #[On('scene:renarrate')]
+    public function renarrateScene(int $sceneId): void
+    {
+        $scene = $this->lesson->scenes()->find($sceneId);
+        if (! $scene) {
+            return;
+        }
+        $this->regenerate($sceneId, 'audio');
+    }
+
+    /**
      * Publish the lesson from the toolbar. Gate: every scene must be "ready".
      * NOTE: public-visibility moderation (abuse/adult-content screening) is a
      * separate gate still to be built — see the lesson-publishing plan.
