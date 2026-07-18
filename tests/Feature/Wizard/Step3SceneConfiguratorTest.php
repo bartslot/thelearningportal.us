@@ -129,6 +129,42 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('ready', $foreign->fresh()->status);
     }
 
+    // ── Inline script save guards (data-loss protection) ──────────────────
+
+    public function test_update_scene_script_saves_edited_narration(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:update-script', text: 'A brand new narration.', sceneId: $this->s1->id);
+
+        $this->assertSame('A brand new narration.', $this->s1->fresh()->script_segment);
+    }
+
+    public function test_update_scene_script_never_wipes_narration_to_empty(): void
+    {
+        // A focusout can fire mid-teardown (scene switch) with the lines already gone → empty
+        // text. That must never clobber the saved script.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:update-script', text: '   ', sceneId: $this->s1->id);
+
+        $this->assertSame('Old script.', $this->s1->fresh()->script_segment, 'empty save must be ignored');
+    }
+
+    public function test_update_scene_script_ignores_a_save_from_a_scene_we_left(): void
+    {
+        // The dispatch carries the originating sceneId; a stale save aimed at a scene that is no
+        // longer selected must not overwrite the current one.
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:update-script', text: 'Contamination from scene two.', sceneId: $this->s2->id);
+
+        $this->assertSame('Old script.', $this->s1->fresh()->script_segment, 'stale-scene save must be ignored');
+    }
+
     public function test_adds_a_blank_narration_scene_at_the_end(): void
     {
         Livewire::actingAs($this->teacher)

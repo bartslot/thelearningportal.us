@@ -1759,12 +1759,23 @@ class Step3SceneConfigurator extends Component
         $this->panelView = 'scene';
     }
 
-    /** Inline script edit from the Script panel — persist the edited narration text. */
+    /**
+     * Inline script edit from the Script panel — persist the edited narration text.
+     * Guards against data loss: a focusout can fire while the panel is being rebuilt on a
+     * scene switch, dispatching empty or stale text. Never wipe a scene to empty, and never
+     * apply a save whose originating scene is no longer the selected one.
+     */
     #[On('scene:update-script')]
-    public function updateSceneScript(string $text): void
+    public function updateSceneScript(string $text, ?int $sceneId = null): void
     {
         if (! $this->selectedScene || ! $this->selectedSceneId) {
             return;
+        }
+        if ($sceneId !== null && $sceneId !== $this->selectedSceneId) {
+            return;   // stale save from a panel we already switched away from
+        }
+        if (trim($text) === '') {
+            return;   // inline editing never clears all narration (delete the scene instead)
         }
         $this->selectedScene['script_segment'] = trim($text);
         $this->saveSelected();

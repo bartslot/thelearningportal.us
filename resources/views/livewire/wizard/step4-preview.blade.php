@@ -11,7 +11,10 @@
             <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
                  class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
         @endif
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32"></div>
+        {{-- No vertical padding: SceneOverlay sets container-type:size here and padding forces a
+             256px min-height that pushes the caption off a short stage; its cqh coefficients are
+             tuned for the padding-free host. overflow-hidden clips the caption to the canvas. --}}
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
 

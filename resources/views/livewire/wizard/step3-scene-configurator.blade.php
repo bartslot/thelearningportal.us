@@ -3,7 +3,7 @@
 @endpush
 
 <div class="contents" x-data="step3SceneConfigurator" wire:poll.3s
-     x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view.objects ? '13rem' : '0px');
+     x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view.objects ? $store.view.objectsW + 'px' : '0px');
                document.documentElement.style.setProperty('--ruler-w', $store.view.rulers ? '20px' : '0px');
                window.__placeRulers && requestAnimationFrame(window.__placeRulers)">
 
@@ -34,8 +34,11 @@
         {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
         <div class="lp-grain pointer-events-none absolute inset-0 z-[3]"></div>
         {{-- Scene overlay (flag + territory title). z-[6] so it sits ABOVE the map preview (z-[5]),
-             not hidden behind the globe. pointer-events-none keeps the map interactive. --}}
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none py-32 z-[6]"></div>
+             not hidden behind the globe. pointer-events-none keeps the map interactive.
+             NO vertical padding: SceneOverlay sets container-type:size on this host, and padding
+             would force a 256px min-height that shoves the bottom-anchored caption off a short
+             stage. overflow-hidden clips the caption to the canvas as a final guard on tiny stages. --}}
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden z-[6]"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
         {{-- Teacher text annotations (Freeform-style, draggable). z-[7]: above scene art + map. --}}
         <div id="lesson-text-overlay" class="absolute inset-0 z-[7]"></div>
@@ -572,16 +575,20 @@
     document.addEventListener('alpine:init', () => {
         Alpine.store('view', {
             scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
+            objectsW: 208,   // object-list width (px); drag-resizable, ≤108px → icons-only
             init() {
                 try { Object.assign(this, JSON.parse(localStorage.getItem('wizard.view') || '{}')); } catch (_) {}
-                // Fixed rail width (no drag-resize). Seed --rail-w from the persisted shown flag.
-                this.railLast = 176;
+                // Seed --rail-w / --objlist-w from the persisted widths so a dragged-narrow (compact)
+                // rail or object list survives a reload / SPA navigation.
+                if (!(this.railLast > 0)) this.railLast = 176;
+                if (!(this.objectsW > 0)) this.objectsW = 208;
                 document.documentElement.style.setProperty('--rail-w', this.scenes ? this.railLast + 'px' : '0px');
+                document.documentElement.style.setProperty('--objlist-w', this.objects ? this.objectsW + 'px' : '0px');
             },
             _save() {
                 localStorage.setItem('wizard.view', JSON.stringify({
                     scenes: this.scenes, objects: this.objects, rulers: this.rulers,
-                    notes: this.notes, script: this.script, railLast: this.railLast,
+                    notes: this.notes, script: this.script, railLast: this.railLast, objectsW: this.objectsW,
                 }));
             },
             toggleScenes() {
@@ -965,27 +972,38 @@
 
     {{-- Object list — a full-height panel docked to the right of the Scenes rail. Lists the
          scene's objects (title/text boxes, backing panels); click to flash-locate on the stage.
-         No heading — teachers recognise their own objects. --}}
+         Drag its right edge to resize; drag it narrow (≤108px) and it collapses to icons-only
+         (labels + adjust hidden, icons centred) so layers can still be reordered in a sliver. --}}
+    <style>
+        [data-objlist-col] { container: objlist / inline-size; }
+        @container objlist (max-width: 108px) {
+            [data-objlist-col] [data-obj-label] { display: none !important; }
+            [data-objlist-col] [data-obj-adjust] { display: none !important; }
+            [data-objlist-col] [data-obj-row] { justify-content: center; padding-left: 0.25rem; padding-right: 0.25rem; gap: 0; }
+        }
+    </style>
     <div x-show="$store.view.objects" x-cloak x-data="objectList()" x-init="init()"
          @scene-objects-changed.window="refresh()"
          @scene-object-selected.window="selectedId = $event.detail.id"
+         data-objlist-col
          class="fixed z-30 overflow-hidden border-r border-slate-700 bg-slate-900"
-         style="left: var(--rail-w, 11rem); width: 13rem; top: 4rem; bottom: 0;">
+         style="left: var(--rail-w, 11rem); width: var(--objlist-w, 13rem); top: 4rem; bottom: 0;">
         <div x-ref="list" class="h-full space-y-0.5 overflow-y-auto p-1.5">
             <template x-for="obj in items" :key="obj.id">
                 {{-- The whole row is the drag handle (grab cursor); only the adjust button opts out.
                      Text and clipart rows reorder; the background is pinned to the bottom ([data-bg]). --}}
                 <div :data-obj-id="obj.bg ? null : obj.id" :data-bg="obj.bg ? '1' : null"
+                     data-obj-row
                      @click="select(obj)"
                      :class="[
                         obj.bg ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
                         selectedId === obj.id ? 'bg-sky-500/15 text-sky-100 ring-1 ring-sky-400/50' : 'text-slate-200 hover:bg-slate-800',
                      ]"
                      class="group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm">
-                    <span class="shrink-0 text-slate-400" x-html="iconSvg(obj)" aria-hidden="true"></span>
-                    <span class="flex-1 truncate" x-text="obj.label"></span>
+                    <span class="shrink-0 text-slate-400" x-html="iconSvg(obj)" aria-hidden="true" :title="obj.label"></span>
+                    <span data-obj-label class="flex-1 truncate" x-text="obj.label"></span>
                     {{-- Adjust / settings — appears on hover; data-nodrag keeps a press here from starting a drag --}}
-                    <button type="button" data-nodrag @click.stop="edit(obj)"
+                    <button type="button" data-nodrag data-obj-adjust @click.stop="edit(obj)"
                             class="shrink-0 cursor-pointer text-slate-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
                             title="{{ __('Adjust settings') }}" aria-label="{{ __('Adjust settings') }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
@@ -996,6 +1014,79 @@
             </template>
         </div>
     </div>
+
+    {{-- Object-list resize handle — sits at the panel's right edge (rail + objlist). Drag to
+         resize; drag it under 40px and the list hides (View ▸ Object list re-opens). Only
+         rendered while the list is shown. --}}
+    <div x-show="$store.view.objects" x-cloak id="objlist-resize" wire:ignore tabindex="0"
+         class="group fixed bottom-0 z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
+         style="left: calc(var(--rail-w, 11rem) + var(--objlist-w, 13rem)); top: 4rem"
+         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize object list (arrow keys)') }}"
+         title="{{ __('Drag to resize · drag narrow for icons only · drag to the edge to hide') }}">
+        <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
+    </div>
+    @push('scripts')
+    <script>
+    (() => {
+        const rootEl = document.documentElement;   // --objlist-w lives on <html> so the stage inherits it
+        const railW = () => parseFloat(getComputedStyle(rootEl).getPropertyValue('--rail-w')) || 0;
+        const clamp = (v) => Math.max(0, Math.min(320, v));
+        const boot = () => {
+            const handle = document.getElementById('objlist-resize');
+            if (!handle || handle.__wired) return;
+            handle.__wired = true;
+            let dragging = false;
+            handle.addEventListener('pointerdown', (e) => {
+                dragging = true; handle.setPointerCapture(e.pointerId);
+                document.body.style.userSelect = 'none'; e.preventDefault();
+            });
+            handle.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                rootEl.style.setProperty('--objlist-w', clamp(e.clientX - railW()) + 'px');
+            });
+            const end = (e) => {
+                if (!dragging) return;
+                dragging = false;
+                try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+                document.body.style.userSelect = '';
+                const rawO = parseFloat(rootEl.style.getPropertyValue('--objlist-w'));
+                let w = clamp(Number.isFinite(rawO) ? rawO : 208);   // keep a real 0 (don't let || swallow the hide gesture)
+                const store = window.Alpine?.store('view');
+                if (w < 40) {                     // dragged to the edge → hide the list
+                    rootEl.style.setProperty('--objlist-w', '0px');
+                    if (store) { store.objects = false; store._save?.(); }
+                    return;
+                }
+                if (w < 56) w = 56;               // icons-only floor
+                rootEl.style.setProperty('--objlist-w', w + 'px');
+                if (store) { store.objectsW = w; store._save?.(); }
+            };
+            handle.addEventListener('pointerup', end);
+            handle.addEventListener('pointercancel', end);
+            // Keyboard: arrows resize, Home resets, End hides (WAI-ARIA splitter pattern).
+            handle.addEventListener('keydown', (e) => {
+                const step = e.shiftKey ? 32 : 12;
+                let w = parseFloat(getComputedStyle(rootEl).getPropertyValue('--objlist-w')) || 0;
+                if (e.key === 'ArrowLeft') w -= step;
+                else if (e.key === 'ArrowRight') w += step;
+                else if (e.key === 'Home') w = 208;
+                else if (e.key === 'End') w = 0;
+                else return;
+                e.preventDefault();
+                w = clamp(w);
+                const store = window.Alpine?.store('view');
+                if (w < 40) { rootEl.style.setProperty('--objlist-w', '0px'); if (store) { store.objects = false; store._save?.(); } return; }
+                if (w < 56) w = 56;
+                rootEl.style.setProperty('--objlist-w', w + 'px');
+                if (store) { store.objectsW = w; store._save?.(); }
+            });
+        };
+        if (document.readyState !== 'loading') boot();
+        else document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('livewire:navigated', boot);
+    })();
+    </script>
+    @endpush
 
     {{-- Script editing view — timecoded narration synced to a play bar (View ▸ Script). --}}
     @if ($this->selectedSceneModel)
@@ -1024,10 +1115,10 @@
     {{-- Rail resize handle — drag the rail's right edge to resize it; drag it under 24px (near
          the edge) and it disappears completely. Sits at the rail's right edge; when the rail is
          hidden (0) it rests at the far left so it can be dragged back out. --}}
-    <div id="rail-resize" wire:ignore
-         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize"
+    <div id="rail-resize" wire:ignore tabindex="0"
+         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
          style="left: var(--rail-w, 11rem)"
-         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail') }}"
+         role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail (arrow keys)') }}"
          title="{{ __('Drag to resize · drag to the edge to hide') }}">
         <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
     </div>
@@ -1050,22 +1141,38 @@
                 if (!dragging) return;
                 rootEl.style.setProperty('--rail-w', clamp(e.clientX) + 'px');
             });
+            const commit = (w) => {
+                w = clamp(w);
+                if (w < 24) w = 0;                 // under 24px → hide completely
+                else if (w < 44) w = 44;           // compact floor (numbers-only rail; ≤92px shows numbers)
+                rootEl.style.setProperty('--rail-w', w + 'px');
+                localStorage.setItem(KEY, String(w));
+                // Keep the View ▸ Scenes checkbox in sync with a hide / drag-out.
+                const store = window.Alpine?.store('view');
+                if (store) { store.scenes = w > 0; if (w > 0) store.railLast = w; store._save?.(); }
+            };
             const end = (e) => {
                 if (!dragging) return;
                 dragging = false;
                 try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
                 document.body.style.userSelect = '';
-                let w = clamp(parseFloat(rootEl.style.getPropertyValue('--rail-w')) || 176);
-                if (w < 24) w = 0;                 // dragged under 24px → hide completely
-                else if (w < 120) w = 120;         // otherwise keep a usable minimum
-                rootEl.style.setProperty('--rail-w', w + 'px');
-                localStorage.setItem(KEY, String(w));
-                // Keep the View ▸ Scenes checkbox in sync with a drag-to-hide / drag-out.
-                const store = window.Alpine?.store('view');
-                if (store) { store.scenes = w > 0; if (w > 0) store.railLast = w; store._save?.(); }
+                const rawR = parseFloat(rootEl.style.getPropertyValue('--rail-w'));
+                commit(Number.isFinite(rawR) ? rawR : 176);   // keep a real 0 (don't let || swallow the hide gesture)
             };
             handle.addEventListener('pointerup', end);
             handle.addEventListener('pointercancel', end);
+            // Keyboard: arrows resize, Home resets, End hides (WAI-ARIA splitter pattern).
+            handle.addEventListener('keydown', (e) => {
+                const step = e.shiftKey ? 32 : 12;
+                let w = parseFloat(rootEl.style.getPropertyValue('--rail-w')) || 0;
+                if (e.key === 'ArrowLeft') w -= step;
+                else if (e.key === 'ArrowRight') w += step;
+                else if (e.key === 'Home') w = 176;
+                else if (e.key === 'End') w = 0;
+                else return;
+                e.preventDefault();
+                commit(w);
+            });
         };
         if (document.readyState !== 'loading') boot();
         else document.addEventListener('DOMContentLoaded', boot);

@@ -5,10 +5,22 @@
     'number'   => null,    // slide number badge (vertical rail)
 ])
 
+{{-- data-thumb / data-thumb-selected let the rail's @container "compact" rules (timeline.blade)
+     collapse this to just the centered number on a transparent background when the rail is narrow. --}}
+@php
+    // Stable accessible name — in compact mode the visible content is just an aria-hidden
+    // number, so without this the button would announce as unlabeled.
+    $sceneAriaLabel = trim(__('Scene').' '.($number ?? $scene->order)
+        .($scene->year ? ', '.$scene->year : '')
+        .($scene->location ? ' · '.$scene->location : ''));
+@endphp
 <button type="button"
         wire:key="scene-thumb-{{ $scene->id }}"
         wire:click="selectScene({{ $scene->id }})"
         data-scene-id="{{ $scene->id }}"
+        data-thumb
+        aria-label="{{ $sceneAriaLabel }}"
+        @if ($selected) data-thumb-selected aria-current="true" @endif
         @class([
             'group relative shrink-0 aspect-video rounded-xl overflow-hidden transition-all',
             'w-full' => $wide,
@@ -17,6 +29,8 @@
             'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $selected && $scene->status !== 'failed',
             'ring-1 ring-rose-500/50'                                          => $scene->status === 'failed',
         ])>
+    {{-- Full thumbnail (image / year / place / badges). Hidden by the compact @container rule. --}}
+    <span data-thumb-full class="contents">
     @if ($scene->kind === 'map')
         <div class="w-full h-full bg-sky-800/30 border border-sky-600/30 flex flex-col items-center justify-center text-white gap-1">
             <svg class="h-6 w-6 opacity-90" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
@@ -59,4 +73,12 @@
     @if ($scene->status === 'failed')
         <span class="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[8px] flex items-center justify-center">!</span>
     @endif
+    </span>
+
+    {{-- Compact: just the scene number, centered on a transparent background. Revealed by the
+         rail's @container rule when the rail is dragged narrow; amber when this scene is selected. --}}
+    <span data-thumb-compact aria-hidden="true"
+          class="pointer-events-none absolute inset-0 hidden items-center justify-center font-mono text-sm font-semibold tabular-nums text-slate-400">
+        {{ $number ?? $scene->order }}
+    </span>
 </button>

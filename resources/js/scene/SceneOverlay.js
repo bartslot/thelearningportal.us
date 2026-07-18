@@ -1,5 +1,5 @@
 const LOCATION_PIN_SVG = `
-<svg data-location-pin viewBox="0 0 21 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:clamp(0.75rem, min(3.5cqw, 5.5cqh), 1.3125rem); height:clamp(0.95rem, min(4.5cqw, 7cqh), 1.625rem); flex:none; display:none;">
+<svg data-location-pin viewBox="0 0 21 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:clamp(0.55rem, min(3.5cqw, 3cqh), 1.3125rem); height:clamp(0.7rem, min(4.5cqw, 3.9cqh), 1.625rem); flex:none; display:none;">
   <path d="M10.3329 0C4.63543 0 0 4.63543 0 10.3329C0 19.3812 9.58334 25.4792 9.9913 25.735L10.334 25.9493L10.6767 25.735C11.0848 25.4795 20.668 19.3812 20.668 10.3329C20.668 4.63543 16.0326 0 10.3351 0H10.3329ZM10.3329 15.5C7.47996 15.5 5.16584 13.1871 5.16584 10.3329C5.16584 7.47996 7.47872 5.16584 10.3329 5.16584C13.1859 5.16584 15.5 7.47872 15.5 10.3329C15.5 13.1859 13.1871 15.5 10.3329 15.5Z" fill="white"/>
 </svg>`
 
@@ -45,17 +45,22 @@ export class SceneOverlay {
     if (this.mounted) return
     this.host.classList.add('scene-overlay')
     this.host.style.containerType = 'size'
+    // NOTE: the cqh coefficients are ~56% of a naive read because the host used to carry
+    // 128px vertical padding (py-32) that shrank the container's content box. The padding
+    // is gone (it forced a 256px min-height that pushed the caption off short stages), so
+    // cqh now measures the real stage height — the coefficients are scaled to match, and the
+    // clamp mins are lowered so the caption shrinks (never overflows) on a tiny stage.
     this.host.innerHTML = `
-      <div class="scene-overlay__year absolute flex flex-col" style="left:clamp(0.75rem, min(3cqw, 5cqh), 2.5rem); bottom:clamp(0.75rem, min(3cqw, 5cqh), 2.5rem); max-width:min(78cqw, 42rem); gap:clamp(0.4rem, min(1.4cqw, 2.2cqh), 0.75rem); transition:opacity 600ms;">
-        <div class="scene-overlay__identity" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.45rem, min(1.5cqw, 2.4cqh), 0.75rem);">
-          <img data-flag class="scene-overlay__flag" alt="" style="height:clamp(2rem, min(8cqw, 12cqh), 4rem); width:auto; flex:none; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
-          <span data-title class="scene-overlay__title" style="min-width:0; max-width:100%; overflow-wrap:anywhere; font-family:var(--font-history, inherit); font-size:clamp(1.125rem, min(5cqw, 8cqh), 2.5rem); font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
+      <div class="scene-overlay__year absolute flex flex-col" style="left:clamp(0.4rem, min(3cqw, 2.8cqh), 2.5rem); bottom:clamp(0.4rem, min(3cqw, 2.8cqh), 2.5rem); max-width:min(78cqw, 42rem); gap:clamp(0.25rem, min(1.4cqw, 1.2cqh), 0.75rem); transition:opacity 600ms;">
+        <div class="scene-overlay__identity" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.3rem, min(1.5cqw, 1.3cqh), 0.75rem);">
+          <img data-flag class="scene-overlay__flag" alt="" style="height:clamp(1.2rem, min(8cqw, 6.7cqh), 4rem); width:auto; flex:none; border-radius:5px; box-shadow:0 3px 12px rgba(0,0,0,0.55); display:none;" />
+          <span data-title class="scene-overlay__title" style="min-width:0; max-width:100%; overflow-wrap:anywhere; font-family:var(--font-history, inherit); font-size:clamp(0.7rem, min(5cqw, 4.5cqh), 2.5rem); font-weight:800; color:white; line-height:1.05; text-shadow:0 2px 10px rgba(0,0,0,0.65); display:none;"></span>
         </div>
-        <div class="scene-overlay__meta" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.45rem, min(1.5cqw, 2.4cqh), 0.75rem); text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);">
-          <span data-year style="min-width:0; font-size:clamp(1.5rem, min(8.5cqw, 14cqh), 3.75rem); font-weight:800; color:white; line-height:1;"></span>
-          <div class="scene-overlay__location" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.3rem, min(1cqw, 1.6cqh), 0.5rem); transition:opacity 600ms;">
+        <div class="scene-overlay__meta" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.3rem, min(1.5cqw, 1.3cqh), 0.75rem); text-shadow:0 2px 4px rgba(0, 0, 0, 0.5);">
+          <span data-year style="min-width:0; white-space:nowrap; font-size:clamp(0.9rem, min(8.5cqw, 7.8cqh), 3.75rem); font-weight:800; color:white; line-height:1;"></span>
+          <div class="scene-overlay__location" style="display:flex; min-width:0; max-width:100%; align-items:center; gap:clamp(0.2rem, min(1cqw, 0.9cqh), 0.5rem); transition:opacity 600ms;">
             ${LOCATION_PIN_SVG}
-            <span data-location style="min-width:0; max-width:100%; overflow-wrap:anywhere; font-size:clamp(0.625rem, min(2.6cqw, 4.2cqh), 0.875rem); font-weight:600; color:white; letter-spacing:0.1em; line-height:1.2; text-transform:uppercase;"></span>
+            <span data-location style="min-width:0; max-width:100%; overflow-wrap:anywhere; font-size:clamp(0.5rem, min(2.6cqw, 2.3cqh), 0.875rem); font-weight:600; color:white; letter-spacing:0.1em; line-height:1.2; text-transform:uppercase;"></span>
           </div>
         </div>
       </div>

@@ -11,7 +11,11 @@
     $fractions = array_map(fn ($s) => $s['fraction'], $segments);
 @endphp
 
+{{-- {{ $attributes }} carries the wire:key="script-{sceneId}" from the parent so a scene change
+     is a full teardown+rebuild (fresh lines + fresh WaveSurfer), not an in-place morph — otherwise
+     the wire:ignore'd lines below would freeze the previous scene's script. --}}
 <div x-show="$store.view.script" x-cloak
+     {{ $attributes }}
      x-data="scriptEditor(@js($audioUrl), @js($fractions), {{ $scene?->id ?? 'null' }})"
      class="fixed bottom-0 z-30 flex flex-col overflow-hidden border-t border-slate-700/70 bg-base-300"
      :style="`left:var(--rail-w,11rem);right:var(--work-right,16rem);height:${panelH}px`">
@@ -82,6 +86,7 @@
     <script>
         const SCRIPT_MIN_H = 40;    // px — drag below this on release → hide
         const SCRIPT_DEF_H = 240;   // px — default / reopened height
+        const SCRIPT_H_KEY = 'wizard.script.h';   // persist the resized height across scene changes
         window.scriptEditor = window.scriptEditor || function (url, fractions, sceneId) {
             return {
                 ws: null,
@@ -93,8 +98,16 @@
                 active: 0,
                 fractions: Array.isArray(fractions) ? fractions : [],
                 starts: [],
-                // Resize (drag the top edge). panelH is the panel's live height.
-                panelH: SCRIPT_DEF_H,
+                // Resize (drag the top edge). panelH is the panel's live height; seeded from the
+                // last resized height so switching scenes (which rebuilds this component via
+                // wire:key) doesn't snap the panel back to the default. Re-clamped to the current
+                // viewport so a height saved on a tall window can't exceed a shorter one (which
+                // would push the resize grip off-screen and collapse the stage).
+                panelH: (() => {
+                    const h = parseFloat(localStorage.getItem(SCRIPT_H_KEY));
+                    const max = Math.max(120, Math.round((window.innerHeight || 800) * 0.6));
+                    return h > 0 ? Math.min(h, max) : SCRIPT_DEF_H;
+                })(),
                 dragging: false,
                 _startY: 0,
                 _startH: 0,
@@ -164,9 +177,14 @@
                 },
                 saveScript() {
                     const text = this._currentScriptText();
+                    // Never persist an empty script: a focusout can fire mid-teardown (scene switch
+                    // rebuilds this component) when the lines are already gone → text would be ''
+                    // and wipe the scene's narration. Deleting all narration isn't an inline edit.
+                    if (!text) return;
                     if (text === this._lastSaved) return;   // no change → no round-trip
                     this._lastSaved = text;
-                    try { window.Livewire.dispatch('scene:update-script', { text }); } catch (_) {}
+                    // sceneId lets the server reject a stale save aimed at a scene we already left.
+                    try { window.Livewire.dispatch('scene:update-script', { text, sceneId: this.sceneId }); } catch (_) {}
                 },
 
                 refreshWave() {
@@ -259,6 +277,8 @@
                         this.$store.view.hide('script');
                         this.panelH = SCRIPT_DEF_H;            // reopen at a sensible height
                     }
+                    // Persist so a scene change (which rebuilds this component) keeps the height.
+                    try { localStorage.setItem(SCRIPT_H_KEY, String(Math.round(this.panelH))); } catch (_) {}
                     this.$nextTick(() => { this.reserveSpace(); this.refreshWave(); });
                 },
                 fmt(s) {
