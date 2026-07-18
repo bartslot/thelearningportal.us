@@ -304,13 +304,16 @@
                 <p class="text-sm text-slate-400">No scene selected.</p>
             @endif
 
-            {{-- ── Class meters (story_game, lesson-level) ────── --}}
+            @else
+            {{-- ══ SETTINGS view — lesson-global Story + class meters + Background Music ══════ --}}
+            {{-- Class meters (story_game, lesson-level) — a lesson-wide setting, so it lives in
+                 Settings, not the per-scene Format panel. --}}
             @if ($this->showsMetersPanel())
-                <x-lesson.story-meters-panel :meters-draft="$metersDraft" />
+                <div class="mb-6">
+                    <x-lesson.story-meters-panel :meters-draft="$metersDraft" />
+                </div>
             @endif
 
-            @else
-            {{-- ══ SETTINGS view — lesson-global Story + class Background Music ══════════════ --}}
             <div class="space-y-1.5">
                 <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Story') }}</span>
                 <p class="text-xs text-slate-400">{{ __('The narrative arc and framework this lesson is built on.') }}</p>
