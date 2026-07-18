@@ -418,6 +418,12 @@
                 this.refresh();
                 setInterval(() => { if (!this.dragging && window.Alpine?.store('view')?.objects) this.refresh(); }, 2000);
                 this.$nextTick(() => this.initSortable());
+                // Compact (icons-only) toggle via a data attribute, NOT a CSS container query:
+                // container-type would make this panel a containing block for SortableJS's
+                // position:fixed drag ghost, offsetting/clipping it and breaking layer reordering.
+                const setCompact = () => { this.$el.dataset.compact = this.$el.clientWidth <= 108 ? '1' : ''; };
+                setCompact();
+                new ResizeObserver(setCompact).observe(this.$el);
             },
             effZ(t) {
                 const layer = window.__lessonTextLayer;
@@ -974,13 +980,13 @@
          scene's objects (title/text boxes, backing panels); click to flash-locate on the stage.
          Drag its right edge to resize; drag it narrow (≤108px) and it collapses to icons-only
          (labels + adjust hidden, icons centred) so layers can still be reordered in a sliver. --}}
+    {{-- Compact (icons-only) toggled by data-compact (set from the panel's clientWidth in the
+         objectList Alpine). NOT a CSS container query: container-type would establish a containing
+         block for SortableJS's position:fixed reorder ghost and break the layer-drag interaction. --}}
     <style>
-        [data-objlist-col] { container: objlist / inline-size; }
-        @container objlist (max-width: 108px) {
-            [data-objlist-col] [data-obj-label] { display: none !important; }
-            [data-objlist-col] [data-obj-adjust] { display: none !important; }
-            [data-objlist-col] [data-obj-row] { justify-content: center; padding-left: 0.25rem; padding-right: 0.25rem; gap: 0; }
-        }
+        [data-objlist-col][data-compact] [data-obj-label] { display: none !important; }
+        [data-objlist-col][data-compact] [data-obj-adjust] { display: none !important; }
+        [data-objlist-col][data-compact] [data-obj-row] { justify-content: center; padding-left: 0.25rem; padding-right: 0.25rem; gap: 0; }
     </style>
     <div x-show="$store.view.objects" x-cloak x-data="objectList()" x-init="init()"
          @scene-objects-changed.window="refresh()"
