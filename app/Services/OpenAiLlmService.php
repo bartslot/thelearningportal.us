@@ -17,9 +17,14 @@ class OpenAiLlmService
         private readonly ?int    $timeout = null,
     ) {}
 
-    public function json(string $system, string $user, ?string $model = null): array
+    /**
+     * @param  int|null  $maxTokens  Per-call output-token cap. Pass a larger value for big JSON
+     *                               (e.g. a branching lesson outline) so the response isn't
+     *                               truncated mid-structure. Falls back to services.openai.max_tokens.
+     */
+    public function json(string $system, string $user, ?string $model = null, ?int $maxTokens = null): array
     {
-        $raw = $this->call($system, $user, $model, jsonMode: true);
+        $raw = $this->call($system, $user, $model, jsonMode: true, maxTokens: $maxTokens);
 
         // Strip markdown code fences that some local models (LM Studio, Ollama) wrap around JSON
         $clean = preg_replace('/^```(?:json)?\s*/i', '', trim($raw));
@@ -34,16 +39,79 @@ class OpenAiLlmService
         }
 
         $parsed = json_decode($clean, true);
+
+        // Best-effort recovery when the model hit the token cap and the JSON was cut off
+        // mid-structure — common for large outputs like a branching lesson outline.
+        if (! is_array($parsed)) {
+            $parsed = $this->repairTruncatedJson($clean);
+            if (is_array($parsed)) {
+                Log::warning('[OpenAiLlmService] recovered a truncated JSON response', ['bytes' => strlen($clean)]);
+            }
+        }
+
         if (! is_array($parsed)) {
             Log::warning('[OpenAiLlmService] non-JSON response', ['raw' => substr($raw, 0, 500)]);
-            throw new RuntimeException('OpenAI returned non-JSON despite json_object response_format.');
+            throw new RuntimeException('OpenAI returned non-JSON (likely truncated — raise max_tokens for this call).');
         }
         return $parsed;
     }
 
-    public function text(string $system, string $user, ?string $model = null): string
+    public function text(string $system, string $user, ?string $model = null, ?int $maxTokens = null): string
     {
-        return $this->call($system, $user, $model, jsonMode: false);
+        return $this->call($system, $user, $model, jsonMode: false, maxTokens: $maxTokens);
+    }
+
+    /**
+     * Repair a JSON object/array that was truncated mid-output (hit max_tokens): drop a dangling
+     * string / key / trailing comma, then close every still-open [ and { . Best effort — returns
+     * null if the salvaged text still doesn't parse.
+     */
+    private function repairTruncatedJson(string $s): ?array
+    {
+        $s = trim($s);
+        if ($s === '' || ($s[0] !== '{' && $s[0] !== '[')) {
+            return null;
+        }
+
+        $stack = [];
+        $inStr = false;
+        $esc = false;
+        for ($i = 0, $len = strlen($s); $i < $len; $i++) {
+            $c = $s[$i];
+            if ($inStr) {
+                if ($esc) {
+                    $esc = false;
+                } elseif ($c === '\\') {
+                    $esc = true;
+                } elseif ($c === '"') {
+                    $inStr = false;
+                }
+
+                continue;
+            }
+            if ($c === '"') {
+                $inStr = true;
+            } elseif ($c === '{' || $c === '[') {
+                $stack[] = $c === '{' ? '}' : ']';
+            } elseif ($c === '}' || $c === ']') {
+                array_pop($stack);
+            }
+        }
+
+        $fixed = $s;
+        if ($inStr) {
+            $fixed .= '"';                                  // close a dangling string value
+        }
+        $fixed = rtrim($fixed);
+        $fixed = preg_replace('/,\s*$/', '', $fixed) ?? $fixed;              // drop a trailing comma
+        $fixed = preg_replace('/,?\s*"[^"]*"\s*:\s*$/', '', $fixed) ?? $fixed; // drop a dangling "key":
+        while (! empty($stack)) {
+            $fixed .= array_pop($stack);                    // close open structures, innermost first
+        }
+
+        $parsed = json_decode($fixed, true);
+
+        return is_array($parsed) ? $parsed : null;
     }
 
     /**
@@ -69,7 +137,7 @@ class OpenAiLlmService
         ]);
     }
 
-    private function call(string $system, string $user, ?string $model, bool $jsonMode): string
+    private function call(string $system, string $user, ?string $model, bool $jsonMode, ?int $maxTokens = null): string
     {
         $payload = [
             'model'    => $model ?? $this->model ?? config('services.openai.model'),
@@ -81,10 +149,11 @@ class OpenAiLlmService
         ];
 
         // Limit output tokens — prevents thinking models (Gemma 4, QwQ, DeepSeek-R1) from
-        // exhausting their budget on reasoning_content and returning empty content.
-        $maxTokens = (int) config('services.openai.max_tokens', 2048);
-        if ($maxTokens > 0) {
-            $payload['max_tokens'] = $maxTokens;
+        // exhausting their budget on reasoning_content and returning empty content. A per-call
+        // override lets large outputs (branching outlines) ask for more so they aren't truncated.
+        $tokens = $maxTokens ?? (int) config('services.openai.max_tokens', 2048);
+        if ($tokens > 0) {
+            $payload['max_tokens'] = $tokens;
         }
 
         $jsonFormat = (string) config('services.openai.json_format', 'json_object');

@@ -49,6 +49,9 @@ class GenerateSceneShots implements ShouldQueue
     public function handle(OpenAiImageService $image, OpenAiLlmService $llm, FigureAppearanceService $appearance): void
     {
         $scene = Scene::with('lesson.scenes', 'lesson.source')->findOrFail($this->sceneId);
+        if ($scene->hasManualBackground()) {
+            return;
+        }
 
         $grid = GridSlicer::parseGrid((string) config('lessons.shot_grid', '3x3'));
         if ($grid === null || trim((string) $scene->script_segment) === '') {
@@ -115,6 +118,10 @@ class GenerateSceneShots implements ShouldQueue
                 throw new \RuntimeException('Grid slicing produced no usable shots.');
             }
 
+            $scene->refresh();
+            if ($scene->hasManualBackground()) {
+                return;
+            }
             $scene->update([
                 'shots' => $shots,
                 'image_path' => $shots[0]['image_path'],   // fallback + card/cover compatibility
@@ -132,7 +139,9 @@ class GenerateSceneShots implements ShouldQueue
                 }
             }
         } catch (Throwable $e) {
-            $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            if (! $scene->fresh()->hasManualBackground()) {
+                $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
             throw $e;
         }
     }

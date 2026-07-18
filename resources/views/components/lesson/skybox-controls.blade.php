@@ -19,6 +19,9 @@
     // Default image-source tab reflects how the current background was set.
     $bgKind         = $scene->config['background_credit']['kind'] ?? null;
     $srcDefault     = $bgKind === 'painting' ? 'paintings' : ($bgKind === 'url' ? 'url' : 'ai');
+    $backgroundImageUrl = $scene->image_path
+        ? asset('storage/' . $scene->image_path) . '?v=' . ($scene->updated_at?->timestamp ?? '')
+        : null;
 @endphp
 
 <div class="mt-2 space-y-3"
@@ -129,6 +132,22 @@
 
           {{-- Image — where the background image comes from: AI, a painting, or a drawing --}}
           <div x-show="bgType === 'image'" x-cloak class="space-y-2">
+            <div class="flex items-center gap-2.5 rounded-lg border border-slate-700/70 bg-slate-900/40 p-1.5">
+                @if ($backgroundImageUrl)
+                    <img src="{{ $backgroundImageUrl }}"
+                         class="h-14 w-24 shrink-0 rounded object-cover ring-1 ring-slate-700"
+                         alt="{{ __('Current scene background') }}" />
+                @else
+                    <div class="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-slate-800 text-[9px] font-medium uppercase tracking-wider text-slate-500 ring-1 ring-dashed ring-slate-600">
+                        {{ __('none') }}
+                    </div>
+                @endif
+                <div class="min-w-0 leading-tight">
+                    <span class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{{ __('Current image') }}</span>
+                    <span class="block truncate text-[11px] text-slate-500">{{ $backgroundImageUrl ? __('Scene background') : __('No background selected') }}</span>
+                </div>
+            </div>
+
             <div class="flex overflow-hidden rounded-lg border border-slate-700/70 text-[11px] font-medium">
                 @foreach (['ai' => __('AI Gen'), 'paintings' => __('Paintings'), 'url' => __('Drawing')] as $sv => $sl)
                     <button type="button" @click="imgSrc = '{{ $sv }}'"
@@ -137,34 +156,26 @@
                 @endforeach
             </div>
 
-            {{-- AI generated — the current image + Regenerate / Edit prompt (Figma item 5) --}}
+            {{-- AI generated — Regenerate / Edit prompt (Figma item 5) --}}
             <div x-show="imgSrc === 'ai'" x-cloak class="space-y-2">
                 <span class="block text-[11px] font-medium text-slate-300">{{ __('AI Generated image') }}</span>
-                <div class="flex items-start gap-3">
-                    @if ($scene->image_path)
-                        <img src="{{ asset('storage/' . $scene->image_path) }}"
-                             class="h-14 w-24 shrink-0 rounded object-cover ring-1 ring-slate-700" alt="" />
-                    @else
-                        <div class="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-slate-800 text-[9px] uppercase tracking-wider text-slate-500 ring-1 ring-dashed ring-slate-600">{{ __('none') }}</div>
-                    @endif
-                    <div class="flex flex-col gap-1.5">
-                        <button type="button"
-                                wire:click="regenerate({{ $scene->id }}, 'image')"
-                                wire:loading.attr="disabled" wire:target="regenerate"
-                                @disabled($isBusy)
-                                class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300 disabled:opacity-50">
-                            @if ($isGenerating)
-                                <x-icons.spinner class="h-3.5 w-3.5 animate-spin" /><span>{{ __('Generating…') }}</span>
-                            @else
-                                <x-icons.regenerate class="h-3.5 w-3.5" /><span>{{ $scene->image_path ? __('Regenerate') : __('Generate') }}</span>
-                            @endif
-                        </button>
-                        <button type="button" @click="promptOpen = !promptOpen"
-                                class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
-                            <span>{{ __('Edit prompt') }}</span>
-                        </button>
-                    </div>
+                <div class="flex flex-col gap-1.5">
+                    <button type="button"
+                            wire:click="regenerate({{ $scene->id }}, 'image')"
+                            wire:loading.attr="disabled" wire:target="regenerate"
+                            @disabled($isBusy)
+                            class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300 disabled:opacity-50">
+                        @if ($isGenerating)
+                            <x-icons.spinner class="h-3.5 w-3.5 animate-spin" /><span>{{ __('Generating…') }}</span>
+                        @else
+                            <x-icons.regenerate class="h-3.5 w-3.5" /><span>{{ $scene->image_path ? __('Regenerate') : __('Generate') }}</span>
+                        @endif
+                    </button>
+                    <button type="button" @click="promptOpen = !promptOpen"
+                            class="inline-flex items-center gap-1.5 text-[12px] text-slate-300 transition hover:text-amber-300">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                        <span>{{ __('Edit prompt') }}</span>
+                    </button>
                 </div>
                 <textarea x-show="promptOpen" x-cloak
                           wire:model.blur="selectedScene.image_prompt" wire:change="saveSelected" rows="3"

@@ -39,6 +39,9 @@ class GenerateSceneImage implements ShouldQueue
     public function handle(OpenAiImageService $image, OpenAiLlmService $llm, FigureAppearanceService $appearance): void
     {
         $scene = Scene::with('lesson.source')->findOrFail($this->sceneId);
+        if ($scene->hasManualBackground()) {
+            return;
+        }
 
         try {
             $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
@@ -55,6 +58,10 @@ class GenerateSceneImage implements ShouldQueue
 
             $path = $destination;
 
+            $scene->refresh();
+            if ($scene->hasManualBackground()) {
+                return;
+            }
             $scene->update(['image_path' => $path, 'upscale_status' => null]);
             $this->maybeMarkReady($scene->fresh());
 
@@ -69,7 +76,9 @@ class GenerateSceneImage implements ShouldQueue
                 GenerateWorldLabsScene::dispatch($this->sceneId);
             }
         } catch (Throwable $e) {
-            $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            if (! $scene->fresh()->hasManualBackground()) {
+                $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
             throw $e;
         }
     }

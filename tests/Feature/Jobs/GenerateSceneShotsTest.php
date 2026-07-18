@@ -106,6 +106,28 @@ class GenerateSceneShotsTest extends TestCase
         $this->assertNull($this->scene->fresh()->shots);
     }
 
+    public function test_does_not_overwrite_a_teacher_selected_painting(): void
+    {
+        $this->scene->update([
+            'image_path' => 'lessons/1/paintings/caesar.jpg',
+            'config' => [
+                'background_source' => 'painting',
+                'background_credit' => ['kind' => 'painting'],
+            ],
+            'status' => 'ready',
+        ]);
+        $this->mock(OpenAiLlmService::class, fn ($mock) => $mock->shouldReceive('json')->never());
+        $this->mock(OpenAiImageService::class, fn ($mock) => $mock->shouldReceive('generateGridBytesFromPrompt')->never());
+
+        (new GenerateSceneShots($this->scene->id))->handle(
+            app(OpenAiImageService::class), app(OpenAiLlmService::class), app(FigureAppearanceService::class),
+        );
+
+        $scene = $this->scene->fresh();
+        $this->assertSame('lessons/1/paintings/caesar.jpg', $scene->image_path);
+        $this->assertSame('ready', $scene->status);
+    }
+
     public function test_fails_the_scene_when_storyboard_anchors_never_match(): void
     {
         $this->mock(OpenAiLlmService::class, function ($mock): void {

@@ -187,9 +187,13 @@ class BuildLessonOutline implements ShouldQueue
             $sourceText = (string) ($lesson->source?->extracted_text ?? '');
 
             $hasGame = (bool) $lesson->include_game;
+            // A full lesson outline — especially a branching story game — is a large JSON payload
+            // that easily exceeds the default token cap and gets truncated mid-structure. Ask for a
+            // generous budget (gpt-4o-mini allows 16k output tokens) so the JSON completes.
             $outline = $llm->json(
                 system: LessonOutlinePrompt::system($hasGame, $lesson->game_type),
                 user: LessonOutlinePrompt::user($lesson, $sourceText, $story),
+                maxTokens: 16000,
             );
 
             // Curated stories are the pedagogical source of truth: their reviewed objectives

@@ -58,6 +58,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // Tracks a tab click that hasn't been confirmed by the DB yet.
     // Prevents wire:poll from snapping Three.js back to the old view.
     let _pendingView  = null
+    // Image and layered-scene loads are asynchronous. Only the most recent scene payload may
+    // update the stage; otherwise a late GenAI texture can overwrite a chosen painting.
+    let _sceneRenderVersion = 0
 
     // Pre-warmed audio elements per URL — keeps the browser's HTTP cache hot AND
     // primes the media pipeline so audio.play() starts instantly when the teacher
@@ -76,6 +79,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
 
     const applyScene = async (payload) => {
         if (!payload) return
+        const renderVersion = ++_sceneRenderVersion
+        const isCurrent = () => renderVersion === _sceneRenderVersion
         const dbView = payload.sceneView === 'slideshow' ? 'slideshow'
                      : payload.sceneView === 'world'     ? 'world'
                      : 'skybox'
@@ -102,6 +107,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         clipartOnTop: !!payload.config?.clipart_on_top,
                         slideshowMode: payload.slideshowMode || (payload.parallax ? 'parallax' : 'standard'),
                         sceneId: payload.sceneId ?? 0,
+                        isCurrent,
                     })
                 } else if (view === 'world') {
                     destroyWizardLayers()
@@ -140,6 +146,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 console.warn('[wizard-bridge] background load failed', err)
             }
         }
+        if (!isCurrent()) return
         if (playerReady && dbView === 'skybox' && typeof payload.skyboxOpacity === 'number' && typeof activePlayer.setSkyboxOpacity === 'function') {
             try { activePlayer.setSkyboxOpacity(payload.skyboxOpacity) } catch {}
         }
@@ -226,6 +233,8 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // for the next Livewire poll to call applyScene.
     window.addEventListener('lesson:scene:view', async e => {
         if (!playerReady) return
+        const renderVersion = ++_sceneRenderVersion
+        const isCurrent = () => renderVersion === _sceneRenderVersion
         const { view, imageUrl, sceneId, duration } = e.detail ?? {}
         _pendingView = view ?? null
         if (view === 'slideshow') {
@@ -240,6 +249,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 parallax: !!e.detail?.parallax,
                 clipartOnTop: !!e.detail?.config?.clipart_on_top,
                 sceneId: sceneId ?? 0,
+                isCurrent,
             })
         } else if (view === 'skybox') {
             // Skybox sphere is already loaded — just restore camera + make it visible.
@@ -375,13 +385,16 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     const slideshowTextureCache = new Map()
     let currentBgFocus = 'center'   // 'top' anchors portrait backgrounds so faces survive the crop
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
+        const isCurrent = motion.isCurrent ?? (() => true)
         currentBgFocus = motion.focus || 'center'
         // Layered shot (E3c): render via ParallaxScene when the shot carries layers.
         if (Array.isArray(motion.layers) && motion.layers.length) {
             const didShow = await showLayeredSlideshowShot(motion)
+            if (!isCurrent()) return
             if (didShow) return
             // Fall through to flat if layered show fails
         }
+        if (!isCurrent()) return
         // Flat scene: make sure a previous scene's layer host isn't covering the canvas.
         destroyWizardLayers()
 
@@ -410,6 +423,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 })
                 slideshowTextureCache.set(url, tex)
             }
+            if (!isCurrent()) return
             // Hide sphere only after texture is ready — avoids black flash.
             if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
             activePlayer._scene.background = tex
@@ -424,6 +438,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 startKenBurns(tex, sceneId, Math.max(4, durationSec || 10), motion.kbDirection || null)
             }
         } catch (err) {
+            if (!isCurrent()) return
             console.warn('[wizard-bridge] slideshow texture load failed', err)
         }
     }
@@ -802,7 +817,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     async function showLayeredSlideshowShot(payload) {
         try {
             const { layers, parallax = false } = payload
+            const isCurrent = payload.isCurrent ?? (() => true)
             if (!Array.isArray(layers) || !layers.length) return false
+            if (!isCurrent()) return false
 
             // Split: the background plane(s) render as parallax; free clipart (asset_id) is
             // rendered by the editable overlay so teachers can move + scale it directly.
@@ -810,6 +827,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             const artLayers = layers.filter(l => l.asset_id != null && l.kind !== 'cover')
 
             if (!_parallaxMod) _parallaxMod = await import('./ParallaxScene.js')
+            if (!isCurrent()) return false
             const host = wizardLayerHost()
             if (!host) return false
 
@@ -864,6 +882,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 artHost.style.display = ''
                 if (_artworkOverlay) { try { _artworkOverlay.clear() } catch (_) {} }
                 if (!_inkMod) _inkMod = await import('./InkDrawEngine.js')
+                if (!isCurrent()) return false
                 const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || '').split('?')[0], l.ink_preset, l.ink_fill, l.draw_time]))
                 if (sig !== _inkSig) {
                     _inkSig = sig
@@ -886,6 +905,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 _inkEngines = []; _inkSig = null
                 artHost.style.display = ''
                 if (!_artworkMod) _artworkMod = await import('./ArtworkOverlay.js')
+                if (!isCurrent()) return false
                 if (!_artworkOverlay) {
                     _artworkOverlay = new _artworkMod.ArtworkOverlay(artHost, {
                         onChange: (assetId, t) => {

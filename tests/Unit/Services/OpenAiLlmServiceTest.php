@@ -72,4 +72,48 @@ class OpenAiLlmServiceTest extends TestCase
         $this->expectException(\RuntimeException::class);
         app(OpenAiLlmService::class)->text(system: 's', user: 'u');
     }
+
+    // ── Truncated-JSON recovery (a large outline that hit the token cap) ───
+
+    private function fakeTruncated(string $content): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/chat/completions' => Http::response([
+                'choices' => [['message' => ['content' => $content], 'finish_reason' => 'length']],
+            ], 200),
+        ]);
+    }
+
+    public function test_json_recovers_a_response_truncated_mid_array(): void
+    {
+        $this->fakeTruncated('{"scenes":[{"title":"A","year":1789},{"title":"B","year":179');
+
+        $out = app(OpenAiLlmService::class)->json('sys', 'user');
+
+        // Best-effort: the complete first scene always survives; the truncated tail is salvaged
+        // (its number closed) rather than crashing the whole outline.
+        $this->assertSame('A', $out['scenes'][0]['title']);
+        $this->assertGreaterThanOrEqual(1, count($out['scenes']));
+    }
+
+    public function test_json_recovers_a_response_truncated_mid_string(): void
+    {
+        $this->fakeTruncated('{"a":1,"b":"an unterminated string that ran out of tok');
+
+        $out = app(OpenAiLlmService::class)->json('sys', 'user');
+
+        $this->assertSame(1, $out['a']);
+        $this->assertArrayHasKey('b', $out);
+    }
+
+    public function test_json_recovers_a_response_truncated_after_a_dangling_key(): void
+    {
+        $this->fakeTruncated('{"a":1,"scenes":[{"x":1}],"next":');
+
+        $out = app(OpenAiLlmService::class)->json('sys', 'user');
+
+        $this->assertSame(1, $out['a']);
+        $this->assertSame([['x' => 1]], $out['scenes']);
+        $this->assertArrayNotHasKey('next', $out, 'the dangling key with no value is dropped');
+    }
 }

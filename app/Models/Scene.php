@@ -146,6 +146,17 @@ class Scene extends Model
             && $this->audio_script_hash === sha1((string) $this->script_segment);
     }
 
+    /** A teacher-picked painting or pasted image must not be overwritten by queued image generation. */
+    public function hasManualBackground(): bool
+    {
+        $config = $this->config ?? [];
+        $source = $config['background_source'] ?? null;
+        $creditKind = $config['background_credit']['kind'] ?? null;
+
+        return in_array($source, ['painting', 'url'], true)
+            || in_array($creditKind, ['painting', 'city_map', 'url'], true);
+    }
+
     /**
      * Short chapter name for the Micrio-style serial-tour player. Uses the stored
      * (auto-derived, editable) name; falls back to the location or a numbered label so

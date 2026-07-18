@@ -10,7 +10,10 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\SvgAsset;
 use App\Models\User;
+use App\Services\CommonsImageService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -335,5 +338,57 @@ class SceneArtworkTest extends TestCase
         // The new background is carried as the cover layer (no asset_id).
         $this->assertArrayNotHasKey('asset_id', $shots[0]['layers'][0], 'first layer is the cover');
         $this->assertSame('cover', $shots[0]['layers'][0]['kind'] ?? null);
+    }
+
+    public function test_painting_selection_replaces_a_generated_background_and_closes_the_picker(): void
+    {
+        Storage::fake('public');
+        Http::fake([
+            'https://paintings.example/*' => Http::response('painting-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+        $this->app->instance(CommonsImageService::class, new class extends CommonsImageService
+        {
+            public function fileMeta(string $fileTitle): ?array
+            {
+                return [
+                    'file_title' => 'Caesar painting.jpg',
+                    'title' => 'Caesar Painting',
+                    'artist' => 'Test Artist',
+                    'license' => 'Public domain',
+                    'image_url' => 'https://paintings.example/caesar.jpg',
+                    'file_page' => 'https://commons.wikimedia.org/wiki/File:Caesar_painting.jpg',
+                ];
+            }
+        });
+
+        $this->scene->update([
+            'image_path' => 'lessons/1/scenes/1/generated.webp',
+            'skybox_image_path' => 'lessons/1/scenes/1/generated-skybox.png',
+            'scene_view' => 'skybox',
+            'status' => 'generating',
+            'shots' => [
+                ['order' => 0, 'image_path' => 'lessons/1/scenes/1/shots/one.webp'],
+                ['order' => 1, 'image_path' => 'lessons/1/scenes/1/shots/two.webp'],
+            ],
+        ]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('openPaintingPicker')
+            ->assertSet('paintingPickerOpen', true)
+            ->assertDispatched('painting-picker:open')
+            ->call('applyPaintingBackground', 'commons', 'Caesar painting.jpg')
+            ->assertSet('paintingPickerOpen', false);
+
+        $scene = $this->scene->fresh();
+        $this->assertNotSame('lessons/1/scenes/1/generated.webp', $scene->image_path);
+        $this->assertNull($scene->shots);
+        $this->assertNull($scene->skybox_image_path);
+        $this->assertSame('slideshow', $scene->scene_view);
+        $this->assertSame('ready', $scene->status);
+        $this->assertSame('painting', $scene->config['background_source']);
+        Storage::disk('public')->assertExists($scene->image_path);
+        $this->assertFalse((bool) $component->get('paintingPickerOpen'));
     }
 }

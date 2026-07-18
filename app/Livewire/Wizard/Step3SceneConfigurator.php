@@ -1217,6 +1217,7 @@ class Step3SceneConfigurator extends Component
         $this->matchTarget = [];
         $this->paintingReady = false;   // modal opens instantly; wire:init fills the grid
         $this->searchOpen = false;
+        $this->dispatch('painting-picker:open');
     }
 
     /**
@@ -1426,6 +1427,10 @@ class Step3SceneConfigurator extends Component
             return;
         }
 
+        // Dismiss immediately: a download can take a while, and a poll response must not leave
+        // the picker covering the scene after the teacher has made a choice.
+        $this->paintingPickerOpen = false;
+
         [$imageUrl, $credit, $fileStem] = match ($source) {
             'corpus' => $this->corpusPaintingPayload($key),
             'commons' => $this->commonsPaintingPayload($key),
@@ -1458,6 +1463,7 @@ class Step3SceneConfigurator extends Component
         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
 
         $config = array_merge($scene->config ?? [], [
+            'background_source' => 'painting',
             'background_credit' => $credit,
             'background_focus' => $credit['focus'] ?? 'center',   // 'top' anchors portraits
         ]);
@@ -1477,11 +1483,17 @@ class Step3SceneConfigurator extends Component
             'image_path' => $path,
             // A painting replaces the storyboard, but keep any clipart the teacher attached.
             'shots' => $this->shotsPreservingArtwork($scene, $path),
+            // A generated equirectangular skybox belongs to the old background and can otherwise
+            // reappear when the canvas or its view mode refreshes.
+            'skybox_image_path' => null,
+            'skybox_candidates' => null,
             'scene_view' => 'slideshow', // paintings are flat images
             'config' => $config,
+            'status' => 'ready',
+            'upscale_status' => null,
+            'error_message' => null,
         ]);
 
-        $this->paintingPickerOpen = false;
         $this->selectSceneInternal($scene->id);
     }
 
@@ -1580,10 +1592,16 @@ class Step3SceneConfigurator extends Component
             'image_path' => $path,
             // Keep any clipart the teacher attached when swapping to a pasted-URL background.
             'shots' => $this->shotsPreservingArtwork($scene, $path),
+            'skybox_image_path' => null,
+            'skybox_candidates' => null,
             'scene_view' => 'slideshow',
             'config' => array_merge($scene->config ?? [], [
+                'background_source' => 'url',
                 'background_credit' => ['kind' => 'url', 'source_url' => $url],
             ]),
+            'status' => 'ready',
+            'upscale_status' => null,
+            'error_message' => null,
         ]);
 
         if ($this->selectedSceneId === $sceneId) {
@@ -1689,7 +1707,13 @@ class Step3SceneConfigurator extends Component
     public function regenerate(int $sceneId, string $asset): void
     {
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
-        $scene->update(['status' => 'generating', 'error_message' => null]);
+        $updates = ['status' => 'generating', 'error_message' => null];
+        if ($asset === 'image') {
+            $config = $scene->config ?? [];
+            unset($config['background_source'], $config['background_credit'], $config['background_focus'], $config['layout_reference']);
+            $updates['config'] = $config;
+        }
+        $scene->update($updates);
 
         match ($asset) {
             'script' => GenerateSceneScript::dispatch($scene->id),

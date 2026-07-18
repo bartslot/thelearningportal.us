@@ -36,6 +36,9 @@ class GenerateSkyboxImage implements ShouldQueue
     public function handle(OpenAiLlmService $llm, OpenAiImageService $imageService): void
     {
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
+        if ($scene->hasManualBackground()) {
+            return;
+        }
 
         if (! $scene->image_path) {
             throw new \RuntimeException('Generate the flat image first before converting to skybox.');
@@ -53,6 +56,10 @@ class GenerateSkyboxImage implements ShouldQueue
             $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox_panorama.png";
             Storage::disk('public')->put($destination, $bytes);
 
+            $scene->refresh();
+            if ($scene->hasManualBackground()) {
+                return;
+            }
             $scene->update([
                 'skybox_image_path' => $destination,
                 'status' => 'ready',
@@ -68,7 +75,9 @@ class GenerateSkyboxImage implements ShouldQueue
             );
         } catch (Throwable $e) {
             Log::error('[GenerateSkyboxImage] '.$e->getMessage(), ['sceneId' => $this->sceneId]);
-            $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            if (! $scene->fresh()->hasManualBackground()) {
+                $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
             throw $e;
         }
     }
