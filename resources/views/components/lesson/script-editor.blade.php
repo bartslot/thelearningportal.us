@@ -31,8 +31,10 @@
     @if ($segments === [])
         <p class="px-4 py-6 text-center text-xs text-slate-500">{{ __('No narration yet for this scene.') }}</p>
     @else
-        {{-- Timecoded narration. focusout (bubbles) saves whenever any edited line loses focus. --}}
-        <div class="overflow-y-auto px-3 py-3" style="max-height: 30vh;" x-on:focusout="saveScript()">
+        {{-- Timecoded narration. focusout (bubbles) saves whenever any edited line loses focus.
+             wire:ignore so the 3s wire:poll morph can't reset the contenteditable text mid-edit
+             (Alpine timecodes/active state still update; a scene change re-renders via wire:key). --}}
+        <div wire:ignore class="overflow-y-auto px-3 py-3" style="max-height: 30vh;" x-on:focusout="saveScript()">
             <div class="space-y-3">
                 @foreach ($segments as $i => $seg)
                     <div class="flex gap-3">

@@ -16,12 +16,15 @@
     {{-- --work-left / --work-right track the live widths of the rail and inspector (set by the
          work-area sync script below) so the stage always fills exactly the gap between them and
          never slides under either panel. Defaults match the rail (11rem) + docked inspector (24rem). --}}
+    {{-- --work-right lives on <html> (set by the sync below) so the sibling script/notes panels
+         inherit it too — the canvas-root is not their ancestor. --work-left/--work-bottom stay
+         local to the canvas-root (only it needs them). --}}
     <div class="fixed z-0 bg-slate-950" id="lesson-canvas-root"
-         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-right: 16rem; --work-bottom: 0px;
+         style="--work-left: calc(var(--rail-w, 11rem) + var(--objlist-w, 0px) + var(--ruler-w, 0px)); --work-bottom: 0px;
                 --top-inset: calc(4rem + var(--ruler-w, 0px));
-                --lbw: calc(100vw - var(--work-left) - var(--work-right));
+                --lbw: calc(100vw - var(--work-left) - var(--work-right, 16rem));
                 --lbh: min(calc(var(--lbw) * 0.5625), calc(100vh - var(--top-inset) - var(--work-bottom)));
-                left: var(--work-left); right: var(--work-right);
+                left: var(--work-left); right: var(--work-right, 16rem);
                 height: var(--lbh); top: calc(var(--top-inset) + (100vh - var(--top-inset) - var(--work-bottom) - var(--lbh)) / 2);"
          data-character-url=""
          data-territory="{{ $lesson->topic }}"
@@ -59,7 +62,9 @@
                 raf = 0
                 const r = aside.getBoundingClientRect()
                 // Docked panel → reserve its width; hidden (x-show off → 0 width) → reserve nothing.
-                root.style.setProperty('--work-right', r.width > 0 ? `${Math.round(r.width)}px` : '0px')
+                // Set it on <html> so the sibling script/notes panels inherit it (the canvas-root
+                // is not their ancestor); the canvas-root inherits it too.
+                document.documentElement.style.setProperty('--work-right', r.width > 0 ? `${Math.round(r.width)}px` : '0px')
                 window.dispatchEvent(new Event('resize'))   // nudge the scene renderer to refit
             }
             const schedule = () => { if (!raf) raf = requestAnimationFrame(sync) }
