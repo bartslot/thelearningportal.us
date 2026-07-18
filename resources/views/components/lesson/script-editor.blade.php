@@ -55,6 +55,7 @@
                            x-on:input="onInput(i)"
                            x-on:keydown="onKeydown($event, i)"
                            x-on:paste="onPaste($event, i)"
+                           x-on:pointerdown="_lastWasEnter = false"
                            x-on:focus="active = i; focusedPara = i"
                            x-on:keydown.escape.stop.prevent="$event.target.blur()"
                            :class="{
@@ -147,6 +148,7 @@
                 paras: [],
                 starts: [],
                 _pid: 0,
+                _lastWasEnter: false,   // for double-Enter (split) detection
                 _seed: Array.isArray(paragraphs) ? paragraphs : [],
                 // Script-editing toolbar (shown while a paragraph is focused).
                 focusedPara: null,
@@ -245,7 +247,9 @@
                 _currentScriptText() {
                     this._syncFromDom();
                     return this.paras
-                        .map((p) => (p.text || '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim())
+                        // Collapse any internal blank line to a single soft newline so a paragraph
+                        // box never serialises as \n\n (which would reload as two paragraphs).
+                        .map((p) => (p.text || '').replace(/[ \t]+$/gm, '').replace(/\n{2,}/g, '\n').trim())
                         .filter(Boolean)
                         .join('\n\n');
                 },
@@ -296,12 +300,15 @@
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         const el = e.target;
-                        if (e.shiftKey) { this._insertText('\n'); this.onInput(i); return; }
-                        // Enter right after a soft newline (or on a blank trailing line) → split.
-                        if (this._textBeforeCaret(el).endsWith('\n')) { this.splitPara(i, el); return; }
+                        if (e.shiftKey) { this._insertText('\n'); this.onInput(i); this._lastWasEnter = false; return; }
+                        // Split only on a FRESH double-press (two Enters in a row) — not merely
+                        // because the caret happens to sit after a pre-existing soft newline.
+                        if (this._lastWasEnter) { this._lastWasEnter = false; this.splitPara(i, el); return; }
                         this._insertText('\n'); this.onInput(i);   // single Enter → soft newline
+                        this._lastWasEnter = true;
                         return;
                     }
+                    this._lastWasEnter = false;   // any other key breaks the double-Enter sequence
                     if (e.key === 'Backspace' && i > 0 && !this._hasSelection() && this._caretOffset(e.target) === 0) {
                         e.preventDefault();
                         this.mergeUp(i, e.target);
@@ -378,13 +385,14 @@
                         .filter(Boolean);
                 },
                 _pasteParagraphs(i, el, chunks) {
-                    const caret = this._caretOffset(el);
-                    const text = el.textContent;
-                    const before = text.slice(0, caret);
-                    const after = text.slice(caret);
+                    // Single paragraph → insert at caret (replaces any selection via deleteContents).
                     if (chunks.length === 1) { this._insertText(chunks[0]); this.onInput(i); return; }
-                    // First chunk joins the text before the caret; last joins the text after it; the
-                    // middle chunks (and the last) become fresh paragraph boxes.
+                    // Multi-paragraph → replace the selection (start..end): text before the selection
+                    // takes the first chunk, text after takes the last; middles become new boxes.
+                    const sel = this._selectionRange(el);
+                    const text = el.textContent;
+                    const before = text.slice(0, sel.start);
+                    const after = text.slice(sel.end);
                     const first = before + chunks[0];
                     const tail = chunks.slice(1);
                     tail[tail.length - 1] = tail[tail.length - 1] + after;
@@ -418,6 +426,18 @@
                     return r.toString();
                 },
                 _caretOffset(el) { return this._textBeforeCaret(el).length; },
+                // Char offsets [start, end] of the current selection within el (equal when collapsed).
+                _selectionRange(el) {
+                    const sel = window.getSelection();
+                    const n = (el.textContent || '').length;
+                    if (!sel || !sel.rangeCount) return { start: n, end: n };
+                    const range = sel.getRangeAt(0);
+                    const pre = document.createRange();
+                    pre.selectNodeContents(el);
+                    pre.setEnd(range.startContainer, range.startOffset);
+                    const start = pre.toString().length;
+                    return { start, end: start + range.toString().length };
+                },
                 _setCaret(el, offset) {
                     const sel = window.getSelection();
                     const range = document.createRange();
@@ -473,14 +493,17 @@
                     const text = (this.paras[i].text || '').trim();
                     if (!text) { this.closePrompt(); return; }
                     this.regenPara = true;
-                    this._regenIndex = i;
+                    // Track the paragraph by its STABLE id, not its index — the boxes stay editable
+                    // during the async rewrite, so a split/merge could shift indices and make the
+                    // result land on the wrong paragraph.
+                    this._regenId = this.paras[i].id;
                     try { window.Livewire.dispatch('scene:regenerate-paragraph', { sceneId: this.sceneId, text, prompt }); } catch (_) { this.regenPara = false; }
                 },
                 applyParagraph(newText) {
                     this.regenPara = false;
                     this.closePrompt();
-                    const i = this._regenIndex;
-                    if (i == null || !this.paras[i] || !newText) return;
+                    const i = this.paras.findIndex((p) => p.id === this._regenId);
+                    if (i < 0 || !newText) return;   // the target paragraph was deleted meanwhile → drop the result
                     this.paras[i].text = newText;
                     this.paras[i].dirty = true;
                     this.dirty = true;
