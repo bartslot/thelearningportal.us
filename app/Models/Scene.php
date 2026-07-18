@@ -228,6 +228,52 @@ class Scene extends Model
         return $segments;
     }
 
+    /**
+     * The narration split into PARAGRAPHS for the Script editing view — one entry per
+     * blank-line-separated paragraph (its internal single newlines preserved as soft breaks),
+     * paired with the start time of its first character. Each paragraph is one editable box and
+     * one TTS topic; double-Enter in the editor splits a paragraph, single Enter is a soft break.
+     *
+     * @return list<array{text:string,start:float,timecode:string,fraction:float}>
+     */
+    public function scriptParagraphs(): array
+    {
+        $text = trim((string) $this->script_segment);
+        if ($text === '') {
+            return [];
+        }
+
+        $chunks = array_values(array_filter(
+            array_map('trim', preg_split('/\n\s*\n/', $text) ?: [$text]),
+            fn ($p) => $p !== '',
+        ));
+        if ($chunks === []) {
+            $chunks = [$text];
+        }
+
+        $align = is_array($this->audio_alignment) ? array_values($this->audio_alignment) : [];
+        $duration = (float) ($this->duration_seconds ?: 0);
+        $totalChars = max(1, mb_strlen($text));
+
+        $paragraphs = [];
+        $cursor = 0;
+        foreach ($chunks as $i => $chunk) {
+            $at = mb_strpos($text, $chunk, $cursor);
+            $at = $at === false ? $cursor : $at;
+            $cursor = $at + mb_strlen($chunk);
+
+            $start = $this->timeAtChar($align, $at, $duration, $totalChars, $i, count($chunks));
+            $paragraphs[] = [
+                'text' => $chunk,
+                'start' => $start,
+                'timecode' => $this->formatTimecode($start),
+                'fraction' => round($at / $totalChars, 4),
+            ];
+        }
+
+        return $paragraphs;
+    }
+
     /** Start time (s) for a character offset — from alignment, else proportional to duration. */
     private function timeAtChar(array $align, int $charOffset, float $duration, int $totalChars, int $index, int $count): float
     {

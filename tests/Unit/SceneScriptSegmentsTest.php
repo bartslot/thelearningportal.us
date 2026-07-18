@@ -75,4 +75,34 @@ class SceneScriptSegmentsTest extends TestCase
         $this->assertSame('00:00', $segments[0]['timecode']);
         $this->assertGreaterThan($segments[0]['start'], $segments[1]['start']);   // ascending
     }
+
+    // ── scriptParagraphs (per-paragraph editor boxes) ─────────────────────
+
+    public function test_paragraphs_split_on_blank_line_only(): void
+    {
+        // Two sentences in one paragraph stay together; a blank line starts a new paragraph.
+        $scene = $this->scene("First sentence. Second sentence.\n\nA new paragraph here.");
+
+        $paras = $scene->scriptParagraphs();
+
+        $this->assertCount(2, $paras);
+        $this->assertSame('First sentence. Second sentence.', $paras[0]['text']);
+        $this->assertSame('A new paragraph here.', $paras[1]['text']);
+    }
+
+    public function test_paragraph_keeps_internal_soft_newlines(): void
+    {
+        // A single newline is a soft break inside the paragraph — it must survive (not split).
+        $scene = $this->scene("Line one\nline two, same paragraph.\n\nSecond paragraph.");
+
+        $paras = $scene->scriptParagraphs();
+
+        $this->assertCount(2, $paras);
+        $this->assertSame("Line one\nline two, same paragraph.", $paras[0]['text']);
+    }
+
+    public function test_empty_script_returns_no_paragraphs(): void
+    {
+        $this->assertSame([], $this->scene('   ')->scriptParagraphs());
+    }
 }

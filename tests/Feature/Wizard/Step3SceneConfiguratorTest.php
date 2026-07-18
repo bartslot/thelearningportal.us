@@ -129,6 +129,51 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('ready', $foreign->fresh()->status);
     }
 
+    // ── Regenerate a script paragraph from a prompt ───────────────────────
+
+    public function test_regenerate_script_paragraph_returns_cleaned_rewrite(): void
+    {
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('text')->once()->andReturn("  \"A tighter, punchier paragraph.\"  "));
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:regenerate-paragraph', sceneId: $this->s1->id, text: 'Old paragraph.', prompt: 'make it shorter')
+            ->assertDispatched('scene:paragraph-result', sceneId: $this->s1->id, text: 'A tighter, punchier paragraph.');
+    }
+
+    public function test_regenerate_script_paragraph_ignores_a_stale_scene(): void
+    {
+        // No LLM should be called for a scene that is no longer selected.
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock->shouldNotReceive('text'));
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:regenerate-paragraph', sceneId: $this->s2->id, text: 'x', prompt: 'y')
+            ->assertNotDispatched('scene:paragraph-result');
+    }
+
+    public function test_summarize_to_list_injects_a_bullet_card_and_signals_done(): void
+    {
+        $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
+            ->shouldReceive('json')->once()->andReturn(['points' => ['First point', 'Second point', 'Third point']]));
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->set('selectedSceneId', $this->s1->id)
+            ->dispatch('scene:summarize-to-list', sceneId: $this->s1->id)
+            ->assertDispatched('scene:summarize-done', sceneId: $this->s1->id);
+
+        // A medium-size bullet text card was dropped onto the scene.
+        $texts = $this->s1->fresh()->config['texts'] ?? [];
+        $bullet = collect($texts)->firstWhere('list', 'bullet');
+        $this->assertNotNull($bullet);
+        $this->assertSame('md', $bullet['size'], 'summary list uses size M');
+        $this->assertStringContainsString('First point', $bullet['text']);
+    }
+
     // ── Inline script save guards (data-loss protection) ──────────────────
 
     public function test_update_scene_script_saves_edited_narration(): void

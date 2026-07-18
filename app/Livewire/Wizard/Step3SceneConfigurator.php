@@ -1522,15 +1522,16 @@ class Step3SceneConfigurator extends Component
             'color' => '#0f172a',
             'opacity' => 0.8,
         ];
-        // Bullet summary sits on top of the panel — inset from the left so its markers
-        // clear the editor's scene rail while staying within the left-half panel.
+        // Bullet summary sits on top of the panel — a small left inset (~40px on a typical stage)
+        // and size "M" (medium) so it stays readable without dominating the slide. All named sizes
+        // are viewport-responsive (clamp() with a vw middle term) in TextOverlayLayer.
         $texts[] = [
             'id' => uniqid('txt_'),
             'text' => implode("\n", $points),
-            'x' => 13,
+            'x' => 4,
             'y' => 18,
             'font' => 'sans',
-            'size' => 'lg',
+            'size' => 'md',
             'list' => 'bullet',
             'bg' => 'none',
             'anchor' => 'screen',
@@ -1794,6 +1795,60 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $this->regenerate($sceneId, 'audio');
+    }
+
+    /**
+     * Rewrite ONE focused script paragraph from a short teacher prompt (Script panel toolbar).
+     * Stateless: returns the rewritten paragraph to the client via scene:paragraph-result — the
+     * Script editor swaps it into that box and saves through the normal update-script path.
+     */
+    #[On('scene:regenerate-paragraph')]
+    public function regenerateScriptParagraph(int $sceneId, string $text, string $prompt = ''): void
+    {
+        if ($sceneId !== $this->selectedSceneId) {
+            return;   // stale request from a scene we already left
+        }
+        $text = trim($text);
+        if ($text === '') {
+            $this->dispatch('scene:paragraph-result', sceneId: $sceneId, text: null);
+
+            return;
+        }
+
+        $instruction = trim($prompt) !== '' ? trim($prompt) : 'Improve the flow and clarity without changing the meaning.';
+
+        try {
+            $rewritten = app(\App\Services\OpenAiLlmService::class)->text(
+                'You rewrite ONE paragraph of a lesson narration that is read aloud by text-to-speech. '
+                .'Rules: spoken prose only — no markdown, headings, lists, quotes, or bracket tags; only use '
+                .'facts already present in the paragraph (never invent); keep roughly the same length unless the '
+                .'instruction says otherwise; reply in the SAME language as the paragraph. '
+                .'Reply with ONLY the rewritten paragraph text, nothing else.',
+                "Paragraph:\n".$text."\n\nInstruction: ".$instruction,
+            );
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not rewrite the paragraph — please try again.'), type: 'error');
+            $this->dispatch('scene:paragraph-result', sceneId: $sceneId, text: null);
+
+            return;
+        }
+
+        // Guard against the model wrapping the answer in quotes / stray tags.
+        $clean = trim((string) preg_replace('/\s*\n\s*/', ' ', strip_tags((string) $rewritten)));
+        $clean = trim($clean, "\"'“”‘’ \t");
+
+        $this->dispatch('scene:paragraph-result', sceneId: $sceneId, text: $clean !== '' ? $clean : null);
+    }
+
+    /** Script-panel entry point for the existing summarize-to-list; signals the toolbar to stop spinning. */
+    #[On('scene:summarize-to-list')]
+    public function summarizeToListFromScript(int $sceneId): void
+    {
+        if ($sceneId === $this->selectedSceneId) {
+            $this->summarizeScriptToList($sceneId);
+        }
+        $this->dispatch('scene:summarize-done', sceneId: $sceneId);
     }
 
     /**

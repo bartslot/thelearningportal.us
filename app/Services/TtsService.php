@@ -17,36 +17,49 @@ class TtsService
         return Storage::disk('public');
     }
 
+    /**
+     * Normalise a narration script for TTS while preserving the teacher's PARAGRAPH structure.
+     *
+     * A blank line (\n\n) is a paragraph boundary — kept as \n\n so the engine treats each
+     * paragraph as a distinct topic (its own intonation contour). A single newline (\n) is a
+     * SOFT break within a paragraph — collapsed to a space so the engine reads it as one
+     * continuous thought, NOT a new topic. (Previously every newline was flattened to \n\n, so
+     * a soft line break wrongly reset the intonation mid-paragraph.)
+     */
     public function prepareSpeechText(string $text): string
     {
         $text = str_replace(["\r\n", "\r"], "\n", $text);
-        $lines = preg_split('/\n+/', $text) ?: [];
-        $speech = [];
+        $paragraphs = preg_split('/\n\s*\n/', $text) ?: [];
+        $out = [];
 
-        foreach ($lines as $line) {
-            $line = trim($line);
+        foreach ($paragraphs as $para) {
+            $clean = [];
 
-            if ($line === '') {
-                continue;
+            foreach (preg_split('/\n+/', $para) ?: [] as $line) {
+                $line = trim($line);
+
+                if ($line === '' || $this->isHeadingLine($line)) {
+                    continue;
+                }
+
+                $line = preg_replace('/\*\*(.*?)\*\*/', '$1', $line) ?? $line;
+                $line = preg_replace('/\*(.*?)\*/', '$1', $line) ?? $line;
+                $line = preg_replace('/\[(.*?)\]\((.*?)\)/', '$1', $line) ?? $line;
+                $line = preg_replace('/^[\-*•]\s+/', '', $line) ?? $line;
+                $line = preg_replace('/^\d+[.)]\s+/', '', $line) ?? $line;
+                $line = preg_replace('/\s+/', ' ', $line) ?? $line;
+
+                if ($line !== '') {
+                    $clean[] = $line;
+                }
             }
 
-            if ($this->isHeadingLine($line)) {
-                continue;
-            }
-
-            $line = preg_replace('/\*\*(.*?)\*\*/', '$1', $line) ?? $line;
-            $line = preg_replace('/\*(.*?)\*/', '$1', $line) ?? $line;
-            $line = preg_replace('/\[(.*?)\]\((.*?)\)/', '$1', $line) ?? $line;
-            $line = preg_replace('/^[\-*•]\s+/', '', $line) ?? $line;
-            $line = preg_replace('/^\d+[.)]\s+/', '', $line) ?? $line;
-            $line = preg_replace('/\s+/', ' ', $line) ?? $line;
-
-            if ($line !== '') {
-                $speech[] = $line;
+            if ($clean !== []) {
+                $out[] = implode(' ', $clean);   // soft newlines → spaces (one topic per paragraph)
             }
         }
 
-        return trim(implode("\n\n", $speech));
+        return trim(implode("\n\n", $out));
     }
 
     /**
