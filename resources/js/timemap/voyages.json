@@ -596,7 +596,8 @@
         {
           "name": "Heemskerck",
           "masts": 3,
-          "flagship": true
+          "flagship": true,
+          "model": "/timemap/assets/tasman-flagship.fbx"
         },
         {
           "name": "Zeehaen",

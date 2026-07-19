@@ -1,4 +1,11 @@
 {
+  "_FBXLoader-Bvfl7Vye.js": {
+    "file": "assets/FBXLoader-Bvfl7Vye.js",
+    "name": "FBXLoader",
+    "imports": [
+      "node_modules/three/build/three.module.js"
+    ]
+  },
   "__commonjsHelpers-CqkleIqs.js": {
     "file": "assets/_commonjsHelpers-CqkleIqs.js",
     "name": "_commonjsHelpers"
@@ -25,8 +32,8 @@
     "file": "assets/preload-helper-DIdkKO6w.js",
     "name": "preload-helper"
   },
-  "_voyages-Cjc3RAeh.js": {
-    "file": "assets/voyages-Cjc3RAeh.js",
+  "_voyages-CEiRQVFE.js": {
+    "file": "assets/voyages-CEiRQVFE.js",
     "name": "voyages"
   },
   "node_modules/three/build/three.module.js": {
@@ -45,7 +52,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-DAPzmSM8.js",
+    "file": "assets/app-CUk9KfyB.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -72,13 +79,14 @@
     ]
   },
   "resources/js/avatar-3d.js": {
-    "file": "assets/avatar-3d-BskHQ67v.js",
+    "file": "assets/avatar-3d-qh3TcQoa.js",
     "name": "avatar-3d",
     "src": "resources/js/avatar-3d.js",
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js"
+      "node_modules/three/build/three.module.js",
+      "_FBXLoader-Bvfl7Vye.js"
     ]
   },
   "resources/js/lesson-map.js": {
@@ -93,7 +101,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-1Wutyj2L.js",
+    "file": "assets/lesson-player-CPJicAK1.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -148,7 +156,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-DZN1J5AK.js",
+    "file": "assets/index-CE4IMbVY.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -157,7 +165,8 @@
       "resources/js/scene/QuizOverlay.js",
       "resources/js/scene/TextOverlayLayer.js",
       "_preload-helper-DIdkKO6w.js",
-      "resources/js/avatar-3d.js"
+      "resources/js/avatar-3d.js",
+      "_FBXLoader-Bvfl7Vye.js"
     ],
     "dynamicImports": [
       "resources/js/scene/ParallaxScene.js",
@@ -166,14 +175,14 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-C7NbOyp-.js",
+    "file": "assets/index-CQ8yXeF0.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
       "_preload-helper-DIdkKO6w.js",
       "_map-volcanoes-BtFq4ki9.js",
-      "_voyages-Cjc3RAeh.js",
+      "_voyages-CEiRQVFE.js",
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
@@ -181,27 +190,29 @@
     ]
   },
   "resources/js/timemap/voyage-ships.js": {
-    "file": "assets/voyage-ships-DNwBUnpA.js",
+    "file": "assets/voyage-ships-DBwOUbeQ.js",
     "name": "voyage-ships",
     "src": "resources/js/timemap/voyage-ships.js",
     "isDynamicEntry": true,
     "imports": [
       "node_modules/three/build/three.module.js",
-      "_voyages-Cjc3RAeh.js"
+      "_FBXLoader-Bvfl7Vye.js",
+      "_voyages-CEiRQVFE.js"
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-Cu8eaxXe.js",
+    "file": "assets/voyage-tour-CnfloeEE.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/lesson-map.js",
-      "_voyages-Cjc3RAeh.js",
+      "_voyages-CEiRQVFE.js",
       "resources/js/timemap/voyage-ships.js",
       "_map-volcanoes-BtFq4ki9.js",
       "__commonjsHelpers-CqkleIqs.js",
-      "node_modules/three/build/three.module.js"
+      "node_modules/three/build/three.module.js",
+      "_FBXLoader-Bvfl7Vye.js"
     ]
   }
 }

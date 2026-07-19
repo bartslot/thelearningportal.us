@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { voyageRoutes } from './voyages.js';
 import { buildFleet } from './voyage-fleet.js';
 
@@ -66,14 +67,40 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
   let renderer = null;
 
   // One fleet (1-2 ship groups) per voyage; only the ship being drawn is visible per pass.
+  // A fleet entry with a `model` URL (e.g. Tasman's flagship FBX) upgrades in place once it
+  // loads — the parametric tall ship renders instantly as the fallback.
+  const allShips = () => voyages.flatMap((v) => v.ships);
+  const upgradeShip = (v, i, url) => {
+    new FBXLoader().load(url, (obj) => {
+      // Normalise to the fleet convention: length 1, keel on the waterline, bow toward -Z.
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const len = Math.max(size.x, size.z) || 1;
+      obj.scale.setScalar(1 / len);
+      const box2 = new THREE.Box3().setFromObject(obj);
+      const centre = box2.getCenter(new THREE.Vector3());
+      obj.position.sub(centre);
+      obj.position.y += box2.getSize(new THREE.Vector3()).y / 2;
+      if (size.x > size.z) obj.rotation.y = Math.PI / 2; // hull built along X → align to -Z
+      const group = new THREE.Group();
+      group.add(obj);
+      group.visible = false;
+      scene.remove(v.ships[i]);
+      scene.add(group);
+      v.ships[i] = group;
+      map.triggerRepaint();
+    }, undefined, () => { /* keep the parametric fallback on load failure */ });
+  };
   for (const v of voyages) {
     v.ships = buildFleet(v.fleet);
     v.ships.forEach((s) => {
       s.visible = false;
       scene.add(s);
     });
+    (v.fleet || []).forEach((spec, i) => {
+      if (spec && spec.model && v.ships[i]) upgradeShip(v, i, spec.model);
+    });
   }
-  const allShips = voyages.flatMap((v) => v.ships);
 
   const visibleVoyages = () =>
     (year === null ? [] : voyages.filter((v) => v.show_from <= year && year <= v.show_to));
@@ -109,7 +136,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
           const p = pointAt(v.track, baseT - i * FORMATION_GAP);
           const lngLat = [((p.lng + 180) % 360 + 360) % 360 - 180, p.lat];
           const scale = shipMetres * (i === 0 ? 1 : 0.85); // escorts slightly smaller
-          allShips.forEach((s) => { s.visible = false; });
+          allShips().forEach((s) => { s.visible = false; });
           ship.visible = true;
           ship.rotation.set(0, p.heading + Math.PI / 2, 0);
           ship.scale.setScalar(scale);
@@ -121,7 +148,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
           renderer.render(scene, camera);
         });
       }
-      allShips.forEach((s) => { s.visible = false; });
+      allShips().forEach((s) => { s.visible = false; });
     },
   };
 
