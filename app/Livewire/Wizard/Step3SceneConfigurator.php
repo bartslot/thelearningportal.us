@@ -93,7 +93,6 @@ class Step3SceneConfigurator extends Component
             : null;
     }
 
-
     #[Computed]
     public function games()
     {
@@ -554,6 +553,11 @@ class Step3SceneConfigurator extends Component
         return City::query()
             ->where(fn ($w) => $w->where('name', 'ilike', '%'.$q.'%')
                 ->orWhere('historical_name', 'ilike', '%'.$q.'%'))
+            // Never offer coordinate-less stub rows (seeded 0/0 when the NE import is missing) —
+            // their focus pin would land at (0,0) in the Gulf of Guinea and drag the camera there.
+            // Run cities:backfill-coords to fix stubs.
+            ->whereNot(fn ($w) => $w->where('lat', 0)->where('lng', 0))
+            ->whereNotNull('lat')->whereNotNull('lng')
             ->orderBy('scalerank')
             ->limit(8)
             ->get(['id', 'name', 'lat', 'lng', 'historical_name']);
@@ -570,6 +574,10 @@ class Step3SceneConfigurator extends Component
         }
         $c = City::find($cityId);
         if (! $c) {
+            return;
+        }
+        // Belt + braces with the cityResults filter: never store a pin without real coordinates.
+        if ($c->lat === null || $c->lng === null || ((float) $c->lat === 0.0 && (float) $c->lng === 0.0)) {
             return;
         }
 
@@ -1293,133 +1301,133 @@ class Step3SceneConfigurator extends Component
         }
 
         try {
-        $term = trim($this->paintingQuery);
-        $topicQid = preg_match('/^(?:figure|polity|event):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
-        $eventQid = preg_match('/^event:(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
-        $location = trim((string) ($this->selectedScene['location'] ?? ''));
+            $term = trim($this->paintingQuery);
+            $topicQid = preg_match('/^(?:figure|polity|event):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
+            $eventQid = preg_match('/^event:(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
+            $location = trim((string) ($this->selectedScene['location'] ?? ''));
 
-        $kind = $this->paintingKind ?: null;
-        $target = $this->matchTarget;
-        $preferRegions = $this->regionPreference();
-        $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
-            if ($term !== '') {
-                // Search: the term filters, but rank by the lesson's subject/region context so
-                // "Revolution" in a French-Revolution lesson floats French works to the top.
-                $found = \App\Models\Corpus\Artwork::matchScene(
-                    [],                              // no core gate — the term is the filter
-                    $target['themes'] ?? [],
-                    $target['actor_qids'] ?? [],
-                    $target['era'] ?? null,
-                    self::PAINTING_GRID_LIMIT,
-                    $kind,
-                    $preferRegions,
-                    $term,
-                )->get();
+            $kind = $this->paintingKind ?: null;
+            $target = $this->matchTarget;
+            $preferRegions = $this->regionPreference();
+            $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
+                if ($term !== '') {
+                    // Search: the term filters, but rank by the lesson's subject/region context so
+                    // "Revolution" in a French-Revolution lesson floats French works to the top.
+                    $found = \App\Models\Corpus\Artwork::matchScene(
+                        [],                              // no core gate — the term is the filter
+                        $target['themes'] ?? [],
+                        $target['actor_qids'] ?? [],
+                        $target['era'] ?? null,
+                        self::PAINTING_GRID_LIMIT,
+                        $kind,
+                        $preferRegions,
+                        $term,
+                    )->get();
 
-                // Untagged works aren't in the scored index — fall back to a plain search only
-                // when the scored search finds nothing.
-                return $found->isNotEmpty()
-                    ? $found
-                    : \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
-            }
-            // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
-            // correctness (theme + actor + era + quality). This is the source-blind ranker.
-            if (! empty($target['core'])) {
-                $scored = \App\Models\Corpus\Artwork::matchScene(
-                    $target['core'],
-                    $target['themes'] ?? [],
-                    $target['actor_qids'] ?? [],
-                    $target['era'] ?? null,
-                    self::PAINTING_GRID_LIMIT,
-                    $kind,
-                    $preferRegions,
-                )->get();
-                if ($scored->isNotEmpty()) {
-                    return $scored;
+                    // Untagged works aren't in the scored index — fall back to a plain search only
+                    // when the scored search finds nothing.
+                    return $found->isNotEmpty()
+                        ? $found
+                        : \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
                 }
-            }
-            // Fallback blend (no derived target, or the gate found nothing): depicts-by-topic
-            // + near-era + location cityscapes.
-            $suggested = collect();
-            if ($topicQid) {
-                $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
-            }
-            $approxYear = $this->sceneApproxYear();
-            if ($approxYear !== null && $suggested->count() < self::PAINTING_GRID_LIMIT) {
-                $suggested = $suggested
-                    ->concat(\App\Models\Corpus\Artwork::nearYear($approxYear, 60, self::PAINTING_GRID_LIMIT, $kind)->get())
-                    ->unique('qid')
-                    ->values();
-            }
-            if ($location !== '' && $suggested->count() < self::PAINTING_GRID_LIMIT) {
-                $suggested = $suggested
-                    ->concat(\App\Models\Corpus\Artwork::search($location, self::PAINTING_GRID_LIMIT, $kind)->get())
-                    ->unique('qid')
-                    ->values();
-            }
-
-            return $suggested;
-        });
-
-        // Hand-matched story images (scraped → resolved to open Commons originals) lead the
-        // grid for an event lesson — the teacher still sees the rest of the corpus below them.
-        // Skipped while searching so a typed term keeps priority.
-        if ($eventQid && $term === '') {
-            $curated = \App\Models\Corpus\Topic::resilient(
-                fn () => \App\Models\Corpus\Artwork::storyFor($eventQid, self::PAINTING_GRID_LIMIT, $kind)->get()
-            );
-            if ($curated->isNotEmpty()) {
-                $corpus = $curated->concat($corpus)->unique('qid')->values()->take(self::PAINTING_GRID_LIMIT);
-            }
-        }
-
-        // "Correctness n/m": soft criteria satisfied (themes + actors + era) out of the total.
-        $softMax = count($target['themes'] ?? []) + count($target['actor_qids'] ?? []) + (! empty($target['era']) ? 1 : 0);
-
-        $tiles = $corpus->map(fn ($art) => [
-            'source' => 'corpus',
-            'key' => $art->qid,
-            'thumb' => $art->renditionUrl(800),
-            'title' => $art->title ?? __('Untitled'),
-            'caption' => $art->caption(),
-            'kind' => $art->kind,
-            'provenance' => $art->collection ?: __('Wikimedia'),
-            'correctness' => (isset($art->soft_hits) && $softMax > 0)
-                ? min($softMax, (int) $art->soft_hits).'/'.$softMax
-                : null,
-        ]);
-
-        // Top up from Commons live search — finds files the Wikidata harvest can't
-        // (most Commons images have no Wikidata item of their own). City-map browsing
-        // stays corpus-only: the curated Braun & Hogenberg set IS the map catalog.
-        if ($this->paintingCommonsLoaded && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
-            $commons = app(\App\Services\CommonsImageService::class);
-            $live = collect();
-            if ($term !== '') {
-                $live = collect($commons->searchText($term.' painting'));
-            } else {
+                // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
+                // correctness (theme + actor + era + quality). This is the source-blind ranker.
+                if (! empty($target['core'])) {
+                    $scored = \App\Models\Corpus\Artwork::matchScene(
+                        $target['core'],
+                        $target['themes'] ?? [],
+                        $target['actor_qids'] ?? [],
+                        $target['era'] ?? null,
+                        self::PAINTING_GRID_LIMIT,
+                        $kind,
+                        $preferRegions,
+                    )->get();
+                    if ($scored->isNotEmpty()) {
+                        return $scored;
+                    }
+                }
+                // Fallback blend (no derived target, or the gate found nothing): depicts-by-topic
+                // + near-era + location cityscapes.
+                $suggested = collect();
                 if ($topicQid) {
-                    $live = collect($commons->searchDepicting($topicQid));
+                    $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
                 }
-                if ($location !== '') {
-                    $live = $live->concat($commons->searchText($location.' painting'));
+                $approxYear = $this->sceneApproxYear();
+                if ($approxYear !== null && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                    $suggested = $suggested
+                        ->concat(\App\Models\Corpus\Artwork::nearYear($approxYear, 60, self::PAINTING_GRID_LIMIT, $kind)->get())
+                        ->unique('qid')
+                        ->values();
+                }
+                if ($location !== '' && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                    $suggested = $suggested
+                        ->concat(\App\Models\Corpus\Artwork::search($location, self::PAINTING_GRID_LIMIT, $kind)->get())
+                        ->unique('qid')
+                        ->values();
+                }
+
+                return $suggested;
+            });
+
+            // Hand-matched story images (scraped → resolved to open Commons originals) lead the
+            // grid for an event lesson — the teacher still sees the rest of the corpus below them.
+            // Skipped while searching so a typed term keeps priority.
+            if ($eventQid && $term === '') {
+                $curated = \App\Models\Corpus\Topic::resilient(
+                    fn () => \App\Models\Corpus\Artwork::storyFor($eventQid, self::PAINTING_GRID_LIMIT, $kind)->get()
+                );
+                if ($curated->isNotEmpty()) {
+                    $corpus = $curated->concat($corpus)->unique('qid')->values()->take(self::PAINTING_GRID_LIMIT);
                 }
             }
-            $tiles = $tiles->concat($live->unique('file_title')->map(fn ($f) => [
-                'source' => 'commons',
-                'key' => $f['file_title'],
-                'thumb' => $f['thumb_url'],
-                'title' => $f['title'],
-                'caption' => trim(($f['artist'] ?? '').' · '.$f['license'], ' ·'),
-                'kind' => 'painting',
-                'provenance' => __('Wikimedia Commons'),
-                'correctness' => null,
-            ]));
-        }
 
-        return $tiles->unique(fn ($t) => mb_strtolower($t['title']))
-            ->take(self::PAINTING_GRID_LIMIT)
-            ->values();
+            // "Correctness n/m": soft criteria satisfied (themes + actors + era) out of the total.
+            $softMax = count($target['themes'] ?? []) + count($target['actor_qids'] ?? []) + (! empty($target['era']) ? 1 : 0);
+
+            $tiles = $corpus->map(fn ($art) => [
+                'source' => 'corpus',
+                'key' => $art->qid,
+                'thumb' => $art->renditionUrl(800),
+                'title' => $art->title ?? __('Untitled'),
+                'caption' => $art->caption(),
+                'kind' => $art->kind,
+                'provenance' => $art->collection ?: __('Wikimedia'),
+                'correctness' => (isset($art->soft_hits) && $softMax > 0)
+                    ? min($softMax, (int) $art->soft_hits).'/'.$softMax
+                    : null,
+            ]);
+
+            // Top up from Commons live search — finds files the Wikidata harvest can't
+            // (most Commons images have no Wikidata item of their own). City-map browsing
+            // stays corpus-only: the curated Braun & Hogenberg set IS the map catalog.
+            if ($this->paintingCommonsLoaded && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
+                $commons = app(\App\Services\CommonsImageService::class);
+                $live = collect();
+                if ($term !== '') {
+                    $live = collect($commons->searchText($term.' painting'));
+                } else {
+                    if ($topicQid) {
+                        $live = collect($commons->searchDepicting($topicQid));
+                    }
+                    if ($location !== '') {
+                        $live = $live->concat($commons->searchText($location.' painting'));
+                    }
+                }
+                $tiles = $tiles->concat($live->unique('file_title')->map(fn ($f) => [
+                    'source' => 'commons',
+                    'key' => $f['file_title'],
+                    'thumb' => $f['thumb_url'],
+                    'title' => $f['title'],
+                    'caption' => trim(($f['artist'] ?? '').' · '.$f['license'], ' ·'),
+                    'kind' => 'painting',
+                    'provenance' => __('Wikimedia Commons'),
+                    'correctness' => null,
+                ]));
+            }
+
+            return $tiles->unique(fn ($t) => mb_strtolower($t['title']))
+                ->take(self::PAINTING_GRID_LIMIT)
+                ->values();
         } catch (\Throwable $e) {
             // Corpus / Commons unavailable (e.g. a dropped Supabase pooler connection that didn't
             // recover on the single retry) — degrade to an empty grid so the picker still OPENS
@@ -2046,9 +2054,9 @@ class Step3SceneConfigurator extends Component
                     : ucfirst((string) $s->kind);
                 $why = match ((string) $s->status) {
                     'generating' => __('still generating'),
-                    'failed'     => __('failed — regenerate it'),
-                    'pending'    => __('not generated yet'),
-                    default      => (string) $s->status,
+                    'failed' => __('failed — regenerate it'),
+                    'pending' => __('not generated yet'),
+                    default => (string) $s->status,
                 };
 
                 return __('Scene :n (:kind): :why', ['n' => $s->order, 'kind' => $kind, 'why' => $why]);

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 class WikidataPolityResolver
 {
     // Wikimedia blocks requests without a descriptive User-Agent (HTTP 403). See their UA policy.
-    private const USER_AGENT = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
+    public const USER_AGENT = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
 
     private function client(): PendingRequest
     {

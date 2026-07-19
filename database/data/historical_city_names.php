@@ -31,20 +31,20 @@ return [
     // ── Mesopotamia, Persia & Central Asia ───────────────────────────────────
     ['modern' => 'Baghdad', 'historical' => 'Madinat al-Salam', 'period' => '762–1258 CE', 'qid' => 'Q1530'],
     ['modern' => 'Hillah', 'historical' => 'Babylon', 'period' => '1894–539 BCE', 'qid' => 'Q221413'],
-    ['modern' => 'Mosul', 'historical' => 'Nineveh', 'period' => '7th c. BCE', 'qid' => 'Q35539'],
+    ['modern' => 'Mosul', 'historical' => 'Nineveh', 'period' => '7th c. BCE', 'qid' => 'Q83317'],
     ['modern' => 'Shiraz', 'historical' => 'Persepolis', 'period' => '550–330 BCE', 'qid' => 'Q129846'],
     ['modern' => 'Samarkand', 'historical' => 'Maracanda', 'period' => 'antiquity–Timurid', 'qid' => 'Q5753'],
     ['modern' => 'Bukhara', 'historical' => 'Bukhārā', 'period' => 'Silk Road era', 'qid' => 'Q5712'],
-    ['modern' => 'Ctesiphon', 'historical' => 'Ctesiphon', 'period' => '120 BCE–637 CE', 'qid' => 'Q205966'],
+    ['modern' => 'Ctesiphon', 'historical' => 'Ctesiphon', 'period' => '120 BCE–637 CE', 'qid' => 'Q192541'],
     ['modern' => 'Merv', 'historical' => 'Margiana', 'period' => 'antiquity–1221 CE', 'qid' => 'Q623578'],
 
     // ── Egypt & Africa ───────────────────────────────────────────────────────
     ['modern' => 'Cairo', 'historical' => 'Fustat', 'period' => '641–1168 CE', 'qid' => 'Q85'],
     ['modern' => 'Luxor', 'historical' => 'Thebes', 'period' => '2055–1070 BCE', 'qid' => 'Q101583'],
     ['modern' => 'Memphis', 'historical' => 'Memphis', 'period' => '3100–641 CE', 'qid' => 'Q5715'],
-    ['modern' => 'Timbuktu', 'historical' => 'Timbuktu', 'period' => '13th–16th c. CE', 'qid' => 'Q11936'],
+    ['modern' => 'Timbuktu', 'historical' => 'Timbuktu', 'period' => '13th–16th c. CE', 'qid' => 'Q9427'],
     ['modern' => 'Fez', 'historical' => 'Fes el-Bali', 'period' => '789 CE onward', 'qid' => 'Q31525'],
-    ['modern' => 'Masvingo', 'historical' => 'Great Zimbabwe', 'period' => '1100–1450 CE', 'qid' => 'Q175482'],
+    ['modern' => 'Masvingo', 'historical' => 'Great Zimbabwe', 'period' => '1100–1450 CE', 'qid' => 'Q601142'],
 
     // ── Europe ───────────────────────────────────────────────────────────────
     ['modern' => 'Paris', 'historical' => 'Lutetia', 'period' => 'Roman Gaul', 'qid' => 'Q90'],
@@ -60,24 +60,24 @@ return [
 
     // ── East & South Asia ────────────────────────────────────────────────────
     ['modern' => 'Beijing', 'historical' => 'Khanbaliq', 'period' => '1264–1368 CE', 'qid' => 'Q956'],
-    ["modern" => "Xi'an", 'historical' => "Chang'an", 'period' => '202 BCE–907 CE', 'qid' => 'Q5826'],
+    ['modern' => "Xi'an", 'historical' => "Chang'an", 'period' => '202 BCE–907 CE', 'qid' => 'Q5826'],
     ['modern' => 'Nanjing', 'historical' => 'Jinling', 'period' => 'Six Dynasties', 'qid' => 'Q16666'],
-    ['modern' => 'Luoyang', 'historical' => 'Luoyi', 'period' => 'Eastern Zhou–Han', 'qid' => 'Q92099'],
+    ['modern' => 'Luoyang', 'historical' => 'Luoyi', 'period' => 'Eastern Zhou–Han', 'qid' => 'Q187136'],
     ['modern' => 'Tokyo', 'historical' => 'Edo', 'period' => '1603–1868 CE', 'qid' => 'Q1490'],
     ['modern' => 'Kyoto', 'historical' => 'Heian-kyō', 'period' => '794–1869 CE', 'qid' => 'Q34600'],
-    ['modern' => 'Nara', 'historical' => 'Heijō-kyō', 'period' => '710–784 CE', 'qid' => 'Q183234'],
+    ['modern' => 'Nara', 'historical' => 'Heijō-kyō', 'period' => '710–784 CE', 'qid' => 'Q169134'],
     ['modern' => 'Hanoi', 'historical' => 'Thang Long', 'period' => '1010–1802 CE', 'qid' => 'Q1858'],
     ['modern' => 'Ho Chi Minh City', 'historical' => 'Saigon', 'period' => '1698–1976 CE', 'qid' => 'Q1854'],
     ['modern' => 'Delhi', 'historical' => 'Shahjahanabad', 'period' => '1639–1857 CE', 'qid' => 'Q1353'],
     ['modern' => 'Patna', 'historical' => 'Pataliputra', 'period' => '490 BCE–550 CE', 'qid' => 'Q49159'],
-    ['modern' => 'Varanasi', 'historical' => 'Kashi', 'period' => 'antiquity', 'qid' => 'Q1001'],
+    ['modern' => 'Varanasi', 'historical' => 'Kashi', 'period' => 'antiquity', 'qid' => 'Q79980'],
     ['modern' => 'Kolkata', 'historical' => 'Calcutta', 'period' => '1690–2001 CE', 'qid' => 'Q1348'],
     ['modern' => 'Mumbai', 'historical' => 'Bombay', 'period' => '1661–1995 CE', 'qid' => 'Q1156'],
-    ['modern' => 'Siem Reap', 'historical' => 'Angkor', 'period' => '802–1431 CE', 'qid' => 'Q43580'],
+    ['modern' => 'Siem Reap', 'historical' => 'Angkor', 'period' => '802–1431 CE', 'qid' => 'Q11711'],
 
     // ── The Americas ─────────────────────────────────────────────────────────
     ['modern' => 'Mexico City', 'historical' => 'Tenochtitlán', 'period' => '1325–1521 CE', 'qid' => 'Q1489'],
-    ['modern' => 'Cusco', 'historical' => 'Qosqo', 'period' => '1200–1572 CE', 'qid' => 'Q5582'],
+    ['modern' => 'Cusco', 'historical' => 'Qosqo', 'period' => '1200–1572 CE', 'qid' => 'Q5582862'],
     ['modern' => 'New York', 'historical' => 'New Amsterdam', 'period' => '1625–1664 CE', 'qid' => 'Q60'],
-    ['modern' => 'Cahokia', 'historical' => 'Cahokia', 'period' => '1050–1350 CE', 'qid' => 'Q1023474'],
+    ['modern' => 'Cahokia', 'historical' => 'Cahokia', 'period' => '1050–1350 CE', 'qid' => 'Q333661'],
 ];

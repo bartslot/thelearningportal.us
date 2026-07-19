@@ -50,6 +50,10 @@ trait SeedsCorpusFixtures
                 updated_at timestamptz
             )');
 
+        // The topics catalog view (A2) depends on polities AND figures — drop it before either
+        // table can go.
+        $corpus->statement('DROP VIEW IF EXISTS public.topics');
+
         // The polity endpoint reads figures for the People tab — recreate it at the CURRENT
         // schema (mirrors BuildTopics::ensureSchema) so a stale table from an old run can't
         // fail every endpoint test with an undefined-column error.
@@ -74,8 +78,6 @@ trait SeedsCorpusFixtures
                 PRIMARY KEY (qid, parent_qid)
             )');
 
-        // The topics catalog view (A2) depends on polities — drop it first so the table can go.
-        $corpus->statement('DROP VIEW IF EXISTS public.topics');
         $corpus->statement('DROP TABLE IF EXISTS public.polities CASCADE');
         $corpus->statement('
             CREATE TABLE public.polities (
