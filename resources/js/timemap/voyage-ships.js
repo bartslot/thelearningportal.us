@@ -1,21 +1,21 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { voyageRoutes } from './voyages.js';
+import { buildFleet } from './voyage-fleet.js';
 
-// A 3D tall ship (public/timemap/assets/traders_tallship.glb) sailing along each era-visible
-// voyage route — replaces the old arrowheads. Rendered as a MapLibre custom layer via three.js,
-// using getMatrixForModel so placement is correct on the globe projection. This module is
-// dynamically imported from index.js, so three.js lives in its own lazy chunk.
+// Low-poly tall-ship fleets sailing along each era-visible voyage route. Ships are parametric
+// (voyage-fleet.js) — no GLB, no textures, flat colours, a couple of KB. Rendered as a MapLibre
+// custom layer via three.js, placed with map.transform.getMatrixForModel so the globe projection
+// is handled. This module is dynamically imported from index.js (own lazy chunk with three).
 //
-// Same depth gotcha as the routes themselves: the layer must sit BELOW tm-clouds (whose 3D pass
-// writes depth across the whole globe) or the ships are silently culled.
+// Depth gotcha (see voyages.js): the layer must sit BELOW tm-clouds, whose renderingMode:'3d'
+// pass writes depth across the whole globe — any depth-tested layer drawn after it is culled.
 
-const SHIP_PX = 42;                 // approximate on-screen ship length
-const LAP_SECONDS = 45;             // one full route traversal
+const SHIP_PX = 46;                 // approximate on-screen length of the flagship
+const LAP_SECONDS = 45;             // ambient loop: one full route traversal
 const EARTH_CIRCUMFERENCE = 40_075_000;
+const FORMATION_GAP = 0.012;        // escort trail distance as a fraction of route length
 
-// Constant-speed sampling: cumulative distances over the smoothed route (degree-space is fine
-// for pacing — visual speed differences across latitudes are irrelevant at this scale).
+// Constant-speed sampling: cumulative distances over the smoothed route (degree-space pacing).
 const buildTrack = (coords) => {
   const cum = [0];
   for (let i = 1; i < coords.length; i++) {
@@ -27,7 +27,7 @@ const buildTrack = (coords) => {
 };
 
 const pointAt = (track, t) => {
-  const target = t * track.total;
+  const target = Math.min(1, Math.max(0, t)) * track.total;
   let lo = 0;
   let hi = track.cum.length - 1;
   while (lo < hi) {
@@ -42,22 +42,21 @@ const pointAt = (track, t) => {
   return {
     lng: a[0] + (b[0] - a[0]) * f,
     lat: a[1] + (b[1] - a[1]) * f,
-    // Heading in radians, 0 = east, counter-clockwise (screen-space-ish; fine at map scale).
     heading: Math.atan2(b[1] - a[1], (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180)),
   };
 };
 
-export function addVoyageShips(map, { beforeId = 'tm-clouds' } = {}) {
+export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambient = true } = {}) {
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const tracks = voyageRoutes().map((v, i) => ({
-    ...v,
-    track: buildTrack(v.coords),
-    phase: (i * 0.37) % 1, // desync the fleet
-  }));
+  const voyages = voyageRoutes()
+    .filter((v) => !only || v.id === only)
+    .map((v, i) => ({
+      ...v,
+      track: buildTrack(v.coords),
+      phase: (i * 0.37) % 1, // desync the fleet across voyages
+    }));
 
   let year = null;
-  let model = null;
-  let modelLength = 1;
   const camera = new THREE.Camera();
   const scene = new THREE.Scene();
   scene.add(new THREE.AmbientLight(0xffffff, 2.2));
@@ -66,8 +65,18 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds' } = {}) {
   scene.add(sun);
   let renderer = null;
 
-  const visibleShips = () =>
-    (year === null ? [] : tracks.filter((v) => v.show_from <= year && year <= v.show_to));
+  // One fleet (1-2 ship groups) per voyage; only the ship being drawn is visible per pass.
+  for (const v of voyages) {
+    v.ships = buildFleet(v.fleet);
+    v.ships.forEach((s) => {
+      s.visible = false;
+      scene.add(s);
+    });
+  }
+  const allShips = voyages.flatMap((v) => v.ships);
+
+  const visibleVoyages = () =>
+    (year === null ? [] : voyages.filter((v) => v.show_from <= year && year <= v.show_to));
 
   const layer = {
     id: 'voyage-ships',
@@ -76,77 +85,79 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds' } = {}) {
     onAdd(mapInstance, gl) {
       renderer = new THREE.WebGLRenderer({ canvas: mapInstance.getCanvas(), context: gl, antialias: true });
       renderer.autoClear = false;
-      new GLTFLoader().load('/timemap/assets/traders_tallship.glb', (gltf) => {
-        model = gltf.scene;
-        // Normalise: unknown export scale/origin — measure and centre so maths below can treat
-        // the ship as a unit-length prop standing on the waterline.
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        modelLength = Math.max(size.x, size.z) || 1;
-        const centre = box.getCenter(new THREE.Vector3());
-        model.position.sub(centre);
-        model.position.y += size.y / 2; // keel on the water
-        scene.add(model);
-        mapInstance.triggerRepaint();
-      });
     },
     render(gl, args) {
-      window.__shipDbg = {
-        model: !!model, year, ships: visibleShips().length,
-        api: !!(map.transform && typeof map.transform.getMatrixForModel === 'function'),
-      };
-      if (!model || !renderer) return;
-      const ships = visibleShips();
-      if (!ships.length) return;
-
-      // v5 globe-aware placement: model matrix comes from map.transform.getMatrixForModel and the
-      // projection from args.defaultProjectionData.mainMatrix (see MapLibre's globe 3D-model example).
+      if (!renderer) return;
+      const active = visibleVoyages();
+      if (!active.length) return;
       const getModelMatrix = map.transform && typeof map.transform.getMatrixForModel === 'function'
         ? (lngLat) => map.transform.getMatrixForModel(lngLat, 0)
         : null;
+      if (!getModelMatrix) return;
       const mainMatrix = args && args.defaultProjectionData ? args.defaultProjectionData.mainMatrix : args;
+
       const zoom = map.getZoom();
-      // Metres per screen pixel at this zoom (equator approximation) → zoom-constant ship size.
       const metresPerPixel = EARTH_CIRCUMFERENCE / (512 * Math.pow(2, zoom));
       const shipMetres = SHIP_PX * metresPerPixel;
       const now = performance.now() / 1000;
 
-      for (const ship of ships) {
-        const t = reducedMotion ? 0.35 : ((now / LAP_SECONDS) * (ship.track.total > 200 ? 0.6 : 1) + ship.phase) % 1;
-        const p = pointAt(ship.track, t);
-        const lngLat = [((p.lng + 180) % 360 + 360) % 360 - 180, p.lat];
-
-        if (!getModelMatrix) continue; // unknown API shape — skip rather than mis-place
-        const modelMatrix = getModelMatrix(lngLat);
-
-        const scale = shipMetres / modelLength;
-        model.rotation.set(0, p.heading + Math.PI / 2, 0); // glTF is Y-up, bow along -Z
-        model.scale.setScalar(scale);
-        model.updateMatrixWorld(true);
-
-        camera.projectionMatrix = new THREE.Matrix4()
-          .fromArray(mainMatrix)
-          .multiply(new THREE.Matrix4().fromArray(modelMatrix));
-        renderer.resetState();
-        renderer.render(scene, camera);
+      for (const v of active) {
+        const baseT = v.tourT !== undefined
+          ? v.tourT
+          : (reducedMotion ? 0.35 : ((now / LAP_SECONDS) * (v.track.total > 200 ? 0.6 : 1) + v.phase) % 1);
+        v.ships.forEach((ship, i) => {
+          const p = pointAt(v.track, baseT - i * FORMATION_GAP);
+          const lngLat = [((p.lng + 180) % 360 + 360) % 360 - 180, p.lat];
+          const scale = shipMetres * (i === 0 ? 1 : 0.85); // escorts slightly smaller
+          allShips.forEach((s) => { s.visible = false; });
+          ship.visible = true;
+          ship.rotation.set(0, p.heading + Math.PI / 2, 0);
+          ship.scale.setScalar(scale);
+          ship.updateMatrixWorld(true);
+          camera.projectionMatrix = new THREE.Matrix4()
+            .fromArray(mainMatrix)
+            .multiply(new THREE.Matrix4().fromArray(getModelMatrix(lngLat)));
+          renderer.resetState();
+          renderer.render(scene, camera);
+        });
       }
+      allShips.forEach((s) => { s.visible = false; });
     },
   };
 
   map.addLayer(layer, map.getLayer(beforeId) ? beforeId : undefined);
 
-  // Gentle sail loop: repaint while any ship is on stage (waves already animate the map anyway).
+  // Gentle sail loop: repaint while any fleet is on stage. Tour hosts drive their own frames.
   let raf = null;
-  const tick = () => {
-    if (visibleShips().length && !reducedMotion) map.triggerRepaint();
-    raf = window.setTimeout(() => window.requestAnimationFrame(tick), 66); // ~15fps is plenty
-  };
-  tick();
+  if (ambient) {
+    const tick = () => {
+      if (visibleVoyages().length && !reducedMotion) map.triggerRepaint();
+      raf = window.setTimeout(() => window.requestAnimationFrame(tick), 66); // ~15fps is plenty
+    };
+    tick();
+  }
 
   return {
     setYear(y) {
       year = y;
       map.triggerRepaint();
+    },
+    /** Tour mode: pin a voyage's fleet to an exact track fraction (null releases to ambient). */
+    setTourProgress(voyageId, t) {
+      const v = voyages.find((x) => x.id === voyageId);
+      if (v) v.tourT = t === null ? undefined : t;
+      map.triggerRepaint();
+    },
+    pointAt(voyageId, t) {
+      const v = voyages.find((x) => x.id === voyageId);
+      return v ? pointAt(v.track, t) : null;
+    },
+    /** Track fraction at a RAW waypoint index (smooth() emits waypoint i at sample i*10). */
+    fractionAtWaypoint(voyageId, wpIndex) {
+      const v = voyages.find((x) => x.id === voyageId);
+      if (!v) return 0;
+      const idx = Math.min(v.track.cum.length - 1, wpIndex * 10);
+      return v.track.cum[idx] / (v.track.total || 1);
     },
     destroy() {
       if (raf) window.clearTimeout(raf);

@@ -1,0 +1,74 @@
+{
+  "voyage": "tasman-1642",
+  "title": "De reis van Abel Tasman",
+  "subtitle": "1642–1643 · In opdracht van de VOC",
+  "fleet": [
+    { "name": "Heemskerck", "kind": "oorlogsjacht", "masts": 3, "flagship": true },
+    { "name": "Zeehaen", "kind": "fluitschip", "masts": 3, "flagship": false }
+  ],
+  "intro": {
+    "title": "De zeekaarten veranderen",
+    "story": "De Verenigde Oost-Indische Compagnie (VOC) stuurde Abel Tasman uit om onbekende landen te ontdekken en nieuwe handelsroutes naar Zuid-Amerika te vinden. Met twee schepen en 116 mannen voer hij van Batavia af op een avontuur dat de kaarten voorgoed zou veranderen."
+  },
+  "legs": [
+    {
+      "depart": "1642-08-14",
+      "arrive": "1642-09-05",
+      "stop": {
+        "place": "Mauritius",
+        "date_label": "5 september 1642",
+        "title": "Verversingspost",
+        "story": "Mauritius was voor de VOC een vitale verversingspost waar schepen vers water en voedsel konden laden. Tasmans mannen werkten koortsachtig: het dek werd geschrobd, zeilen gerepareerd, vaten gevuld met water en vlees. Na twee maanden koersten ze op 8 oktober 1642 koers naar het zuiden.",
+        "images": ["mauritius-*"]
+      }
+    },
+    {
+      "depart": "1642-10-08",
+      "arrive": "1642-11-24",
+      "stop": {
+        "place": "Van Diemensland (Tasmanië)",
+        "date_label": "24 november 1642",
+        "title": "Land van Van Diemen",
+        "story": "Op 24 november 1642 zagen Tasmans mannen voor het eerst een onbekend, bergachtig eiland. Ze noemden het naar gouverneur-generaal Antonio van Diemen. Terukkeerend naar boord ontdekten zij dik bos en rooksporen van vuur, maar geen mensen. Het eiland zou later 'Tasmania' heten.",
+        "images": ["tasmania-*"]
+      }
+    },
+    {
+      "depart": "1642-12-04",
+      "arrive": "1642-12-13",
+      "stop": {
+        "place": "Moordenaarsbaai (Golden Bay, Nieuw-Zeeland)",
+        "date_label": "13 december 1642",
+        "title": "Eerste contact gaat tragisch",
+        "story": "Op 13 december 1642 voeren Tasmans schepen langs Nieuw-Zeeland. Twee dagen later zagen zij gekleurde kano's vol Māori-krijgers. Toen een sloep van Tasman probeerde contact te maken, werd zij geramd en ramde een kano erin. Vier Nederlandse matrozen verdronken. Tasman noemde dit water Moordenaarsbaai.",
+        "images": ["moordenaarsbaai-*"]
+      }
+    },
+    {
+      "depart": "1642-12-18",
+      "arrive": "1643-01-21",
+      "stop": {
+        "place": "Tonga",
+        "date_label": "21 januari 1643",
+        "title": "Vriendelijk welkom",
+        "story": "Op 21 januari 1643 arriveerde Tasman in Tonga. Hier verliep alles anders: vriendelijke kano's vol vrouwen en mannen naderden de schepen met varkens, kokosnoten en verse vruchten. De VOC-mannen gaven spijkers, glaswerk en zilverdraad in ruil. Dit was een volkomen ander ontvangst dan Nieuw-Zeeland.",
+        "images": ["tonga-*"]
+      }
+    },
+    {
+      "depart": "1643-02-01",
+      "arrive": "1643-06-15",
+      "stop": {
+        "place": "Batavia",
+        "date_label": "15 juni 1643",
+        "title": "Thuiskomst met geheimen",
+        "story": "Na nog een volle maand zeilen door onbekende wateren bereikten Tasmans twee schepen op 15 juni 1643 Batavia. De gouverneur-generaal was niet erg blij: geen goud, geen schatten, geen handelsouten. Maar Tasman had iets oneindig veel waardevollers gegeven: de eerste nauwkeurige kaarten van grote delen van de wereld.",
+        "images": ["kaart-*"]
+      }
+    }
+  ],
+  "outro": {
+    "title": "Een naam die bleef",
+    "story": "Tasmans reis duurde tien maanden en legde duizenden kilometers onbekende kust vast op kaarten. Tasmanië, Nieuw-Zeeland, Tonga en Fiji waren nu bekend bij Europeanen. Het land dat Tasman ontdekte zou naar 'Nieuw-Zeeland' genoemd worden — naar de Nederlandse provincie Zeeland."
+  }
+}

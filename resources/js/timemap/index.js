@@ -851,6 +851,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then(({ addVoyageShips }) => {
         voyageShips = addVoyageShips(map, { beforeId: 'tm-clouds' });
         voyageShips.setYear(state.year);
+        window.__tmShips = voyageShips; // dev tooling + Playwright
       })
       .catch(() => { /* ships are decoration — the map works without them */ });
     map.on('mouseenter', 'markers-dot', () => { map.getCanvas().style.cursor = 'pointer'; });

@@ -118,6 +118,8 @@ let _bgCanvas       = null   // module-level ref so both Alpine instances share 
 let _sceneQueue     = []   // [{kind, config, audio_url, script, image_url, alignment}] for scene-based playback
 let _mapInstance    = null   // MapLibre map block instance (lives outside Alpine's proxy)
 let _mapTimer       = null   // timed-mode auto-advance timer
+let _voyageInstance = null   // voyage tour instance (kind 'voyage'; outside Alpine's proxy)
+let _galleryTimer   = null   // gallery slideshow interval (kind 'gallery')
 let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
 let _parallax       = null   // live ParallaxScene instance (layered bg+hero shot, E3b)
 let _parallaxMod    = null   // cached ./scene/ParallaxScene.js module (lazy-loaded once)
@@ -745,9 +747,9 @@ Alpine.data('lessonGame', (lesson) => ({
       if (lesson.audio_url) {
         _sceneQueue = [{ audio_url: lesson.audio_url, script: lesson.script, image_url: null }]
       } else if (lesson.scenes?.length) {
-        // Keep audio scenes AND map blocks (map blocks have no audio but are played as slides).
+        // Keep audio scenes AND audio-less slide kinds: map blocks, voyage tour legs, galleries.
         _sceneQueue = lesson.scenes
-          .filter(s => s.audio_url || s.kind === 'map')
+          .filter(s => s.audio_url || s.kind === 'map' || s.kind === 'voyage' || s.kind === 'gallery')
           .map(s => ({
             kind: s.kind, game_type: s.game_type ?? null, config: s.config ?? null, scene_view: s.scene_view,
             branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
@@ -866,6 +868,10 @@ Alpine.data('lessonGame', (lesson) => ({
       // Map block — render the historical atlas as a slide (no audio).
       if (scene.kind === 'map') { this._playMapScene(index, scene); return }
 
+      // Voyage tour leg / image gallery — audio-less slides driven by Next/Previous only.
+      if (scene.kind === 'voyage') { this._playVoyageScene(index, scene); return }
+      if (scene.kind === 'gallery') { this._playGalleryScene(index, scene); return }
+
       // Per-scene background motion settings (Animated toggle + Ken Burns direction).
       this._kbAnimated = scene.kb_animated !== false
       this._kbNamedDirection = scene.kb_direction || null
@@ -950,19 +956,113 @@ Alpine.data('lessonGame', (lesson) => ({
       }
     },
 
+    // ── Voyage tour leg (kind 'voyage') ────────────────────────────────
+    async _playVoyageScene (index, scene) {
+      if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
+      const cfg = scene.config || {}
+      if (!window.renderVoyageTour) {
+        try {
+          await import('./voyage-tour.js')
+        } catch (e) {
+          console.warn('lesson-player: voyage tour failed to load — skipping scene', e)
+          this._advanceScene(index)
+          return
+        }
+      }
+      const stage = document.getElementById('lesson-map-stage')
+      if (!stage || !window.renderVoyageTour) { this._advanceScene(index); return }
+      stage.style.display = 'block'
+      stage.innerHTML = ''
+      const inner = document.createElement('div')
+      inner.style.width = '100%'
+      inner.style.height = '100%'
+      stage.appendChild(inner)
+      this.showMapContinue = false
+      _voyageInstance = window.renderVoyageTour(inner, {
+        voyage: cfg.voyage,
+        leg: Number(cfg.leg) || 0,
+        view: cfg.view || 'globe',
+        intro: !!cfg.intro,
+        stopImages: cfg.stop_images || [],
+        // The sail plays hands-off; the Continue affordance appears at the stop.
+        onArrived: () => { this.showMapContinue = true },
+      })
+    },
+
+    // ── Image gallery (kind 'gallery') — auto-cycling slideshow, Next/Previous to leave ──
+    _playGalleryScene (index, scene) {
+      if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
+      const cfg = scene.config || {}
+      const stage = document.getElementById('lesson-map-stage')
+      if (!stage) { this._advanceScene(index); return }
+      stage.style.display = 'block'
+      stage.innerHTML = ''
+      const images = Array.isArray(cfg.images) ? cfg.images : []
+      const host = document.createElement('div')
+      host.style.cssText = 'position:absolute;inset:0;background:#0b1526;display:flex;align-items:stretch;'
+      host.innerHTML = `
+        <div style="position:relative;flex:1;overflow:hidden;">
+          <img data-slide="a" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1s ease, transform 9s linear;">
+          <img data-slide="b" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1s ease, transform 9s linear;">
+          <p data-credit style="position:absolute;left:1rem;bottom:0.75rem;margin:0;color:#cbd5e1;font-size:0.72rem;opacity:0.8;"></p>
+        </div>
+        <div style="width:22rem;max-width:38%;padding:2.2rem 1.8rem;background:rgba(9,16,30,0.92);color:#e2e8f0;display:flex;flex-direction:column;justify-content:center;">
+          <p style="margin:0;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:#93a4bd;">${cfg.date_label || ''}</p>
+          <h2 style="margin:0.4rem 0 0;font-size:1.5rem;line-height:1.2;color:#fff;">${cfg.title || ''}</h2>
+          <p style="margin-top:1rem;font-size:0.95rem;line-height:1.65;">${cfg.story || ''}</p>
+          <p style="margin-top:1.6rem;font-size:0.78rem;color:#93a4bd;">Druk op <b>→</b> om verder te varen</p>
+        </div>`
+      stage.appendChild(host)
+
+      const slides = [host.querySelector('[data-slide="a"]'), host.querySelector('[data-slide="b"]')]
+      const credit = host.querySelector('[data-credit]')
+      let cursor = 0
+      let front = 0
+      const show = () => {
+        if (!images.length) return
+        const img = images[cursor % images.length]
+        const el = slides[front]
+        el.src = img.url || img
+        el.style.transform = 'scale(1)'
+        requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'scale(1.06)' })
+        slides[1 - front].style.opacity = '0'
+        credit.textContent = img.credit || ''
+        front = 1 - front
+        cursor++
+      }
+      show()
+      if (images.length > 1) _galleryTimer = setInterval(show, 5000)
+      this.showMapContinue = true
+    },
+
     // Called by the Continue button (interactive) and the timer (timed).
     advanceMap () {
       this._advanceFromMap(this._sceneIndex)
     },
 
-    _advanceFromMap (index) {
+    // Previous slide for voyage lessons (← / A). Replays the previous scene from its start.
+    previousSlide () {
+      if (this._sceneIndex <= 0) return
+      this._teardownStageScene()
+      this._sceneIndex = this._sceneIndex - 1
+      this._playScene(this._sceneIndex)
+    },
+
+    _teardownStageScene () {
       clearTimeout(_mapTimer)
       _mapTimer = null
+      clearInterval(_galleryTimer)
+      _galleryTimer = null
       this._textLayer?.setProjector(null)   // map gone — pinned labels fall back to screen spots
       if (_mapInstance) { try { _mapInstance.destroy() } catch (_) {} _mapInstance = null }
+      if (_voyageInstance) { try { _voyageInstance.destroy() } catch (_) {} _voyageInstance = null }
       const stage = document.getElementById('lesson-map-stage')
       if (stage) { stage.style.display = 'none'; stage.innerHTML = '' }
       this.showMapContinue = false
+    },
+
+    _advanceFromMap (index) {
+      this._teardownStageScene()
       this._advanceScene(index)
     },
 
@@ -1220,6 +1320,17 @@ Alpine.data('lessonGame', (lesson) => ({
       this._kbHandler = (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
 
+        // Voyage lessons are slide decks: next = → or B, previous = ← or A. Nothing else needed.
+        if (lesson.game_type === 'voyage' && (e.code === 'ArrowRight' || e.code === 'KeyB')) {
+          e.preventDefault()
+          this._advanceFromMap(this._sceneIndex)
+          return
+        }
+        if (lesson.game_type === 'voyage' && (e.code === 'ArrowLeft' || e.code === 'KeyA')) {
+          e.preventDefault()
+          this.previousSlide()
+          return
+        }
         if (e.code === 'Space') {
           e.preventDefault()
           this.toggleAudio()

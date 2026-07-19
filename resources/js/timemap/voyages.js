@@ -32,12 +32,19 @@ const smooth = (points, per = 10) => {
   return out;
 };
 
-/** Smoothed route + era window per voyage — consumed by voyage-ships.js for the sailing models. */
+/** Smoothed route + era window + fleet/legs per voyage — consumed by voyage-ships.js and the
+ *  voyage tour. `legs[].wp` are [start,end] indexes into the RAW waypoints; the tour smooths
+ *  each slice itself so leg boundaries stay exactly on waypoints. */
 export const voyageRoutes = () => voyagesData.voyages.map((v) => ({
   id: v.id, qid: v.qid, name: v.name,
   show_from: v.show_from, show_to: v.show_to,
+  fleet: v.fleet, legs: v.legs,
   coords: smooth(v.waypoints),
+  waypoints: v.waypoints,
 }));
+
+/** Smooth a raw-waypoint slice (used by the tour for per-leg tracks). */
+export const smoothSlice = (waypoints, from, to) => smooth(waypoints.slice(from, to + 1));
 
 const voyageFeatures = () => {
   const lines = [];
