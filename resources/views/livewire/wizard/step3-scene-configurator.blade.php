@@ -1258,11 +1258,15 @@
 
     {{-- Painting picker — public-domain artworks from the corpus. Click a thumbnail to set it
          as this scene's background (downloaded to lesson storage; attribution stored on the scene). --}}
-    <div class="modal modal-bottom sm:modal-middle {{ $paintingPickerOpen ? 'modal-open' : '' }}"
+    {{-- Visibility is driven by DaisyUI's `.modal-open` class (native open/close animation), NOT
+         x-show — an x-show/x-cloak display:none stops DaisyUI 5's @starting-style opacity
+         transition on .modal-box from ever running, leaving the box stuck at opacity 0 (invisible
+         "open" modal). `dismissing` still gives an instant close when a thumbnail is picked. --}}
+    <div class="modal modal-bottom sm:modal-middle"
          x-data="{ dismissing: false }"
-         x-show="$wire.paintingPickerOpen && !dismissing"
+         :class="{ 'modal-open': $wire.paintingPickerOpen && !dismissing }"
          x-on:painting-picker:open.window="dismissing = false"
-         x-cloak role="dialog" aria-modal="true">
+         role="dialog" aria-modal="true">
         <div class="modal-box max-w-6xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex justify-end">
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"

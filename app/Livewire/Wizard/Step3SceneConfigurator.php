@@ -1292,6 +1292,7 @@ class Step3SceneConfigurator extends Component
             return collect();
         }
 
+        try {
         $term = trim($this->paintingQuery);
         $topicQid = preg_match('/^(?:figure|polity|event):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
         $eventQid = preg_match('/^event:(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
@@ -1419,6 +1420,14 @@ class Step3SceneConfigurator extends Component
         return $tiles->unique(fn ($t) => mb_strtolower($t['title']))
             ->take(self::PAINTING_GRID_LIMIT)
             ->values();
+        } catch (\Throwable $e) {
+            // Corpus / Commons unavailable (e.g. a dropped Supabase pooler connection that didn't
+            // recover on the single retry) — degrade to an empty grid so the picker still OPENS
+            // instead of rendering a 500 that reads as "can't open Browse paintings".
+            report($e);
+
+            return collect();
+        }
     }
 
     public function applyPaintingBackground(string $source, string $key): void

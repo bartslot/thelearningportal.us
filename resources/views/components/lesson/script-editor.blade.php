@@ -55,7 +55,6 @@
                            x-on:input="onInput(i)"
                            x-on:keydown="onKeydown($event, i)"
                            x-on:paste="onPaste($event, i)"
-                           x-on:pointerdown="_lastWasEnter = false"
                            x-on:focus="active = i; focusedPara = i"
                            x-on:keydown.escape.stop.prevent="$event.target.blur()"
                            :class="{
@@ -148,7 +147,6 @@
                 paras: [],
                 starts: [],
                 _pid: 0,
-                _lastWasEnter: false,   // for double-Enter (split) detection
                 _seed: Array.isArray(paragraphs) ? paragraphs : [],
                 // Script-editing toolbar (shown while a paragraph is focused).
                 focusedPara: null,
@@ -300,15 +298,14 @@
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         const el = e.target;
-                        if (e.shiftKey) { this._insertText('\n'); this.onInput(i); this._lastWasEnter = false; return; }
-                        // Split only on a FRESH double-press (two Enters in a row) — not merely
-                        // because the caret happens to sit after a pre-existing soft newline.
-                        if (this._lastWasEnter) { this._lastWasEnter = false; this.splitPara(i, el); return; }
-                        this._insertText('\n'); this.onInput(i);   // single Enter → soft newline
-                        this._lastWasEnter = true;
+                        // Enter = start a NEW paragraph block and focus it. Shift+Enter = a soft
+                        // newline within the current paragraph (same TTS topic).
+                        if (e.shiftKey) { this._insertText('\n'); this.onInput(i); return; }
+                        this.splitPara(i, el);
                         return;
                     }
-                    this._lastWasEnter = false;   // any other key breaks the double-Enter sequence
+                    // Backspace at a block's start (incl. an empty block) merges it into the previous
+                    // one — the way to delete an empty paragraph you just created.
                     if (e.key === 'Backspace' && i > 0 && !this._hasSelection() && this._caretOffset(e.target) === 0) {
                         e.preventDefault();
                         this.mergeUp(i, e.target);
@@ -559,8 +556,11 @@
 
                 toggle() { this.ws?.playPause(); },
                 seek(i) {
-                    if (!this.ws) return;
-                    const s = this.starts[i] ?? 0;
+                    // Only seek the CURRENT scene's loaded, up-to-date track. A not-ready or
+                    // stale/regenerating waveform could otherwise play a clip from a scene you
+                    // already left (e.g. clicking a timecode on a freshly-added empty paragraph).
+                    if (!this.ws || !this.ready || this.dirty || this.regenerating) return;
+                    const s = Math.max(0, Math.min(this.starts[i] ?? 0, this.dur || 0));
                     if (typeof this.ws.setTime === 'function') this.ws.setTime(s);
                     else this.ws.seekTo(this.dur ? s / this.dur : 0);
                     this.t = s;
