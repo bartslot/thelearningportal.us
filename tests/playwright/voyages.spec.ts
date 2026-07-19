@@ -33,11 +33,11 @@ test('voyages: da Gama route renders at 1497 and opens the info panel', async ({
   const probe = await page.evaluate(() => {
     const m = (window as any).__tmMap;
     return {
-      layers: ['voyage-hit', 'voyage-line', 'voyage-arrows', 'voyage-label'].map((id) => !!m.getLayer(id)),
+      layers: ['voyage-hit', 'voyage-line', 'voyage-label', 'voyage-ships'].map((id) => !!m.getLayer(id)),
       rendered: m.queryRenderedFeatures(undefined, { layers: ['voyage-line'] }).map((f: any) => f.properties.name),
     };
   });
-  expect(probe.layers).toEqual([true, true, true, true]);
+  expect(probe.layers).toEqual([true, true, true, true]); // ships = lazy three.js custom layer
   expect(probe.rendered).toContain('Vasco da Gama');
   expect(probe.rendered).not.toContain('James Cook'); // 1768-1771 window, hidden in 1497
 

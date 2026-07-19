@@ -1,4 +1,11 @@
 {
+  "_GLTFLoader-Cx-cYDhM.js": {
+    "file": "assets/GLTFLoader-Cx-cYDhM.js",
+    "name": "GLTFLoader",
+    "imports": [
+      "node_modules/three/build/three.module.js"
+    ]
+  },
   "__commonjsHelpers-CqkleIqs.js": {
     "file": "assets/_commonjsHelpers-CqkleIqs.js",
     "name": "_commonjsHelpers"
@@ -32,7 +39,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-CxzYRcRh.css",
+    "file": "assets/app-82myILZR.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -41,7 +48,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-DAPzmSM8.js",
+    "file": "assets/app-CljRbyOk.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -68,13 +75,14 @@
     ]
   },
   "resources/js/avatar-3d.js": {
-    "file": "assets/avatar-3d-BskHQ67v.js",
+    "file": "assets/avatar-3d-Dm6Lgwbb.js",
     "name": "avatar-3d",
     "src": "resources/js/avatar-3d.js",
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js"
+      "node_modules/three/build/three.module.js",
+      "_GLTFLoader-Cx-cYDhM.js"
     ]
   },
   "resources/js/lesson-map.js": {
@@ -89,7 +97,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-BYnCXbQY.js",
+    "file": "assets/lesson-player-BARxCaZe.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -143,7 +151,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-DZN1J5AK.js",
+    "file": "assets/index-BbHsWWTx.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -152,7 +160,8 @@
       "resources/js/scene/QuizOverlay.js",
       "resources/js/scene/TextOverlayLayer.js",
       "_preload-helper-DIdkKO6w.js",
-      "resources/js/avatar-3d.js"
+      "resources/js/avatar-3d.js",
+      "_GLTFLoader-Cx-cYDhM.js"
     ],
     "dynamicImports": [
       "resources/js/scene/ParallaxScene.js",
@@ -161,11 +170,29 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-BSLyEr8H.js",
+    "file": "assets/index-BAPov6o-.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
+      "_preload-helper-DIdkKO6w.js",
+      "_map-volcanoes-BtFq4ki9.js",
+      "__commonjsHelpers-CqkleIqs.js"
+    ],
+    "dynamicImports": [
+      "resources/js/timemap/voyage-ships.js"
+    ]
+  },
+  "resources/js/timemap/voyage-ships.js": {
+    "file": "assets/voyage-ships-lsk47Iac.js",
+    "name": "voyage-ships",
+    "src": "resources/js/timemap/voyage-ships.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "node_modules/three/build/three.module.js",
+      "_GLTFLoader-Cx-cYDhM.js",
+      "resources/js/timemap/index.js",
+      "_preload-helper-DIdkKO6w.js",
       "_map-volcanoes-BtFq4ki9.js",
       "__commonjsHelpers-CqkleIqs.js"
     ]

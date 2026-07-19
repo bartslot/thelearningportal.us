@@ -32,6 +32,13 @@ const smooth = (points, per = 10) => {
   return out;
 };
 
+/** Smoothed route + era window per voyage — consumed by voyage-ships.js for the sailing models. */
+export const voyageRoutes = () => voyagesData.voyages.map((v) => ({
+  id: v.id, qid: v.qid, name: v.name,
+  show_from: v.show_from, show_to: v.show_to,
+  coords: smooth(v.waypoints),
+}));
+
 const voyageFeatures = () => {
   const lines = [];
   const labels = [];
@@ -46,31 +53,12 @@ const voyageFeatures = () => {
   return { lines, labels };
 };
 
-// Right-pointing arrowhead drawn on a canvas — placed along the line by a symbol layer, so no
-// glyph coverage is needed. Re-tinted per map style via map.updateImage.
-const arrowImage = (color) => {
-  const size = 22;
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
-  ctx.beginPath();
-  ctx.moveTo(4, 5);
-  ctx.lineTo(18, 11);
-  ctx.lineTo(4, 17);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  return ctx.getImageData(0, 0, size, size);
-};
-
 const voyageFilter = (year) => ['all',
   ['<=', ['to-number', ['get', 'showFrom']], year],
   ['>=', ['to-number', ['get', 'showTo']], year],
 ];
 
-const LAYERS = ['voyage-hit', 'voyage-line', 'voyage-arrows', 'voyage-label'];
+const LAYERS = ['voyage-hit', 'voyage-line', 'voyage-label'];
 const DEFAULT_COLOR = '#20618f';
 
 /** GeoJSON sources for the initial style object. */
@@ -96,14 +84,6 @@ export function voyageStyleLayers(fontStack = ['Cinzel']) {
       paint: { 'line-color': DEFAULT_COLOR, 'line-width': 1.7, 'line-opacity': 0.85 },
     },
     {
-      id: 'voyage-arrows', type: 'symbol', source: 'voyages',
-      layout: {
-        'symbol-placement': 'line', 'symbol-spacing': 150,
-        'icon-image': 'voyage-arrow', 'icon-size': 0.55,
-        'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-      },
-    },
-    {
       id: 'voyage-label', type: 'symbol', source: 'voyage-labels',
       layout: {
         'text-field': ['concat', ['get', 'name'], '  ', ['get', 'years']],
@@ -121,7 +101,6 @@ export function voyageStyleLayers(fontStack = ['Cinzel']) {
  *  depth-tested layer drawn after it — every line layer — silently fails the depth test and
  *  disappears; voyage lines must therefore render before it. */
 export function initVoyages(map, { year = null, beforeId = undefined } = {}) {
-  if (!map.hasImage('voyage-arrow')) map.addImage('voyage-arrow', arrowImage(DEFAULT_COLOR));
   for (const id of LAYERS) {
     if (map.getLayer(id)) map.moveLayer(id, beforeId);
   }
@@ -137,11 +116,6 @@ export function applyVoyageYear(map, year) {
 export function applyVoyageStyle(map, { color, halo }) {
   if (!map.getLayer('voyage-line')) return;
   const c = color || DEFAULT_COLOR;
-  if (map.hasImage('voyage-arrow')) {
-    map.updateImage('voyage-arrow', arrowImage(c));
-  } else {
-    map.addImage('voyage-arrow', arrowImage(c));
-  }
   map.setPaintProperty('voyage-line', 'line-color', c);
   map.setPaintProperty('voyage-label', 'text-color', c);
   if (halo) map.setPaintProperty('voyage-label', 'text-halo-color', halo);

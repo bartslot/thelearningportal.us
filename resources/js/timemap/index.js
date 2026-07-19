@@ -218,6 +218,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
     applyVoyageYear(map, year);
+    if (voyageShips) voyageShips.setYear(year);
     const inkF = MAP_STYLES[currentStyleName] && MAP_STYLES[currentStyleName].borderSource ? borderDateFilter(year) : polityFilter(year);
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.setFilter(`ink-${i}`, inkF); }
     scheduleSettle(); // recompute labels + prefetch articles for the new era (after tiles settle)
@@ -306,6 +307,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   let hoveredId = null;
   let selectedId = null;
+  let voyageShips = null; // set once the lazy three.js ships chunk loads
   const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
@@ -838,11 +840,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
     map.addLayer(createCloudSphereLayer(), 'boundaries-label');
-    // Explorer voyages / trade routes (voyages.json) — arrowed sea paths, era-filtered like
-    // polities; clicking one opens the info panel via its Wikidata QID. Their sources/layers live
-    // in the initial style; this lifts them above the boundary layers but keeps them BELOW the
+    // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
+    // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
+    // initial style; this lifts them above the boundary layers but keeps them BELOW the
     // tm-clouds 3D layer, whose globe-wide depth writes would otherwise cull them (see voyages.js).
     initVoyages(map, { year: state.year, beforeId: 'tm-clouds' });
+    // The sailing tall ship (three.js custom layer) rides in its own lazy chunk — same
+    // below-the-clouds placement, same era window as the routes.
+    import('./voyage-ships.js')
+      .then(({ addVoyageShips }) => {
+        voyageShips = addVoyageShips(map, { beforeId: 'tm-clouds' });
+        voyageShips.setYear(state.year);
+      })
+      .catch(() => { /* ships are decoration — the map works without them */ });
     map.on('mouseenter', 'markers-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
 
