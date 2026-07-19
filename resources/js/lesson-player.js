@@ -218,6 +218,17 @@ Alpine.data('lessonGame', (lesson) => ({
             .map(url => ({ url }))
       this._kbImages    = [...coverImg, ...slideshowImgs, ...sceneImgs, ...scenePanoramas]
 
+      // Voyage/gallery lessons keep their imagery inside scene configs (gallery
+      // slides), not on the lesson/scene rows — without this fallback their title
+      // screen sits on a bare navy background.
+      if (this._kbImages.length === 0) {
+        const seen = new Set()
+        this._kbImages = (lesson.scenes ?? [])
+          .flatMap(s => s.config?.images ?? [])
+          .filter(img => img?.url && !seen.has(img.url) && seen.add(img.url))
+          .map(img => ({ url: img.url }))
+      }
+
       this._buildBackgroundLayer()
       this._buildAvatarWrapper()
 
