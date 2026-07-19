@@ -1,6 +1,8 @@
 import { renderLessonMap } from './lesson-map.js';
 import { voyageRoutes } from './timemap/voyages.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
+import { addVoyageFog } from './timemap/voyage-fog.js';
+import { attachShoreEtch } from './map-etch.js';
 
 // Voyage tour — plays ONE dated leg of a voyage inside the lesson player (scene kind 'voyage').
 // The fleet sails the leg in real chronology (~1 month of history per 2 s), the camera follows,
@@ -47,6 +49,8 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
   // ── Ships + leg geometry — assigned in the ready block: addVoyageShips adds layers, and
   // maplibre throws "Style is not done loading" for addLayer before the style settles. ────────
   let ships = null;
+  let fog = null;
+  let etch = null;
   let f0 = 0;
   let f1 = 1;
   let start = null;
@@ -122,6 +126,7 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
       const eased = smoothstep(p);
       const f = f0 + eased * (f1 - f0);
       ships.setTourProgress(voyage, f);
+      if (fog) fog.revealTo(f); // discovery front advances with the fleet
       const pos = ships.pointAt(voyage, f);
       map.jumpTo({ center: [pos.lng, pos.lat], zoom: followZoom });
       setChip(departMs + eased * (arriveMs - departMs), null);
@@ -155,9 +160,18 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
   };
   whenReady(() => {
     ships = addVoyageShips(map, { beforeId: undefined, only: voyage, ambient: false });
+    // Fog under the fleet (beforeId) — the ships must render above the fog they dispel. The
+    // corridor samples ships.pointAt so the discovery front always sits exactly at the fleet.
+    fog = addVoyageFog(map, {
+      unknown: route.unknown,
+      beforeId: 'voyage-ships',
+      samplePoint: (t) => ships.pointAt(voyage, t),
+    });
+    etch = attachShoreEtch(map, { getFog: () => fog?.current() });
     ships.setYear(year);
     f0 = ships.fractionAtWaypoint(voyage, legDef.wp[0]);
     f1 = ships.fractionAtWaypoint(voyage, legDef.wp[1]);
+    if (fog) fog.revealTo(f0, { force: true }); // earlier legs stay discovered on later scenes
     start = ships.pointAt(voyage, f0);
     end = ships.pointAt(voyage, f1);
     // Follow zoom: whole leg readable — shorter legs get a closer camera.
@@ -181,7 +195,9 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
     destroy() {
       cancelled = true;
       if (raf) cancelAnimationFrame(raf);
-      try { ships.destroy(); } catch (_) { /* map may already be gone */ }
+      try { etch?.destroy(); } catch (_) { /* map may already be gone */ }
+      try { fog?.destroy(); } catch (_) { /* idem */ }
+      try { ships.destroy(); } catch (_) { /* idem */ }
       try { inst.destroy(); } catch (_) { /* idem */ }
       el.innerHTML = '';
     },

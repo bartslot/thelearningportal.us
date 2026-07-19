@@ -38,7 +38,7 @@ const smooth = (points, per = 10) => {
 export const voyageRoutes = () => voyagesData.voyages.map((v) => ({
   id: v.id, qid: v.qid, name: v.name,
   show_from: v.show_from, show_to: v.show_to,
-  fleet: v.fleet, legs: v.legs,
+  fleet: v.fleet, legs: v.legs, unknown: v.unknown,
   coords: smooth(v.waypoints),
   waypoints: v.waypoints,
 }));
