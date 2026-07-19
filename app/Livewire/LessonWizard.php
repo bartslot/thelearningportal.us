@@ -28,9 +28,25 @@ class LessonWizard extends Component
 
             $this->step = $resolvedStep
                 ?? max(1, min(5, (int) ($lesson->wizard_step ?? 1)));
+
+            // The Generate screen (3) is meaningless for lessons with nothing to generate —
+            // e.g. command-built voyage lessons whose scenes are all ready and none narrated.
+            // Landing there showed an eternal "Researching sources 2%"; go straight to Configure.
+            if ($this->step === 3 && $this->hasNothingToGenerate($lesson)) {
+                $this->step = 4;
+            }
         } else {
             $this->step = $resolvedStep ?? 1;
         }
+    }
+
+    /** True when the lesson has scenes, all ready, and none of the narration kind — nothing for
+     *  the generation pipeline to do, so the Generate step would sit at a bogus low percentage. */
+    private function hasNothingToGenerate(Lesson $lesson): bool
+    {
+        return $lesson->scenes()->exists()
+            && ! $lesson->scenes()->where('kind', 'narration')->exists()
+            && ! $lesson->scenes()->where('status', '!=', 'ready')->exists();
     }
 
     public function goToStep(int $step): void

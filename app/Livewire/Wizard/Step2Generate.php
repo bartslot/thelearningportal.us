@@ -93,7 +93,9 @@ class Step2Generate extends Component
         // none, so counting them would cap progress below 100% even when every real scene is done.
         $scenes = $this->scenes->where('kind', 'narration')->values();
         if ($scenes->isEmpty()) {
-            return 0;
+            // No narration scenes at all (e.g. a command-built voyage lesson): nothing generates,
+            // so the lesson is "done" as soon as its scenes are ready — never stuck at 0%.
+            return $this->scenes->isNotEmpty() && $this->scenes->every(fn ($s) => $s->status === 'ready') ? 100 : 0;
         }
 
         $total = $scenes->count() * 3;
