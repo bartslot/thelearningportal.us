@@ -62,6 +62,15 @@ php artisan app:create-teacher hello@bartslot.com 'YOUR_PASSWORD' --name="Bart S
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 ```
 
+## Pending post-deploy tasks
+
+Run once on the server with the next deploy, then tick off here:
+
+- [ ] `php artisan cities:backfill-coords` — prod's cities table still has lat/lng-0 seeder
+      stubs (they put wizard map-block focus pins at (0,0) in the Gulf of Guinea); this fills
+      real coordinates from Wikidata. Corrected city QIDs ship in
+      `database/data/historical_city_names.php` (2026-07-19).
+
 ## 6. Smoke test
 - `https://your-domain/` → "Lessons ready to play" shows 7 tiles.
 - Open one → it plays (audio + scenes). Caesar's has the Rubicon strategy game.
