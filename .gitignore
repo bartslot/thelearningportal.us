@@ -58,3 +58,7 @@ NUL
 # Cached ElevenLabs narration
 /public/tts/
 /learningportal_dev
+
+# Playwright artifacts
+tests/playwright/results/
+tests/playwright/report/
