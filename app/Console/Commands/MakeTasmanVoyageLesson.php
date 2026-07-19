@@ -88,7 +88,7 @@ class MakeTasmanVoyageLesson extends Command
                 'config' => [
                     'voyage' => 'tasman-1642',
                     'leg' => $i,
-                    'view' => 'globe',
+                    'view' => 'flat',
                     'intro' => $i === 0,
                     'stop_images' => array_map($img, $images['pins']),
                 ],

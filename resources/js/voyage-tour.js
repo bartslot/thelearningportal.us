@@ -17,7 +17,7 @@ const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long',
 const smoothstep = (t) => t * t * (3 - 2 * t);
 const wrapLng = (lng) => ((lng + 180) % 360 + 360) % 360 - 180;
 
-export function renderVoyageTour(el, { voyage, leg = 0, view = 'globe', intro = false, stopImages = [], onArrived = null } = {}) {
+export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = false, stopImages = [], onArrived = null } = {}) {
   const route = voyageRoutes().find((v) => v.id === voyage);
   const pack = TOUR_PACKS[`./timemap/${voyage}-tour.json`]?.default
     || TOUR_PACKS[`./timemap/${voyage}-tour.json`] || {};
