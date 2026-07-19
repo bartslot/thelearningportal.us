@@ -32,20 +32,20 @@
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
-        <div class="lp-grain pointer-events-none absolute inset-0 z-[3]"></div>
+        <div class="lp-grain pointer-events-none absolute inset-0 z-3"></div>
         {{-- Scene overlay (flag + territory title). z-[6] so it sits ABOVE the map preview (z-[5]),
              not hidden behind the globe. pointer-events-none keeps the map interactive.
              NO vertical padding: SceneOverlay sets container-type:size on this host, and padding
              would force a 256px min-height that shoves the bottom-anchored caption off a short
              stage. overflow-hidden clips the caption to the canvas as a final guard on tiny stages. --}}
-        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden z-[6]"></div>
+        <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden z-6"></div>
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
         {{-- Teacher text annotations (Freeform-style, draggable). z-[7]: above scene art + map. --}}
-        <div id="lesson-text-overlay" class="absolute inset-0 z-[7]"></div>
+        <div id="lesson-text-overlay" class="absolute inset-0 z-7"></div>
         {{-- Map block preview — overlays the canvas when a map scene is selected. Uses fixed
              positioning (full viewport) because MapLibre relatively-positions its container, which
              would otherwise collapse an `absolute inset-0` host to height 0. --}}
-        <div id="lesson-map-preview" class="fixed inset-0 z-[5]" style="display:none" wire:ignore></div>
+        <div id="lesson-map-preview" class="fixed inset-0 z-5" style="display:none" wire:ignore></div>
     </div>
 
     {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (16rem
@@ -385,7 +385,7 @@
     {{-- Publish feedback banner (no global toast system yet) — auto-clears after 5s. Bottom-centre
          so it clears the top toolbar, step indicator and inspector. --}}
     @if ($publishNotice)
-        <div class="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2"
+        <div class="fixed bottom-6 left-1/2 z-70 -translate-x-1/2"
              wire:key="publish-notice"
              x-data x-init="setTimeout(() => $wire.set('publishNotice', null), 5000)">
             <div @class([
@@ -545,6 +545,12 @@
                 window.__lessonTextLayer?.select?.(obj.id);
                 document.querySelector(`[data-text-id="${obj.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
             },
+            // Delete any object type — the server router (scene:delete-object) dispatches to
+            // detachArtwork (art_) or deleteSceneText (txt_/rect_) by the id. Background isn't deletable.
+            deleteObject(obj) {
+                if (!obj || obj.bg) return;
+                window.Livewire.dispatch('scene:delete-object', { objectId: obj.id });
+            },
             // Hover "adjust" icon → select the object, then open its editor: focus a text box
             // (reveals its font/size/align toolbar) or surface the panel's side/colour bar.
             edit(obj) {
@@ -649,8 +655,7 @@
     {{-- Top toolbar — Keynote-style: Play + insert tools as stacked icon-over-label buttons.
          Solid background (no opacity/blur) so the composition never shows through. wire:ignore
          keeps the 3s status poll from morphing the strip and snapping the Panel popover shut. --}}
-    <div class="fixed right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg"
-         style="left: max(var(--rail-w, 11rem), 3.25rem)"
+    <div class="fixed right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg left-0 pl-16"
          wire:ignore
          {{-- fmtOpen/fmtView mirror the Format panel's state (broadcast by the aside via
               inspector-state) so toolbar buttons can show a proper OPEN state — the toolbar is
@@ -708,6 +713,27 @@
         </button>
 
         <div class="mx-1 my-1.5 w-px bg-slate-700"></div>
+        {{-- Image — insert a public-domain Image as an object/layer on top of the background --}}
+        <button type="button"
+                onclick="Livewire.dispatch('open-image-library')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
+                title="{{ __('Insert image (public-domain image)') }}" aria-label="{{ __('Insert Image') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path d="M2.28955 15.7829L7.42759 10.5786C8.3027 9.69225 9.72152 9.69225 10.5966 10.5786L15.7347 15.7829M14.2408 14.2698L15.644 12.8484C16.5192 11.962 17.938 11.962 18.8131 12.8484L21.7103 15.7829M3.78345 19.5658H20.2164C21.0414 19.5658 21.7103 18.8884 21.7103 18.0527V5.94737C21.7103 5.11167 21.0414 4.4342 20.2164 4.4342H3.78345C2.95839 4.4342 2.28955 5.11167 2.28955 5.94737V18.0527C2.28955 18.8884 2.95839 19.5658 3.78345 19.5658ZM14.2408 8.21711H14.2482V8.22467H14.2408V8.21711ZM14.6142 8.21711C14.6142 8.42603 14.447 8.5954 14.2408 8.5954C14.0345 8.5954 13.8673 8.42603 13.8673 8.21711C13.8673 8.00818 14.0345 7.83882 14.2408 7.83882C14.447 7.83882 14.6142 8.00818 14.6142 8.21711Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Image') }}</span>
+        </button>
+
+        {{-- Clipart — insert a public-domain SVG as an object/layer on top of the background --}}
+        <button type="button"
+                onclick="Livewire.dispatch('open-svg-library')"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
+                title="{{ __('Insert clipart (public-domain line-art)') }}" aria-label="{{ __('Insert clipart') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42"/>
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Clipart') }}</span>
+        </button>
 
         {{-- Text --}}
         <button type="button"
@@ -749,17 +775,6 @@
                 </button>
             </div>
         </div>
-
-        {{-- Clipart — insert a public-domain SVG as an object/layer on top of the background --}}
-        <button type="button"
-                onclick="Livewire.dispatch('open-svg-library')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                title="{{ __('Insert clipart (public-domain line-art)') }}" aria-label="{{ __('Insert clipart') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42"/>
-            </svg>
-            <span class="text-[10px] font-medium">{{ __('Clipart') }}</span>
-        </button>
         </div>
 
         {{-- Right group: global actions, pushed to the far right --}}
@@ -1034,12 +1049,25 @@
                      class="group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm">
                     <span class="shrink-0 text-slate-400" x-html="iconSvg(obj)" aria-hidden="true" :title="obj.label"></span>
                     <span data-obj-label class="flex-1 truncate" x-text="obj.label"></span>
-                    {{-- Adjust / settings — appears on hover; data-nodrag keeps a press here from starting a drag --}}
+                    {{-- Row actions (hover-revealed, Keynote-style). data-nodrag stops a press here
+                         from starting a Sortable drag; @click.stop keeps the row's select from firing.
+                         data-obj-adjust hides both in the compact (icons-only) rail. --}}
+                    {{-- Adjust — select the object and open its Format inspector. --}}
                     <button type="button" data-nodrag data-obj-adjust @click.stop="edit(obj)"
-                            class="shrink-0 cursor-pointer text-slate-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
-                            title="{{ __('Adjust settings') }}" aria-label="{{ __('Adjust settings') }}">
+                            class="btn btn-ghost btn-xs btn-square shrink-0 text-slate-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
+                            aria-label="{{ __('Adjust settings') }}" :title="'{{ __('Adjust settings') }}'">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+                        </svg>
+                    </button>
+                    {{-- Delete THIS object (any type — deleteObject routes by obj.id: art_/txt_/rect_).
+                         Hidden on the background row (not deletable). No confirm — one click removes it. --}}
+                    <button type="button" data-nodrag data-obj-adjust x-show="!obj.bg"
+                            @click.stop="deleteObject(obj)"
+                            class="btn btn-ghost btn-xs btn-square shrink-0 text-slate-500 opacity-0 transition hover:text-rose-400 group-hover:opacity-100"
+                            aria-label="{{ __('Delete object') }}" :title="'{{ __('Delete') }}'">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"></path>
                         </svg>
                     </button>
                 </div>
@@ -1051,8 +1079,8 @@
          resize; drag it under 40px and the list hides (View ▸ Object list re-opens). Only
          rendered while the list is shown. --}}
     <div x-show="$store.view.objects" x-cloak id="objlist-resize" wire:ignore tabindex="0"
-         class="group fixed bottom-0 z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
-         style="left: calc(var(--rail-w, 11rem) + var(--objlist-w, 13rem)); top: 4rem"
+         class="group fixed z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
+         style="left: calc(var(--rail-w, 11rem) + var(--objlist-w, 13rem)); top: 4rem; bottom: var(--work-bottom, 0px)"
          role="separator" aria-orientation="vertical" aria-label="{{ __('Resize object list (arrow keys)') }}"
          title="{{ __('Drag to resize · drag narrow for icons only · drag to the edge to hide') }}">
         <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
@@ -1120,6 +1148,32 @@
     </script>
     @endpush
 
+    {{-- Backspace / Delete removes the currently-selected scene object (text box, backing panel, or
+         image/clipart layer). Guarded so it NEVER fires while typing: any input/textarea/select or
+         contenteditable (on-canvas text, the script editor, the scene caption, internal notes) puts
+         document.activeElement on that surface, and a live text selection inside an editable region
+         is also skipped. Routes through the same scene:delete-object as the object-list ×. --}}
+    @push('scripts')
+    <script>
+    (() => {
+        if (window.__lessonDeleteKeyMounted) return;
+        window.__lessonDeleteKeyMounted = true;
+        window.addEventListener('keydown', (e) => {
+            if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+            const a = document.activeElement;
+            if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+            const sel = window.getSelection?.();
+            if (sel && !sel.isCollapsed && sel.anchorNode?.parentElement?.closest?.('[contenteditable], input, textarea')) return;
+            const id = window.__lessonArtworkLayer?._selectedId || window.__lessonTextLayer?._selectedId;
+            if (!id || id === '__bg__') return;
+            e.preventDefault();
+            window.Livewire.dispatch('scene:delete-object', { objectId: id });
+        });
+    })();
+    </script>
+    @endpush
+
     {{-- Script editing view — timecoded narration synced to a play bar (View ▸ Script). --}}
     @if ($this->selectedSceneModel)
         <x-lesson.script-editor :scene="$this->selectedSceneModel" wire:key="script-{{ $selectedSceneId }}" />
@@ -1148,8 +1202,8 @@
          the edge) and it disappears completely. Sits at the rail's right edge; when the rail is
          hidden (0) it rests at the far left so it can be dragged back out. --}}
     <div id="rail-resize" wire:ignore tabindex="0"
-         class="group fixed bottom-0 top-16 z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
-         style="left: var(--rail-w, 11rem)"
+         class="group fixed top-16 z-40 -ml-1.5 w-3 cursor-col-resize focus:outline-none focus-visible:bg-sky-400/20"
+         style="left: var(--rail-w, 11rem); bottom: var(--work-bottom, 0px)"
          role="separator" aria-orientation="vertical" aria-label="{{ __('Resize scene rail (arrow keys)') }}"
          title="{{ __('Drag to resize · drag to the edge to hide') }}">
         <div class="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-sky-400"></div>
@@ -1268,7 +1322,10 @@
          x-on:painting-picker:open.window="dismissing = false"
          role="dialog" aria-modal="true">
         <div class="modal-box max-w-6xl border border-slate-700/70 bg-base-300">
-            <div class="mb-3 flex justify-end">
+            <div class="mb-3 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-slate-200">
+                    {{ $paintingPickerMode === 'layer' ? __('Add an image on the slide') : __('Set the scene background') }}
+                </h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
                         aria-label="{{ __('Close') }}" wire:click="$set('paintingPickerOpen', false)">✕</button>
             </div>
@@ -1344,14 +1401,16 @@
                      stretch the tiles and kill their aspect ratio). p-1.5 keeps hover rings unclipped. --}}
                 <div class="h-[62vh] overflow-y-auto p-1.5"
                      wire:loading.class="opacity-40"
-                     wire:target="paintingQuery, paintingKind, paintingRegion, applyPaintingBackground">
+                     wire:target="paintingQuery, paintingKind, paintingRegion, applyPaintingChoice">
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     @forelse ($this->paintingResults as $art)
+                        {{-- @js() escapes the source/key as safe JS literals (titles carry apostrophes,
+                             e.g. "Anon - 'Les Noyades…'", which broke the old inline addslashes
+                             wire:click → "Public property [$]"). $wire.… keeps wire:loading tracking. --}}
                         <button type="button"
                                 wire:key="art-{{ md5($art['source'].$art['key']) }}"
-                                @click="dismissing = true"
-                                wire:click="applyPaintingBackground('{{ $art['source'] }}', '{{ addslashes($art['key']) }}')"
-                                wire:loading.attr="disabled" wire:target="applyPaintingBackground"
+                                @click="dismissing = true; $wire.applyPaintingChoice(@js($art['source']), @js($art['key']))"
+                                wire:loading.attr="disabled" wire:target="applyPaintingChoice"
                                 class="group relative block overflow-hidden rounded-lg ring-1 ring-slate-700 transition hover:ring-2 hover:ring-amber-400 disabled:cursor-wait"
                                 style="aspect-ratio:16/10"
                                 title="{{ trim($art['title'].' — '.$art['caption'], ' —') }}">
@@ -1400,13 +1459,13 @@
                 wire:click="$set('paintingPickerOpen', false)"></button>
     </div>
 
-    {{-- Ink artwork library — teacher-imported public-domain SVGs, drawn line-by-line.
+    {{-- Clipart library — teacher-imported public-domain SVGs, drawn line-by-line.
          The nested Livewire component only mounts while the modal is open. --}}
     <div class="modal modal-bottom sm:modal-middle {{ $svgLibraryOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
         <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between gap-3">
-                <h2 class="text-lg font-semibold text-slate-100">{{ __('Ink artwork library') }}</h2>
+                <h2 class="text-lg font-semibold text-slate-100">{{ __('Clipart library') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
                         aria-label="Close" wire:click="$set('svgLibraryOpen', false)">✕</button>
             </div>

@@ -277,6 +277,7 @@
                     if (this._unwatchPara) { try { this._unwatchPara(); } catch (_) {} }
                     if (this._unwatchSummary) { try { this._unwatchSummary(); } catch (_) {} }
                     document.getElementById('lesson-canvas-root')?.style.setProperty('--work-bottom', '0px');
+                    document.documentElement.style.setProperty('--work-bottom', '0px');
                 },
 
                 // ── Paragraph editing (single Enter = soft newline, double Enter = new paragraph) ──
@@ -551,6 +552,10 @@
                     // can't churn a resize-dispatch loop.
                     if (root.style.getPropertyValue('--work-bottom') === h + 'px') return;
                     root.style.setProperty('--work-bottom', h + 'px');
+                    // Also on <html> so the FIXED rail/objlist resize handles (siblings, not
+                    // descendants of the canvas-root) can stop at the top of this panel instead
+                    // of overlaying it.
+                    document.documentElement.style.setProperty('--work-bottom', h + 'px');
                     window.dispatchEvent(new Event('resize'));   // refit the WebGL stage
                 },
 

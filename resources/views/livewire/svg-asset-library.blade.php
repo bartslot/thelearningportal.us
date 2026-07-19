@@ -3,12 +3,6 @@
     {{-- Search Wikimedia Commons --}}
     <div class="card bg-base-200 border border-base-300">
         <div class="card-body gap-4">
-            <div>
-                <h3 class="card-title text-base">Add artwork from the open web</h3>
-                <p class="text-sm opacity-70">Search public-domain and freely-licensed SVGs, or paste a
-                    freesvg.org link. Imported art is drawn line-by-line in the ink style.</p>
-            </div>
-
             <form wire:submit="search" class="join w-full">
                 <input type="search" wire:model="query" placeholder="Roman soldier, tall ship, castle…"
                        class="input input-bordered join-item w-full" aria-label="Search public-domain SVGs">
@@ -71,15 +65,16 @@
         @else
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 @foreach ($this->library as $asset)
+                    {{-- The remove ✕ is a SIBLING of the add button, not nested inside it: a <button>
+                         inside a <button> is invalid HTML (browsers auto-close the outer one) and the
+                         ✕ click would bubble into attach(). Both sit inside the relative wrapper. --}}
                     <div class="group relative rounded-lg border border-base-300 bg-base-100 p-2 flex flex-col">
-                        <div class="flex h-24 items-center justify-center overflow-hidden rounded bg-base-200">
-                            <img src="{{ $asset->url() }}" alt="{{ $asset->title }}" class="max-h-full max-w-full">
-                        </div>
-                        <p class="mt-2 truncate text-xs font-medium" title="{{ $asset->title }}">{{ $asset->title }}</p>
-                        <p class="truncate text-[11px] opacity-50" title="{{ $asset->credit() }}">{{ $asset->credit() }}</p>
-                        <button wire:click="attach({{ $asset->id }})"
-                                class="btn btn-xs btn-primary mt-auto mb-1.5">
-                            {{ __('Add to scene') }}
+                        <button wire:click="attach({{ $asset->id }})" class="cursor-pointer text-left" aria-label="Add {{ $asset->title }} to Scene">
+                            <div class="flex h-24 items-center justify-center overflow-hidden rounded bg-base-200">
+                                <img src="{{ $asset->url() }}" alt="{{ $asset->title }}" class="max-h-full max-w-full">
+                            </div>
+                            <p class="mt-2 truncate text-xs font-medium" title="{{ $asset->title }}">{{ $asset->title }}</p>
+                            <p class="truncate text-[11px] opacity-50" title="{{ $asset->credit() }}">{{ $asset->credit() }}</p>
                         </button>
                         <button wire:click="remove({{ $asset->id }})"
                                 wire:confirm="Remove this artwork from your library?"

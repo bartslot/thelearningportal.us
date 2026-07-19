@@ -596,7 +596,90 @@ class Step3SceneConfiguratorTest extends TestCase
             ->assertSeeHtml("Livewire.dispatch('open-svg-library')")
             ->dispatch('open-svg-library')
             ->assertSet('svgLibraryOpen', true)
-            ->assertSee('Ink artwork library')
+            ->assertSee('Clipart library')
             ->assertSeeLivewire('svg-asset-library');
+    }
+
+    // ── Unified object delete (object-list × and the Backspace/Delete shortcut both dispatch
+    //    scene:delete-object, routed by the object id) ─────────────────────────────────────────
+
+    public function test_delete_object_routes_an_artwork_id_to_detach_artwork(): void
+    {
+        $asset = \App\Models\SvgAsset::factory()->create(['user_id' => $this->teacher->id]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('attachArtwork', $asset->id);
+
+        $this->assertNotNull(
+            collect($this->s1->fresh()->shots[0]['layers'] ?? [])->firstWhere('asset_id', $asset->id),
+            'the artwork layer should be attached before we delete it',
+        );
+
+        $component->dispatch('scene:delete-object', objectId: 'art_'.$asset->id);
+
+        $this->assertNull(
+            collect($this->s1->fresh()->shots[0]['layers'] ?? [])->firstWhere('asset_id', $asset->id),
+            'art_<id> must route to detachArtwork and remove the layer',
+        );
+    }
+
+    public function test_delete_object_routes_a_text_id_to_delete_text(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->dispatch('sceneTextsChanged', sceneId: $this->s1->id, texts: [
+                ['id' => 'txt_keep', 'text' => 'Keep me', 'x' => 10, 'y' => 10],
+                ['id' => 'txt_kill', 'text' => 'Delete me', 'x' => 20, 'y' => 20],
+            ]);
+
+        $this->assertCount(2, $this->s1->fresh()->config['texts']);
+
+        $component->dispatch('scene:delete-object', objectId: 'txt_kill');
+
+        $texts = $this->s1->fresh()->config['texts'];
+        $this->assertCount(1, $texts);
+        $this->assertSame('txt_keep', $texts[0]['id'], 'txt_<id> must route to deleteSceneText for that id only');
+    }
+
+    public function test_delete_object_ignores_the_background_and_blank_ids(): void
+    {
+        $asset = \App\Models\SvgAsset::factory()->create(['user_id' => $this->teacher->id]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('attachArtwork', $asset->id);
+
+        $before = $this->s1->fresh()->shots;
+
+        $component->dispatch('scene:delete-object', objectId: '__bg__');
+        $component->dispatch('scene:delete-object', objectId: '');
+
+        $this->assertEquals($before, $this->s1->fresh()->shots, 'the background and blank ids must never mutate the scene');
+    }
+
+    // ── Painting picker mode: the "Image" tool adds a layer, "Browse paintings" swaps the bg ──
+
+    public function test_open_image_library_opens_the_picker_in_layer_mode(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->assertSet('paintingPickerOpen', false)
+            ->assertSeeHtml("Livewire.dispatch('open-image-library')")
+            ->dispatch('open-image-library')
+            ->assertSet('paintingPickerOpen', true)
+            ->assertSet('paintingPickerMode', 'layer');
+    }
+
+    public function test_browse_paintings_opens_the_picker_in_background_mode(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('openPaintingPicker')
+            ->assertSet('paintingPickerOpen', true)
+            ->assertSet('paintingPickerMode', 'background');
     }
 }

@@ -765,6 +765,25 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('scene:text-removed', sceneId: $scene->id, textId: $textId);
     }
 
+    /**
+     * One delete for any object-list item, routed by its id: `art_<assetId>` → a clipart/image
+     * layer, `txt_`/`rect_` → a text box / backing panel, `__bg__` → the background (not
+     * deletable). Fired from the object-list row's × and the Backspace/Delete shortcut.
+     */
+    #[On('scene:delete-object')]
+    public function deleteObject(string $objectId): void
+    {
+        if ($objectId === '' || $objectId === '__bg__') {
+            return;
+        }
+        if (preg_match('/^art_(\d+)$/', $objectId, $m)) {
+            $this->detachArtwork((int) $m[1]);
+
+            return;
+        }
+        $this->deleteSceneText($objectId);
+    }
+
     /** Teacher text annotations ([T] tool) — persisted per scene in config['texts']. */
     #[On('sceneTextsChanged')]
     public function saveSceneTexts(?int $sceneId, array $texts, ?string $selectedTextId = null): void
@@ -1215,7 +1234,25 @@ class Step3SceneConfigurator extends Component
 
     private const PAINTING_GRID_LIMIT = 30;
 
-    public function openPaintingPicker(): void
+    /** 'background' — the chosen painting replaces the scene background; 'layer' — it's added as an
+     *  editable image layer on top (the "Image" header button). Routed in applyPaintingChoice(). */
+    public string $paintingPickerMode = 'background';
+
+    public function openPaintingPicker(): void   // "Browse paintings" → set as the background
+    {
+        $this->paintingPickerMode = 'background';
+        $this->openPaintingPickerCommon();
+    }
+
+    /** "Image" header button → pick a public-domain painting and drop it on as an image LAYER. */
+    #[On('open-image-library')]
+    public function openImageLibrary(): void
+    {
+        $this->paintingPickerMode = 'layer';
+        $this->openPaintingPickerCommon();
+    }
+
+    private function openPaintingPickerCommon(): void
     {
         $this->paintingPickerOpen = true;
         $this->paintingCommonsLoaded = false;
@@ -1226,6 +1263,17 @@ class Step3SceneConfigurator extends Component
         $this->paintingReady = false;   // modal opens instantly; wire:init fills the grid
         $this->searchOpen = false;
         $this->dispatch('painting-picker:open');
+    }
+
+    /** Thumbnail click → route to background-swap or add-as-layer per the mode the picker opened in. */
+    public function applyPaintingChoice(string $source, string $key): void
+    {
+        if ($this->paintingPickerMode === 'layer') {
+            $this->applyPaintingAsLayer($source, $key);
+
+            return;
+        }
+        $this->applyPaintingBackground($source, $key);
     }
 
     /**
@@ -1514,11 +1562,80 @@ class Step3SceneConfigurator extends Component
         $this->selectSceneInternal($scene->id);
     }
 
+    /**
+     * Add the chosen corpus/Commons painting as an editable IMAGE LAYER on the scene — above the
+     * background, below the text — instead of replacing the background. The download is stored and
+     * wrapped in an SvgAsset so it reuses the whole clipart-layer machinery (move / scale / reorder
+     * / delete via the object list), then attached with attachArtwork().
+     */
+    public function applyPaintingAsLayer(string $source, string $key): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $this->paintingPickerOpen = false;
+
+        [$imageUrl, $credit, $fileStem] = match ($source) {
+            'corpus' => $this->corpusPaintingPayload($key),
+            'commons' => $this->commonsPaintingPayload($key),
+            default => [null, null, null],
+        };
+        if (! $imageUrl) {
+            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        if (! $scene->image_path) {
+            $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
+
+            return;
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'User-Agent' => 'LearningPortal/1.0 (thelearningportal.us; lesson image layers)',
+            ])->timeout(30)->get($imageUrl.'?width=1600');
+            if (! $response->successful() || $response->body() === '') {
+                throw new \RuntimeException('HTTP '.$response->status());
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+
+            return;
+        }
+
+        $ext = str_contains((string) $response->header('Content-Type'), 'png') ? 'png' : 'jpg';
+        $path = "lessons/{$this->lesson->id}/paintings/layer-{$fileStem}.{$ext}";
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
+
+        // Wrap the painting in an asset so it becomes a first-class artwork layer (move / scale /
+        // reorder / delete). updateOrCreate dedupes on the (user, source, source_ref) unique key.
+        $asset = \App\Models\SvgAsset::updateOrCreate(
+            ['user_id' => (int) auth()->id(), 'source' => 'commons', 'source_ref' => 'painting:'.$key],
+            [
+                'source_url' => $credit['source_url'] ?? '',
+                'title' => $credit['title'] ?? __('Painting'),
+                'license' => $credit['license'] ?? 'Public domain',
+                'attribution' => $credit['creator'] ?? null,
+                'svg_path' => $path,
+            ],
+        );
+
+        $this->attachArtwork($asset->id);   // appends it to shots[0].layers (below text) + reloads the scene
+    }
+
     /** @return array{0:?string,1:?array,2:?string} [imageUrl base, credit payload, storage file stem] */
     private function corpusPaintingPayload(string $key): array
     {
-        // Wikidata QIDs (paintings) or synthetic ids like 'bh-12345' (city plans).
-        if (! preg_match('/^[A-Za-z0-9:_-]{1,64}$/', $key)) {
+        // Keys are Wikidata QIDs, synthetic ids ('bh-12345'), or synthetic 'commons:<filename>'
+        // qids whose filenames carry spaces, accents, apostrophes and punctuation
+        // (e.g. "commons:Anon - 'Les Noyades de Nantes' … c. 1799.jpg"). find() is a parameterized
+        // lookup and the file stem is separately sanitised, so we only bound the length and reject
+        // control characters here — a strict allowlist silently dropped every Commons-ingested work.
+        if (mb_strlen($key) > 200 || preg_match('/[\x00-\x1F\x7F]/', $key)) {
             return [null, null, null];
         }
         $artwork = \App\Models\Corpus\Topic::resilient(
