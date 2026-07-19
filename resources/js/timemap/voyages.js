@@ -115,13 +115,15 @@ export function voyageStyleLayers(fontStack = ['Cinzel']) {
   ];
 }
 
-/** Call in the map's load handler (before the marker layers are added, so markers stay on top):
- *  registers the arrow icon, lifts the voyage layers above the runtime boundary layers, and
- *  applies the era filter. */
-export function initVoyages(map, { year = null } = {}) {
+/** Call in the map's load handler AFTER the tm-clouds custom layer exists: registers the arrow
+ *  icon, lifts the voyage layers above the boundary layers but BELOW tm-clouds, and applies the
+ *  era filter. The clouds layer (renderingMode:'3d') writes depth across the whole globe, so any
+ *  depth-tested layer drawn after it — every line layer — silently fails the depth test and
+ *  disappears; voyage lines must therefore render before it. */
+export function initVoyages(map, { year = null, beforeId = undefined } = {}) {
   if (!map.hasImage('voyage-arrow')) map.addImage('voyage-arrow', arrowImage(DEFAULT_COLOR));
   for (const id of LAYERS) {
-    if (map.getLayer(id)) map.moveLayer(id); // to the current top of the stack
+    if (map.getLayer(id)) map.moveLayer(id, beforeId);
   }
   if (year !== null) applyVoyageYear(map, year);
 }

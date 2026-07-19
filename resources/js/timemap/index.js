@@ -10,6 +10,12 @@ import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
+import nationalColors from './national-colors.json';
+
+// Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
+// tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
+// outside the list keep the per-style hash palette. See national-colors.json.
+const NATIONAL_PAIRS = nationalColors.families.flatMap((f) => f.qids.flatMap((q) => [q, f.color]));
 
 // Cliopatria reuses one QID across different polities (e.g. Q1068371 = Han Dynasty AND Chauhan
 // Dynasty) — rewrite (QID, Name) to the right item before enrichment. QID-only overrides are
@@ -155,6 +161,31 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // The style-driven base opacities (updated by applyMapStyle), scaled by the fade factor.
   let fillOpacityCase = FILL_OPACITY;
   let lineOpacityValue = 1;
+
+  // Colour strength (bottom-right slider): scales the territory fill intensity around the style's
+  // base opacity. 0.55 ≈ the style's designed look; 0 washes out to a faint atlas; 1 is vivid.
+  let colorStrength = 0.55;
+  try {
+    const saved = parseFloat(localStorage.getItem('tm-color-strength'));
+    if (Number.isFinite(saved)) colorStrength = Math.min(1, Math.max(0, saved));
+  } catch (e) { /* private mode */ }
+  const strengthOpacity = (base) => Math.min(0.92, Math.max(0.06, base * (0.45 + 1.1 * colorStrength)));
+  // Recompute the fill-opacity case (selected/hover boosted) from the active style + slider.
+  const refreshFillOpacity = () => {
+    const s = MAP_STYLES[currentStyleName] || {};
+    const base = strengthOpacity(s.fillOpacity != null ? s.fillOpacity : theme.fillOpacity.normal);
+    fillOpacityCase = ['case',
+      ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, base),
+      ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, base + 0.18),
+      base];
+  };
+  // Called by the colour slider (Blade, bottom right).
+  window.__tmSetColorStrength = (v) => {
+    colorStrength = Math.min(1, Math.max(0, Number(v) || 0));
+    try { localStorage.setItem('tm-color-strength', String(colorStrength)); } catch (e) { /* private mode */ }
+    refreshFillOpacity();
+    applyBoundaryOpacity(state.year);
+  };
   const fillFadeExpr = (year) => ['*', fillOpacityCase, fadeFactor(year)];
   const lineFadeExpr = (year) => ['*', lineOpacityValue, fadeFactor(year)];
 
@@ -368,8 +399,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const fill = ['case',
       ['boolean', ['feature-state', 'selected'], false], s.selected,
       ['boolean', ['feature-state', 'hover'], false], s.hover,
-      ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
-        ...pal.flatMap((c, i) => [i, c]), pal[0]]];
+      // National colour when curated, else the per-style hash palette.
+      ['match', ['coalesce', ['get', 'Wikidata'], 'Q0'],
+        ...NATIONAL_PAIRS,
+        ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
+          ...pal.flatMap((c, i) => [i, c]), pal[0]]]];
     map.setPaintProperty('water', 'background-color', s.water);
     if (map.getLayer('lakes')) map.setPaintProperty('lakes', 'fill-color', s.water);
     // Lake edges track the coast tones: thin ink line all round + a deeper southern drop-shadow.
@@ -446,11 +480,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     setVolcanoVisibility(map, !!s.mountains);
     if (map.getLayer('boundaries-fill')) {
       map.setPaintProperty('boundaries-fill', 'fill-color', fill);
-      // Keep hover/selected clearly visible even when the base fill is very faint (ink styles).
-      fillOpacityCase = ['case',
-        ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, s.fillOpacity),
-        ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, s.fillOpacity + 0.18),
-        s.fillOpacity];
+      refreshFillOpacity();
       lineOpacityValue = (s.line && s.line.opacity != null) ? s.line.opacity : 1;
       applyBoundaryOpacity(state.year);
       map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
@@ -786,12 +816,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then(() => addVolcanoLayer(map, { beforeId: 'boundaries-label', visibility: 'none' }))
       .then(() => applyMapStyle(currentStyleName));
 
-    // Explorer voyages / trade routes (voyages.json) — arrowed sea paths, era-filtered like
-    // polities; clicking one opens the info panel via its Wikidata QID. Their sources/layers live
-    // in the initial style; this lifts them above the boundary layers (markers, added next, stay
-    // on top) and applies the era filter.
-    initVoyages(map, { year: state.year });
-
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
     map.addSource('markers', { type: 'geojson', data: supplementalMarkers });
@@ -814,6 +838,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
     map.addLayer(createCloudSphereLayer(), 'boundaries-label');
+    // Explorer voyages / trade routes (voyages.json) — arrowed sea paths, era-filtered like
+    // polities; clicking one opens the info panel via its Wikidata QID. Their sources/layers live
+    // in the initial style; this lifts them above the boundary layers but keeps them BELOW the
+    // tm-clouds 3D layer, whose globe-wide depth writes would otherwise cull them (see voyages.js).
+    initVoyages(map, { year: state.year, beforeId: 'tm-clouds' });
     map.on('mouseenter', 'markers-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
 

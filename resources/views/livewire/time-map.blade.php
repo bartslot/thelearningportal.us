@@ -172,6 +172,19 @@
          x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>
 
+    {{-- Colour strength: scales territory fill intensity. National colours (NL orange, France
+         blue, Spain gold — see national-colors.json) stay recognisable; the slider trades subtle
+         atlas wash against vivid distinct countries. Sits above the attribution line. --}}
+    <div class="absolute bottom-12 right-4 z-20 flex items-center gap-2 rounded-box bg-base-100/85 px-3 py-1.5 shadow-lg"
+         x-data="{ v: 55 }"
+         x-init="try { const s = parseFloat(localStorage.getItem('tm-color-strength')); if (Number.isFinite(s)) v = Math.round(s * 100); } catch (e) {}">
+        <span class="text-xs font-medium opacity-70">{{ __('Colour') }}</span>
+        <input type="range" min="0" max="100" step="5" x-model.number="v"
+               x-on:input="window.__tmSetColorStrength && window.__tmSetColorStrength(v / 100)"
+               class="range range-xs range-primary w-28"
+               aria-label="{{ __('Territory colour strength') }}">
+    </div>
+
     {{-- Settings: a cog that fans out to a palette (map style) and a sound (read-aloud) toggle. --}}
     <div class="absolute right-4 top-4 z-30"
          x-data="{ settingsOpen: false, paletteOpen: false,
