@@ -66,6 +66,10 @@ php artisan config:cache && php artisan route:cache && php artisan view:cache
 
 Run once on the server with the next deploy, then tick off here:
 
+- [ ] `php artisan migrate --force` — adds `lessons.map_style` (per-lesson default map palette,
+      2026-07-20). Additive, nullable; safe. The 4 preview thumbnails ship as static assets in
+      `public/img/map-styles/` (no build step).
+
 - [ ] **Re-seed first, THEN backfill** — order matters. Backfill reads `cities.wikidata_qid`
       from the DB, so the corrected QIDs must be written to prod rows before it runs:
       1. `php artisan db:seed --class=Database\\Seeders\\HistoricalCityNamesSeeder --force`
