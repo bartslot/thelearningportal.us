@@ -123,7 +123,8 @@
             // map and just sync the focus markers.
             // (projection is excluded — the Flat/Globe toggle flips it in place via lessonmap:projection,
             //  which keeps the camera; re-mounting for it would reset the view)
-            const style = cfg.map_style || 'soft-atlas'
+            // Effective palette: a per-block override wins, else the lesson-wide default, else app default.
+            const style = cfg.map_style || p.lesson_map_style || 'soft-atlas'
             const key = [p.sceneId, cfg.qid || '', year].join('|')
             if (inst && key === lastKey) {
                 // Style isn't in the key (it repaints in place), so apply it here too — this is
@@ -319,6 +320,7 @@
                 <div wire:key="scene-inspector-{{ $sceneModel->id }}">
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
+                                                 :lesson-map-style="$this->lesson->map_style"
                                                  :territory-results="$this->territoryResults"
                                                  :territory-query="$territoryQuery"
                                                  :city-results="$this->cityResults"
@@ -682,7 +684,7 @@
          {{-- fmtOpen/fmtView mirror the Format panel's state (broadcast by the aside via
               inspector-state) so toolbar buttons can show a proper OPEN state — the toolbar is
               wire:ignore and a sibling Alpine scope, so it can't read the panel directly. --}}
-         x-data="{ rectOpen: false, viewOpen: false, fmtOpen: false, fmtView: 'scene' }"
+         x-data="{ addOpen: false, viewOpen: false, fmtOpen: false, fmtView: 'scene' }"
          x-on:inspector-state.window="fmtOpen = $event.detail.open; if ($event.detail.view) fmtView = $event.detail.view">
         {{-- Left group: View menu + Play + insert tools --}}
         <div class="flex items-stretch gap-0.5">
@@ -734,69 +736,55 @@
             <span class="text-[10px] font-medium">{{ __('Play') }}</span>
         </button>
 
-        <div class="mx-1 my-1.5 w-px bg-slate-700"></div>
-        {{-- Image — insert a public-domain Image as an object/layer on top of the background --}}
-        <button type="button"
-                onclick="Livewire.dispatch('open-image-library')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                title="{{ __('Insert image (public-domain image)') }}" aria-label="{{ __('Insert Image') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path d="M2.28955 15.7829L7.42759 10.5786C8.3027 9.69225 9.72152 9.69225 10.5966 10.5786L15.7347 15.7829M14.2408 14.2698L15.644 12.8484C16.5192 11.962 17.938 11.962 18.8131 12.8484L21.7103 15.7829M3.78345 19.5658H20.2164C21.0414 19.5658 21.7103 18.8884 21.7103 18.0527V5.94737C21.7103 5.11167 21.0414 4.4342 20.2164 4.4342H3.78345C2.95839 4.4342 2.28955 5.11167 2.28955 5.94737V18.0527C2.28955 18.8884 2.95839 19.5658 3.78345 19.5658ZM14.2408 8.21711H14.2482V8.22467H14.2408V8.21711ZM14.6142 8.21711C14.6142 8.42603 14.447 8.5954 14.2408 8.5954C14.0345 8.5954 13.8673 8.42603 13.8673 8.21711C13.8673 8.00818 14.0345 7.83882 14.2408 7.83882C14.447 7.83882 14.6142 8.00818 14.6142 8.21711Z" />
-            </svg>
-            <span class="text-[10px] font-medium">{{ __('Image') }}</span>
-        </button>
-
-        {{-- Clipart — insert a public-domain SVG as an object/layer on top of the background --}}
-        <button type="button"
-                onclick="Livewire.dispatch('open-svg-library')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                title="{{ __('Insert clipart (public-domain line-art)') }}" aria-label="{{ __('Insert clipart') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42"/>
-            </svg>
-            <span class="text-[10px] font-medium">{{ __('Clipart') }}</span>
-        </button>
-
-        {{-- Text --}}
-        <button type="button"
-                onclick="window.dispatchEvent(new CustomEvent('lesson:add-text'))"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                title="{{ __('Add text (drag to move; paste a link to embed a page)') }}" aria-label="{{ __('Add text') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5m16.5-1.5V6A2.25 2.25 0 0 0 18 3.75h-1.5m0 16.5H18A2.25 2.25 0 0 0 20.25 18v-1.5M15 12H9m1.5 8.25H6A2.25 2.25 0 0 1 3.75 18v-1.5M12 8.25v7.5" />
-            </svg>
-            <span class="text-[10px] font-medium">{{ __('Text') }}</span>
-        </button>
-
-        {{-- Panel (backing rectangle, left/right half) --}}
         <div class="relative">
-            <button type="button" @click="rectOpen = !rectOpen"
+            <button type="button" @click="addOpen = !addOpen"
                     class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
-                    :class="rectOpen && 'bg-sky-500/15 text-sky-300'"
-                    title="{{ __('Add a panel (left or right half) behind your text') }}" aria-label="{{ __('Add panel') }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m-4.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
-                </svg>
-                <span class="text-[10px] font-medium">{{ __('Panel') }}</span>
+                    :class="addOpen && 'bg-sky-500/15 text-sky-300'"
+                    aria-haspopup="menu" :aria-expanded="addOpen.toString()"
+                    title="{{ __('Add a scene, text, image, or clipart') }}" aria-label="{{ __('Add') }}">
+                <x-icons.plus class="h-6 w-6" />
+                <span class="text-[10px] font-medium">{{ __('Add') }}</span>
             </button>
-            <div x-show="rectOpen" x-cloak @click.outside="rectOpen = false"
-                 x-transition.opacity.duration.150ms
-                 class="absolute left-0 top-full z-50 mt-1.5 w-40 rounded-xl border border-slate-700 bg-base-300 p-1.5 shadow-2xl">
-                <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Backing panel') }}</p>
-                <button type="button"
-                        @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'left' } })); rectOpen = false"
-                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-base-200">
-                    <span class="flex h-4 w-6 overflow-hidden rounded border border-slate-600"><span class="w-1/2 bg-amber-400/70"></span></span>
-                    {{ __('Left half') }}
+            <div x-show="addOpen" x-cloak @click.outside="addOpen = false" x-transition.opacity.duration.150ms
+                 class="absolute left-0 top-full z-50 mt-1.5 w-56 rounded-xl border border-slate-700 bg-base-300 p-1.5 shadow-2xl" role="menu">
+                <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Add Scene') }}</p>
+                <button type="button" @click="Livewire.dispatch('scene:add'); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <x-icons.plus class="h-4 w-4 shrink-0 text-amber-400" />
+                    <span class="flex-1 font-medium">{{ __('Add Scene') }}</span>
+                    <span class="text-xs text-slate-500">{{ __('Below current') }}</span>
                 </button>
-                <button type="button"
-                        @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'right' } })); rectOpen = false"
-                        class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-base-200">
-                    <span class="flex h-4 w-6 justify-end overflow-hidden rounded border border-slate-600"><span class="w-1/2 bg-amber-400/70"></span></span>
-                    {{ __('Right half') }}
+                <div class="my-1 border-t border-slate-700" role="separator"></div>
+                <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Add Layer') }}</p>
+                <button type="button" @click="window.dispatchEvent(new CustomEvent('lesson:add-text')); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <x-icons.pencil class="h-4 w-4 shrink-0 text-slate-400" />
+                    <span>{{ __('Text') }}</span>
                 </button>
+                <button type="button" @click="Livewire.dispatch('open-image-library'); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <x-icons.photo class="h-4 w-4 shrink-0 text-slate-400" />
+                    <span>{{ __('Image') }}</span>
+                </button>
+                <button type="button" @click="Livewire.dispatch('open-svg-library'); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <x-icons.puzzle-piece class="h-4 w-4 shrink-0 text-slate-400" />
+                    <span>{{ __('Clipart') }}</span>
+                </button>
+                <div class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-200 hover:bg-base-200" role="group" aria-label="{{ __('Add panel') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m-4.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
+                    </svg>
+                    <span class="flex-1">{{ __('Panel') }}</span>
+                    <button type="button" @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'left' } })); addOpen = false"
+                            class="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 transition hover:border-amber-400 hover:text-amber-300">{{ __('Left') }}</button>
+                    <button type="button" @click="window.dispatchEvent(new CustomEvent('lesson:add-rect', { detail: { side: 'right' } })); addOpen = false"
+                            class="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 transition hover:border-amber-400 hover:text-amber-300">{{ __('Right') }}</button>
+                </div>
             </div>
         </div>
+
+        <div class="mx-1 my-1.5 w-px bg-slate-700"></div>
         </div>
 
         {{-- Right group: global actions, pushed to the far right --}}

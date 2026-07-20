@@ -31,6 +31,7 @@ class Lesson extends Model
         'game_pack_path',
         'quiz_question_count',
         'quiz_timing',
+        'map_style',
         'strategy_game',
         'strategy_game_id',
         'title',

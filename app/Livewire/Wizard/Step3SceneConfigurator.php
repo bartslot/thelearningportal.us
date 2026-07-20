@@ -104,6 +104,12 @@ class Step3SceneConfigurator extends Component
         $this->selectSceneInternal($id);
     }
 
+    #[On('scene:add')]
+    public function openAddScenePicker(): void
+    {
+        $this->addSceneOpen = true;
+    }
+
     /**
      * URL-form shots for the preview JS (scene:load payload AND the inert
      * scenes JSON in the blade — the bridge falls back to the latter when the
@@ -189,6 +195,7 @@ class Step3SceneConfigurator extends Component
             'hideIdentity' => (bool) ($scene->config['hide_identity'] ?? false),
             'kind' => $scene->kind,
             'config' => $scene->config,
+            'lesson_map_style' => $this->lesson->map_style, // lesson-wide default a map block inherits
             'gameType' => $scene->game_type,
             'quizQuestionCount' => $scene->quiz_question_count,
             // Quiz scenes preview their actual questions on the canvas.
@@ -1012,15 +1019,22 @@ class Step3SceneConfigurator extends Component
         $this->saveSelected();
     }
 
-    /** Map palette for a map block — mirrors the front-end Time-Map's four styles. */
-    public function setMapStyle(string $name): void
+    /**
+     * Lesson-wide map palette (soft-atlas / antique / pen-ink / night) — one setting for every
+     * map block in the lesson, mirroring the front-end Time-Map's four styles. Clears any per-block
+     * override on the selected scene so the lesson choice is what shows.
+     */
+    public function setLessonMapStyle(string $name): void
     {
-        if (! $this->selectedScene) {
-            return;
-        }
         $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night'];
-        $this->selectedScene['config']['map_style'] = in_array($name, $allowed, true) ? $name : 'soft-atlas';
-        $this->saveSelected();
+        $this->lesson->update(['map_style' => in_array($name, $allowed, true) ? $name : 'soft-atlas']);
+
+        if ($this->selectedScene && ($this->selectedScene['config']['map_style'] ?? null) !== null) {
+            unset($this->selectedScene['config']['map_style']);
+            $this->saveSelected();   // config changed → re-fires scene:load → preview repaints
+        } elseif ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId); // repaint the preview to the new default
+        }
     }
 
     /**
@@ -1906,6 +1920,7 @@ class Step3SceneConfigurator extends Component
         $this->addSceneOpen = false;
         $kind = in_array($kind, ['game', 'map'], true) ? $kind : 'narration';
         $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
+        $insertAfterSceneId = $this->selectedSceneId;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
 
         $payload = [
@@ -1919,6 +1934,7 @@ class Step3SceneConfigurator extends Component
         if ($kind === 'map') {
             $payload += Scene::mapPayloadForLesson($this->lesson);
             $scene = Scene::create($payload);
+            $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
             $this->selectSceneInternal($scene->id);
 
             return;
@@ -1948,7 +1964,44 @@ class Step3SceneConfigurator extends Component
 
         $scene = Scene::create($payload);
 
+        $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
         $this->selectSceneInternal($scene->id);
+    }
+
+    private function placeSceneAfterSelected(Scene $scene, ?int $afterSceneId): void
+    {
+        if (! $afterSceneId) {
+            return;
+        }
+
+        $sceneIds = $this->lesson->scenes()->ordered()->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $afterIndex = array_search($afterSceneId, $sceneIds, true);
+
+        if ($afterIndex === false) {
+            return;
+        }
+
+        $sceneIds = array_values(array_filter($sceneIds, fn (int $id) => $id !== $scene->id));
+        array_splice($sceneIds, $afterIndex + 1, 0, [$scene->id]);
+
+        DB::transaction(function () use ($sceneIds): void {
+            foreach ($sceneIds as $index => $sceneId) {
+                Scene::where('lesson_id', $this->lesson->id)
+                    ->where('id', $sceneId)
+                    ->update(['order' => -1 * ($index + 1)]);
+            }
+            foreach ($sceneIds as $index => $sceneId) {
+                Scene::where('lesson_id', $this->lesson->id)
+                    ->where('id', $sceneId)
+                    ->update(['order' => $index + 1]);
+            }
+        });
+
+        if ($scene->kind === 'game') {
+            $this->syncGameSceneIndexes();
+        }
     }
 
     public function deleteScene(int $sceneId): void

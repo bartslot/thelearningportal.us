@@ -119,23 +119,20 @@ test.describe('Lesson map block (composer)', () => {
     expect(result.driftLat).toBeLessThan(1);
   });
 
-  test('map style select repaints the map to the chosen palette', async ({ page }) => {
+  test('map style swatches repaint the map to the chosen palette', async ({ page }) => {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2500);
 
     await page.evaluate(() => (document.querySelector('button[wire\\:click="addScene(\'map\')"]') as HTMLButtonElement)?.click());
     await page.waitForTimeout(4000); // add + select + mount
 
-    const styleSelect = page.locator('select[wire\\:change*="setMapStyle"]');
-    await expect(styleSelect).toBeVisible();
-
-    // Night → the sea (bg layer) becomes the dark Night water colour, applied live.
-    await styleSelect.selectOption('night');
+    // Night swatch → the sea (bg layer) becomes the dark Night water colour, applied live.
+    await page.locator('button[wire\\:click="setLessonMapStyle(\'night\')"]').click();
     await page.waitForTimeout(1500);
     expect(await page.evaluate(() => (window as any).__lessonMap.getPaintProperty('bg', 'background-color'))).toBe('#0f1420');
 
-    // Tolkien → warm parchment land.
-    await styleSelect.selectOption('pen-ink');
+    // Tolkien swatch → warm parchment land.
+    await page.locator('button[wire\\:click="setLessonMapStyle(\'pen-ink\')"]').click();
     await page.waitForTimeout(1500);
     expect(await page.evaluate(() => (window as any).__lessonMap.getPaintProperty('land', 'fill-color'))).toBe('#e6d6ad');
   });

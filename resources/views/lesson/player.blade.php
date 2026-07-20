@@ -36,6 +36,8 @@
         'game_instructions'     => $lesson->strategyGame?->instructions,
         'era'                   => $lesson->era,
         'region'                => $lesson->region,
+        'map_style'             => $lesson->map_style, // lesson-wide default palette for map blocks
+
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
         'game_config'           => $lesson->game_config,

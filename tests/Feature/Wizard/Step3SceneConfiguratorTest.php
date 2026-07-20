@@ -134,7 +134,7 @@ class Step3SceneConfiguratorTest extends TestCase
     public function test_regenerate_script_paragraph_returns_cleaned_rewrite(): void
     {
         $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
-            ->shouldReceive('text')->once()->andReturn("  \"A tighter, punchier paragraph.\"  "));
+            ->shouldReceive('text')->once()->andReturn('  "A tighter, punchier paragraph."  '));
 
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
@@ -210,14 +210,25 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('Old script.', $this->s1->fresh()->script_segment, 'stale-scene save must be ignored');
     }
 
-    public function test_adds_a_blank_narration_scene_at_the_end(): void
+    public function test_scene_add_event_opens_the_scene_picker(): void
     {
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->dispatch('scene:add')
+            ->assertSet('addSceneOpen', true);
+    }
+
+    public function test_adds_a_blank_narration_scene_below_the_selected_scene(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('addScene');
 
-        $this->assertSame(3, $this->lesson->scenes()->count());
-        $this->assertSame('narration', Scene::orderBy('order', 'desc')->first()->kind);
+        $newScene = $this->lesson->scenes()->whereNotIn('id', [$this->s1->id, $this->s2->id])->sole();
+
+        $this->assertSame('narration', $newScene->kind);
+        $this->assertSame([$this->s1->id, $newScene->id, $this->s2->id], $this->lesson->scenes()->ordered()->pluck('id')->all());
+        $component->assertSet('selectedSceneId', $newScene->id);
     }
 
     public function test_adds_game_scene_with_selected_game_type_defaults(): void
@@ -235,11 +246,12 @@ class Step3SceneConfiguratorTest extends TestCase
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('addScene', 'game', 'strategy');
 
-        $scene = Scene::orderBy('order', 'desc')->first();
+        $scene = $this->lesson->scenes()->where('game_type', 'strategy')->sole();
         $this->assertSame('game', $scene->kind);
         $this->assertSame('strategy', $scene->game_type);
         $this->assertSame($game->id, $scene->strategy_game_id);
         $this->assertSame(600, $scene->duration_seconds);
+        $this->assertSame(2, $scene->order);
         $this->assertTrue($this->lesson->fresh()->include_game);
     }
 
@@ -317,23 +329,25 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('Filled question?', $draft[0]['question']);
     }
 
-    public function test_set_map_style_persists_a_valid_style_and_rejects_junk(): void
+    public function test_set_lesson_map_style_persists_lesson_wide_and_rejects_junk(): void
     {
         $map = Scene::create([
             'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'map',
-            'config' => ['year' => 1600], 'status' => 'ready',
+            'config' => ['year' => 1600, 'map_style' => 'night'], 'status' => 'ready',
         ]);
 
         $component = Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('selectScene', $map->id);
 
-        $component->call('setMapStyle', 'pen-ink');
-        $this->assertSame('pen-ink', $map->fresh()->config['map_style']);
+        // The style is a LESSON setting, and any per-block override is cleared so it inherits.
+        $component->call('setLessonMapStyle', 'pen-ink');
+        $this->assertSame('pen-ink', $this->lesson->fresh()->map_style);
+        $this->assertArrayNotHasKey('map_style', $map->fresh()->config);
 
         // Unknown values fall back to the default rather than persisting junk.
-        $component->call('setMapStyle', 'not-a-style');
-        $this->assertSame('soft-atlas', $map->fresh()->config['map_style']);
+        $component->call('setLessonMapStyle', 'not-a-style');
+        $this->assertSame('soft-atlas', $this->lesson->fresh()->map_style);
     }
 
     public function test_correct_answer_cannot_be_redrawn_but_distractors_can(): void

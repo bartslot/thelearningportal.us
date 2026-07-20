@@ -948,7 +948,8 @@ Alpine.data('lessonGame', (lesson) => ({
           qid: cfg.qid || null,
           year: cfg.year ?? 1600,
           projection: cfg.projection || 'mercator',
-          style: cfg.map_style || 'soft-atlas',   // the palette the teacher chose in the block
+          // per-block override → lesson-wide default → app default
+          style: cfg.map_style || lesson.map_style || 'soft-atlas',
           interactive: mode === 'interactive',
           annotations: cfg.annotations || [],   // read-only focus cities for students
         })
