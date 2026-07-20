@@ -66,10 +66,17 @@ php artisan config:cache && php artisan route:cache && php artisan view:cache
 
 Run once on the server with the next deploy, then tick off here:
 
-- [ ] `php artisan cities:backfill-coords` — prod's cities table still has lat/lng-0 seeder
-      stubs (they put wizard map-block focus pins at (0,0) in the Gulf of Guinea); this fills
-      real coordinates from Wikidata. Corrected city QIDs ship in
-      `database/data/historical_city_names.php` (2026-07-19).
+- [ ] **Re-seed first, THEN backfill** — order matters. Backfill reads `cities.wikidata_qid`
+      from the DB, so the corrected QIDs must be written to prod rows before it runs:
+      1. `php artisan db:seed --class=Database\\Seeders\\HistoricalCityNamesSeeder --force`
+         (updates wikidata_qid from the corrected `historical_city_names.php`)
+      2. `php artisan cities:backfill-coords` (fills lat/lng-0 stubs from Wikidata P625)
+
+      Prod's cities table still has lat/lng-0 seeder stubs (they put wizard map-block focus
+      pins at (0,0) in the Gulf of Guinea). Six QIDs were hallucinated wrong and fixed
+      2026-07-20 (Persepolis→Moscow, Merv→Australia, Fez→Russia, etc.); the re-seed is what
+      propagates that fix. If a backfill already ran with the old QIDs (non-zero wrong coords),
+      those rows won't re-fill — reset the six to lat/lng 0 first, or update them directly.
 
 ## 6. Smoke test
 - `https://your-domain/` → "Lessons ready to play" shows 7 tiles.
