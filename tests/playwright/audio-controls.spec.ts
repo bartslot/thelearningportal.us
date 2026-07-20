@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Audio Controls (H1)', () => {
   test('Audio controls are visible during playback', async ({ page }) => {
-    // Load a lesson (we'll use the one from the timemap test or create a minimal one)
-    // For now, just check that the lesson player page renders without errors
-    await page.goto('http://localhost:8000/lesson/DEMO', { waitUntil: 'networkidle' });
+    // FRREV9 is the seeded demo lesson that always exists in dev ("DEMO" never existed —
+    // the spec 404'd and found no controls).
+    await page.goto('http://localhost:8000/lesson/FRREV9', { waitUntil: 'networkidle' });
 
     // Wait for the lesson stage to be ready
     await page.waitForSelector('#lesson-stage', { timeout: 5000 }).catch(() => {});
