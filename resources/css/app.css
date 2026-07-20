@@ -757,3 +757,21 @@
         opacity: 1;
     }
 }
+
+/* Territory hover label on the lesson map (configurator). Overrides MapLibre's default
+   white popup bubble + tip so the name reads as a subtle dark chip on the parchment map.
+   Not layered — must beat MapLibre's own unlayered .maplibregl-popup-content rules. */
+.lesson-map-tag .maplibregl-popup-content {
+    background: rgba(15, 23, 42, 0.9);   /* base-100 navy */
+    color: #f3ead6;                       /* parchment text */
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(243, 234, 214, 0.15);
+}
+
+.lesson-map-tag .maplibregl-popup-tip {
+    display: none;   /* drop the white pointer triangle */
+}

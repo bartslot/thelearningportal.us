@@ -219,7 +219,9 @@ export function renderLessonMap (el, opts = {}) {
       if (id === undefined || id === null) return
       map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on })
     }
-    const tag = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 })
+    // className strips MapLibre's default white bubble + tip (see .lesson-map-tag in app.css)
+    // so the hover label reads as a subtle dark chip on the parchment map, not a white box.
+    const tag = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, className: 'lesson-map-tag' })
     map.on('mousemove', 'boundaries-fill', (e) => {
       const f = e.features && e.features[0]
       if (!f) return

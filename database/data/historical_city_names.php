@@ -30,20 +30,20 @@ return [
 
     // ── Mesopotamia, Persia & Central Asia ───────────────────────────────────
     ['modern' => 'Baghdad', 'historical' => 'Madinat al-Salam', 'period' => '762–1258 CE', 'qid' => 'Q1530'],
-    ['modern' => 'Hillah', 'historical' => 'Babylon', 'period' => '1894–539 BCE', 'qid' => 'Q221413'],
+    ['modern' => 'Hillah', 'historical' => 'Babylon', 'period' => '1894–539 BCE', 'qid' => 'Q243846'],
     ['modern' => 'Mosul', 'historical' => 'Nineveh', 'period' => '7th c. BCE', 'qid' => 'Q83317'],
-    ['modern' => 'Shiraz', 'historical' => 'Persepolis', 'period' => '550–330 BCE', 'qid' => 'Q129846'],
+    ['modern' => 'Shiraz', 'historical' => 'Persepolis', 'period' => '550–330 BCE', 'qid' => 'Q6397066'],
     ['modern' => 'Samarkand', 'historical' => 'Maracanda', 'period' => 'antiquity–Timurid', 'qid' => 'Q5753'],
-    ['modern' => 'Bukhara', 'historical' => 'Bukhārā', 'period' => 'Silk Road era', 'qid' => 'Q5712'],
+    ['modern' => 'Bukhara', 'historical' => 'Bukhārā', 'period' => 'Silk Road era', 'qid' => 'Q5764'],
     ['modern' => 'Ctesiphon', 'historical' => 'Ctesiphon', 'period' => '120 BCE–637 CE', 'qid' => 'Q192541'],
-    ['modern' => 'Merv', 'historical' => 'Margiana', 'period' => 'antiquity–1221 CE', 'qid' => 'Q623578'],
+    ['modern' => 'Merv', 'historical' => 'Margiana', 'period' => 'antiquity–1221 CE', 'qid' => 'Q193325'],
 
     // ── Egypt & Africa ───────────────────────────────────────────────────────
     ['modern' => 'Cairo', 'historical' => 'Fustat', 'period' => '641–1168 CE', 'qid' => 'Q85'],
     ['modern' => 'Luxor', 'historical' => 'Thebes', 'period' => '2055–1070 BCE', 'qid' => 'Q101583'],
     ['modern' => 'Memphis', 'historical' => 'Memphis', 'period' => '3100–641 CE', 'qid' => 'Q5715'],
     ['modern' => 'Timbuktu', 'historical' => 'Timbuktu', 'period' => '13th–16th c. CE', 'qid' => 'Q9427'],
-    ['modern' => 'Fez', 'historical' => 'Fes el-Bali', 'period' => '789 CE onward', 'qid' => 'Q31525'],
+    ['modern' => 'Fez', 'historical' => 'Fes el-Bali', 'period' => '789 CE onward', 'qid' => 'Q80985'],
     ['modern' => 'Masvingo', 'historical' => 'Great Zimbabwe', 'period' => '1100–1450 CE', 'qid' => 'Q601142'],
 
     // ── Europe ───────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ return [
     ['modern' => 'Hanoi', 'historical' => 'Thang Long', 'period' => '1010–1802 CE', 'qid' => 'Q1858'],
     ['modern' => 'Ho Chi Minh City', 'historical' => 'Saigon', 'period' => '1698–1976 CE', 'qid' => 'Q1854'],
     ['modern' => 'Delhi', 'historical' => 'Shahjahanabad', 'period' => '1639–1857 CE', 'qid' => 'Q1353'],
-    ['modern' => 'Patna', 'historical' => 'Pataliputra', 'period' => '490 BCE–550 CE', 'qid' => 'Q49159'],
+    ['modern' => 'Patna', 'historical' => 'Pataliputra', 'period' => '490 BCE–550 CE', 'qid' => 'Q80484'],
     ['modern' => 'Varanasi', 'historical' => 'Kashi', 'period' => 'antiquity', 'qid' => 'Q79980'],
     ['modern' => 'Kolkata', 'historical' => 'Calcutta', 'period' => '1690–2001 CE', 'qid' => 'Q1348'],
     ['modern' => 'Mumbai', 'historical' => 'Bombay', 'period' => '1661–1995 CE', 'qid' => 'Q1156'],
