@@ -15,17 +15,15 @@ class AvatarAnimationControllerModelTest extends TestCase
 
     public function test_default_controller_data_returns_flat_category_arrays(): void
     {
+        // Controller schema simplified to idle/expression/dance (was idle/presenting/greeting).
         $data = AvatarAnimationController::defaultControllerData();
 
-        $this->assertArrayHasKey('idle', $data);
-        $this->assertArrayHasKey('presenting', $data);
-        $this->assertArrayHasKey('greeting', $data);
-        $this->assertIsArray($data['idle']);
-        $this->assertEmpty($data['idle']);
-        $this->assertIsArray($data['presenting']);
-        $this->assertEmpty($data['presenting']);
-        $this->assertIsArray($data['greeting']);
-        $this->assertEmpty($data['greeting']);
+        $this->assertSame(['idle', 'expression', 'dance'], array_keys($data));
+
+        foreach ($data as $category => $clips) {
+            $this->assertIsArray($clips, "Category {$category} must be an array");
+            $this->assertEmpty($clips, "Category {$category} must start empty");
+        }
     }
 
     public function test_controller_is_cast_to_array(): void
@@ -34,7 +32,7 @@ class AvatarAnimationControllerModelTest extends TestCase
 
         $controller = AvatarAnimationController::create([
             'avatar_id'  => $avatar->id,
-            'controller' => ['idle' => ['1', '2'], 'presenting' => [], 'greeting' => []],
+            'controller' => ['idle' => ['1', '2'], 'expression' => [], 'dance' => []],
         ]);
 
         $this->assertIsArray($controller->fresh()->controller);

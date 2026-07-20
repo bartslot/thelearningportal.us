@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\Services\OpenAiImageService;
+use App\Services\Support\ImageStyleTemplate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -78,8 +79,10 @@ class OpenAiImageServiceTest extends TestCase
         });
     }
 
-    public function test_prompt_requests_letterbox_black_bars_for_2_to_1_framing(): void
+    public function test_flat_prompt_requests_wide_establishing_framing(): void
     {
+        // generate() builds FLAT 2D images now (the letterbox-panorama prompt is gone;
+        // skybox prompts moved to ImageStyleTemplate::buildSkybox + generateFromPrompt).
         Http::fake([
             'https://api.openai.com/v1/images/generations' => Http::response([
                 'data' => [['url' => 'https://example.com/x.png']],
@@ -96,8 +99,9 @@ class OpenAiImageServiceTest extends TestCase
         Http::assertSent(function ($request): bool {
             if (! str_ends_with($request->url(), '/images/generations')) return false;
             $prompt = $request->data()['prompt'] ?? '';
-            return str_contains($prompt, 'letterbox')
-                && str_contains($prompt, 'solid pure black bars above and below');
+            return str_contains($prompt, 'wide establishing shot')
+                && str_contains($prompt, 'sense of depth and space')
+                && ! str_contains($prompt, 'letterbox');
         });
     }
 
@@ -110,9 +114,10 @@ class OpenAiImageServiceTest extends TestCase
             'https://example.com/x.png' => Http::response('X', 200),
         ]);
 
-        app(OpenAiImageService::class)->generate(
-            seedPrompt:  'Roman forum at dusk',
-            style:       'painted',
+        // Skybox prompts are pre-built via ImageStyleTemplate::buildSkybox and sent
+        // through generateFromPrompt (the path GenerateSkyboxImage uses).
+        app(OpenAiImageService::class)->generateFromPrompt(
+            prompt:      ImageStyleTemplate::buildSkybox('Roman forum at dusk', 'painted'),
             destination: 'lessons/1/scenes/3/skybox.webp',
         );
 
@@ -123,10 +128,10 @@ class OpenAiImageServiceTest extends TestCase
             $data   = $request->data();
             $prompt = $data['prompt'] ?? '';
 
-            return str_contains($prompt, '360 degree panoramic scene')
-                && str_contains($prompt, 'equirectangular projection')
-                && stripos($prompt, 'seamless continuity between the left and right edges') !== false
-                && stripos($prompt, 'horizon line level and centered') !== false
+            return str_contains($prompt, 'equirectangular latitude-longitude panorama')
+                && str_contains($prompt, '360-degree horizontal view')
+                && stripos($prompt, 'seamless left-right edge continuity') !== false
+                && stripos($prompt, 'level horizon at center') !== false
                 && ($data['output_format'] ?? null) === 'webp'
                 && ($data['output_compression'] ?? null) === 50;
         });

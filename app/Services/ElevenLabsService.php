@@ -14,8 +14,11 @@ class ElevenLabsService
 
     public function __construct()
     {
-        $this->apiKey  = config('services.elevenlabs.api_key', '');
-        $this->baseUrl = config('services.elevenlabs.base_url', 'https://api.elevenlabs.io');
+        // config() only applies the default when the key is MISSING; services.elevenlabs.api_key
+        // exists as null whenever ELEVENLABS_API_KEY is unset, so cast — otherwise constructing
+        // the service fatals with a TypeError in any environment without the env var.
+        $this->apiKey  = (string) config('services.elevenlabs.api_key', '');
+        $this->baseUrl = (string) config('services.elevenlabs.base_url', 'https://api.elevenlabs.io');
     }
 
     /** @return array<int, array{id: string, label: string, preview_url: string, gradient_class: string, gender: string}> */

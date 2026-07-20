@@ -113,7 +113,9 @@ class StudentLessonApiTest extends TestCase
                 'data' => [
                     'id', 'title', 'topic', 'grade_level',
                     'historical_figure', 'duration_seconds',
-                    'video_url', 'audio_url', 'portrait_url',
+                    // video_url retired with pre-rendered SadTalker avatar videos —
+                    // the player is 2D portrait + narration audio now.
+                    'audio_url', 'portrait_url',
                     'quiz_questions' => [['id', 'order', 'question', 'options', 'points']],
                     'my_progress'    => ['watch_seconds', 'video_completed', 'score', 'max_score', 'completed'],
                 ],

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Models\AnimationClip;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -37,10 +36,13 @@ class AnimationClipModelTest extends TestCase
         $this->assertStringContainsString('avatars/animations/idle/42.fbx', $clip->fbxUrl());
     }
 
-    public function test_category_must_be_one_of_idle_presenting_greeting(): void
+    public function test_category_accepts_values_beyond_the_original_enum(): void
     {
-        $this->expectException(QueryException::class);
+        // 2026_04_24_123621 widened category from the idle/presenting/greeting enum to a
+        // plain string (dropping the Postgres CHECK constraint) so new categories like
+        // 'introduction' can ship without a schema change.
+        $clip = AnimationClip::factory()->create(['category' => 'introduction']);
 
-        AnimationClip::factory()->create(['category' => 'invalid']);
+        $this->assertSame('introduction', $clip->fresh()->category);
     }
 }

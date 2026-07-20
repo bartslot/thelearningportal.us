@@ -53,7 +53,9 @@ class TeacherDashboardTest extends TestCase
             ->assertOk()
             ->assertSee('Group 7A')
             ->assertSee('The Dutch Revolt')
-            ->assertSee('Wie bestuurt er?')
+            // Lessons are grouped into place shelves now (Netherlands / France / Spain /
+            // Europe), not Canon-theme shelves — 'dutch' in the title lands this one here.
+            ->assertSee('Netherlands')
             ->assertSee('100%')
             ->assertDontSee('A Private Lesson');
     }

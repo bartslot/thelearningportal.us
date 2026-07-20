@@ -8,6 +8,7 @@ use App\Jobs\GenerateSceneImage;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\User;
+use App\Services\FigureAppearanceService;
 use App\Services\OpenAiImageService;
 use App\Services\OpenAiLlmService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,6 +53,7 @@ class GenerateSceneImageTest extends TestCase
         (new GenerateSceneImage($scene->id))->handle(
             app(OpenAiImageService::class),
             app(OpenAiLlmService::class),
+            app(FigureAppearanceService::class),
         );
 
         $this->assertSame(
@@ -96,6 +98,7 @@ class GenerateSceneImageTest extends TestCase
         (new GenerateSceneImage($scene->id))->handle(
             app(OpenAiImageService::class),
             app(OpenAiLlmService::class),
+            app(FigureAppearanceService::class),
         );
 
         $this->assertFalse($captured['isGame']);

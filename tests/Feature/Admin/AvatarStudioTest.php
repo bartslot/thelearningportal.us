@@ -56,22 +56,23 @@ class AvatarStudioTest extends TestCase
         $this->assertSame('en-GB-RyanNeural', $a->voiceFor(null));
     }
 
-    public function test_set_preferred_ticks_and_unticks_per_language(): void
+    public function test_use_voice_ticks_and_unticks_per_language(): void
     {
+        // setPreferred + selectVoice were merged into the single useVoice action.
         $studio = Livewire::actingAs($this->admin)
             ->withQueryParams(['provider' => 'edge_tts'])
             ->test(AvatarStudio::class, ['avatar' => $this->avatar])
             ->set('languageFilter', 'all')
-            ->call('setPreferred', 'nl', 'nl-NL-ColetteNeural');
+            ->call('useVoice', 'nl', 'nl-NL-ColetteNeural');
 
         $this->assertSame('nl-NL-ColetteNeural', $this->avatar->fresh()->voice_map['nl'] ?? null);
 
-        // Ticking the same voice again unticks it.
-        $studio->call('setPreferred', 'nl', 'nl-NL-ColetteNeural');
+        // Ticking the same voice again unticks it (base voice is left as-is).
+        $studio->call('useVoice', 'nl', 'nl-NL-ColetteNeural');
         $this->assertArrayNotHasKey('nl', $this->avatar->fresh()->voice_map ?? []);
 
         // Unknown voice ids are rejected.
-        $studio->call('setPreferred', 'nl', 'bogus-voice');
+        $studio->call('useVoice', 'nl', 'bogus-voice');
         $this->assertArrayNotHasKey('nl', $this->avatar->fresh()->voice_map ?? []);
     }
 
@@ -113,12 +114,14 @@ class AvatarStudioTest extends TestCase
         $this->assertTrue($cards->contains(fn ($c) => ! $c['featured']));
     }
 
-    public function test_selecting_a_voice_persists_it_on_the_avatar_immediately(): void
+    public function test_using_a_voice_persists_it_as_the_base_voice_immediately(): void
     {
+        // useVoice doubles as voice selection: picking a voice for a language also
+        // makes it the avatar's base/active voice (persisted immediately).
         Livewire::actingAs($this->admin)
             ->withQueryParams(['provider' => 'edge_tts'])
             ->test(AvatarStudio::class, ['avatar' => $this->avatar])
-            ->call('selectVoice', 'nl-NL-FennaNeural')
+            ->call('useVoice', 'nl', 'nl-NL-FennaNeural')
             ->assertSet('voice_id', 'nl-NL-FennaNeural')
             ->assertSet('voice_provider', 'edge_tts')
             ->assertSet('previewVoiceId', 'nl-NL-FennaNeural');
@@ -126,6 +129,7 @@ class AvatarStudioTest extends TestCase
         $this->avatar->refresh();
         $this->assertSame('edge_tts', $this->avatar->voice_provider);
         $this->assertSame('nl-NL-FennaNeural', $this->avatar->voice_id);
+        $this->assertSame('nl-NL-FennaNeural', $this->avatar->voice_map['nl'] ?? null);
     }
 
     public function test_apply_voice_updates_the_avatar_provider_too(): void

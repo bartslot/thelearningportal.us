@@ -86,7 +86,12 @@ class ElevenLabsServiceTest extends TestCase
         $this->assertArrayHasKey('audio', $result);
         $this->assertArrayHasKey('alignment', $result);
         $this->assertEquals('fake-mp3-bytes', $result['audio']);
-        $this->assertEquals($fakeAlignment, $result['alignment']);
+        // ElevenLabs' parallel arrays are converted to per-character entries so the
+        // JS player (speakWithElevenLabsAlignment) can iterate them directly.
+        $this->assertEquals([
+            ['character' => 'H', 'start_time' => 0.0, 'end_time' => 0.1],
+            ['character' => 'i', 'start_time' => 0.1, 'end_time' => 0.2],
+        ], $result['alignment']);
     }
 
     public function test_generate_with_timestamps_returns_null_on_failure(): void
