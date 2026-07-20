@@ -136,6 +136,10 @@ test.describe('wizard editor — object list & caption', () => {
         return !!el;
       });
     const before = await captionVisible();
+    // The caption toggle moved into the collapsed-by-default "Scene details" disclosure
+    // in the inspector — open it first or the toggle is display:none.
+    await page.locator('summary:has-text("Scene details")').first().click();
+    await settle(page, 300);
     const toggle = page.locator('label:has-text("Caption") input[type="checkbox"]').first();
     await toggle.click();
     // The toggle round-trips through scene:load before the canvas overlay updates — poll,

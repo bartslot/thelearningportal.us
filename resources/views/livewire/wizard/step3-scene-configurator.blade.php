@@ -655,7 +655,10 @@
     {{-- Top toolbar — Keynote-style: Play + insert tools as stacked icon-over-label buttons.
          Solid background (no opacity/blur) so the composition never shows through. wire:ignore
          keeps the 3s status poll from morphing the strip and snapping the Panel popover shut. --}}
-    <div class="fixed right-0 top-0 z-40 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg left-0 pl-16"
+    {{-- z-50: must out-stack the z-40 resize handles (rail + object list) — they are later
+         fixed siblings, so at equal z they'd sit above this toolbar's DROPDOWNS and swallow
+         clicks on menu items (View ▸ Object list was dead at the default rail width). --}}
+    <div class="fixed right-0 top-0 z-50 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 shadow-lg left-0 pl-16"
          wire:ignore
          {{-- fmtOpen/fmtView mirror the Format panel's state (broadcast by the aside via
               inspector-state) so toolbar buttons can show a proper OPEN state — the toolbar is
