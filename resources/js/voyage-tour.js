@@ -167,7 +167,7 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
       beforeId: 'voyage-ships',
       samplePoint: (t) => ships.pointAt(voyage, t),
     });
-    etch = attachShoreEtch(map, { getFog: () => fog?.current() });
+    etch = attachShoreEtch(map); // native layer below the fog — discovery handles masking
     ships.setYear(year);
     f0 = ships.fractionAtWaypoint(voyage, legDef.wp[0]);
     f1 = ships.fractionAtWaypoint(voyage, legDef.wp[1]);
