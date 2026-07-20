@@ -333,7 +333,11 @@ class Step3SceneConfigurator extends Component
             // Motion + backdrop settings re-paint the canvas so the teacher SEES the change.
             || (bool) ($payload['kb_animated'] ?? true) !== (bool) ($scene->kb_animated ?? true)
             || ($payload['kb_direction'] ?? null) !== ($scene->kb_direction ?? null)
-            || ($payload['background_color'] ?? null) !== ($scene->background_color ?? null);
+            || ($payload['background_color'] ?? null) !== ($scene->background_color ?? null)
+            // Config carries the map block's year/projection (and other per-kind settings) —
+            // without this, editing the map YEAR saved fine but never re-fired scene:load,
+            // so the live preview kept filtering borders/cities by the old year.
+            || ($payload['config'] ?? []) != ($scene->config ?? []);
 
         $scene->update($payload);
 

@@ -4,7 +4,9 @@ import { test, expect } from '@playwright/test';
 // inspector settings, reorder, delete. Lesson 1 is the seeded demo lesson owned by the
 // auto-login teacher with a polity topic (set up in the test DB seed).
 test.describe('Lesson map block (composer)', () => {
-  const url = 'http://localhost:8000/teacher/lessons/1/wizard?step=3';
+  // step=4 — the Configure editor (the Story step's arrival renumbered the wizard;
+  // step=3 is now Generate and has no timeline).
+  const url = 'http://localhost:8000/teacher/lessons/1/wizard?step=4';
 
   test('add → renders preview → inspector → delete', async ({ page }) => {
     const errors: string[] = [];
