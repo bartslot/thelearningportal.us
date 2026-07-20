@@ -123,8 +123,12 @@
             // map and just sync the focus markers.
             // (projection is excluded — the Flat/Globe toggle flips it in place via lessonmap:projection,
             //  which keeps the camera; re-mounting for it would reset the view)
+            const style = cfg.map_style || 'soft-atlas'
             const key = [p.sceneId, cfg.qid || '', year].join('|')
             if (inst && key === lastKey) {
+                // Style isn't in the key (it repaints in place), so apply it here too — this is
+                // the path a saved style change lands on after its Livewire round-trip.
+                try { inst.setStyle(style) } catch (_) {}
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }
@@ -134,6 +138,7 @@
             const prev = lastKey ? lastKey.split('|') : null
             if (inst && prev && prev[0] === String(p.sceneId) && prev[2] === String(year)) {
                 lastKey = key
+                try { inst.setStyle(style) } catch (_) {}
                 try { inst.setPolity(cfg.qid || null) } catch (_) {}
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
@@ -152,6 +157,7 @@
                     qid: cfg.qid || null,
                     year,
                     projection: cfg.projection || 'mercator',
+                    style,
                     interactive: true,
                     annotations: cfg.annotations || [],
                     editable: true,
@@ -172,6 +178,9 @@
 
         // Inspector VIEW toggle (Flat 2D / Globe 3D) → flip the live preview projection immediately.
         window.addEventListener('lessonmap:projection', (e) => inst && inst.setProjection(e.detail.type))
+
+        // Inspector MAP STYLE select → repaint the live preview to the chosen palette immediately.
+        window.addEventListener('lessonmap:style', (e) => inst && inst.setStyle(e.detail.name))
 
         // Focus-city rename/remove saved server-side → push fresh annotations so marker labels update live.
         window.Livewire.on('focusAnnotationsRefresh', (e) => {

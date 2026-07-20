@@ -57,6 +57,22 @@
         </div>
     </div>
 
+    {{-- MAP STYLE — the same four palettes as the front-end Time-Map, chosen here in the settings
+         panel (not behind a floating button). x-on:change repaints the live preview instantly;
+         wire:change persists so it survives a re-mount and renders the same for students. --}}
+    @php $mapStyle = $scene->config['map_style'] ?? 'soft-atlas'; @endphp
+    <label class="form-control">
+        <span class="text-xs uppercase tracking-wider text-slate-400">Map style</span>
+        <select wire:change="setMapStyle($event.target.value)"
+                x-on:change="window.dispatchEvent(new CustomEvent('lessonmap:style',{detail:{name:$event.target.value}}))"
+                class="select select-sm select-bordered bg-slate-900 mt-1">
+            <option value="soft-atlas" @selected($mapStyle === 'soft-atlas')>Soft Atlas</option>
+            <option value="antique" @selected($mapStyle === 'antique')>Hand-coloured Antique</option>
+            <option value="pen-ink" @selected($mapStyle === 'pen-ink')>Tolkien</option>
+            <option value="night" @selected($mapStyle === 'night')>Night</option>
+        </select>
+    </label>
+
     {{-- Focus cities — search the cities corpus (modern OR historical name), then drop a red dot
          + label on the map (annotations[].type === 'focus'). A typeahead leads; dropping a raw pin
          is the secondary path. --}}

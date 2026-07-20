@@ -30,6 +30,18 @@ const PALETTE = {
   coastShadow: '#8a7a5e',
 }
 
+// Map styles — the same four the Time-Map's palette offers (window.__applyMapStyle), reduced to
+// the layers the lesson map actually has. `terrain` hides the ink hill/forest glyphs on the dark
+// Night style (they vanish on a dark ground). Applied by applyStyle(); the block's chosen style
+// rides on scene config.map_style and renders identically in the wizard preview and the player.
+const MAP_STYLES = {
+  'soft-atlas': { land: '#efe6d0', water: '#c7d4c6', coast: '#5b4a36', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true },
+  'antique': { land: '#e8d6ac', water: '#dcdcba', coast: '#6a5238', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true },
+  'pen-ink': { land: '#e6d6ad', water: '#dedec0', coast: '#5e4a34', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true },
+  'night': { land: '#1b2230', water: '#0f1420', coast: '#8a99b8', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false },
+}
+const DEFAULT_STYLE = 'soft-atlas'
+
 // Cities valid at `year` (gazetteer entries carry valid_from/valid_to; missing = always valid).
 const cityFilter = (year) => ['all',
   ['<=', ['to-number', ['coalesce', ['get', 'valid_from'], -99999]], year],
@@ -49,7 +61,7 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator' } = opts
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE } = opts
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
@@ -313,6 +325,7 @@ export function renderLessonMap (el, opts = {}) {
 
   map.on('load', () => {
     setYear(year)
+    applyStyle(activeStyle) // colour the base layers now (avoids a flash of the default palette)
     requestAfterTiles(fitToPolity)
 
     // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
@@ -341,6 +354,7 @@ export function renderLessonMap (el, opts = {}) {
         }, map.getLayer('city-dots') ? 'city-dots' : undefined)
         wirePolityPicking()
       })
+      .then(() => applyStyle(activeStyle)) // re-apply once terrain layers exist (toggles their visibility)
   })
   // Labelled overlay of the curated HISTORICAL cities (e.g. "Constantinople (Istanbul)"), fetched
   // as GeoJSON and drawn ABOVE the normal city labels. Append-only and fully guarded: any fetch /
@@ -390,6 +404,7 @@ export function renderLessonMap (el, opts = {}) {
       // This overlay can load AFTER the annotations set its focus names, so re-apply the current
       // exclusion now that `hcity-label` exists (no-op when no focus cities are present).
       applyFocusExclusion('hcity-label', lastFocusNames)
+      applyStyle(activeStyle) // colour the just-added historical labels for the active style
     } catch (_) { /* overlay is decorative — never break the map */ }
   })
 
@@ -460,6 +475,37 @@ export function renderLessonMap (el, opts = {}) {
     }
   }
 
+  // Recolour the map to one of the four styles (soft-atlas / antique / pen-ink / night). Idempotent
+  // and layer-guarded, so it is safe to re-run as the async terrain + historical-city layers arrive.
+  let activeStyle = MAP_STYLES[style] ? style : DEFAULT_STYLE
+  function applyStyle (name) {
+    activeStyle = MAP_STYLES[name] ? name : DEFAULT_STYLE
+    const s = MAP_STYLES[activeStyle]
+    const paint = (layer, prop, val) => { if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, val) } catch (_) {} } }
+    paint('bg', 'background-color', s.water)
+    paint('graticule', 'line-color', s.grid)
+    paint('coast-shadow', 'line-color', s.coastShadow)
+    paint('land', 'fill-color', s.land)
+    paint('lakes', 'fill-color', s.water)
+    paint('rivers', 'line-color', s.river)
+    paint('coast-bold', 'line-color', s.coast)
+    // Borders keep the red highlight case — only the base (unselected) colour tracks the style.
+    paint('boundaries-line', 'line-color',
+      ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, s.line])
+    paint('city-dots', 'circle-color', s.text)
+    paint('city-dots', 'circle-stroke-color', s.halo)
+    paint('city-labels', 'text-color', s.text)
+    paint('city-labels', 'text-halo-color', s.halo)
+    paint('hcity-label', 'text-color', s.text)
+    paint('hcity-label', 'text-halo-color', s.halo)
+    // Ink hill/forest glyphs are dark drawings — hide them on the dark Night ground.
+    for (const t of ['land-scatter', 'forests', 'mountains', 'volcanoes']) {
+      if (map.getLayer(t)) { try { map.setLayoutProperty(t, 'visibility', s.terrain ? 'visible' : 'none') } catch (_) {} }
+    }
+    // Letterbox bars (map narrower than the stage) match the sea.
+    try { el.style.backgroundColor = s.water } catch (_) {}
+  }
+
   window.__lessonMap = map // debugging + test assertions (same idea as the Time-Map's __tmMap)
 
   return {
@@ -497,6 +543,7 @@ export function renderLessonMap (el, opts = {}) {
     }),
     setAnnotations: (a) => anno?.update(a),
     setPolity: (id) => setPolity(id),
+    setStyle: (name) => applyStyle(name),
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
     destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },

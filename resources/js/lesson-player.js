@@ -947,6 +947,8 @@ Alpine.data('lessonGame', (lesson) => ({
         _mapInstance = window.renderLessonMap(inner, {
           qid: cfg.qid || null,
           year: cfg.year ?? 1600,
+          projection: cfg.projection || 'mercator',
+          style: cfg.map_style || 'soft-atlas',   // the palette the teacher chose in the block
           interactive: mode === 'interactive',
           annotations: cfg.annotations || [],   // read-only focus cities for students
         })

@@ -1012,6 +1012,17 @@ class Step3SceneConfigurator extends Component
         $this->saveSelected();
     }
 
+    /** Map palette for a map block — mirrors the front-end Time-Map's four styles. */
+    public function setMapStyle(string $name): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night'];
+        $this->selectedScene['config']['map_style'] = in_array($name, $allowed, true) ? $name : 'soft-atlas';
+        $this->saveSelected();
+    }
+
     /**
      * Coerce focus items to a safe shape; pass unknown types through untouched so future
      * annotation kinds survive a phase-1 save. Drops malformed focus items.

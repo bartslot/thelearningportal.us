@@ -317,6 +317,25 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('Filled question?', $draft[0]['question']);
     }
 
+    public function test_set_map_style_persists_a_valid_style_and_rejects_junk(): void
+    {
+        $map = Scene::create([
+            'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'map',
+            'config' => ['year' => 1600], 'status' => 'ready',
+        ]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $map->id);
+
+        $component->call('setMapStyle', 'pen-ink');
+        $this->assertSame('pen-ink', $map->fresh()->config['map_style']);
+
+        // Unknown values fall back to the default rather than persisting junk.
+        $component->call('setMapStyle', 'not-a-style');
+        $this->assertSame('soft-atlas', $map->fresh()->config['map_style']);
+    }
+
     public function test_correct_answer_cannot_be_redrawn_but_distractors_can(): void
     {
         $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock
