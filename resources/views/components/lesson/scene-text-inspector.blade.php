@@ -33,7 +33,10 @@
 
         <div class="flex items-center justify-between gap-3">
             <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Color') }}</span>
+            {{-- @input patches the canvas overlay instantly while the picker is open;
+                 wire:change persists once the teacher commits. --}}
             <input type="color" value="{{ $text['color'] ?? '#0f172a' }}"
+                   @input="window.__lessonTextLayer?.patch?.(@js($id), { color: $event.target.value })"
                    wire:change="updateSceneText(@js($id), 'color', $event.target.value)"
                    class="h-8 w-12 cursor-pointer rounded border border-slate-700 bg-slate-900 p-1" />
         </div>
@@ -41,6 +44,7 @@
         <label class="flex items-center gap-2">
             <span class="w-14 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Opacity') }}</span>
             <input type="range" min="0.1" max="0.95" step="0.05" value="{{ $text['opacity'] ?? 0.5 }}"
+                   @input="window.__lessonTextLayer?.patch?.(@js($id), { opacity: parseFloat($event.target.value) })"
                    wire:change="updateSceneText(@js($id), 'opacity', $event.target.value)"
                    class="range range-xs flex-1" />
             <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format((float) ($text['opacity'] ?? 0.5), 2), '0'), '.') }}</span>
@@ -101,12 +105,14 @@
             <div class="flex items-center justify-between gap-3">
                 <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Glass color') }}</span>
                 <input type="color" value="{{ $text['bgColor'] ?? '#0f172a' }}"
+                       @input="window.__lessonTextLayer?.patch?.(@js($id), { bgColor: $event.target.value })"
                        wire:change="updateSceneText(@js($id), 'bgColor', $event.target.value)"
                        class="h-8 w-12 cursor-pointer rounded border border-slate-700 bg-slate-900 p-1" />
             </div>
             <label class="flex items-center gap-2">
                 <span class="w-14 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Opacity') }}</span>
                 <input type="range" min="0.05" max="0.95" step="0.05" value="{{ $text['bgOpacity'] ?? 0.3 }}"
+                       @input="window.__lessonTextLayer?.patch?.(@js($id), { bgOpacity: parseFloat($event.target.value) })"
                        wire:change="updateSceneText(@js($id), 'bgOpacity', $event.target.value)"
                        class="range range-xs flex-1" />
                 <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format((float) ($text['bgOpacity'] ?? 0.3), 2), '0'), '.') }}</span>
