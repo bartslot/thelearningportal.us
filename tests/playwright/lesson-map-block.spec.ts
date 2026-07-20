@@ -72,4 +72,50 @@ test.describe('Lesson map block (composer)', () => {
     const after = await page.evaluate(() => [...document.querySelectorAll('[data-scene-id]')].map(e => Number((e as HTMLElement).dataset.sceneId)));
     expect(after[after.length - 1]).toBe(ids[0]);
   });
+
+  test('picking a territory updates in place — no remount, no camera jump', async ({ page }) => {
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+
+    // Fresh map block (auto-selected).
+    await page.evaluate(() => (document.querySelector('button[wire\\:click="addScene(\'map\')"]') as HTMLButtonElement)?.click());
+    await page.waitForTimeout(4000); // add + select + mount + tiles
+
+    // A year must already be set: the FIRST pick on a yearless block seeds the year and
+    // legitimately remounts. With a year present, picks are in-place (this test's subject).
+    const yearInput = page.getByPlaceholder('e.g. 1600');
+    await yearInput.fill('1700');
+    await yearInput.blur();
+    await page.waitForTimeout(3500); // year change may remount — fine, it's before we tag
+
+    // Tag the live instance, record the camera, and grab a polity that's actually on screen.
+    const setup = await page.evaluate(() => {
+      const m = (window as any).__lessonMap;
+      if (!m || !m.getLayer('boundaries-line')) return null;
+      m.__persist = 'tag-' + Math.random().toString(36).slice(2);
+      const qid = m.queryRenderedFeatures({ layers: ['boundaries-line'] })
+        .map((f: any) => f.properties?.Wikidata).find(Boolean);
+      return { tag: m.__persist, center: m.getCenter(), qid: qid || null };
+    });
+    test.skip(!setup || !setup.qid, 'no polity rendered to pick');
+
+    // Fire the exact event a map click fires (onPolityClick → mapTerritoryClicked).
+    await page.evaluate((qid) => {
+      (window as any).Livewire.dispatch('mapTerritoryClicked', { sceneId: null, qid, name: 'Test polity' });
+    }, setup!.qid);
+    await page.waitForTimeout(3000); // server round-trip + scene:load
+
+    const result = await page.evaluate((before) => {
+      const m = (window as any).__lessonMap;
+      return {
+        remounted: m.__persist !== before.tag,        // a rebuilt instance loses __persist (the blink)
+        driftLng: Math.abs(m.getCenter().lng - before.center.lng),
+        driftLat: Math.abs(m.getCenter().lat - before.center.lat),
+      };
+    }, setup!);
+
+    expect(result.remounted).toBe(false); // no tear-down + rebuild
+    expect(result.driftLng).toBeLessThan(1); // camera didn't jump east
+    expect(result.driftLat).toBeLessThan(1);
+  });
 });

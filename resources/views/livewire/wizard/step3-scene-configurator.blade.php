@@ -128,6 +128,16 @@
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }
+            // Same scene + same year, only the linked territory (qid) changed → move the red
+            // highlight in place instead of remounting. Remounting on every territory pick was
+            // what made the map blink and jump east (a fresh mount re-fits to the polity).
+            const prev = lastKey ? lastKey.split('|') : null
+            if (inst && prev && prev[0] === String(p.sceneId) && prev[2] === String(year)) {
+                lastKey = key
+                try { inst.setPolity(cfg.qid || null) } catch (_) {}
+                try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
+                return
+            }
             destroy()                 // clears lastKey…
             lastKey = key             // …so set it after
             host.style.display = 'block'

@@ -151,6 +151,9 @@ export function renderLessonMap (el, opts = {}) {
   }
 
   // Highlight + fit to the target polity once tiles for this area have loaded.
+  // `activeQid` is mutable so a territory can be re-linked in place (setPolity) without
+  // tearing down and rebuilding the whole map — a remount blinks and yanks the camera.
+  let activeQid = qid
   let highlighted = null
   let didFit = false
   const setHighlight = (id, on) => {
@@ -170,18 +173,18 @@ export function renderLessonMap (el, opts = {}) {
   }
 
   const fitToPolity = () => {
-    if (!qid) return
+    if (!activeQid) return
     const feats = map.querySourceFeatures('cliopatria', {
       sourceLayer: 'boundaries',
-      filter: ['==', ['get', 'Wikidata'], qid],
+      filter: ['==', ['get', 'Wikidata'], activeQid],
     })
     if (!feats.length) return
 
     // Highlight every matched part (once).
-    if (highlighted !== qid) {
+    if (highlighted !== activeQid) {
       setHighlight(highlighted, false)
-      setHighlight(qid, true)
-      highlighted = qid
+      setHighlight(activeQid, true)
+      highlighted = activeQid
     }
 
     // Fit to the LARGEST polygon part so far-flung overseas territories don't zoom the map
@@ -206,6 +209,56 @@ export function renderLessonMap (el, opts = {}) {
     const zoom = Math.min(6, Math.max(1.6, Math.log2(300 / Math.max(spanX, spanY * 1.7))))
     map.easeTo({ center, zoom, duration: 800 })
     didFit = true
+  }
+
+  // Does a polity overlap the current viewport? Uses the polity's BOUNDING BOX vs the map
+  // bounds — not queryRenderedFeatures on the border line, which misses a large polity whose
+  // interior fills the screen but whose borders sit off-screen (that false-negative made the
+  // camera jump when picking a big in-view territory). Empty (tiles not loaded for a far,
+  // off-screen polity) → treat as "in view" so we never yank the camera on an unlocatable pick.
+  const polityInView = (id) => {
+    if (!id) return true
+    const feats = map.querySourceFeatures('cliopatria', {
+      sourceLayer: 'boundaries',
+      filter: ['==', ['get', 'Wikidata'], id],
+    })
+    if (!feats.length) return true
+    let minX = 180, minY = 90, maxX = -180, maxY = -90
+    for (const f of feats) {
+      const g = f.geometry
+      if (!g) continue
+      const rings = g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []
+      for (const ring of rings) {
+        for (const c of ring) {
+          if (c[0] < minX) minX = c[0]; if (c[0] > maxX) maxX = c[0]
+          if (c[1] < minY) minY = c[1]; if (c[1] > maxY) maxY = c[1]
+        }
+      }
+    }
+    const b = map.getBounds()
+    return !(maxX < b.getWest() || minX > b.getEast() || maxY < b.getSouth() || minY > b.getNorth())
+  }
+
+  // Re-link the highlighted territory WITHOUT remounting. Moves the red highlight to
+  // `newQid` in place; only pans the camera when the polity is entirely off-screen (a
+  // search for a far-away territory), so a territory clicked on the visible map — already
+  // highlighted client-side by the click handler — never makes the view jump.
+  const setPolity = (newQid) => {
+    newQid = newQid || null
+    if (highlighted !== newQid) {
+      setHighlight(highlighted, false)
+      setHighlight(newQid, true)
+      highlighted = newQid
+    }
+    activeQid = newQid
+    if (newQid && !polityInView(newQid)) {
+      didFit = false
+      fitToPolity()
+    } else {
+      // Already in view (or nothing linked): keep the camera. Mark the fit handled so the
+      // `idle` auto-fit handler doesn't fire fitToPolity a tick later and yank the view.
+      didFit = true
+    }
   }
 
   // Click-to-link territory (configurator only — the host passes onPolityClick; the player never
@@ -381,7 +434,7 @@ export function renderLessonMap (el, opts = {}) {
   })
 
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
-  map.on('idle', () => { if (qid && !didFit) fitToPolity() })
+  map.on('idle', () => { if (activeQid && !didFit) fitToPolity() })
 
   // Re-attempt fit a few times while tiles stream in.
   function requestAfterTiles (fn) {
@@ -443,6 +496,7 @@ export function renderLessonMap (el, opts = {}) {
       },
     }),
     setAnnotations: (a) => anno?.update(a),
+    setPolity: (id) => setPolity(id),
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
     destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
