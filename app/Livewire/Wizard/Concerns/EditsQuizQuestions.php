@@ -108,6 +108,31 @@ trait EditsQuizQuestions
         $this->autosaveQuiz();
     }
 
+    /**
+     * Keep the draft slots in step with the "Questions" count field: growing adds blank
+     * drafts, shrinking removes trailing EMPTY drafts only — filled questions are never
+     * silently deleted (the count just stays at the filled number).
+     */
+    public function syncQuizDraftCount(int $count): void
+    {
+        $count = max(1, min(self::QUIZ_MAX_QUESTIONS, $count));
+
+        while (count($this->quizDraft) < $count) {
+            $this->addQuizQuestion();
+        }
+
+        while (count($this->quizDraft) > $count) {
+            $last = $this->quizDraft[count($this->quizDraft) - 1];
+            $isEmpty = trim((string) $last['question']) === ''
+                && implode('', array_map('trim', $last['options'])) === '';
+            if (! $isEmpty) {
+                break;
+            }
+            unset($this->quizDraft[count($this->quizDraft) - 1]);
+            $this->quizDraft = array_values($this->quizDraft);
+        }
+    }
+
     /** Current quiz difficulty (1-3 stars) for the inspector UI. */
     public function quizDifficulty(): int
     {

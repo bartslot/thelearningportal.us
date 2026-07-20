@@ -300,6 +300,14 @@ class Step3SceneConfigurator extends Component
         $this->saveSelected();
     }
 
+    /** The "Questions" number field must add/remove draft slots, not just save a number. */
+    public function updatedSelectedScene($value, string $key): void
+    {
+        if ($key === 'quiz_question_count') {
+            $this->syncQuizDraftCount((int) $value);
+        }
+    }
+
     public function saveSelected(): void
     {
         if (! $this->selectedScene || ! $this->selectedSceneId) {

@@ -281,6 +281,42 @@ class Step3SceneConfiguratorTest extends TestCase
         );
     }
 
+    public function test_correct_answer_text_is_editable_in_the_inspector(): void
+    {
+        // The correct option renders as a normal wire:model input (teachers own their
+        // answers) — only the AI-redraw stays distractor-only.
+        $this->s2->update(['game_type' => 'quiz']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s2->id)
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.options', ['Correct', 'Wrong A', 'Wrong B', 'Wrong C'])
+            ->set('quizDraft.0.correct_index', 0)
+            ->assertSeeHtml('wire:model.blur="quizDraft.0.options.0"')
+            ->set('quizDraft.0.options.0', 'Corrected by teacher')
+            ->assertSet('quizDraft.0.options.0', 'Corrected by teacher');
+    }
+
+    public function test_question_count_field_adds_and_trims_draft_slots(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addQuizQuestion')
+            ->set('quizDraft.0.question', 'Filled question?');
+
+        // Growing the count adds blank slots.
+        $component->set('selectedScene.quiz_question_count', 4);
+        $this->assertCount(4, $component->get('quizDraft'));
+
+        // Shrinking removes trailing EMPTY slots only — the filled question survives
+        // even when the count drops below the filled number.
+        $component->set('selectedScene.quiz_question_count', 1);
+        $draft = $component->get('quizDraft');
+        $this->assertCount(1, $draft);
+        $this->assertSame('Filled question?', $draft[0]['question']);
+    }
+
     public function test_correct_answer_cannot_be_redrawn_but_distractors_can(): void
     {
         $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock

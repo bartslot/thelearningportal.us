@@ -177,11 +177,14 @@
                                       style="background-color: {{ $palette[$oi] }}">{{ $letter }}</span>
 
                                 @if ($isCorrect)
-                                    <input type="text" value="{{ $q['options'][$oi] ?? '' }}" readonly
-                                           class="input input-xs input-bordered flex-1 bg-emerald-950/60 border-emerald-500/50 text-emerald-200 cursor-not-allowed"
-                                           title="{{ __('Correct answer — generated with the question; regenerate the question to change it. Reordering is allowed.') }}" />
+                                    {{-- Editable like any option — teachers own their answers. Only the
+                                         AI-redraw stays distractor-only (a redrawn "correct" answer would
+                                         silently change what the question tests). --}}
+                                    <input type="text" wire:model.blur="quizDraft.{{ $i }}.options.{{ $oi }}" maxlength="60"
+                                           class="input input-xs input-bordered flex-1 bg-emerald-950/60 border-emerald-500/50 text-emerald-200"
+                                           title="{{ __('Correct answer — edit freely; drag to reorder.') }}" />
                                     <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-400"
-                                          title="{{ __('Correct answer (locked — linked to the question)') }}" aria-label="{{ __('Correct answer, locked') }}">
+                                          title="{{ __('Correct answer') }}" aria-label="{{ __('Correct answer') }}">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                     </span>
                                 @else
