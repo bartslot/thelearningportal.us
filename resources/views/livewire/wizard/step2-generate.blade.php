@@ -27,11 +27,22 @@ $step = $statusSteps[$currentStatus] ?? [
     'pct' => 2,
 ];
 
-if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->exists()) {
+if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->exists() && $this->overallProgress >= 100) {
     $step = [
         'label' => __('Your lesson is ready'),
         'detail' => __('Continue to review and configure the finished lesson.'),
         'pct' => 100,
+    ];
+}
+
+// 'Configuring' can arrive while scene media is still rendering in the background
+// (auto-advance lets the teacher in early) — never claim "ready / 100%" with
+// narration or images silently missing. Hold at 95+ with honest copy instead.
+if ($lesson->status === LessonStatus::Configuring && $this->overallProgress < 100) {
+    $step = [
+        'label' => __('Almost ready — media is finishing'),
+        'detail' => __('You can continue and configure now; the remaining narration and images finish in the background.'),
+        'pct' => max(95, 20 + (int) round($this->overallProgress * .74)),
     ];
 }
 
