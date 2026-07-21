@@ -100,7 +100,7 @@
                             </svg>
                         </div>
                         <ul tabindex="0"
-                            class="dropdown-content menu menu-sm mt-3 w-56 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-[60]">
+                            class="dropdown-content menu menu-sm mt-3 w-56 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-60">
                             @foreach ($items as $item)
                                 @php $active = request()->routeIs(...(array) $item['pattern']); @endphp
                                 <li>
@@ -130,7 +130,7 @@
                         </div>
 
                         <ul tabindex="0"
-                            class="dropdown-content menu menu-sm mt-3 w-64 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-[60]">
+                            class="dropdown-content menu menu-sm mt-3 w-64 rounded-lg border border-slate-800 bg-slate-900 p-2 shadow-lg z-60">
                             <li class="menu-title">
                                 <div class="flex items-start justify-between gap-2 px-1 py-1">
                                     <div class="min-w-0">
