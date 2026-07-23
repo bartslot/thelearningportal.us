@@ -28,9 +28,13 @@ class Step4Preview extends Component
             $this->lesson->update(['status' => LessonStatus::Previewable, 'wizard_step' => 5]);
         }
 
-        $first = $this->lesson->scenes()->ordered()->first();
-        if ($first) {
-            $this->selectSceneInternal($first->id);
+        // Start on the scene passed in via ?scene= (Play / "Edit scene" deep-link) so the preview
+        // autoplays FROM the teacher's current scene — falling back to the first scene otherwise.
+        $deepScene = request()->integer('scene');
+        $scene = $deepScene ? $this->lesson->scenes()->whereKey($deepScene)->first() : null;
+        $scene ??= $this->lesson->scenes()->ordered()->first();
+        if ($scene) {
+            $this->selectSceneInternal($scene->id);
         }
     }
 
@@ -39,7 +43,6 @@ class Step4Preview extends Component
     {
         return $this->lesson->scenes()->ordered()->get();
     }
-
     #[Computed]
     public function allReady(): bool
     {

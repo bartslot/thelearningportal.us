@@ -1,9 +1,29 @@
-<div class="contents" x-data="step4Preview">
+@php
+    // Voyage lessons are SAILED, not narrated — the wizard's audio sequencer can't play them.
+    // Embed the real student player instead. Either way the preview starts from the scene the teacher
+    // had selected (global UX: Play always plays from the current scene, never scene 0).
+    $isVoyage = ($lesson->game_type ?? null) === 'voyage';
+    $ordered = $this->scenes->values();
+    $pos = $ordered->search(fn ($s) => $s->id === $selectedSceneId);
+    $startIndex = $pos === false ? 0 : $pos;
+@endphp
 
+<div class="contents" @unless($isVoyage) x-data="step4Preview" @endunless>
+
+    @if ($isVoyage)
+        {{-- Real player, autoplaying from the selected leg (embed=1 skips the title screen). --}}
+        <div class="fixed inset-0 z-0 bg-black" wire:ignore wire:key="voyage-play-{{ $selectedSceneId }}">
+            <iframe
+                src="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}?autoplay=1&embed=1&scene={{ $startIndex }}"
+                class="h-full w-full border-0" allow="autoplay; fullscreen"
+                title="{{ __('Lesson preview') }}"></iframe>
+        </div>
+    @else
     {{-- Fullscreen canvas wrapper (same as Step 3) — wire:ignore so playback
          survives Livewire morphs (e.g. Publish click). --}}
     <div class="fixed inset-0 z-0 bg-black" id="lesson-canvas-root"
          data-character-url=""
+         data-start-index="{{ $startIndex }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
         {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
@@ -15,13 +35,15 @@
              256px min-height that pushes the caption off a short stage; its cqh coefficients are
              tuned for the padding-free host. overflow-hidden clips the caption to the canvas. --}}
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
-        <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
+        <!-- <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div> -->
     </div>
+    @endif
 
-    {{-- Publish / published state — top-20 clears the fixed navbar (same offset as the
-         Step 3 inspector) so the buttons are never hidden underneath it. --}}
-    <div class="fixed top-20 right-4 z-40 flex flex-col items-end gap-2">
-        @if ($lesson->status === \App\Enums\LessonStatus::Published)
+    {{-- Published state only — top-20 clears the fixed navbar. The PUBLISH ACTION lives on the
+         Configure step's top toolbar; the preview must NOT duplicate it (that amber Publish here was
+         a second, redundant Publish button). Once published, we still surface the View / Download links. --}}
+    @if ($lesson->status === \App\Enums\LessonStatus::Published)
+        <div class="fixed top-20 right-4 z-40 flex flex-col items-end gap-2">
             <div class="flex items-center gap-2">
                 <span class="badge badge-success gap-1 py-3 px-3 font-semibold shadow-lg">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -39,17 +61,8 @@
                     {{ __('Download spelpakket (PDF)') }}
                 </a>
             @endif
-        @else
-            <button wire:click="publish"
-                    @disabled(! $this->allReady)
-                    class="btn btn-sm bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 disabled:opacity-40">
-                Publish
-            </button>
-            @if ($publishError)
-                <span class="text-xs text-rose-300 max-w-xs text-right">{{ $publishError }}</span>
-            @endif
-        @endif
-    </div>
+        </div>
+    @endif
 
     {{-- The big moment: full-screen splash after publishing, with the rating widget in its
          natural place (right after the teacher finished creating). --}}
@@ -73,10 +86,14 @@
         </x-splash-screen>
     @endif
 
-    {{-- Play / Back floating — bottom strip (scenes now live in the left rail) --}}
+    @if ($isVoyage)
+        {{-- Voyage autoplays in the embedded player. No back button here — the teacher returns to
+             editing via the top-left dashboard arrow or the player's own "Edit scene" pill (top-left).
+             Navigation lives in the top corners; the bottom stays clean. --}}
+    @else
+    {{-- Play control — bottom strip (scenes now live in the left rail). No "Configure" button: the
+         teacher returns to editing via the top-left navigation, not a redundant bottom link. --}}
     <div class="fixed bottom-6 inset-x-0 z-30 flex items-center justify-center gap-3 pl-44">
-        <a href="{{ route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 3]) }}"
-           wire:navigate class="btn btn-sm btn-outline">← Configure</a>
         <button type="button" @click="togglePlay()"
                 class="btn btn-circle bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 w-14 h-14 flex items-center justify-center">
             <span x-show="!playing"><x-icons.play class="w-5 h-5" /></span>
@@ -109,6 +126,7 @@
         };
     @endphp
     <meta id="step4-bg-music" content="{{ $musicFile ? asset('sound/bg-music/' . $musicFile) : '' }}">
+    @endif
 </div>
 
 @script
@@ -118,6 +136,7 @@
             readout: '0:00 / 0:00',
             stage:   null,
             total:   0,
+            _startIndex: 0,   // the scene the teacher opened Play on — playback starts here, not scene 0
             _bgAudio: null,
             _fadingOut: false,
             // Elapsed-time readout state — the display was static before (set once at init):
@@ -151,6 +170,7 @@
                 const canvasEl     = document.getElementById('lesson-canvas');
                 const rootEl       = document.getElementById('lesson-canvas-root');
                 const characterUrl = rootEl?.dataset.characterUrl || null;
+                this._startIndex   = Math.max(0, Number(rootEl?.dataset.startIndex) || 0);
                 const musicUrl     = document.getElementById('step4-bg-music')?.content || '';
 
                 if (musicUrl) {
@@ -212,7 +232,9 @@
                         this._bgAudio.volume = 0.26;
                         this._bgAudio.play().catch(() => {});
                     }
-                    await this.stage.sequencer.playFrom(0);
+                    // Play from the scene the teacher was on (clamped), not always scene 0.
+                    const from = Math.min(this._startIndex, Math.max(0, (this.stage.sequencer.scenes?.length || 1) - 1));
+                    await this.stage.sequencer.playFrom(from);
                 }
             },
 

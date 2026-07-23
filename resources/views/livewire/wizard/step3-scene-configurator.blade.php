@@ -1,5 +1,10 @@
 @push('head-scripts')
     @vite('resources/js/lesson-map.js')
+    {{-- Voyage lessons also preview the sailing tour + image galleries on the map stage. Only load
+         those renderers (voyage-tour pulls in ships/fog/etch) when the lesson actually needs them. --}}
+    @if (($lesson->game_type ?? null) === 'voyage')
+        @vite(['resources/js/voyage-tour.js', 'resources/js/gallery-scene.js'])
+    @endif
 @endpush
 
 <div class="contents" x-data="step3SceneConfigurator" wire:poll.3s
@@ -42,10 +47,15 @@
         <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
         {{-- Teacher text annotations (Freeform-style, draggable). z-[7]: above scene art + map. --}}
         <div id="lesson-text-overlay" class="absolute inset-0 z-7"></div>
-        {{-- Map block preview — overlays the canvas when a map scene is selected. Uses fixed
-             positioning (full viewport) because MapLibre relatively-positions its container, which
-             would otherwise collapse an `absolute inset-0` host to height 0. --}}
-        <div id="lesson-map-preview" class="fixed inset-0 z-5" style="display:none" wire:ignore></div>
+        {{-- Map block preview — overlays the canvas when a map/voyage/gallery scene is selected.
+             Bounded to the WORK AREA (between the rail and the docked inspector) so the scene is
+             fully visible and never slides under either panel — the gallery's side text stays on
+             screen. Fixed positioning with all four edges set keeps an explicit box, so MapLibre's
+             `position:relative` stamp on its inner child can't collapse the host to height 0. --}}
+        <div id="lesson-map-preview" class="fixed z-5" wire:ignore
+             style="display:none;
+                    left: var(--work-left); right: var(--work-right, 16rem);
+                    top: var(--top-inset); bottom: var(--work-bottom, 0px);"></div>
     </div>
 
     {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (16rem
@@ -82,6 +92,121 @@
     </script>
     @endpush
 
+    {{-- Fog paint brush — when active, dragging over the voyage map paints an "undiscovered" region.
+         Each stroke → a geo ring (inst.strokeToRing) → live fog (inst.setPaintedFog) + persisted
+         ($wire.addFogRegion). Paint state lives on window.__voyagePaint, toggled from the inspector. --}}
+    @push('scripts')
+    <script>
+    window.__voyagePaint = window.__voyagePaint || { active: false, erase: false, brushKm: 250 };
+    // Set once from a preview "Edit scene?modal=1" deep-link; the voyage tour consumes it on arrival.
+    if (window.__openGalleryOnLoad === undefined) window.__openGalleryOnLoad = @js((bool) ($openModalOnLoad ?? false));
+    // Resolve THIS wizard's Step-3 component (NOT the outer lesson-wizard) so $wire calls land right.
+    window.__step3Wire = () => {
+        try { const c = window.Livewire.all().find((x) => x.name === 'wizard.step3-scene-configurator'); return c ? (c.$wire || window.Livewire.find(c.id).$wire) : null; } catch (_) { return null; }
+    };
+    window.__mountVoyagePaint = (inst, stageInner, payload) => {
+        if (!inst || typeof inst.strokeToRing !== 'function') return;
+        // The painted regions live on the tour instance (inst.getPaintedFog) — the single source of
+        // truth. Reading it fresh every time keeps paint/erase/undo in sync with server resets, which
+        // arrive via scene:load → inst.setPaintedFog(); a private copy here would drift and resurrect
+        // erased regions on the next stroke.
+        const brushKm = () => Number(window.__voyagePaint.brushKm) || 250;
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:absolute;inset:0;z-index:30;touch-action:none;';
+        stageInner.appendChild(overlay);
+        const ink = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        ink.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'rgba(148,163,184,0.55)');
+        path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+        // Live brush cursor — a ring sized to the ACTUAL painted footprint (brushKm → screen pixels).
+        const cursor = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        cursor.setAttribute('fill', 'rgba(148,163,184,0.18)'); cursor.setAttribute('stroke', 'rgba(226,232,240,0.9)');
+        cursor.setAttribute('stroke-width', '1.5'); cursor.setAttribute('r', '0'); cursor.style.display = 'none';
+        ink.appendChild(path); ink.appendChild(cursor); overlay.appendChild(ink);
+
+        let drawing = false, pts = [], lastR = 20;
+        const sync = () => {
+            const on = !!window.__voyagePaint.active;
+            overlay.style.pointerEvents = on ? 'auto' : 'none';
+            overlay.style.cursor = on ? 'none' : '';         // hide the OS cursor; the ring IS the cursor
+            if (!on) { cursor.style.display = 'none'; path.setAttribute('d', ''); }
+        };
+        sync();
+        window.addEventListener('voyage-paint-changed', sync);
+
+        const isErase = () => !!window.__voyagePaint.erase;
+        const rel = (e) => { const r = overlay.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+        const showCursor = (p) => {
+            lastR = inst.brushRadiusPx(p, brushKm());
+            // Erase mode: a small fixed red ring (a pointer, not a band); paint mode: the true footprint.
+            const r = isErase() ? 10 : Math.max(4, lastR);
+            cursor.setAttribute('cx', p.x); cursor.setAttribute('cy', p.y); cursor.setAttribute('r', r);
+            cursor.setAttribute('stroke', isErase() ? 'rgba(248,113,113,0.95)' : 'rgba(226,232,240,0.9)');
+            cursor.setAttribute('fill', isErase() ? 'rgba(248,113,113,0.15)' : 'rgba(148,163,184,0.18)');
+            cursor.style.display = 'block';
+            path.setAttribute('stroke-width', Math.max(4, lastR * 2));   // the drawn band == the painted band
+        };
+        overlay.addEventListener('pointerdown', (e) => {
+            if (!window.__voyagePaint.active) return;
+            if (isErase()) {
+                // Click a painted blob to remove it (top-most under the cursor wins).
+                const idx = inst.paintedRegionAt(rel(e));
+                if (idx >= 0) {
+                    const next = inst.getPaintedFog();
+                    next.splice(idx, 1);
+                    try { inst.setPaintedFog(next); } catch (_) {}
+                    const w = window.__step3Wire();
+                    if (w && typeof w.removeFogRegion === 'function') { try { w.removeFogRegion(idx); } catch (_) {} }
+                }
+                e.preventDefault();
+                return;
+            }
+            drawing = true; pts = [rel(e)]; overlay.setPointerCapture(e.pointerId); e.preventDefault();
+        });
+        overlay.addEventListener('pointermove', (e) => {
+            if (!window.__voyagePaint.active) return;
+            const p = rel(e);
+            showCursor(p);
+            if (!drawing) return;
+            pts.push(p);
+            path.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q.x},${q.y}`).join(' '));
+        });
+        overlay.addEventListener('pointerleave', () => { if (!drawing) cursor.style.display = 'none'; });
+        const finish = () => {
+            if (!drawing) return; drawing = false;
+            path.setAttribute('d', '');
+            const ring = inst.strokeToRing(pts, brushKm());
+            pts = [];
+            if (!ring) return;
+            try { inst.setPaintedFog([...inst.getPaintedFog(), ring]); } catch (_) {}   // instant feedback
+            const w = window.__step3Wire();                             // persist on the RIGHT component
+            if (w && typeof w.addFogRegion === 'function') { try { w.addFogRegion(ring); } catch (_) {} }
+        };
+        overlay.addEventListener('pointerup', finish);
+        overlay.addEventListener('pointercancel', finish);
+
+        // CMD-Z / Ctrl-Z → undo the last painted region. Pop locally for instant feedback, then let
+        // the server (undoFog) re-fire scene:load as the source of truth. One listener at a time:
+        // drop the previous overlay's handler so re-mounts don't stack them.
+        if (window.__voyageUndoHandler) document.removeEventListener('keydown', window.__voyageUndoHandler);
+        window.__voyageUndoHandler = (e) => {
+            if (!window.__voyagePaint.active) return;
+            if ((e.key !== 'z' && e.key !== 'Z') || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+            const cur = inst.getPaintedFog();
+            if (!cur.length) return;
+            e.preventDefault();
+            cur.pop();
+            try { inst.setPaintedFog(cur); } catch (_) {}   // instant feedback; undoFog re-syncs from server
+            const w = window.__step3Wire();
+            if (w && typeof w.undoFog === 'function') { try { w.undoFog(); } catch (_) {} }
+        };
+        document.addEventListener('keydown', window.__voyageUndoHandler);
+    };
+    </script>
+    @endpush
+
     {{-- Mount/destroy the MapLibre map block when a map scene is (de)selected. --}}
     @push('scripts')
     <script>
@@ -93,12 +218,42 @@
         const host = document.getElementById('lesson-map-preview')
         if (!host) return
         let inst = null
+        // The current voyage map centre — a new leg drops its destination here (the teacher pans to
+        // roughly where the leg should end). null when no voyage map is mounted.
+        window.__voyageCenter = () => { try { return (inst && inst.map) ? inst.map.getCenter() : null } catch (_) { return null } }
         let lastKey = null
+        let lastVoyageId = null       // the mounted voyage's id — the ONLY thing that forces a REBUILD
+        let lastVoyageDefStr = null   // last applied route geometry (waypoints/legs) — reshaped in place
+        let lastLeg = null            // last-played leg index (for the no-rebuild leg switch)
+        let currentSceneId = null     // the selected scene (callbacks read this, not the mount-time id)
+        // Identity of the MAP is the VOYAGE ID alone. Switching legs, editing the route geometry
+        // (dragging / inserting a waypoint) and toggling map detail all keep the same map instance —
+        // we update it in place (playLeg / setVoyageDef / setMapOptions) instead of destroying +
+        // rebuilding it, which reset the zoom / centre / globe-flat projection and reloaded every tile.
         const destroy = () => {
             if (inst) { inst.destroy(); inst = null }
             host.innerHTML = ''
             host.style.display = 'none'
-            lastKey = null
+            lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null
+        }
+
+        // A re-mount key for voyage/gallery scenes: only scene-DEFINING bits belong in it, so the
+        // 3s status poll (which re-fires scene:load) doesn't restart the sail / slideshow mid-view.
+        const stageKey = (p) => {
+            const cfg = p.config || {}
+            if (p.kind === 'voyage') {
+                const legDef = (p.voyage_def && p.voyage_def.legs) ? p.voyage_def.legs[Number(cfg.leg) || 0] : null
+                // DELIBERATELY excluded (they apply LIVE, never re-mount): voyage_map + leg_labels
+                // (setMapOptions), voyage_fog (setPaintedFog), route_line (setRouteLine), view
+                // (setView) and intro (a playback-only flag, ignored in the editor's preview jump).
+                // NOTE: route GEOMETRY (voyage_def.waypoints) is DELIBERATELY excluded — a waypoint edit
+                // is handled by setVoyageDef() (defChanged), not by a content refresh. Including it here
+                // too would double-build the HUD (setVoyageDef + refreshArrivalContent) → pins pop twice.
+                return ['voyage', p.sceneId, cfg.voyage, cfg.leg,
+                    legDef ? `${legDef.depart}_${legDef.arrive}` : '', (cfg.stop_images || []).join(','),
+                    JSON.stringify(cfg.gallery || {})].join('|')
+            }
+            return ['gallery', p.sceneId, cfg.title, cfg.date_label, cfg.story, cfg.fit || 'fit', JSON.stringify(cfg.images || [])].join('|')
         }
 
         // Text labels can be pinned to the live map — wire the projector whenever both the
@@ -107,14 +262,134 @@
             const layer = window.__lessonTextLayer
             const overlayHost = document.getElementById('lesson-text-overlay')
             if (!layer) return
-            if (!inst || !overlayHost) { layer.setProjector(null); return }
+            // Only the MAP block projects pinned text labels. Voyage/gallery instances share `inst`
+            // but expose no textProjector — guard so their scenes don't throw here (which aborted
+            // the seed flow and left the preview blank / with no arrival card).
+            if (!inst || !overlayHost || typeof inst.textProjector !== 'function') { layer.setProjector(null); return }
             layer.setProjector(inst.textProjector(overlayHost))
             inst.map.on('move', () => layer.refreshPositions())
         }
 
         window.Livewire.on('scene:load', (e) => {
             const p = Array.isArray(e) ? e[0]?.payload : e?.payload
-            if (!p || p.kind !== 'map') { destroy(); wireTextProjector(); return }
+            if (!p) { destroy(); wireTextProjector(); return }
+
+            // Voyage tour + image gallery are map-family stage scenes — preview them in the same
+            // #lesson-map-preview host, reusing the student player's renderers so the wizard shows
+            // exactly what students see. A voyage re-mounts ONLY when the voyage id itself changes;
+            // every other edit (leg switch, route-geometry drag/insert, map detail, gallery content)
+            // updates the SAME map in place so the world never flashes or jumps back to its fit.
+            if (p.kind === 'voyage' || p.kind === 'gallery') {
+                currentSceneId = p.sceneId
+                const key = stageKey(p)
+                const cfg = p.config || {}
+                const applyLiveMap = () => {
+                    if (p.kind !== 'voyage' || typeof inst.setMapOptions !== 'function') return
+                    try { inst.setMapOptions(p.voyage_map, p.leg_labels) } catch (_) {}
+                    try { inst.setPaintedFog(p.voyage_fog || []) } catch (_) {}
+                    try { inst.setRouteLine(p.route_line) } catch (_) {}
+                    try { inst.setView(cfg.view || 'flat') } catch (_) {}
+                }
+                // SAME voyage still mounted → NEVER re-mount. Apply every change live:
+                //  • map detail / fog / route-line / view  → applyLiveMap()
+                //  • route GEOMETRY edited (drag / insert / move a waypoint) → setVoyageDef() reshapes
+                //    the ship + trail + fog + handles in place at the current camera (no jump, no flash)
+                //  • leg changed → playLeg()   • same leg, content changed → refreshArrivalContent()
+                if (inst && p.kind === 'voyage' && cfg.voyage === lastVoyageId) {
+                    applyLiveMap()
+                    const legNow = Number(cfg.leg) || 0
+                    const defStr = JSON.stringify(p.voyage_def || null)
+                    const defChanged = defStr !== lastVoyageDefStr
+                    const legChanged = legNow !== lastLeg
+                    const contentChanged = key !== lastKey
+                    // Route GEOMETRY edited (drag / insert / move a waypoint) → reshape in place.
+                    if (defChanged && typeof inst.setVoyageDef === 'function') {
+                        try { inst.setVoyageDef(p.voyage_def, legNow) } catch (_) {}
+                    }
+                    if (legChanged) {
+                        try {
+                            inst.playLeg(legNow, {
+                                intro: !!cfg.intro,
+                                stopImages: cfg.stop_images || [],
+                                gallery: cfg.gallery || null,
+                                hotspot: cfg.hotspot || null,
+                            })
+                        } catch (_) {}
+                    } else if (contentChanged && typeof inst.refreshArrivalContent === 'function') {
+                        // Same leg, CONTENT edited (gallery images/text, image fit, dates) → refresh the
+                        // pins in place; an open gallery modal is left alone. NOTE: gated on a real change
+                        // so the 3s status poll (which re-fires scene:load unchanged) never rebuilds the
+                        // HUD — that was yanking handles out from under an in-progress drag.
+                        try {
+                            inst.refreshArrivalContent({
+                                gallery: cfg.gallery || null,
+                                stopImages: cfg.stop_images || [],
+                                hotspot: cfg.hotspot || null,
+                            })
+                        } catch (_) {}
+                    }
+                    lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr
+                    return
+                }
+                // Gallery scene: same scene → live content refresh; otherwise fall through to a mount.
+                if (inst && p.kind === 'gallery' && key === lastKey) {
+                    applyLiveMap()
+                    return
+                }
+                destroy(); wireTextProjector()
+                lastKey = key
+                lastVoyageId = cfg.voyage
+                lastVoyageDefStr = JSON.stringify(p.voyage_def || null)
+                lastLeg = Number(cfg.leg) || 0
+                host.style.display = 'block'
+                const stageInner = document.createElement('div')
+                stageInner.style.width = '100%'
+                stageInner.style.height = '100%'
+                host.appendChild(stageInner)
+                const vcfg = p.config || {}
+                if (p.kind === 'voyage' && window.renderVoyageTour) {
+                    inst = window.renderVoyageTour(stageInner, {
+                        voyage: vcfg.voyage,
+                        def: p.voyage_def || null,
+                        view: vcfg.view || 'flat',
+                        routeLine: p.route_line || null,
+                        preview: true,   // editor: jump straight to the landfall, skip the sail
+                        editable: true,  // teacher can edit the gallery title/date/story on the scene
+                        mapOptions: p.voyage_map || null,   // hide cities/borders, show place labels
+                        legLabels: p.leg_labels || [],
+                        paintedFog: p.voyage_fog || [],     // teacher-painted undiscovered regions
+                        {{-- Read currentSceneId (not the mount-time id) so a no-rebuild leg switch still
+                             saves edits against the scene now on screen. --}}
+                        onGalleryEdit: (field, value) =>
+                            window.Livewire.dispatch('galleryTextChanged', { sceneId: currentSceneId, field, value }),
+                        onHotspotMove: (lng, lat) =>
+                            window.Livewire.dispatch('voyageHotspotMoved', { sceneId: currentSceneId, lng, lat }),
+                        // Drag a leg route point (destination or a bend) → persist that waypoint by index.
+                        onEndpointMove: (wpIndex, lng, lat) =>
+                            window.Livewire.dispatch('voyageWaypointMoved', { sceneId: currentSceneId, wpIndex, lng, lat }),
+                        // Drop a NEW bend by dragging the route line → insert a waypoint after afterWpIndex.
+                        onWaypointInsert: (afterWpIndex, lng, lat) =>
+                            window.Livewire.dispatch('voyageWaypointInserted', { sceneId: currentSceneId, afterWpIndex, lng, lat }),
+                        // Restore the open gallery ONCE when arriving via a preview "Edit scene" deep-link.
+                        openGalleryOnArrive: window.__openGalleryOnLoad === true,
+                    })
+                    window.__openGalleryOnLoad = false   // consume — later re-mounts start on the map
+                    window.__mountVoyagePaint && window.__mountVoyagePaint(inst, stageInner, p)
+                    inst.playLeg(Number(vcfg.leg) || 0, {
+                        intro: !!vcfg.intro,
+                        stopImages: vcfg.stop_images || [],
+                        gallery: vcfg.gallery || null,
+                        hotspot: vcfg.hotspot || null,
+                    })
+                } else if (p.kind === 'gallery' && window.renderGallery) {
+                    inst = window.renderGallery(stageInner, vcfg)
+                } else {
+                    console.error('[wizard] voyage/gallery renderer unavailable — is the module loaded?')
+                }
+                return
+            }
+
+            if (p.kind !== 'map') { destroy(); wireTextProjector(); return }
             const cfg = p.config || {}
             const year = cfg.year ?? p.year ?? 1600
             // Only the scene-defining bits decide a re-mount. scene:load re-fires constantly (status
@@ -296,6 +571,12 @@
                 its Format/Settings buttons can render an open state. Re-runs when inspectorOpen
                 flips AND when a Livewire morph rewrites the literal panelView below. --}}
            x-effect="window.dispatchEvent(new CustomEvent('inspector-state', { detail: { open: inspectorOpen, view: '{{ $panelView }}' } }))"
+           {{-- The x-effect's FIRST broadcast fires before the toolbar's listener exists (and
+                inspectorOpen never changes afterward, so it never re-fires) — the toolbar then never
+                learned the panel was open. Re-broadcast on $nextTick (listener now ready) and answer
+                an explicit request, so fmtOpen syncs no matter which scope inits first. --}}
+           x-init="$nextTick(() => window.dispatchEvent(new CustomEvent('inspector-state', { detail: { open: inspectorOpen, view: '{{ $panelView }}' } })))"
+           x-on:inspector-state-request.window="window.dispatchEvent(new CustomEvent('inspector-state', { detail: { open: inspectorOpen, view: '{{ $panelView }}' } }))"
            style="right:0; left:auto; top:64px; bottom:0;"
            class="card card-compact fixed z-50 overflow-hidden rounded-none border border-r-0 border-t-0 border-slate-700 bg-base-300 shadow-2xl
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
@@ -330,6 +611,10 @@
                                                   :quiz-draft="$quizDraft" :quiz-errors="$quizErrors" :quiz-saved="$quizSaved"
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
+                @elseif ($sceneModel->kind === 'voyage')
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" />
+                @elseif ($sceneModel->kind === 'gallery')
+                    <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" />
                 @endif
@@ -360,6 +645,40 @@
                    class="btn btn-sm btn-outline mt-1 border-slate-600 text-slate-200 hover:border-amber-400 hover:text-amber-300">
                     {{ __('Edit story') }}
                 </a>
+            </div>
+
+            {{-- POSTER — the lesson's cover image. Never empty: auto-picks an image already loaded in
+                 the lesson, overridable by clicking any candidate below. --}}
+            @php $posterCandidates = $this->lesson->posterCandidates(); $posterOverride = trim((string) ($lesson->poster_image ?? '')) !== ''; @endphp
+            <div class="mt-6 pt-4 border-t border-slate-700/50">
+                <div class="mb-2 flex items-center justify-between">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500">Poster</span>
+                    @if ($posterOverride)
+                        <button wire:click="resetPoster" class="text-[10px] text-slate-500 transition-colors hover:text-amber-300">↺ auto</button>
+                    @else
+                        <span class="text-[10px] text-slate-600">auto-picked</span>
+                    @endif
+                </div>
+                <div class="flex gap-3">
+                    <img src="{{ $this->lesson->posterUrl() }}" alt="Lesson poster"
+                         class="h-24 w-16 shrink-0 rounded-lg object-cover ring-1 ring-slate-600" />
+                    @if (count($posterCandidates))
+                        <div class="grid grid-cols-4 gap-1.5 content-start">
+                            @foreach ($posterCandidates as $cand)
+                                <button type="button" wire:click="selectPoster(@js($cand['url']))" title="{{ $cand['label'] }}"
+                                        @class([
+                                            'aspect-square overflow-hidden rounded ring-1 transition',
+                                            'ring-amber-400' => $posterOverride && ($lesson->poster_image === $cand['url']),
+                                            'ring-slate-700 hover:ring-slate-400' => ! ($posterOverride && ($lesson->poster_image === $cand['url'])),
+                                        ])>
+                                    <img src="{{ $cand['url'] }}" alt="{{ $cand['label'] }}" class="h-full w-full object-cover" onerror="this.closest('button').style.display='none'" />
+                                </button>
+                            @endforeach
+                        </div>
+                    @else
+                        <p class="self-center text-[11px] text-slate-500">Add images to the lesson to choose a poster.</p>
+                    @endif
+                </div>
             </div>
 
             <div class="mt-6 pt-4 border-t border-slate-700/50" x-data="musicStrip">
@@ -631,7 +950,11 @@
         window.__clearLayerGuard = () => { lastSelection = Symbol('cleared-selection'); };
     })();
 
-    document.addEventListener('alpine:init', () => {
+    // Registered on BOTH alpine:init and livewire:navigated (idempotent). Without the navigated hook,
+    // arriving in the wizard via a wire:navigate SPA link (e.g. from the preview / dashboard) left
+    // $store.view undefined — the panel x-effects then threw and the View toolbar couldn't move panels.
+    const __registerViewStore = () => {
+        if (!window.Alpine || window.Alpine.store('view')) return;
         Alpine.store('view', {
             scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
             objectsW: 208,   // object-list width (px); drag-resizable, ≤108px → icons-only
@@ -669,7 +992,9 @@
             toggle(k) { this[k] = !this[k]; this._save(); },
             hide(k) { this[k] = false; this._save(); },
         });
-    });
+    };
+    document.addEventListener('alpine:init', __registerViewStore);
+    document.addEventListener('livewire:navigated', __registerViewStore);
     </script>
     @endpush
 
@@ -685,6 +1010,7 @@
               inspector-state) so toolbar buttons can show a proper OPEN state — the toolbar is
               wire:ignore and a sibling Alpine scope, so it can't read the panel directly. --}}
          x-data="{ addOpen: false, viewOpen: false, fmtOpen: false, fmtView: 'scene' }"
+         x-init="$nextTick(() => window.dispatchEvent(new CustomEvent('inspector-state-request')))"
          x-on:inspector-state.window="fmtOpen = $event.detail.open; if ($event.detail.view) fmtView = $event.detail.view">
         {{-- Left group: View menu + Play + insert tools --}}
         <div class="flex items-stretch gap-0.5">
@@ -1314,6 +1640,15 @@
                     <x-lesson.scene-type-thumb kind="map" />
                     <span class="text-sm font-medium text-slate-200">Map</span>
                 </button>
+                @if (($lesson->game_type ?? null) === 'voyage')
+                    {{-- Drop the new leg's destination at the current map centre (fallback in PHP if none). --}}
+                    <button type="button"
+                            @click="const c = (window.__voyageCenter && window.__voyageCenter()) || null; $wire.addScene('voyage', null, c ? c.lng : null, c ? c.lat : null)"
+                            class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                        <x-lesson.scene-type-thumb kind="voyage" />
+                        <span class="text-sm font-medium text-slate-200">Voyage leg</span>
+                    </button>
+                @endif
             </div>
         </div>
         <button type="button" class="modal-backdrop" aria-label="Close"
@@ -1330,11 +1665,17 @@
          x-data="{ dismissing: false }"
          :class="{ 'modal-open': $wire.paintingPickerOpen && !dismissing }"
          x-on:painting-picker:open.window="dismissing = false"
+         x-on:keydown.escape.window="if ($wire.paintingPickerOpen) $wire.set('paintingPickerOpen', false)"
          role="dialog" aria-modal="true">
         <div class="modal-box max-w-6xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-slate-200">
-                    {{ $paintingPickerMode === 'layer' ? __('Add an image on the slide') : __('Set the scene background') }}
+                    @switch($paintingPickerMode)
+                        @case('layer') {{ __('Add an image on the slide') }} @break
+                        @case('voyage_stop') {{ __('Add a landfall image') }} @break
+                        @case('gallery_image') {{ __('Add a gallery image') }} @break
+                        @default {{ __('Set the scene background') }}
+                    @endswitch
                 </h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
                         aria-label="{{ __('Close') }}" wire:click="$set('paintingPickerOpen', false)">✕</button>
@@ -1448,18 +1789,35 @@
                     @endforelse
                 </div>
                 </div>
-                @unless ($paintingCommonsLoaded)
-                    <button type="button"
-                            wire:click="$set('paintingCommonsLoaded', true)"
-                            wire:loading.attr="disabled" wire:target="paintingCommonsLoaded"
-                            class="btn btn-sm btn-outline mt-4 border-slate-600 text-slate-300 hover:border-sky-400 hover:text-sky-300 inline-flex items-center gap-1.5">
-                        <span wire:loading wire:target="paintingCommonsLoaded"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
-                        <span wire:loading.remove wire:target="paintingCommonsLoaded">{{ __('More from Wikimedia Commons') }}</span>
-                        <span wire:loading wire:target="paintingCommonsLoaded">{{ __('Searching Wikimedia…') }}</span>
-                    </button>
-                @endunless
-                <p class="mt-4 text-[11px] text-slate-500">
-                    {{ __('Public-domain works from Wikimedia Commons. The painting is saved to this lesson and credited automatically.') }}
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                    @unless ($paintingCommonsLoaded)
+                        <button type="button"
+                                wire:click="$set('paintingCommonsLoaded', true)"
+                                wire:loading.attr="disabled" wire:target="paintingCommonsLoaded"
+                                class="btn btn-sm btn-outline border-slate-600 text-slate-300 hover:border-sky-400 hover:text-sky-300 inline-flex items-center gap-1.5">
+                            <span wire:loading wire:target="paintingCommonsLoaded"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
+                            <span wire:loading.remove wire:target="paintingCommonsLoaded">{{ __('More from Wikimedia Commons') }}</span>
+                            <span wire:loading wire:target="paintingCommonsLoaded">{{ __('Searching Wikimedia…') }}</span>
+                        </button>
+                    @endunless
+
+                    {{-- Upload your own image — routed to the current mode (landfall / gallery / background). --}}
+                    <label class="btn btn-sm border-0 bg-amber-500 text-slate-950 hover:bg-amber-400 inline-flex cursor-pointer items-center gap-1.5">
+                        <span wire:loading.remove wire:target="uploadImage" class="inline-flex items-center gap-1.5">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+                            {{ __('Upload image') }}
+                        </span>
+                        <span wire:loading wire:target="uploadImage" class="inline-flex items-center gap-1.5">
+                            <x-icons.spinner class="h-3 w-3 animate-spin" /> {{ __('Uploading…') }}
+                        </span>
+                        <input type="file" wire:model="uploadImage" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" />
+                    </label>
+                </div>
+                @error('uploadImage')
+                    <p class="mt-1 text-[11px] text-rose-300">{{ $message }}</p>
+                @enderror
+                <p class="mt-3 text-[11px] text-slate-500">
+                    {{ __('Public-domain works from Wikimedia Commons — saved to this lesson and credited automatically. Or upload your own (JPG, PNG, WebP; max 8 MB).') }}
                 </p>
                 @endif
                 </div>

@@ -218,4 +218,9 @@ return [
         'enabled' => filter_var(env('WORLD_LABS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
+    // ── Cloudinary (hosts uploaded + AI-generated imagery off our own storage) ─
+    'cloudinary' => [
+        'url' => env('CLOUDINARY_URL'),
+    ],
+
 ];

@@ -57,6 +57,7 @@
             : [],
         'scenes'                => $lesson->relationLoaded('scenes')
             ? $lesson->scenes->map(fn($s) => [
+                'id'          => $s->id,   // lets the teacher-preview "Edit scene" deep-link to this exact scene
                 'order'       => $s->order,
                 'kind'        => $s->kind,
                 'config'      => $s->config,
@@ -158,8 +159,9 @@
 
     {{-- ── Map block slide — full-bleed historical atlas, shown while a map scene plays. --}}
     <div id="lesson-map-stage" class="absolute inset-0 z-20" style="display:none" aria-hidden="true"></div>
-    {{-- Continue button for interactive map blocks (timed blocks auto-advance). --}}
-    <button x-show="showMapContinue" x-transition
+    {{-- Continue button for interactive map blocks (timed blocks auto-advance). Voyage lessons
+         advance with the → / B keys (arrows-only nav), so the big button is hidden there. --}}
+    <button x-show="showMapContinue && lesson.game_type !== 'voyage'" x-transition
             @click="advanceMap()"
             class="absolute bottom-10 left-1/2 z-40 -translate-x-1/2 flex items-center gap-2 rounded-full
                    bg-amber-500 px-7 py-3 text-base font-bold text-slate-950 shadow-[0_0_48px_rgba(245,158,11,0.4)]
@@ -167,6 +169,26 @@
         {{ __('Continue') }}
         <svg class="h-5 w-5 fill-slate-950" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </button>
+
+    {{-- Voyage carousel: prev/next arrows on the sides + a minimal auto-advance progress line.
+         Shown at the landfall (showMapContinue); the countdown auto-advances after 10s. --}}
+    <template x-if="lesson.game_type === 'voyage'">
+        <div>
+            <button x-show="showMapContinue && _sceneIndex > 0" x-transition @click="previousSlide()"
+                    aria-label="{{ __('Previous') }}"
+                    class="fixed left-3 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur transition hover:bg-black/60 hover:text-white pointer-events-auto">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button x-show="showMapContinue" x-transition @click="advanceMap()"
+                    aria-label="{{ __('Next') }}"
+                    class="fixed right-3 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur transition hover:bg-black/60 hover:text-white pointer-events-auto">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <div x-show="showMapContinue" class="fixed inset-x-0 bottom-0 z-40 h-1 bg-white/10 pointer-events-none">
+                <div class="h-full bg-amber-400/90" :style="`width: ${autoAdvanceProgress * 100}%`"></div>
+            </div>
+        </div>
+    </template>
 
     {{-- ── Narrator welcome video ───────────────────────────────────────────
          Plays once, full-screen, right after "Start lesson" is clicked and before
@@ -215,12 +237,45 @@
     {{-- ── LAYER 3: UI overlay ──────────────────────────────────────────── --}}
     <div class="absolute inset-0 z-30 pointer-events-none">
 
-        {{-- Logo — always visible, top-left, same size as app navbar --}}
+        @php $canEdit = auth()->check() && (int) auth()->id() === (int) $lesson->teacher_id; @endphp
+
+        {{-- Logo — top-left. Hidden for the owner-preview, where the slim Edit toolbar takes its spot. --}}
+        @unless ($canEdit)
         <div class="absolute top-4 left-4 sm:left-6 lg:left-8 pointer-events-none" style="z-index:50">
             {{-- Dark halo keeps the light wordmark legible on bright map / Ken Burns slides. --}}
             <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-28 w-auto"
                  style="filter: drop-shadow(0 0 14px rgba(0,0,0,0.85)) drop-shadow(0 2px 4px rgba(0,0,0,0.65));">
         </div>
+        @endunless
+
+        {{-- Owner preview toolbar (WordPress-admin-bar style) — jump straight back to editing the
+             EXACT scene you're viewing. Collapses to a small pill (top-left) using the same show/hide
+             affordance as the editor's panels. --}}
+        @if ($canEdit)
+        <div class="pointer-events-auto absolute top-3 sm:left-20 lg:left-16 z-50"
+             x-data="{ barOpen: (localStorage.getItem('preview.bar') ?? '1') === '1' }"
+             x-init="$watch('barOpen', v => localStorage.setItem('preview.bar', v ? '1' : '0'))">
+            <div x-show="barOpen" x-transition
+                 class="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-900/90 px-2 py-1.5 shadow-2xl backdrop-blur">
+                <span class="pl-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">Preview</span>
+                <button type="button"
+                        @click="window.location.href = editSceneHref('{{ route('teacher.lessons.wizard', $lesson) }}')"
+                        class="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-slate-950 transition hover:bg-amber-400">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/></svg>
+                    {{ __('Edit scene') }}
+                </button>
+                <button type="button" @click="barOpen = false" title="{{ __('Hide toolbar') }}" aria-label="{{ __('Hide toolbar') }}"
+                        class="rounded-full p-1 text-slate-400 transition hover:text-slate-100">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 12H5.25"/></svg>
+                </button>
+            </div>
+            <button type="button" x-show="!barOpen" x-cloak @click="barOpen = true"
+                    title="{{ __('Show edit toolbar') }}" aria-label="{{ __('Show edit toolbar') }}"
+                    class="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-900/90 text-amber-300 shadow-2xl backdrop-blur transition hover:text-amber-200">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/></svg>
+            </button>
+        </div>
+        @endif
 
         {{-- Source attribution (A4) — bottom-left, unobtrusive --}}
         @if ($attribution = $lesson->sourceAttribution())
@@ -297,7 +352,7 @@
 
         {{-- ── Chapter bar (Micrio-style serial-tour): segmented progress + chapter list ── --}}
         <div
-            x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE') && chapters.length > 1"
+            x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE') && chapters.length > 1 && !currentIsGame"
             x-cloak
             class="absolute bottom-4 left-1/2 w-[min(720px,92vw)] -translate-x-1/2 pointer-events-auto"
             style="z-index:46"
@@ -306,12 +361,12 @@
             <div x-show="chaptersOpen" x-transition
                  @click.outside="chaptersOpen = false"
                  class="mb-3 max-h-[46vh] overflow-y-auto rounded-xl border border-white/10 bg-black/70 p-1.5 backdrop-blur-md">
-                <template x-for="(c, i) in chapters" :key="i">
-                    <button type="button" @click="goToChapter(i)"
+                <template x-for="(c, i) in chapters" :key="c.index">
+                    <button type="button" @click="goToChapter(c.index)"
                             class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-white/10"
-                            :class="i === _sceneIndex ? 'text-amber-300' : 'text-white/70'">
+                            :class="c.index === _sceneIndex ? 'text-amber-300' : 'text-white/70'">
                         <span class="w-6 shrink-0 font-mono text-xs tabular-nums opacity-70" x-text="String(i + 1).padStart(2, '0')"></span>
-                        <span class="text-sm" :class="i === _sceneIndex ? 'font-bold' : 'font-medium'" x-text="c.name"></span>
+                        <span class="text-sm" :class="c.index === _sceneIndex ? 'font-bold' : 'font-medium'" x-text="c.name"></span>
                     </button>
                 </template>
             </div>
@@ -328,13 +383,13 @@
 
                 {{-- Segmented progress — one bar per chapter, width ∝ duration; click to jump. --}}
                 <div class="flex flex-1 items-center gap-1">
-                    <template x-for="(c, i) in chapters" :key="i">
-                        <button type="button" @click="goToChapter(i)" :title="c.name"
+                    <template x-for="(c, i) in chapters" :key="c.index">
+                        <button type="button" @click="goToChapter(c.index)" :title="c.name"
                                 class="group relative flex items-center py-2" style="flex-grow: 1; flex-basis: 0"
                                 :style="`flex-grow:${c.dur || 1}`">
                             <span class="relative block h-1.5 w-full overflow-hidden rounded-full bg-white/25 transition group-hover:bg-white/40">
                                 <span class="absolute inset-y-0 left-0 rounded-full bg-amber-400 transition-all duration-150"
-                                      :style="`width:${ i < _sceneIndex ? 100 : (i === _sceneIndex ? sceneProgress * 100 : 0) }%`"></span>
+                                      :style="`width:${ c.index < _sceneIndex ? 100 : (c.index === _sceneIndex ? sceneProgress * 100 : 0) }%`"></span>
                             </span>
                         </button>
                     </template>

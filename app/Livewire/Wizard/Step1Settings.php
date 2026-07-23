@@ -14,6 +14,7 @@ use App\Services\Support\GradeBandStyleRecommender;
 use App\Services\Support\HistoryTaxonomy;
 use App\Services\Support\ImageStyleTemplate;
 use App\Services\Support\ToneRecommender;
+use App\Services\VoyageLessonBuilder;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -533,6 +534,40 @@ class Step1Settings extends Component
 
         $this->redirect(
             route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 2]),
+            navigate: true,
+        );
+    }
+
+    // ── Voyage lessons ────────────────────────────────────────────────────────
+    // A voyage lesson is picked from the historical-voyage catalog, not generated from a topic —
+    // so it bypasses the topic/story/generation flow entirely and jumps straight to Configure.
+
+    /** @return array<string,string> Playable voyages (have legs), as [id => name]. */
+    #[Computed]
+    public function voyageOptions(): array
+    {
+        return app(VoyageLessonBuilder::class)->playableVoyages();
+    }
+
+    /**
+     * Build a voyage lesson from the catalog and open it in the Configure step. The voyage id is
+     * passed straight from the client (Alpine) so picking a voyage never round-trips to the server —
+     * that would re-render and collapse the picker before the teacher can click Create.
+     */
+    public function createVoyageLesson(string $voyageId = ''): void
+    {
+        if ($voyageId === '' || ! array_key_exists($voyageId, $this->voyageOptions)) {
+            $this->addError('voyagePick', 'Choose a voyage from the list.');
+
+            return;
+        }
+
+        $lesson = app(VoyageLessonBuilder::class)->build($voyageId, auth()->user());
+        // Voyage lessons have no generation pipeline — skip straight to the Configure step.
+        $lesson->update(['wizard_step' => 3]);
+
+        $this->redirect(
+            route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => 3]),
             navigate: true,
         );
     }

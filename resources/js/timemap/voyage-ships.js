@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { voyageRoutes } from './voyages.js';
+import { voyageRoutes, smooth } from './voyages.js';
 import { buildFleet } from './voyage-fleet.js';
 
 // Low-poly tall-ship fleets sailing along each era-visible voyage route. Ships are parametric
@@ -15,6 +15,17 @@ const SHIP_PX = 46;                 // approximate on-screen length of the flags
 const LAP_SECONDS = 45;             // ambient loop: one full route traversal
 const EARTH_CIRCUMFERENCE = 40_075_000;
 const FORMATION_GAP = 0.012;        // escort trail distance as a fraction of route length
+
+// Idle "at sea" motion — the ship is always afloat, rocking gently as if on slight waves. All are
+// fractions of the ship's length / radians, pivoted about the hull's centre-bottom (the group origin
+// sits at the waterline centre), so the mast sways while the keel stays put.
+const ROCK_ROLL = 0.10;             // side-to-side roll amplitude (rad, ~5.7°)
+const ROCK_ROLL_SPEED = 1.05;
+const ROCK_PITCH = 0.035;           // gentle bow-to-stern pitch (rad)
+const ROCK_PITCH_SPEED = 0.8;
+const ROCK_BOB = 0.02;              // vertical bob, fraction of ship length
+const ROCK_BOB_SPEED = 0.9;
+const SHIP_SINK = 0.06;             // sit a bit underwater — keel/lower hull below the waterline
 
 // Constant-speed sampling: cumulative distances over the smoothed route (degree-space pacing).
 const buildTrack = (coords) => {
@@ -47,15 +58,33 @@ const pointAt = (track, t) => {
   };
 };
 
-export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambient = true } = {}) {
+const REF_ZOOM = 4;   // anchored ships hold a fixed WORLD size, referenced to this zoom
+const REF_MPP = EARTH_CIRCUMFERENCE / (512 * Math.pow(2, REF_ZOOM));
+
+export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambient = true, flagshipOnly = false, def = null, shipScale = 1, shipAnchored = false } = {}) {
+  let sScale = Number(shipScale) > 0 ? Number(shipScale) : 1;   // on-screen size multiplier (live)
+  let sAnchored = !!shipAnchored;                               // pin to the map (scale with zoom)?
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const voyages = voyageRoutes()
     .filter((v) => !only || v.id === only)
-    .map((v, i) => ({
-      ...v,
-      track: buildTrack(v.coords),
-      phase: (i * 0.37) % 1, // desync the fleet across voyages
-    }));
+    .map((v, i) => {
+      // Use the lesson's EDITED voyage_def geometry when supplied, so a dragged/added waypoint moves
+      // the ship + route (the catalog v is only the fallback). Track is re-smoothed from its waypoints.
+      const useDef = def && (def.id ? def.id === v.id : only === v.id) && Array.isArray(def.waypoints) && def.waypoints.length >= 2;
+      const waypoints = useDef ? def.waypoints : v.waypoints;
+      const legs = useDef ? (def.legs || v.legs) : v.legs;
+      const coords = useDef ? smooth(waypoints) : v.coords;
+      let fleet = (useDef && Array.isArray(def.fleet) && def.fleet.length) ? def.fleet : v.fleet;
+      if (flagshipOnly && Array.isArray(fleet) && fleet.length) {
+        fleet = [fleet.find((f) => f && f.flagship) || fleet[0]];
+      }
+      return {
+        ...v,
+        waypoints, legs, fleet,
+        track: buildTrack(coords),
+        phase: (i * 0.37) % 1, // desync the fleet across voyages
+      };
+    });
 
   let year = null;
   const camera = new THREE.Camera();
@@ -125,7 +154,9 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
 
       const zoom = map.getZoom();
       const metresPerPixel = EARTH_CIRCUMFERENCE / (512 * Math.pow(2, zoom));
-      const shipMetres = SHIP_PX * metresPerPixel;
+      // Fixed = constant on-screen px (divide zoom back out). Anchored = constant WORLD size (uses a
+      // reference metres-per-pixel), so the ship visibly shrinks zooming out / grows zooming in.
+      const shipMetres = SHIP_PX * sScale * (sAnchored ? REF_MPP : metresPerPixel);
       const now = performance.now() / 1000;
 
       for (const v of active) {
@@ -134,11 +165,35 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
           : (reducedMotion ? 0.35 : ((now / LAP_SECONDS) * (v.track.total > 200 ? 0.6 : 1) + v.phase) % 1);
         v.ships.forEach((ship, i) => {
           const p = pointAt(v.track, baseT - i * FORMATION_GAP);
-          const lngLat = [((p.lng + 180) % 360 + 360) % 360 - 180, p.lat];
+          // Place the ship in the SAME world copy as the camera. Wrapping to [-180,180] instead put
+          // it 360° away from the camera on Pacific crossings (Tonga) → it vanished off-screen.
+          const cLng = map.getCenter().lng;
+          let lng = p.lng;
+          while (lng - cLng > 180) lng -= 360;
+          while (lng - cLng < -180) lng += 360;
+          const lngLat = [lng, p.lat];
           const scale = shipMetres * (i === 0 ? 1 : 0.85); // escorts slightly smaller
           allShips().forEach((s) => { s.visible = false; });
           ship.visible = true;
-          ship.rotation.set(0, p.heading + Math.PI / 2, 0);
+          // Ease the heading (shortest-angle lerp) so the boat never snaps around at sharp waypoints.
+          const targetYaw = p.heading + Math.PI / 2;
+          if (ship._yaw === undefined) ship._yaw = targetYaw;
+          let dYaw = targetYaw - ship._yaw;
+          while (dYaw > Math.PI) dYaw -= 2 * Math.PI;
+          while (dYaw < -Math.PI) dYaw += 2 * Math.PI;
+          ship._yaw += dYaw * 0.08; // small factor = a lot of easing
+          // Idle "at sea" motion, pivoted about the hull's centre-bottom (the group origin sits at the
+          // waterline centre): roll side-to-side, a gentler bow/stern pitch, and a small vertical bob —
+          // as if riding slight waves. 'YXZ' so the roll (Z) happens about the ship's own fore-aft axis
+          // AFTER the heading yaw. Plus a constant sink so the lower hull rides under the waterline.
+          if (ship._phase === undefined) ship._phase = i * 2.1;
+          const ph = ship._phase;
+          const roll = reducedMotion ? 0 : ROCK_ROLL * Math.sin(now * ROCK_ROLL_SPEED + ph);
+          const pitch = reducedMotion ? 0 : ROCK_PITCH * Math.sin(now * ROCK_PITCH_SPEED + ph * 1.7);
+          const bob = reducedMotion ? 0 : ROCK_BOB * Math.sin(now * ROCK_BOB_SPEED + ph);
+          ship.rotation.order = 'YXZ';
+          ship.rotation.set(pitch, ship._yaw, roll);
+          ship.position.set(0, (bob - SHIP_SINK) * scale, 0);
           ship.scale.setScalar(scale);
           ship.updateMatrixWorld(true);
           camera.projectionMatrix = new THREE.Matrix4()
@@ -154,15 +209,15 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
 
   map.addLayer(layer, map.getLayer(beforeId) ? beforeId : undefined);
 
-  // Gentle sail loop: repaint while any fleet is on stage. Tour hosts drive their own frames.
+  // Gentle repaint loop while any fleet is on stage — drives BOTH the ambient sail lap AND the idle
+  // rock (so a ship parked at a landfall keeps rocking on the waves, not just while sailing). The ship
+  // stays put when the tour pins it (v.tourT set); this loop only re-renders so the rock animates.
   let raf = null;
-  if (ambient) {
-    const tick = () => {
-      if (visibleVoyages().length && !reducedMotion) map.triggerRepaint();
-      raf = window.setTimeout(() => window.requestAnimationFrame(tick), 66); // ~15fps is plenty
-    };
-    tick();
-  }
+  const tick = () => {
+    if (visibleVoyages().length && !reducedMotion) map.triggerRepaint();
+    raf = window.setTimeout(() => window.requestAnimationFrame(tick), 66); // ~15fps is plenty
+  };
+  if (!reducedMotion) tick();
 
   return {
     setYear(y) {
@@ -178,6 +233,25 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
     pointAt(voyageId, t) {
       const v = voyages.find((x) => x.id === voyageId);
       return v ? pointAt(v.track, t) : null;
+    },
+    /** Live-update the ship's on-screen size + whether it scales with zoom (whole-voyage setting). */
+    setShipScale(scale, anchored) {
+      if (Number(scale) > 0) sScale = Number(scale);
+      if (anchored !== undefined) sAnchored = !!anchored;
+      map.triggerRepaint();
+    },
+    /**
+     * Reshape a voyage's route IN PLACE from an edited voyage_def (waypoints/legs) — no layer rebuild,
+     * no re-mount. The ship + track just follow the new geometry on the next repaint. This is what lets
+     * the editor drag/insert a waypoint without the whole map flashing back to its initial fit.
+     */
+    setDef(voyageId, newDef) {
+      const v = voyages.find((x) => x.id === voyageId);
+      if (!v || !newDef || !Array.isArray(newDef.waypoints) || newDef.waypoints.length < 2) return;
+      v.waypoints = newDef.waypoints;
+      if (Array.isArray(newDef.legs)) v.legs = newDef.legs;
+      v.track = buildTrack(smooth(newDef.waypoints));
+      map.triggerRepaint();
     },
     /** Track fraction at a RAW waypoint index (smooth() emits waypoint i at sample i*10). */
     fractionAtWaypoint(voyageId, wpIndex) {

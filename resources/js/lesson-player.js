@@ -16,6 +16,7 @@
 import Alpine from 'alpinejs'
 import QRCode from 'qrcode'
 import { resolveAnchorTime, pickShotIndex } from './scene/shot-sync.js'
+import { renderGallery } from './gallery-scene.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -119,7 +120,8 @@ let _sceneQueue     = []   // [{kind, config, audio_url, script, image_url, alig
 let _mapInstance    = null   // MapLibre map block instance (lives outside Alpine's proxy)
 let _mapTimer       = null   // timed-mode auto-advance timer
 let _voyageInstance = null   // voyage tour instance (kind 'voyage'; outside Alpine's proxy)
-let _galleryTimer   = null   // gallery slideshow interval (kind 'gallery')
+let _galleryInstance = null  // gallery slideshow instance (kind 'gallery'; outside Alpine's proxy)
+let _autoAdvanceRaf = null    // voyage auto-advance progress loop
 let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
 let _parallax       = null   // live ParallaxScene instance (layered bg+hero shot, E3b)
 let _parallaxMod    = null   // cached ./scene/ParallaxScene.js module (lazy-loaded once)
@@ -153,13 +155,15 @@ Alpine.data('lessonGame', (lesson) => ({
     _audioMutedVolume: 1.0,  // remember pre-mute volume
 
     // Chapters (Micrio-style serial-tour bar + list)
-    chapters:          [],   // [{name, dur}] aligned with _sceneIndex
+    chapters:          [],   // [{name, dur, index, kind}] — games excluded; `index` = queue index
     currentChapterName: '',
+    currentIsGame:     false, // current scene is a quiz/game → hide the chapter bar
     sceneProgress:     0,    // 0-1 through the current chapter's audio
     chaptersOpen:      false,
 
     // Map block
     showMapContinue: false,  // interactive map slide → show the Continue button
+    autoAdvanceProgress: 0,  // 0..1 — voyage auto-advance progress line at the arrival
 
     // Internals
     _audio:             null,
@@ -260,6 +264,19 @@ Alpine.data('lessonGame', (lesson) => ({
       // Render QR code into the canvas element
       this._renderQr()
 
+      // Embedded autoplay (wizard "Play" preview): skip the title screen and play straight through,
+      // optionally starting at a given scene index. Voyage lessons have no narration audio, so
+      // starting without a click gesture is safe.
+      try {
+        const params = new URLSearchParams(window.location.search)
+        this._embed = params.get('embed') === '1'
+        const sc = parseInt(params.get('scene'), 10)
+        this._startSceneIndex = Number.isFinite(sc) ? Math.max(0, sc) : 0
+        if (params.get('autoplay') === '1') {
+          setTimeout(() => { if (this.phase === 'TITLE_SCREEN') this.startLesson() }, 300)
+        }
+      } catch (_) { /* no params */ }
+
       // Attach keyboard listeners for audio controls
       this._attachKeyboardListeners()
 
@@ -286,7 +303,8 @@ Alpine.data('lessonGame', (lesson) => ({
     async startLesson () {
       // Locked-mode (best effort): go fullscreen on the user's play gesture so tab/app
       // switching takes deliberate effort. Not supported on iPhone Safari — never block.
-      document.documentElement.requestFullscreen?.().catch(() => {})
+      // Skip when embedded (the wizard preview iframe) — no gesture, and fullscreen would be wrong.
+      if (!this._embed) document.documentElement.requestFullscreen?.().catch(() => {})
       // Unlock browser audio NOW — must happen synchronously before any await breaks the gesture chain
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext
@@ -758,10 +776,12 @@ Alpine.data('lessonGame', (lesson) => ({
       if (lesson.audio_url) {
         _sceneQueue = [{ audio_url: lesson.audio_url, script: lesson.script, image_url: null }]
       } else if (lesson.scenes?.length) {
-        // Keep audio scenes AND audio-less slide kinds: map blocks, voyage tour legs, galleries.
+        // EVERY scene is playable — no kind filter. A quiz (or any element) can be attached to any
+        // lesson and must never be silently dropped. Each kind renders via its branch in _playScene;
+        // a plain scene with no narration audio holds briefly on its visual, then advances.
         _sceneQueue = lesson.scenes
-          .filter(s => s.audio_url || s.kind === 'map' || s.kind === 'voyage' || s.kind === 'gallery')
           .map(s => ({
+            id: s.id ?? null,   // needed by editSceneHref → deep-link "Edit scene" to THIS exact scene
             kind: s.kind, game_type: s.game_type ?? null, config: s.config ?? null, scene_view: s.scene_view,
             branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
             branch_choice_label: s.branch_choice_label ?? null,
@@ -780,11 +800,17 @@ Alpine.data('lessonGame', (lesson) => ({
 
       if (!_sceneQueue.length) return
 
-      // Chapter list for the Micrio-style serial-tour bar (index aligns with _sceneIndex).
-      this.chapters = _sceneQueue.map((s, i) => ({
-        name: s.chapter_name || ('Chapter ' + (i + 1)),
-        dur:  Number(s.duration_seconds) || 0,
-      }))
+      // Chapter list for the Micrio-style serial-tour bar. Quiz/strategy/debate (kind 'game') are NOT
+      // narrative chapters — exclude them, but keep each chapter's ORIGINAL queue index so the bar's
+      // progress + click still map to _sceneIndex.
+      this.chapters = _sceneQueue
+        .map((s, i) => ({
+          name: s.chapter_name || ('Chapter ' + (i + 1)),
+          dur:  Number(s.duration_seconds) || 0,
+          index: i,
+          kind: s.kind,
+        }))
+        .filter(c => c.kind !== 'game')
       this.currentChapterName = this.chapters[0]?.name || ''
 
       // A map block can be first in the queue — only preload audio when the first scene has it.
@@ -838,11 +864,28 @@ Alpine.data('lessonGame', (lesson) => ({
       // Background is set per scene by _playScene (flat Ken Burns by default, skybox opt-in).
       this._moveAvatarTo('bottom-right')
       if (!_sceneQueue.length) return
-      this._sceneIndex = 0
-      this._playScene(0)
+      // Honour an embedded start-scene (wizard "Play" from the selected leg), once.
+      const start = Math.min(Math.max(0, this._startSceneIndex || 0), _sceneQueue.length - 1)
+      this._startSceneIndex = 0
+      this._sceneIndex = start
+      this._playScene(start)
     },
 
     _sceneIndex: 0,
+
+    // Owner-preview "Edit scene": deep-link to the wizard scene editor (step 4) for the EXACT scene
+    // being viewed, carrying whether the gallery/landfall modal is currently open so it can reopen.
+    // Reads this._sceneIndex (reactive) so the link tracks the live scene.
+    editSceneHref (base) {
+      // Prefer the live play queue; before playback starts it's empty, so fall back to the lesson's
+      // scene list (always present from window.LESSON) — both are the same ordered scenes.
+      const scenes = (_sceneQueue && _sceneQueue.length) ? _sceneQueue : (this.lesson?.scenes || [])
+      const scene = scenes[this._sceneIndex]
+      const params = new URLSearchParams({ step: '4' })
+      if (scene?.id != null) params.set('scene', String(scene.id))
+      params.set('modal', window.__voyageGalleryOpen ? '1' : '0')
+      return `${base}?${params.toString()}`
+    },
 
     // Jump to a chapter from the bar / list.
     goToChapter (i) {
@@ -856,8 +899,10 @@ Alpine.data('lessonGame', (lesson) => ({
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
 
-      // Chapter caption + bar (Micrio serial-tour).
-      this.currentChapterName = this.chapters?.[index]?.name || ''
+      // Chapter caption + bar (Micrio serial-tour). Chapters are filtered (no games), so look the
+      // current one up by its queue index. A game scene (quiz) is not a chapter → hide the bar.
+      this.currentIsGame = scene.kind === 'game'
+      this.currentChapterName = (this.chapters?.find(c => c.index === index)?.name) || scene.chapter_name || ''
       this.sceneProgress = 0
 
       // Story game: 'hold' = engine shows its choice overlay and resumes via onAdvanceTo;
@@ -872,6 +917,16 @@ Alpine.data('lessonGame', (lesson) => ({
       this._shotPlan = null
       this._shotCursor = 0
 
+      // The persistent voyage map is kept ALIVE only between voyage legs. A voyage lesson can now
+      // open/close with standalone story slides (kind 'gallery'), so when this scene is NOT a voyage
+      // leg, fully release the map first — otherwise its dead DOM lingers and backward nav replays a
+      // torn-down instance.
+      if (scene.kind !== 'voyage' && _voyageInstance) {
+        try { _voyageInstance.destroy() } catch (_) { /* map already gone */ }
+        _voyageInstance = null
+        this._cancelVoyageAuto()
+      }
+
       // Teacher text annotations for this scene (URLs render as link chips → iframe modal).
       // Before the map early-return, so a map scene clears the previous scene's texts too.
       this._renderSceneTexts(scene)
@@ -882,6 +937,8 @@ Alpine.data('lessonGame', (lesson) => ({
       // Voyage tour leg / image gallery — audio-less slides driven by Next/Previous only.
       if (scene.kind === 'voyage') { this._playVoyageScene(index, scene); return }
       if (scene.kind === 'gallery') { this._playGalleryScene(index, scene); return }
+      // Game scene (quiz / strategy / debate) — may or may not have a narrated intro.
+      if (scene.kind === 'game') { this._playGameScene(index, scene); return }
 
       // Per-scene background motion settings (Animated toggle + Ken Burns direction).
       this._kbAnimated = scene.kb_animated !== false
@@ -902,6 +959,15 @@ Alpine.data('lessonGame', (lesson) => ({
         this._showFlatColor(scene.background_color)
       }
 
+      // No narration audio (e.g. a not-yet-narrated scene): hold on the visual for its set duration
+      // (or a short default), then advance — never build `new Audio(null)`, which would hang the queue.
+      if (!scene.audio_url) {
+        const holdMs = (Number(scene.duration_seconds) > 0 ? Number(scene.duration_seconds) : 4) * 1000
+        clearTimeout(this._noAudioHold)
+        this._noAudioHold = setTimeout(() => this._afterSceneAudio(index, scene), holdMs)
+        return
+      }
+
       // Narrator is a flat 2D portrait badge — play the scene audio directly.
       this._audio = new Audio(scene.audio_url)
       this._attachAudioListeners()
@@ -912,6 +978,31 @@ Alpine.data('lessonGame', (lesson) => ({
       this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
       this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
       this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+    },
+
+    // ── Game scene (quiz / strategy / debate) ──────────────────────────
+    // Render the scene's backdrop like a normal slide, then run the challenge. If a spoken intro was
+    // narrated we play it first and start the game when it ends (via _afterSceneAudio); with no audio
+    // we go straight into the challenge — a quiz used to be silently skipped when its intro had no audio.
+    _playGameScene (index, scene) {
+      if (scene.image_url || scene.shots?.length) {
+        this._showShot(scene.shots?.[0], scene.image_url)
+      } else {
+        this._showFlatColor(scene.background_color)
+      }
+      if (scene.audio_url) {
+        this._audio = new Audio(scene.audio_url)
+        this._attachAudioListeners()
+        this._lastEventIndex = 0
+        this._audio.addEventListener('loadedmetadata', () => {
+          this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
+        })
+        this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
+        this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
+        this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      } else {
+        this._afterSceneAudio(index, scene)   // no narration → begin the quiz/challenge now
+      }
     },
 
     // ── Map block slide ────────────────────────────────────────────────
@@ -986,21 +1077,60 @@ Alpine.data('lessonGame', (lesson) => ({
       const stage = document.getElementById('lesson-map-stage')
       if (!stage || !window.renderVoyageTour) { this._advanceScene(index); return }
       stage.style.display = 'block'
-      stage.innerHTML = ''
-      const inner = document.createElement('div')
-      inner.style.width = '100%'
-      inner.style.height = '100%'
-      stage.appendChild(inner)
       this.showMapContinue = false
-      _voyageInstance = window.renderVoyageTour(inner, {
-        voyage: cfg.voyage,
-        leg: Number(cfg.leg) || 0,
-        view: cfg.view || 'globe',
+      // ONE persistent map for the whole voyage — build it once, then play each leg on it (no
+      // rebuild/re-fit between scenes). The map/ships/fog/trail survive; playLeg eases the camera.
+      if (!_voyageInstance) {
+        stage.innerHTML = ''
+        const inner = document.createElement('div')
+        inner.style.width = '100%'
+        inner.style.height = '100%'
+        stage.appendChild(inner)
+        // Period place labels come from the landfalls themselves — each voyage scene's location
+        // pinned at its leg's arrival. The teacher hides modern cities/borders via game_config.voyage_map.
+        const legLabels = _sceneQueue
+          .filter(s => s.kind === 'voyage' && s.location)
+          .map(s => ({ text: s.location, leg: Number((s.config || {}).leg) || 0 }))
+        _voyageInstance = window.renderVoyageTour(inner, {
+          voyage: cfg.voyage,
+          def: lesson.game_config?.voyage_def || null,       // lesson's editable copy wins over the catalog
+          view: cfg.view || 'globe',
+          routeLine: lesson.game_config?.route_line || null, // styled/animated trail (lesson-wide)
+          mapOptions: lesson.game_config?.voyage_map || null, // hide cities/borders, show place labels
+          legLabels,
+          paintedFog: lesson.game_config?.voyage_fog || null, // teacher-painted undiscovered regions
+          // On each arrival: show the carousel controls + start the 10s auto-advance.
+          onArrived: () => { this.showMapContinue = true; this._startVoyageAuto() },
+        })
+      }
+      _voyageInstance.playLeg(Number(cfg.leg) || 0, {
         intro: !!cfg.intro,
         stopImages: cfg.stop_images || [],
-        // The sail plays hands-off; the Continue affordance appears at the stop.
-        onArrived: () => { this.showMapContinue = true },
+        gallery: cfg.gallery || null,
+        hotspot: cfg.hotspot || null,
       })
+    },
+
+    // ── Voyage carousel: side arrows + auto-advance after 10s ──────────────
+    _startVoyageAuto () {
+      if (lesson.game_type !== 'voyage') return
+      this._cancelVoyageAuto()
+      const DUR = 10000
+      let elapsed = 0
+      let last = performance.now()
+      const tick = (now) => {
+        // Pause the countdown while the landfall gallery modal is open.
+        if (!window.__voyageGalleryOpen) elapsed += now - last
+        last = now
+        this.autoAdvanceProgress = Math.min(1, elapsed / DUR)
+        if (elapsed >= DUR) { this.advanceMap(); return }
+        _autoAdvanceRaf = requestAnimationFrame(tick)
+      }
+      _autoAdvanceRaf = requestAnimationFrame(tick)
+    },
+    _cancelVoyageAuto () {
+      if (_autoAdvanceRaf) { cancelAnimationFrame(_autoAdvanceRaf); _autoAdvanceRaf = null }
+      this.autoAdvanceProgress = 0
     },
 
     // ── Image gallery (kind 'gallery') — auto-cycling slideshow, Next/Previous to leave ──
@@ -1011,41 +1141,7 @@ Alpine.data('lessonGame', (lesson) => ({
       if (!stage) { this._advanceScene(index); return }
       stage.style.display = 'block'
       stage.innerHTML = ''
-      const images = Array.isArray(cfg.images) ? cfg.images : []
-      const host = document.createElement('div')
-      host.style.cssText = 'position:absolute;inset:0;background:#0b1526;display:flex;align-items:stretch;'
-      host.innerHTML = `
-        <div style="position:relative;flex:1;overflow:hidden;">
-          <img data-slide="a" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1s ease, transform 9s linear;">
-          <img data-slide="b" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1s ease, transform 9s linear;">
-          <p data-credit style="position:absolute;left:1rem;bottom:0.75rem;margin:0;color:#cbd5e1;font-size:0.72rem;opacity:0.8;"></p>
-        </div>
-        <div style="width:22rem;max-width:38%;padding:2.2rem 1.8rem;background:rgba(9,16,30,0.92);color:#e2e8f0;display:flex;flex-direction:column;justify-content:center;">
-          <p style="margin:0;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:#93a4bd;">${cfg.date_label || ''}</p>
-          <h2 style="margin:0.4rem 0 0;font-size:1.5rem;line-height:1.2;color:#fff;">${cfg.title || ''}</h2>
-          <p style="margin-top:1rem;font-size:0.95rem;line-height:1.65;">${cfg.story || ''}</p>
-          <p style="margin-top:1.6rem;font-size:0.78rem;color:#93a4bd;">Druk op <b>→</b> om verder te varen</p>
-        </div>`
-      stage.appendChild(host)
-
-      const slides = [host.querySelector('[data-slide="a"]'), host.querySelector('[data-slide="b"]')]
-      const credit = host.querySelector('[data-credit]')
-      let cursor = 0
-      let front = 0
-      const show = () => {
-        if (!images.length) return
-        const img = images[cursor % images.length]
-        const el = slides[front]
-        el.src = img.url || img
-        el.style.transform = 'scale(1)'
-        requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'scale(1.06)' })
-        slides[1 - front].style.opacity = '0'
-        credit.textContent = img.credit || ''
-        front = 1 - front
-        cursor++
-      }
-      show()
-      if (images.length > 1) _galleryTimer = setInterval(show, 5000)
+      _galleryInstance = renderGallery(stage, cfg)
       this.showMapContinue = true
     },
 
@@ -1062,11 +1158,15 @@ Alpine.data('lessonGame', (lesson) => ({
       this._playScene(this._sceneIndex)
     },
 
-    _teardownStageScene () {
+    _teardownStageScene (full = false) {
       clearTimeout(_mapTimer)
       _mapTimer = null
-      clearInterval(_galleryTimer)
-      _galleryTimer = null
+      this._cancelVoyageAuto()
+      // Voyage lessons keep ONE persistent map across all legs — between scenes we only stop the
+      // sail (playLeg re-drives it) and keep the map alive. Full teardown runs at lesson end /
+      // player unmount (below), or when leaving voyage for a different scene kind.
+      if (_voyageInstance && lesson.game_type === 'voyage' && !full) { this.showMapContinue = false; return }
+      if (_galleryInstance) { try { _galleryInstance.destroy() } catch (_) {} _galleryInstance = null }
       this._textLayer?.setProjector(null)   // map gone — pinned labels fall back to screen spots
       if (_mapInstance) { try { _mapInstance.destroy() } catch (_) {} _mapInstance = null }
       if (_voyageInstance) { try { _voyageInstance.destroy() } catch (_) {} _voyageInstance = null }
@@ -1236,6 +1336,7 @@ Alpine.data('lessonGame', (lesson) => ({
     _endLesson () {
       if (this._audio && !this._audio.paused) this._audio.pause()
       if (this._timerInterval) clearInterval(this._timerInterval)
+      try { this._teardownStageScene(true) } catch (_) { /* tear down the persistent voyage map */ }
       this.phase = 'ENDED'
       this.audioPlaying = false
       // Story game: the blade has no ENDED markup (everything x-hides), so the run
@@ -1390,8 +1491,10 @@ Alpine.data('lessonGame', (lesson) => ({
       clearInterval(this._kbInterval);    this._kbInterval = null
       try { _bgInstance?.destroy?.() } catch (_) {}
       try { _mapInstance?.destroy?.() } catch (_) {}
+      try { _voyageInstance?.destroy?.() } catch (_) {}
       _bgInstance = null
       _mapInstance = null
+      _voyageInstance = null
       _initDone = false  // allow a later mount (e.g. opening another lesson) to re-init
     },
   }))

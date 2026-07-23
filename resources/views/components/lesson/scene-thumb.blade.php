@@ -33,25 +33,41 @@
     <span data-thumb-full class="contents">
     @if ($scene->kind === 'map')
         <div class="w-full h-full bg-sky-800/30 border border-sky-600/30 flex flex-col items-center justify-center text-white gap-1">
-            <svg class="h-6 w-6 opacity-90" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            <x-lesson.icon-map class="h-7 w-7 opacity-90" />
             <span class="text-[9px] font-bold uppercase tracking-widest">Map</span>
             <span class="text-[9px] opacity-70">{{ $scene->year ?? '—' }}</span>
         </div>
     @elseif ($scene->kind === 'game')
-        <div class="w-full h-full bg-teal-700/30 border border-teal-600/30 flex flex-col items-center justify-center text-white">
-            <span class="text-[10px] font-bold tracking-widest mt-1">{{ strtoupper($scene->game_type ?? 'game') }}</span>
+        <div class="w-full h-full bg-teal-700/30 border border-teal-600/30 flex flex-col items-center justify-center text-white gap-1">
+            @switch($scene->game_type)
+                @case('strategy') <x-lesson.icon-strategy class="h-7 w-7 opacity-90" /> @break
+                @case('debate') <x-lesson.icon-debate class="h-6 w-6 opacity-90" /> @break
+                @case('story_game') <x-lesson.icon-branching-story class="h-7 w-7 opacity-90" /> @break
+                @default
+                    {{-- Quiz (no bespoke icon): a checklist glyph. --}}
+                    <svg class="h-6 w-6 opacity-90" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m-9 8h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
+            @endswitch
+            <span class="text-[9px] font-bold tracking-widest">{{ strtoupper($scene->game_type ?? 'game') }}</span>
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>
+        </div>
+    @elseif ($scene->kind === 'voyage')
+        <div class="w-full h-full bg-indigo-800/30 border border-indigo-500/30 flex flex-col items-center justify-center text-white gap-1">
+            <x-lesson.icon-voyage class="h-7 w-7 opacity-90" />
+            <span class="text-[9px] font-bold uppercase tracking-widest">Voyage</span>
+            <span class="text-[9px] opacity-70 truncate max-w-[90%]">{{ $scene->location ?? '—' }}</span>
+        </div>
+    @elseif ($scene->kind === 'gallery')
+        <div class="w-full h-full bg-violet-800/30 border border-violet-500/30 flex flex-col items-center justify-center text-white gap-1">
+            <x-lesson.icon-slideshow class="h-7 w-7 opacity-90" />
+            <span class="text-[9px] font-bold uppercase tracking-widest">Slideshow</span>
+            <span class="text-[9px] opacity-70 truncate max-w-[90%]">{{ $scene->location ?? '—' }}</span>
         </div>
     @else
         {{-- Placeholder sits underneath; a present image covers it. If the image 404s
              (generation failed / file removed) onerror hides it, revealing the placeholder
              instead of the browser's broken-image glyph. --}}
         <div class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-800/60 text-slate-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5 opacity-80" aria-hidden="true">
-                <rect x="3" y="4" width="18" height="16" rx="2"/>
-                <circle cx="8.5" cy="9.5" r="1.4"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="m4 17 4.5-4.5a1.4 1.4 0 0 1 2 0L15 17m-1.5-2 2-2a1.4 1.4 0 0 1 2 0l2.5 2.5"/>
-            </svg>
+            <x-lesson.icon-story class="h-6 w-6 opacity-80" />
             <span class="text-[9px] tracking-widest">{{ __('SCENE') }} {{ $scene->order }}</span>
         </div>
         @if ($scene->image_path)

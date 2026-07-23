@@ -26,7 +26,7 @@ const PALETTE = {
   river: '#6a8fa0',
   city: '#3a2c1a',
   cityHalo: '#f3ead6',
-  coast: '#3f3020',
+  coast: '#241a10',        // near-black ink shore (Tolkien-chart look)
   coastShadow: '#8a7a5e',
 }
 
@@ -35,10 +35,10 @@ const PALETTE = {
 // Night style (they vanish on a dark ground). Applied by applyStyle(); the block's chosen style
 // rides on scene config.map_style and renders identically in the wizard preview and the player.
 const MAP_STYLES = {
-  'soft-atlas': { land: '#efe6d0', water: '#c7d4c6', coast: '#5b4a36', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true },
-  'antique': { land: '#e8d6ac', water: '#dcdcba', coast: '#6a5238', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true },
-  'pen-ink': { land: '#e6d6ad', water: '#dedec0', coast: '#5e4a34', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true },
-  'night': { land: '#1b2230', water: '#0f1420', coast: '#8a99b8', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false },
+  'soft-atlas': { land: '#efe6d0', water: '#c7d4c6', coast: '#2b2013', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true },
+  'antique': { land: '#e8d6ac', water: '#dcdcba', coast: '#2a1d0c', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true },
+  'pen-ink': { land: '#e6d6ad', water: '#dedec0', coast: '#211809', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true },
+  'night': { land: '#1b2230', water: '#0f1420', coast: '#aeb9d4', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false },
 }
 const DEFAULT_STYLE = 'soft-atlas'
 
@@ -61,10 +61,38 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE } = opts
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE, terrain = true } = opts
+  // Voyage maps can hide anachronistic detail (modern city dots/labels + political borders that
+  // didn't exist yet) and pin their own period place labels. Defaults keep the normal atlas.
+  const { showCities = true, showBorders = true } = opts
+  let layerToggles = { cities: showCities, borders: showBorders }
+  let placeLabels = Array.isArray(opts.labels) ? opts.labels : []
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
   let year = Number(opts.year)
   if (!Number.isFinite(year)) year = 1600
+
+  // Feature `id` (index) lets us drive per-label reveal via feature-state → text-opacity, so a
+  // landfall name can FADE IN when the ship arrives instead of all names showing at once.
+  const labelsFC = (arr) => ({
+    type: 'FeatureCollection',
+    features: (arr || [])
+      .filter((l) => l && l.text && Number.isFinite(Number(l.lng)) && Number.isFinite(Number(l.lat)))
+      .map((l, i) => ({ type: 'Feature', id: i, properties: { name: String(l.text) }, geometry: { type: 'Point', coordinates: [Number(l.lng), Number(l.lat)] } })),
+  })
+  // Indices of labels that have been "arrived at" — kept so re-setting the source data (e.g. on a
+  // map-detail toggle) doesn't wipe the reveal (setData clears feature-state).
+  const revealedLabels = new Set()
+  let revealAll = false
+  // Re-assert the shown state onto the source (feature-state is wiped by setData).
+  const applyLabelReveal = () => {
+    try {
+      const n = (placeLabels || []).length
+      for (let i = 0; i < n; i++) {
+        const shown = revealAll || revealedLabels.has(i)
+        if (shown) map.setFeatureState({ source: 'lesson-labels', id: i }, { shown: true })
+      }
+    } catch (_) { /* source not ready */ }
+  }
 
   const map = new maplibregl.Map({
     container: el,
@@ -90,6 +118,8 @@ export function renderLessonMap (el, opts = {}) {
         },
         // True coastline for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
+        // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
+        'lesson-labels': { type: 'geojson', data: labelsFC(placeLabels) },
       },
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
@@ -110,8 +140,10 @@ export function renderLessonMap (el, opts = {}) {
             'line-width': ['interpolate', ['linear'], ['to-number', ['coalesce', ['get', 'scalerank'], 6]], 1, 1.4, 6, 0.4],
           },
         },
-        // Bold coast outline — crisp ink shore above land/lakes/rivers, below the political borders.
-        { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': PALETTE.coast, 'line-width': 1.0 } },
+        // Bold coast outline — confident ink shore (Tolkien-chart hand-drawn look), above
+        // land/lakes/rivers, below the political borders. Zoom-scaled so the shore stays a strong
+        // ink line at every zoom instead of a hairline that fades out when zoomed out.
+        { id: 'coast-bold', type: 'line', source: 'coastline', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': PALETTE.coast, 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1.3, 4, 2.0, 7, 3.2] } },
         {
           // No fill overlay: the selected polity is shown as an amber RING; other territories
           // are just faint 30%-opacity borders so the terrain reads through.
@@ -149,6 +181,28 @@ export function renderLessonMap (el, opts = {}) {
             'text-color': PALETTE.city,
             'text-halo-color': PALETTE.cityHalo,
             'text-halo-width': 1.4,
+          },
+        },
+        // Teacher-authored place labels — above the atlas labels, same Tolkien calligraphy but
+        // bolder (these are the point of a voyage map). Coloured by applyStyle().
+        {
+          id: 'lesson-labels', type: 'symbol', source: 'lesson-labels',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 12, 6, 17],
+            'text-font': ['Eagle Lake'],
+            'text-anchor': 'center',
+            'text-letter-spacing': 0.03,
+            'text-allow-overlap': true,   // it's THE point of a voyage map — never let it collide away
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': PALETTE.city,
+            'text-halo-color': PALETTE.cityHalo,
+            'text-halo-width': 2,
+            // Hidden until "arrived at" (feature-state shown), then fades in.
+            'text-opacity': ['case', ['boolean', ['feature-state', 'shown'], false], 1, 0],
+            'text-opacity-transition': { duration: 650, delay: 0 },
           },
         },
       ],
@@ -331,10 +385,15 @@ export function renderLessonMap (el, opts = {}) {
     // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
     // all below the city labels. Peaks are softened (opacity 0.7) so dense ranges read as a
     // mountain field rather than a black wall, and the territory's red wash stays legible.
-    addScatterLayer(map, { beforeId: 'city-dots' })
-      .then(() => addForestLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land }))
-      .then(() => addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land, opacity: 0.7 }))
-      .then(() => addVolcanoLayer(map, { beforeId: 'city-dots' }))
+    // `terrain: false` skips all four (incl. the ~1 MB volcanoes chunk) — the voyage tour uses it so
+    // the sea-route map loads fast and the fly-in from space doesn't stutter under their weight.
+    const terrainReady = terrain
+      ? addScatterLayer(map, { beforeId: 'city-dots' })
+        .then(() => addForestLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land }))
+        .then(() => addMountainLayer(map, { beforeId: 'city-dots', landColor: PALETTE.land, opacity: 0.7 }))
+        .then(() => addVolcanoLayer(map, { beforeId: 'city-dots' }))
+      : Promise.resolve()
+    terrainReady
       .then(() => {
         // Red territory wash ABOVE the terrain so it tints the whole selected polity — hills
         // and peaks included. Only the highlighted (selected) polity is painted; others stay clear.
@@ -355,6 +414,7 @@ export function renderLessonMap (el, opts = {}) {
         wirePolityPicking()
       })
       .then(() => applyStyle(activeStyle)) // re-apply once terrain layers exist (toggles their visibility)
+      .then(() => applyLayerToggles())     // hide cities/borders last, after every layer exists
   })
   // Labelled overlay of the curated HISTORICAL cities (e.g. "Constantinople (Istanbul)"), fetched
   // as GeoJSON and drawn ABOVE the normal city labels. Append-only and fully guarded: any fetch /
@@ -405,6 +465,7 @@ export function renderLessonMap (el, opts = {}) {
       // exclusion now that `hcity-label` exists (no-op when no focus cities are present).
       applyFocusExclusion('hcity-label', lastFocusNames)
       applyStyle(activeStyle) // colour the just-added historical labels for the active style
+      applyLayerToggles()     // …and honour a cities-hidden voyage toggle (this layer loads late)
     } catch (_) { /* overlay is decorative — never break the map */ }
   })
 
@@ -498,12 +559,22 @@ export function renderLessonMap (el, opts = {}) {
     paint('city-labels', 'text-halo-color', s.halo)
     paint('hcity-label', 'text-color', s.text)
     paint('hcity-label', 'text-halo-color', s.halo)
+    paint('lesson-labels', 'text-color', s.text)
+    paint('lesson-labels', 'text-halo-color', s.halo)
     // Ink hill/forest glyphs are dark drawings — hide them on the dark Night ground.
     for (const t of ['land-scatter', 'forests', 'mountains', 'volcanoes']) {
       if (map.getLayer(t)) { try { map.setLayoutProperty(t, 'visibility', s.terrain ? 'visible' : 'none') } catch (_) {} }
     }
     // Letterbox bars (map narrower than the stage) match the sea.
     try { el.style.backgroundColor = s.water } catch (_) {}
+  }
+
+  // Show/hide anachronistic detail. Cities = both the dots and their labels (historical + modern);
+  // borders = the political outlines + red fill. Voyages hide these so the map reads as period-blank.
+  function applyLayerToggles () {
+    const vis = (layer, on) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none') } catch (_) {} } }
+    for (const l of ['city-dots', 'city-labels', 'hcity-label']) vis(l, layerToggles.cities)
+    for (const l of ['boundaries-line', 'boundaries-fill']) vis(l, layerToggles.borders)
   }
 
   window.__lessonMap = map // debugging + test assertions (same idea as the Time-Map's __tmMap)
@@ -544,6 +615,45 @@ export function renderLessonMap (el, opts = {}) {
     setAnnotations: (a) => anno?.update(a),
     setPolity: (id) => setPolity(id),
     setStyle: (name) => applyStyle(name),
+    /** Toggle anachronistic detail live, e.g. setLayerToggles({ cities:false, borders:false }). */
+    setLayerToggles: (t) => { layerToggles = { ...layerToggles, ...(t || {}) }; applyLayerToggles() },
+    /**
+     * Per-element style overrides for a voyage map — place-label / city-name colour+size and the
+     * political-border colour/width/opacity. Size is a MULTIPLIER over the base zoom ramp so labels
+     * still grow with zoom. Applied live (setPaint/LayoutProperty); missing keys keep the palette.
+     */
+    setDetailStyle: (o = {}) => {
+      const set = (fn) => { try { fn() } catch (_) { /* layer/prop not ready */ } }
+      // The size multiplier is baked INTO the interpolation stops — a ['zoom'] expression may only
+      // sit at the top level of interpolate/step, so ['*', m, interpolate(...)] is rejected.
+      const lblSize = (m) => ['interpolate', ['linear'], ['zoom'], 2, 12 * m, 6, 17 * m]
+      const citySize = (m) => ['interpolate', ['linear'], ['zoom'], 2, 9 * m, 6, 13 * m]
+      if (o.label_color) set(() => map.setPaintProperty('lesson-labels', 'text-color', o.label_color))
+      if (Number(o.label_size) > 0) set(() => map.setLayoutProperty('lesson-labels', 'text-size', lblSize(Number(o.label_size))))
+      if (o.city_color) set(() => map.setPaintProperty('city-labels', 'text-color', o.city_color))
+      if (Number(o.city_size) > 0) set(() => map.setLayoutProperty('city-labels', 'text-size', citySize(Number(o.city_size))))
+      if (o.border_color) set(() => map.setPaintProperty('boundaries-line', 'line-color', o.border_color))
+      if (Number(o.border_width) > 0) set(() => map.setPaintProperty('boundaries-line', 'line-width', Number(o.border_width)))
+      if (o.border_opacity != null) set(() => map.setPaintProperty('boundaries-line', 'line-opacity', Number(o.border_opacity)))
+    },
+    /** Replace the pinned place labels ([{text,lng,lat}]) and re-apply the reveal (setData clears state). */
+    setLabels: (arr) => {
+      placeLabels = Array.isArray(arr) ? arr : []
+      try { map.getSource('lesson-labels')?.setData(labelsFC(placeLabels)) } catch (_) {}
+      applyLabelReveal()
+    },
+    /** Fade in the label nearest a coordinate (called when the ship arrives at a landfall). */
+    revealLabelNear: (lng, lat) => {
+      if (!placeLabels.length) return
+      let best = -1; let bestD = Infinity
+      placeLabels.forEach((l, i) => {
+        const d = (Number(l.lng) - lng) ** 2 + (Number(l.lat) - lat) ** 2
+        if (d < bestD) { bestD = d; best = i }
+      })
+      if (best >= 0) { revealedLabels.add(best); try { map.setFeatureState({ source: 'lesson-labels', id: best }, { shown: true }) } catch (_) {} }
+    },
+    /** Reveal every label at once (e.g. the editor may prefer to show them all). */
+    revealAllLabels: () => { revealAll = true; applyLabelReveal() },
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
     destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },

@@ -13,17 +13,34 @@ import { buffer as turfBuffer, difference as turfDifference, featureCollection, 
 
 const FOG_SRC = 'voyage-fog';
 const CORRIDOR_KM = 300;         // how far the crew "sees" — tuned so Tasman reveals a coastal strip
-const WATER = '#d8e9f3';         // PALETTE.water in lesson-map.js
+const WATER_FALLBACK = '#c7d4c6'; // soft-atlas water; real colour comes from the active style
 
-export function addVoyageFog(map, { unknown, samplePoint, beforeId }) {
-  if (!unknown || unknown.length === 0) return null;
+export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor }) {
+  // Always build the layer — even with zero regions — so a teacher can paint fog from scratch (or
+  // after erasing everything) and setRegions() has a live source to update. Regions now come from
+  // the lesson's editable voyage_fog, which may legitimately start empty.
+  unknown = Array.isArray(unknown) ? unknown : [];
+  // Undiscovered world must be the SAME colour as the sea (it's blank paper, not blue water) and
+  // must follow the map style — so the fill/edge use the active style's water colour, not a constant.
+  let water = waterColor || WATER_FALLBACK;
+
+  // Close a hand-authored ring if the author didn't repeat the first point — turfPolygon
+  // rejects an open ring ("First and last Position are not equivalent"), which would blow up
+  // the whole tour. Defensive so new voyages can't crash on this easy-to-miss detail.
+  const closeRing = (ring) => {
+    if (ring.length < 3) return ring;
+    const [a, b] = [ring[0], ring[ring.length - 1]];
+    return (a[0] === b[0] && a[1] === b[1]) ? ring : [...ring, a];
+  };
 
   // One feature PER unknown polygon, differenced separately: feeding martinez (turf's
   // boolean engine) a whole MultiPolygon at once yields overlapping output pieces, and
   // MapLibre's even-odd tessellation renders such overlaps as HOLES — undiscovered land
   // showing through its own fog. rewind() because hand-authored rings arrive in either
-  // winding and martinez drops clockwise exteriors.
-  const unknownPolys = unknown.map((ring) => rewind(turfPolygon([ring])));
+  // winding and martinez drops clockwise exteriors. `let` so teacher-painted regions can be
+  // merged in live via setRegions().
+  const toPolys = (rings) => (rings || []).map((ring) => rewind(turfPolygon([closeRing(ring)])));
+  let unknownPolys = toPolys(unknown);
 
   // Traversed track up to voyage-fraction f, sampled through the ships' own pointAt so the
   // corridor front sits EXACTLY at the fleet. (Fractions are arc-length based — slicing the
@@ -61,14 +78,14 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId }) {
   map.addSource(FOG_SRC, { type: 'geojson', data: current });
   map.addLayer({
     id: 'voyage-fog', type: 'fill', source: FOG_SRC,
-    paint: { 'fill-color': WATER, 'fill-opacity': 1 },
+    paint: { 'fill-color': water, 'fill-opacity': 1 },
   }, before);
   // Feathered boundary: wide blurred water-colour line along the fog outline. Over open sea it
   // is invisible (water on water); where the cut crosses land it dissolves the hard seam.
   map.addLayer({
     id: 'voyage-fog-edge', type: 'line', source: FOG_SRC,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': WATER, 'line-width': 26, 'line-blur': 18, 'line-opacity': 0.92 },
+    paint: { 'line-color': water, 'line-width': 26, 'line-blur': 18, 'line-opacity': 0.92 },
   }, before);
   // Chart lines continue across undiscovered paper, exactly like the engraving.
   if (map.getLayer('graticule')) map.moveLayer('graticule');
@@ -83,6 +100,20 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId }) {
       lastF = f;
       lastT = now;
       current = fogAt(f);
+      const src = map.getSource(FOG_SRC);
+      if (src) src.setData(current);
+    },
+    /** Repaint the fog to a new water colour (call on style change). */
+    setWaterColor(c) {
+      if (!c) return;
+      water = c;
+      try { map.setPaintProperty('voyage-fog', 'fill-color', c); } catch (_) { /* layer gone */ }
+      try { map.setPaintProperty('voyage-fog-edge', 'line-color', c); } catch (_) { /* layer gone */ }
+    },
+    /** Replace the undiscovered regions (catalog + teacher-painted) and repaint at the current reveal. */
+    setRegions(rings) {
+      unknownPolys = toPolys(rings);
+      current = fogAt(lastF < 0 ? 0 : lastF);
       const src = map.getSource(FOG_SRC);
       if (src) src.setData(current);
     },

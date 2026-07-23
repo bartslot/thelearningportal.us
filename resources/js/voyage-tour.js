@@ -1,39 +1,66 @@
 import { renderLessonMap } from './lesson-map.js';
-import { voyageRoutes } from './timemap/voyages.js';
+import { renderGallery } from './gallery-scene.js';
+import { voyageRoutes, smooth } from './timemap/voyages.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
-import { attachShoreEtch } from './map-etch.js';
+import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon } from '@turf/turf';
 
-// Voyage tour — plays ONE dated leg of a voyage inside the lesson player (scene kind 'voyage').
-// The fleet sails the leg in real chronology (~1 month of history per 2 s), the camera follows,
-// a date chip counts through the journey, and arrival shows the stop card + image thumbs pinned
-// near the coast. Content packs live next to the route data: resources/js/timemap/<voyage>-tour.json.
-//
-// Framework, not a one-off: any voyage with `legs` in voyages.json + a content pack gets a tour.
+// Voyage tour — the whole voyage is ONE persistent map. Legs play via playLeg(): the map, ships,
+// fog and route trail are built once, and moving between scenes eases the camera to the next leg
+// instead of destroying + rebuilding the map (which caused the flash/re-fit chaos on scene change).
+// The fleet sails each leg in real chronology (~1 month/2s), the camera follows, a date chip counts
+// through, and arrival pins the thumbnails + a hotspot that opens the gallery modal.
+// Content packs live next to the route data: resources/js/timemap/<voyage>-tour.json.
 
 const TOUR_PACKS = import.meta.glob('./timemap/*-tour.json', { eager: true });
 const MS_PER_MONTH = 2000;
 const MONTH_MS = 30.44 * 24 * 3600 * 1000;
+const VOYAGE_PITCH = 48;   // tilt the camera so the 3D ship is seen at an angle, not top-down
+const LEG_EASE_MS = 1400;  // smooth glide from one leg's arrival to the next leg's departure
+// The voyage's follow zoom is a GLOBAL slider (ocean_zoom 0–100), NOT an auto-fit of the leg span
+// (which zoomed right out to the whole world on ocean crossings). 0% = tight on the ship + a small
+// island; 100% = a continental view (never the whole globe).
+const SAIL_TIGHT_ZOOM = 5.4;    // ocean_zoom = 0   → ship + a small island
+const SAIL_WIDE_ZOOM = 2.9;     // ocean_zoom = 100 → continental
+const OCEAN_ZOOM_DEFAULT = 30;
+const ARRIVAL_ZOOM_DELTA = 1.1; // extra zoom IN as the ship makes landfall (Dolly on arrival)
+const voyageFollowZoom = (pct) => {
+  const p = Math.max(0, Math.min(100, Number.isFinite(+pct) ? +pct : OCEAN_ZOOM_DEFAULT)) / 100;
+  return SAIL_TIGHT_ZOOM - (SAIL_TIGHT_ZOOM - SAIL_WIDE_ZOOM) * p;
+};
 
 const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
 const smoothstep = (t) => t * t * (3 - 2 * t);
 const wrapLng = (lng) => ((lng + 180) % 360 + 360) % 360 - 180;
 
-export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = false, stopImages = [], onArrived = null } = {}) {
-  const route = voyageRoutes().find((v) => v.id === voyage);
+// The route trail fades behind the ship: bright at the ship's current position, dimming to a low
+// (still visible) floor over the earliest sailed path — so students see where the ship has been.
+const TRAIL_FADE_FLOOR = 0.32;   // opacity of the oldest sailed segment (0 = invisible, 1 = full)
+const hexToRgba = (hex, a) => {
+  const h = String(hex || '#000000').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) || 0;
+  const g = parseInt(h.slice(2, 4), 16) || 0;
+  const b = parseInt(h.slice(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${a})`;
+};
+
+const ROUTE_LINE_DEFAULTS = { enabled: true, color: '#7c2d12', opacity: 0.9, thickness: 3, wobble: 0.3, curve: 'bezier' };
+
+export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null } = {}) {
+  // Prefer the lesson's editable copy (game_config.voyage_def); fall back to the shared catalog.
+  const route = def || voyageRoutes().find((v) => v.id === voyage);
   const pack = TOUR_PACKS[`./timemap/${voyage}-tour.json`]?.default
     || TOUR_PACKS[`./timemap/${voyage}-tour.json`] || {};
-  if (!route || !route.legs || !route.legs[leg]) {
+  if (!route || !route.legs || !route.legs.length) {
     el.innerHTML = '<div class="flex h-full items-center justify-center text-base-content/60">Reis niet gevonden.</div>';
-    return { destroy() {} };
+    return { playLeg() {}, destroy() {} };
   }
-  const legDef = route.legs[leg];
-  const stop = pack.legs?.[leg]?.stop || null;
-  const departMs = Date.parse(legDef.depart);
-  const arriveMs = Date.parse(legDef.arrive);
-  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // ── Hosts: map + HUD overlay ──────────────────────────────────────────
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const skipAnim = reducedMotion || preview;   // preview/reduced-motion jumps straight to arrival
+  const RL = Object.assign({}, ROUTE_LINE_DEFAULTS, routeLine || {});
+
+  // ── Hosts: map + HUD overlay (built once) ─────────────────────────────
   const mapHost = document.createElement('div');
   mapHost.style.cssText = 'position:absolute;inset:0;';
   const hud = document.createElement('div');
@@ -42,162 +69,809 @@ export function renderVoyageTour(el, { voyage, leg = 0, view = 'flat', intro = f
   el.appendChild(mapHost);
   el.appendChild(hud);
 
-  const year = new Date(departMs).getUTCFullYear();
-  const inst = renderLessonMap(mapHost, { qid: null, year, interactive: false, projection: view === 'flat' ? 'mercator' : 'globe' });
-  const map = inst.map;
+  const firstYear = new Date(Date.parse(route.legs[0].depart)).getUTCFullYear();
 
-  // ── Ships + leg geometry — assigned in the ready block: addVoyageShips adds layers, and
-  // maplibre throws "Style is not done loading" for addLayer before the style settles. ────────
+  // Map detail options (lesson-wide): hide anachronistic cities/borders, and pin period place labels
+  // resolved from the landfalls (legLabels: [{text, leg}] → the leg's arrival waypoint coordinate).
+  // Mutable so a map-setting change applies LIVE (setMapOptions) instead of rebuilding the whole tour.
+  let MO = Object.assign({ cities: true, borders: true, labels: true }, mapOptions || {});
+  let LL = Array.isArray(legLabels) ? legLabels : [];
+  let PAINTED = Array.isArray(paintedFog) ? paintedFog : [];   // teacher-painted "undiscovered" rings
+  const resolveLabels = () => {
+    if (!MO.labels) return [];
+    return LL.map((l) => {
+      const leg = route.legs[Number(l.leg)];
+      const wp = leg && route.waypoints[leg.wp[1]];
+      return (wp && l.text) ? { text: l.text, lng: wp[0], lat: wp[1] } : null;
+    }).filter(Boolean);
+  };
+
+  // terrain:false — the voyage map is about the sea route, not hill/forest/volcano glyphs.
+  // interactive only in the EDITOR: the teacher needs to pan/zoom to place a leg's destination dot.
+  // The player stays non-interactive (a cinematic sail).
+  const inst = renderLessonMap(mapHost, {
+    qid: null, year: firstYear, interactive: editable, terrain: false,
+    projection: view === 'flat' ? 'mercator' : 'globe',
+    showCities: MO.cities, showBorders: MO.borders, labels: resolveLabels(),
+  });
+  const map = inst.map;
+  // Pan + zoom, but no rotate/pitch drag — keep the map steady for placing points.
+  if (editable) {
+    try { map.dragRotate.disable(); } catch (_) { /* noop */ }
+    try { map.touchZoomRotate.disableRotation(); } catch (_) { /* noop */ }
+    try { map.keyboard.disableRotation && map.keyboard.disableRotation(); } catch (_) { /* noop */ }
+  }
+
   let ships = null;
   let fog = null;
-  let etch = null;
-  let f0 = 0;
-  let f1 = 1;
-  let start = null;
-  let end = null;
-  let followZoom = 3.8;
+  let onMapStyle = null;
+  let ready = false;         // map + ships + fog + trail built
+  let pendingLeg = null;     // a playLeg() that arrived before the map was ready
+  let legToken = 0;          // bumped on every leg → cancels the previous leg's sail/timers
+  let raf = null;
+  let galleryClose = null;
+  let placeMarkers = null;   // the current leg's 'move' handler (removed on the next leg)
+  let arrivalPins = [];      // current landfall polaroid pins (tracked so a live refresh can replace them)
+  let arrivalHotspot = null; // current gallery-opener button
+  let arrivalHandles = [];   // editor-only draggable endpoint / bend handles + the hover ghost
+  let legHoverMove = null;   // editor-only map 'mousemove' handler that reveals the hover-bend ghost
+  let legHoverHide = null;   // editor-only map 'zoom' handler that hides the ghost while zooming
+  // The teacher-painted regions as a drawable FeatureCollection (each ring → a polygon).
+  const paintFC = () => ({
+    type: 'FeatureCollection',
+    features: PAINTED.filter((r) => Array.isArray(r) && r.length >= 4)
+      .map((ring) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } })),
+  });
+  // Editor-only amber wash refresh. Always looks the source up live (never a captured no-op), so a
+  // reset/undo/erase repaints it even if it was created on a different code path — this was the bug
+  // where the fog cleared but the amber overlay lingered until a full page refresh.
+  const updatePaintPreview = () => { try { const s = map.getSource('voyage-paint'); if (s) s.setData(paintFC()); } catch (_) { /* no source yet */ } };
 
-  // ── HUD elements ──────────────────────────────────────────────────────
+  // Per-leg state, replaced by runLeg().
+  let L = { def: null, stop: null, departMs: 0, arriveMs: 0, f0: 0, f1: 1, start: null, end: null, followZoom: 3.8, stopImages: [], gallery: null };
+  let sailing = false;   // true only while a leg's sail animation is running (drives the live zoom)
+
+  // ── HUD chip (persistent) ─────────────────────────────────────────────
   const chip = document.createElement('div');
   chip.className = 'absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-base-100/90 px-5 py-2 text-base font-semibold shadow-lg';
   chip.style.pointerEvents = 'none';
   hud.appendChild(chip);
-
   const place = document.createElement('div');
   place.className = 'absolute left-1/2 top-16 -translate-x-1/2 rounded-full bg-base-100/75 px-4 py-1 text-sm shadow';
   place.style.pointerEvents = 'none';
   hud.appendChild(place);
-
   const setChip = (ms, placeText) => {
     chip.textContent = nlDate.format(new Date(ms));
     place.textContent = placeText || '';
     place.style.display = placeText ? 'block' : 'none';
   };
 
-  // Stop card + coastal thumbs, shown on arrival.
-  const showArrival = () => {
-    setChip(arriveMs, stop ? stop.place : '');
-    if (stop) {
-      const card = document.createElement('div');
-      card.className = 'absolute bottom-6 left-1/2 w-[34rem] max-w-[92%] -translate-x-1/2 rounded-box bg-base-100/95 p-5 shadow-xl';
-      card.style.pointerEvents = 'auto';
-      card.innerHTML = `
-        <p class="text-xs uppercase tracking-wide opacity-60">${stop.date_label || ''}</p>
-        <h3 class="mt-0.5 text-xl font-bold">${stop.title || stop.place}</h3>
-        <p class="mt-2 text-sm leading-relaxed">${stop.story || ''}</p>
-        <p class="mt-3 text-xs opacity-60">Druk op <span class="kbd kbd-xs">→</span> voor de beelden</p>`;
-      hud.appendChild(card);
-
-      // Small "polaroids" pinned near the landfall (URLs come from the scene config).
-      const imgs = (stopImages || []).slice(0, 3);
-      const pins = [];
-      imgs.forEach((src, i) => {
-        const pin = document.createElement('img');
-        pin.src = src;
-        pin.alt = stop.place;
-        pin.className = 'absolute rounded shadow-lg';
-        pin.style.cssText += `width:96px;border:4px solid #fff;transform:rotate(${(i - 1) * 7}deg);pointer-events:none;`;
-        hud.appendChild(pin);
-        pins.push(pin);
-      });
-      const placePins = () => {
-        const p = map.project([wrapLng(end.lng), end.lat]);
-        pins.forEach((pin, i) => {
-          pin.style.left = `${p.x + 46 + i * 30}px`;
-          pin.style.top = `${p.y - 120 + i * 44}px`;
-        });
-      };
-      placePins();
-      map.on('move', placePins);
+  // ── Route trail: the CUMULATIVE sailed path (voyage start → current), styleable + animated ──
+  const trailFeature = (fCurrent) => {
+    const pts = [];
+    if (RL.curve === 'straight') {
+      const startWp = route.legs[0].wp[0];
+      for (let w = startWp; w <= L.def.wp[1]; w++) {
+        const fw = ships.fractionAtWaypoint(voyage, w);
+        if (fw <= fCurrent + 1e-6) { const q = ships.pointAt(voyage, fw); pts.push([q.lng, q.lat]); } else break;
+      }
+      const c = ships.pointAt(voyage, fCurrent);
+      pts.push([c.lng, c.lat]);
+    } else {
+      const N = 120;
+      for (let k = 0; k <= N; k++) {
+        const q = ships.pointAt(voyage, (fCurrent) * (k / N));
+        pts.push([q.lng, q.lat]);
+      }
     }
+    const w = Number(RL.wobble) || 0;
+    if (w > 0 && pts.length > 2) {
+      const amp = w * 0.25;
+      const out = pts.map((p) => p.slice());
+      for (let i = 1; i < pts.length - 1; i++) {
+        let dx = pts[i + 1][0] - pts[i - 1][0];
+        let dy = pts[i + 1][1] - pts[i - 1][1];
+        const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+        const off = Math.sin(i * 0.7) * amp * Math.sin((i / (pts.length - 1)) * Math.PI);
+        out[i][0] += -dy * off;
+        out[i][1] += dx * off;
+      }
+      return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: out } };
+    }
+    return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
+  };
+  // Fade along the sailed path: floor opacity at the oldest point (line-progress 0), full at the
+  // ship (line-progress 1). Uses the current route-line colour.
+  const trailGradient = () => ['interpolate', ['linear'], ['line-progress'],
+    0, hexToRgba(RL.color, TRAIL_FADE_FLOOR),
+    0.7, hexToRgba(RL.color, TRAIL_FADE_FLOOR + (1 - TRAIL_FADE_FLOOR) * 0.5),
+    1, hexToRgba(RL.color, 1)];
+  let lastTrailF = 0;   // remembered so setRouteLine() can recompute the trail geometry live
+  const updateTrail = (f) => {
+    lastTrailF = f;
+    if (!RL.enabled) return;
+    const src = map.getSource('voyage-trail');
+    if (src) src.setData(trailFeature(f));
+  };
+
+  // ── Gallery modal (opened by the landfall hotspot / a thumbnail) ───────
+  const galleryData = () => {
+    if (L.gallery && (L.gallery.story || (L.gallery.images && L.gallery.images.length) || L.gallery.title)) return L.gallery;
+    if (!L.stop) return null;
+    return {
+      title: L.stop.title || L.stop.place,
+      date_label: L.stop.date_label || '',
+      story: L.stop.story || '',
+      images: (L.stopImages || []).map((u) => ({ url: u })),
+    };
+  };
+  const openGallery = (gal, startUrl = null) => {
+    if (!gal || galleryClose) return;
+    let g = gal;
+    let startIndex = 0;
+    if (startUrl) {
+      const list = (gal.images || []).slice();
+      const idx = list.findIndex((im) => (im && im.url ? im.url : im) === startUrl);
+      if (idx >= 0) { startIndex = idx; } else { list.unshift({ url: startUrl }); g = Object.assign({}, gal, { images: list }); }
+    }
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:40;background:rgba(3,8,20,0.9);pointer-events:auto;';
+    const box = document.createElement('div');
+    box.style.cssText = 'position:absolute;inset:4%;border-radius:1rem;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.65);';
+    overlay.appendChild(box);
+    const gInst = renderGallery(box, g, { startIndex, editable, onEdit: onGalleryEdit });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Sluiten');
+    close.textContent = '✕';
+    close.style.cssText = 'position:absolute;top:calc(4% + 10px);right:calc(4% + 14px);z-index:50;width:36px;height:36px;border-radius:9999px;border:none;background:rgba(15,23,42,.92);color:#e2e8f0;font-size:18px;line-height:1;cursor:pointer;';
+    overlay.appendChild(close);
+    window.__voyageGalleryOpen = true;
+    galleryClose = () => { try { gInst.destroy(); } catch (_) { /* gone */ } overlay.remove(); galleryClose = null; window.__voyageGalleryOpen = false; };
+    close.onclick = galleryClose;
+    el.appendChild(overlay);
+  };
+
+  // Remove the previous leg's transient HUD (pins/hotspot/gallery), keep the persistent chip.
+  const clearLegHud = () => {
+    if (galleryClose) { try { galleryClose(); } catch (_) { /* noop */ } }
+    if (placeMarkers) { map.off('move', placeMarkers); placeMarkers = null; }
+    if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
+    if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
+    Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place) c.remove(); });
+    arrivalPins = []; arrivalHotspot = null; arrivalHandles = [];
+  };
+
+  // (Re)build the landfall pins + hotspot for the CURRENT leg at the CURRENT camera. No camera move,
+  // and any OPEN gallery modal is left untouched — so editing the gallery (adding an image, changing
+  // text) updates the map's pins LIVE without rebuilding the whole tour.
+  const buildArrivalHud = () => {
+    if (placeMarkers) { map.off('move', placeMarkers); placeMarkers = null; }
+    if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
+    if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
+    arrivalPins.forEach((p) => { try { p.remove(); } catch (_) { /* gone */ } });
+    if (arrivalHotspot) { try { arrivalHotspot.remove(); } catch (_) { /* gone */ } arrivalHotspot = null; }
+    arrivalHandles.forEach((h) => { try { h.remove(); } catch (_) { /* gone */ } }); arrivalHandles = [];
+
+    const gal = galleryData();
+    // Map pins ARE the gallery's own images (first few) — so an image added to the gallery shows on
+    // the map immediately. Falls back to the legacy stop_images only when the gallery has none.
+    const galImgs = ((gal && gal.images) || []).map((im) => (typeof im === 'string' ? im : (im && im.url))).filter(Boolean);
+    const imgs = (galImgs.length ? galImgs : (L.stopImages || [])).slice(0, 3);
+    const pins = [];
+    imgs.forEach((src, i) => {
+      const pin = document.createElement('img');
+      pin.src = src;
+      pin.alt = L.stop ? L.stop.place : '';
+      pin.className = 'absolute rounded shadow-lg';
+      const rot = (i - 1) * 6 + (Math.random() * 16 - 8);
+      pin._rot = rot;
+      pin._dx = 40 + i * 22 + (Math.random() * 26 - 13);
+      pin._dy = -108 + i * 40 + (Math.random() * 30 - 15);
+      pin.style.cssText += `width:96px;border:4px solid #fff;transform:rotate(${rot}deg);`
+        + 'transition:transform .18s ease, box-shadow .18s ease;pointer-events:auto;will-change:transform;'
+        + (gal ? 'cursor:pointer;' : '');
+      pin.onerror = () => { pin.style.display = 'none'; };
+      pin.addEventListener('mouseenter', () => { pin.style.transform = 'rotate(0deg) scale(1.14)'; pin.style.zIndex = '30'; pin.style.boxShadow = '0 14px 30px rgba(0,0,0,.45)'; });
+      pin.addEventListener('mouseleave', () => { pin.style.transform = `rotate(${pin._rot}deg)`; pin.style.zIndex = ''; pin.style.boxShadow = ''; });
+      if (gal) pin.onclick = () => openGallery(gal, src);
+      hud.appendChild(pin);
+      pins.push(pin);
+      // Pop each pin in (scale + fade with a little overshoot), staggered — so an added image
+      // visibly lands on the map. fill:'backwards' hides it during its stagger delay.
+      try {
+        pin.animate([
+          { transform: `rotate(${rot}deg) scale(0.3)`, opacity: 0 },
+          { transform: `rotate(${rot}deg) scale(1.14)`, opacity: 1, offset: 0.65 },
+          { transform: `rotate(${rot}deg) scale(1)`, opacity: 1 },
+        ], { duration: 460, delay: i * 90, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+      } catch (_) { /* WAAPI unavailable — pin just appears */ }
+    });
+    arrivalPins = pins;
+    let hotspot = null;
+    // A custom hotspot position (geo, so it survives zoom/pan) — set by the teacher dragging it.
+    let hotspotPos = (L.hotspot && Number.isFinite(Number(L.hotspot.lng)) && Number.isFinite(Number(L.hotspot.lat)))
+      ? { lng: Number(L.hotspot.lng), lat: Number(L.hotspot.lat) } : null;
+    if (gal) {
+      hotspot = document.createElement('button');
+      hotspot.type = 'button';
+      hotspot.className = 'absolute rounded-full bg-base-100/95 px-4 py-2 text-sm font-semibold shadow-xl';
+      hotspot.style.cssText += 'pointer-events:auto;cursor:pointer;border:2px solid rgba(251,191,36,.9);touch-action:none;';
+      // Label the landfall hotspot with the GALLERY title the teacher typed (it's the gallery this
+      // button opens). Fall back to the catalog stop name, then a neutral label. Built via text nodes
+      // so a teacher-typed title can never inject markup.
+      const hotspotLabel = (gal && typeof gal.title === 'string' && gal.title.trim())
+        || (L.stop && (L.stop.title || L.stop.place)) || 'Beelden';
+      const lblSpan = document.createElement('span');
+      lblSpan.textContent = hotspotLabel;
+      const arrowSpan = document.createElement('span');
+      arrowSpan.style.opacity = '.6';
+      arrowSpan.textContent = ' ▸';
+      hotspot.append(lblSpan, arrowSpan);
+      hud.appendChild(hotspot);
+      arrivalHotspot = hotspot;
+      // Pop the hotspot in just after the pins.
+      try {
+        hotspot.animate([
+          { transform: 'scale(0.6)', opacity: 0 },
+          { transform: 'scale(1.06)', opacity: 1, offset: 0.7 },
+          { transform: 'scale(1)', opacity: 1 },
+        ], { duration: 380, delay: 140, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+      } catch (_) { /* WAAPI unavailable */ }
+
+      // Click opens the gallery. When onHotspotMove is provided (the editor) the teacher can also DRAG
+      // the button onto any part of the map; a small move threshold distinguishes a drag from a click.
+      let down = null; let dragged = false;
+      hotspot.addEventListener('pointerdown', (e) => {
+        const r = hotspot.getBoundingClientRect();
+        down = { x: e.clientX, y: e.clientY, gx: e.clientX - r.left, gy: e.clientY - r.top };
+        dragged = false;
+        if (onHotspotMove) { try { hotspot.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); }
+      });
+      hotspot.addEventListener('pointermove', (e) => {
+        if (!down || !onHotspotMove) return;
+        if (!dragged && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { dragged = true; hotspot.style.cursor = 'grabbing'; }
+        if (!dragged) return;
+        const cr = map.getContainer().getBoundingClientRect();
+        const c = map.unproject([e.clientX - down.gx - cr.left, e.clientY - down.gy - cr.top]);
+        hotspotPos = { lng: c.lng, lat: c.lat };
+        placeMarkers();
+      });
+      const endDrag = () => {
+        if (!down) return;
+        const wasDrag = dragged; down = null; dragged = false; hotspot.style.cursor = 'pointer';
+        if (wasDrag && onHotspotMove && hotspotPos) { try { onHotspotMove(hotspotPos.lng, hotspotPos.lat); } catch (_) {} }
+        else { openGallery(gal); }   // a plain click (no drag) opens the gallery
+      };
+      hotspot.addEventListener('pointerup', endDrag);
+      hotspot.addEventListener('pointercancel', () => { down = null; dragged = false; hotspot.style.cursor = 'pointer'; });
+    }
+
+    // Editor: reshape THIS leg's route by hand. The DESTINATION (amber X) is always shown — drag it to
+    // set where the leg ends. To route the ship AROUND land (e.g. through Gibraltar) the teacher hovers
+    // the route line: a rounded "bend" handle appears under the cursor, and dragging it bends the line
+    // in real time and drops a waypoint there — or, if the cursor grabbed an existing bend, moves it.
+    // A leg always sails FROM the previous landfall, so its start point isn't editable here.
+    if (onEndpointMove && L.def && Array.isArray(L.def.wp) && Array.isArray(route.waypoints)) {
+      const startIdx = Number(L.def.wp[0]) || 0;
+      const endIdx = Number(L.def.wp[1]) || 0;
+
+      // ── Shared live-preview line: while a point is dragged, hide the fixed trail and draw the leg
+      //    (re-smoothed from its raw waypoints, with the drag applied) so the route bends live. ──
+      const editSrc = () => map.getSource('voyage-edit-line');
+      const f0 = ships.fractionAtWaypoint(voyage, startIdx);
+      const f1 = ships.fractionAtWaypoint(voyage, endIdx);
+      const legRaw = () => route.waypoints.slice(startIdx, endIdx + 1).map((p) => p.slice());
+      const prefixCoords = () => {   // voyage start → this leg's start, from the fixed track
+        const out = []; const M = 40;
+        for (let k = 0; k <= M; k++) { const g = ships.pointAt(voyage, f0 * (k / M)); if (g) out.push([g.lng, g.lat]); }
+        return out;
+      };
+      let previewing = false;
+      const beginPreview = () => {
+        previewing = true;
+        try { map.setLayoutProperty('voyage-trail', 'visibility', 'none'); } catch (_) {}
+        try { map.setLayoutProperty('voyage-edit-line', 'visibility', 'visible'); } catch (_) {}
+      };
+      const updatePreview = (desc, geo) => {
+        const raw = legRaw();
+        if (desc.mode === 'move') raw[desc.wpIndex - startIdx] = [geo.lng, geo.lat];
+        else raw.splice(desc.afterWpIndex - startIdx + 1, 0, [geo.lng, geo.lat]);
+        const coords = prefixCoords().concat(smooth(raw));
+        const src = editSrc();
+        if (src) src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } });
+      };
+      const endPreview = () => {
+        previewing = false;
+        try { map.setLayoutProperty('voyage-edit-line', 'visibility', 'none'); } catch (_) {}
+        try { const s = editSrc(); if (s) s.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } }); } catch (_) {}
+        try { if (RL.enabled) map.setLayoutProperty('voyage-trail', 'visibility', 'visible'); } catch (_) {}
+      };
+
+      // ── The always-on amber Destination X (the leg's landfall) — dragging previews + persists. ──
+      const destWp = route.waypoints[endIdx];
+      if (Array.isArray(destWp)) {
+        const h = document.createElement('button');
+        h.type = 'button';
+        h.dataset.voyageEndpoint = 'to';
+        h.dataset.wpIndex = String(endIdx);
+        h.title = "Drag to set this leg's destination";
+        h.style.cssText = 'position:absolute;transform:translate(-50%,-50%);background:none;border:none;padding:0;cursor:grab;pointer-events:auto;touch-action:none;z-index:23;line-height:0;';
+        h.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))">'
+          + '<path d="M5 5 19 19M19 5 5 19" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>'
+          + '<path d="M5 5 19 19M19 5 5 19" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/></svg>'
+          + '<span style="position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;background:rgba(15,23,42,.92);'
+          + 'color:#fbbf24;font-size:10px;font-weight:600;letter-spacing:.02em;padding:1px 7px;border-radius:9999px;white-space:nowrap;'
+          + 'box-shadow:0 1px 4px rgba(0,0,0,.5);line-height:1.5;">Destination</span>';
+        h._geo = { lng: destWp[0], lat: destWp[1] };
+        const desc = { mode: 'move', wpIndex: endIdx };
+        let down = null; let moved = false;
+        h.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; moved = false; try { h.setPointerCapture(e.pointerId); } catch (_) {} h.style.cursor = 'grabbing'; e.preventDefault(); e.stopPropagation(); });
+        h.addEventListener('pointermove', (e) => {
+          if (!down) return;
+          if (!moved && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3) { moved = true; beginPreview(); }
+          if (!moved) return;
+          const cr = map.getContainer().getBoundingClientRect();
+          const c = map.unproject([e.clientX - cr.left, e.clientY - cr.top]);
+          h._geo = { lng: c.lng, lat: c.lat };
+          h.style.left = `${e.clientX - cr.left}px`; h.style.top = `${e.clientY - cr.top}px`;
+          updatePreview(desc, h._geo);
+        });
+        const end = () => { if (!down) return; const wasMove = moved; down = null; moved = false; h.style.cursor = 'grab'; if (wasMove) { endPreview(); try { onEndpointMove(endIdx, h._geo.lng, h._geo.lat); } catch (_) {} } };
+        h.addEventListener('pointerup', end);
+        h.addEventListener('pointercancel', () => { if (down) { endPreview(); } down = null; moved = false; h.style.cursor = 'grab'; });
+        hud.appendChild(h);
+        arrivalHandles.push(h);
+      }
+
+      // ── Hover-to-bend: one ghost handle that snaps to the route line under the cursor. ──
+      const GRAB_PX = 12;     // cursor must be this close to the drawn line for the ghost to appear
+      const VERTEX_PX = 12;   // …and this close to an existing bend to grab it (move) vs. insert new
+      const ghost = document.createElement('button');
+      ghost.type = 'button';
+      ghost.dataset.voyageEndpoint = 'bend';
+      ghost.title = 'Drag to bend the route around land';
+      ghost.style.cssText = 'position:absolute;width:15px;height:15px;transform:translate(-50%,-50%);border-radius:9999px;border:3px solid #fff;'
+        + 'background:rgba(59,130,246,.95);box-shadow:0 1px 6px rgba(0,0,0,.55);cursor:grab;pointer-events:auto;touch-action:none;z-index:22;display:none;';
+      ghost._geo = null;
+      hud.appendChild(ghost);
+      arrivalHandles.push(ghost);
+
+      // Nearest point on the drawn leg line (sampled from the same track geometry the trail uses), or
+      // null when the cursor is too far. Also resolves the raw segment → the waypoint to insert after.
+      const SAMPLES = 72;
+      const nearestOnLeg = (px, py) => {
+        let best = null;
+        for (let k = 0; k <= SAMPLES; k++) {
+          const f = f0 + (f1 - f0) * (k / SAMPLES);
+          const g = ships.pointAt(voyage, f);
+          if (!g) continue;
+          const q = map.project([wrapLng(g.lng), g.lat]);
+          const d = Math.hypot(q.x - px, q.y - py);
+          if (!best || d < best.d) best = { d, x: q.x, y: q.y, lng: g.lng, lat: g.lat, f };
+        }
+        if (!best || best.d > GRAB_PX) return null;
+        let afterWpIndex = startIdx;
+        for (let w = startIdx; w < endIdx; w++) {
+          if (ships.fractionAtWaypoint(voyage, w) <= best.f + 1e-9) afterWpIndex = w; else break;
+        }
+        return { x: best.x, y: best.y, lng: best.lng, lat: best.lat, afterWpIndex };
+      };
+      // Existing bend under the cursor (strictly between the leg's start and its destination)?
+      const nearBend = (px, py) => {
+        for (let w = startIdx + 1; w < endIdx; w++) {
+          const wp = route.waypoints[w];
+          if (!Array.isArray(wp)) continue;
+          const q = map.project([wrapLng(wp[0]), wp[1]]);
+          if (Math.hypot(q.x - px, q.y - py) <= VERTEX_PX) return { wpIndex: w, lng: wp[0], lat: wp[1] };
+        }
+        return null;
+      };
+
+      let ghostDesc = null;   // {mode:'move',wpIndex} | {mode:'insert',afterWpIndex} — set on hover
+      legHoverMove = (e) => {
+        if (previewing) return;
+        // Never reveal the ghost while a button is held — the teacher is panning the map or dragging
+        // another handle (e.g. the info hotspot); popping a bend handle under the cursor would hijack it.
+        if (e.originalEvent && e.originalEvent.buttons) { ghost.style.display = 'none'; ghostDesc = null; return; }
+        const px = e.point.x; const py = e.point.y;
+        const bend = nearBend(px, py);
+        const hit = bend ? { x: null, y: null, lng: bend.lng, lat: bend.lat } : nearestOnLeg(px, py);
+        if (!hit) { ghost.style.display = 'none'; ghostDesc = null; return; }
+        const q = map.project([wrapLng(hit.lng), hit.lat]);
+        ghost.style.left = `${q.x}px`; ghost.style.top = `${q.y}px`; ghost.style.display = '';
+        ghost._geo = { lng: hit.lng, lat: hit.lat };
+        ghostDesc = bend ? { mode: 'move', wpIndex: bend.wpIndex } : { mode: 'insert', afterWpIndex: hit.afterWpIndex };
+      };
+      legHoverHide = () => { if (!previewing) { ghost.style.display = 'none'; ghostDesc = null; } };
+      map.on('mousemove', legHoverMove);
+      map.on('zoom', legHoverHide);
+      map.on('movestart', legHoverHide);
+
+      let gDown = null; let gMoved = false; let gDesc = null;
+      ghost.addEventListener('pointerdown', (e) => {
+        if (!ghostDesc) return;
+        gDown = { x: e.clientX, y: e.clientY }; gMoved = false; gDesc = ghostDesc;
+        try { ghost.setPointerCapture(e.pointerId); } catch (_) {}
+        ghost.style.cursor = 'grabbing'; e.preventDefault(); e.stopPropagation();
+      });
+      ghost.addEventListener('pointermove', (e) => {
+        if (!gDown) return;
+        if (!gMoved && Math.hypot(e.clientX - gDown.x, e.clientY - gDown.y) > 3) { gMoved = true; beginPreview(); }
+        if (!gMoved) return;
+        const cr = map.getContainer().getBoundingClientRect();
+        const c = map.unproject([e.clientX - cr.left, e.clientY - cr.top]);
+        ghost._geo = { lng: c.lng, lat: c.lat };
+        ghost.style.left = `${e.clientX - cr.left}px`; ghost.style.top = `${e.clientY - cr.top}px`;
+        updatePreview(gDesc, ghost._geo);
+      });
+      const endGhost = () => {
+        if (!gDown) return;
+        const wasMove = gMoved; const desc = gDesc; const geo = ghost._geo;
+        gDown = null; gMoved = false; gDesc = null; ghost.style.cursor = 'grab'; ghost.style.display = 'none';
+        if (!wasMove) return;
+        endPreview();
+        if (!geo) return;
+        if (desc.mode === 'move') { try { onEndpointMove(desc.wpIndex, geo.lng, geo.lat); } catch (_) {} }
+        else if (onWaypointInsert) { try { onWaypointInsert(desc.afterWpIndex, geo.lng, geo.lat); } catch (_) {} }
+      };
+      ghost.addEventListener('pointerup', endGhost);
+      ghost.addEventListener('pointercancel', endGhost);
+    }
+
+    placeMarkers = () => {
+      const p = map.project([wrapLng(L.end.lng), L.end.lat]);
+      pins.forEach((pin) => { pin.style.left = `${p.x + pin._dx}px`; pin.style.top = `${p.y + pin._dy}px`; });
+      if (hotspot) {
+        if (hotspotPos) {
+          const hp = map.project([wrapLng(hotspotPos.lng), hotspotPos.lat]);
+          hotspot.style.left = `${hp.x}px`; hotspot.style.top = `${hp.y}px`;
+        } else {
+          hotspot.style.left = `${p.x + 46}px`; hotspot.style.top = `${p.y + 12}px`;
+        }
+      }
+      arrivalHandles.forEach((h) => { if (!h._geo) return; const q = map.project([wrapLng(h._geo.lng), h._geo.lat]); h.style.left = `${q.x}px`; h.style.top = `${q.y}px`; });
+    };
+    placeMarkers();
+    map.on('move', placeMarkers);
+  };
+
+  // Landfall: build the HUD, then the arrival extras — the date chip, the faded-in place name, and
+  // (only on a deep-link) the reopened gallery modal.
+  const showArrival = (token) => {
+    if (token !== legToken) return;
+    setChip(L.arriveMs, L.stop ? L.stop.place : '');
+    buildArrivalHud();
+    // Fade the landfall's place name in now that the ship has arrived here (nearest label to the
+    // leg's endpoint). Cumulative — earlier landfalls stay revealed as the voyage continues.
+    try { inst.revealLabelNear(wrapLng(L.end.lng), L.end.lat); } catch (_) { /* labels not ready */ }
+    // The gallery is opened on demand (hotspot / thumbnail) — never auto-opened, EXCEPT once when a
+    // preview "Edit scene" deep-link arrived with its modal open (openGalleryOnArrive), so the editor
+    // restores exactly what the teacher was looking at.
+    const gal = galleryData();
+    if (openGalleryOnArrive && gal) { openGalleryOnArrive = false; try { openGallery(gal); } catch (_) { /* gallery not ready */ } }
     if (onArrived) onArrived();
   };
 
-  // ── Playback ──────────────────────────────────────────────────────────
-  let raf = null;
-  let cancelled = false;
-  const durationMs = Math.min(26_000, Math.max(6_000, ((arriveMs - departMs) / MONTH_MS) * MS_PER_MONTH));
-
-  const sail = () => {
+  const sail = (token) => {
+    const durationMs = Math.min(26_000, Math.max(6_000, ((L.arriveMs - L.departMs) / MONTH_MS) * MS_PER_MONTH));
     const t0 = performance.now();
+    sailing = true;
     const step = (now) => {
-      if (cancelled) return;
+      if (token !== legToken) { sailing = false; return; }
       const p = Math.min(1, (now - t0) / durationMs);
       const eased = smoothstep(p);
-      const f = f0 + eased * (f1 - f0);
+      const f = L.f0 + eased * (L.f1 - L.f0);
       ships.setTourProgress(voyage, f);
-      if (fog) fog.revealTo(f); // discovery front advances with the fleet
+      updateTrail(f);
+      if (fog) fog.revealTo(f);
       const pos = ships.pointAt(voyage, f);
-      map.jumpTo({ center: [pos.lng, pos.lat], zoom: followZoom });
-      setChip(departMs + eased * (arriveMs - departMs), null);
-      if (p < 1) {
-        raf = requestAnimationFrame(step);
-      } else {
-        showArrival();
-      }
+      // Follow the ship at the slider-controlled zoom (L.followZoom). "Dolly in on arrival" adds a
+      // little extra zoom over the last 40% of the crossing as the ship makes landfall.
+      const arrivalIn = MO.cam_dolly_arrival ? ARRIVAL_ZOOM_DELTA * smoothstep(Math.max(0, (eased - 0.6) / 0.4)) : 0;
+      map.jumpTo({ center: [pos.lng, pos.lat], zoom: L.followZoom + arrivalIn, pitch: VOYAGE_PITCH });
+      setChip(L.departMs + eased * (L.arriveMs - L.departMs), null);
+      if (p < 1) { raf = requestAnimationFrame(step); } else { sailing = false; showArrival(token); }
     };
     raf = requestAnimationFrame(step);
   };
 
-  const begin = () => {
-    ships.setTourProgress(voyage, f0);
-    setChip(departMs, leg === 0 ? (pack.subtitle || 'Vertrek') : 'Vertrek');
-    if (reducedMotion) {
-      ships.setTourProgress(voyage, f1);
-      map.jumpTo({ center: [end.lng, end.lat], zoom: followZoom });
-      showArrival();
+  const begin = (token) => {
+    if (token !== legToken) return;
+    ships.setTourProgress(voyage, L.f0);
+    setChip(L.departMs, 'Vertrek');
+    if (skipAnim) {
+      ships.setTourProgress(voyage, L.f1);
+      updateTrail(L.f1);
+      // Reveal the fog corridor for the WHOLE sailed leg too — otherwise the route trail past the
+      // leg's start stays buried under intact fog (the editor preview jumps to arrival without
+      // sailing, so nothing else advances the reveal). Matches what the animated sail() does.
+      if (fog) fog.revealTo(L.f1, { force: true });
+      map.jumpTo({ center: [L.end.lng, L.end.lat], zoom: L.followZoom, pitch: VOYAGE_PITCH });
+      showArrival(token);
       return;
     }
-    sail();
+    sail(token);
   };
 
-  // Space intro on the first leg: start far out ("from space"), then dive to the departure port.
-  // The style may already be loaded by the time we attach (renderLessonMap shares cached tiles),
-  // so run immediately in that case — a once('load') alone silently never fires.
+  // Play one leg on the EXISTING map — no rebuild, just ease the camera over and sail.
+  const runLeg = (leg, { intro = false, stopImages = [], gallery = null, hotspot = null } = {}) => {
+    const token = ++legToken;      // cancels any in-flight sail/timer from the previous leg
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    clearLegHud();
+
+    const legDef = route.legs[leg];
+    if (!legDef) return;
+    ships.setYear(new Date(Date.parse(legDef.depart)).getUTCFullYear());
+    const f0 = ships.fractionAtWaypoint(voyage, legDef.wp[0]);
+    const f1 = ships.fractionAtWaypoint(voyage, legDef.wp[1]);
+    const start = ships.pointAt(voyage, f0);
+    const end = ships.pointAt(voyage, f1);
+    // The stop's landfall name: the teacher-editable voyage_def leg title wins over the catalog pack,
+    // so the date chip / label reflect what they typed. (Gallery title stays separate.)
+    const packStop = pack.legs?.[leg]?.stop || null;
+    const legTitle = (route.legs?.[leg] && typeof route.legs[leg].title === 'string') ? route.legs[leg].title.trim() : '';
+    const legStop = legTitle ? Object.assign({}, packStop, { place: legTitle, title: legTitle }) : packStop;
+    L = {
+      def: legDef, stop: legStop,
+      departMs: Date.parse(legDef.depart), arriveMs: Date.parse(legDef.arrive),
+      f0, f1, start, end, stopImages: stopImages || [], gallery: gallery || null, hotspot: hotspot || null,
+      followZoom: voyageFollowZoom(MO.ocean_zoom),   // GLOBAL slider, not an auto-fit of the leg span
+    };
+
+    ships.setTourProgress(voyage, f0);
+    if (fog) fog.revealTo(f0, { force: true });   // cumulative: reveals everything sailed up to here
+    updateTrail(f0);
+
+    if (intro && !skipAnim) {
+      // Only the very first leg gets the "from space" dive-in.
+      map.jumpTo({ center: [start.lng, start.lat], zoom: 1.05, pitch: 0 });
+      setChip(L.departMs, pack.title || '');
+      setTimeout(() => {
+        if (token !== legToken) return;
+        map.easeTo({ center: [start.lng, start.lat], zoom: L.followZoom, pitch: VOYAGE_PITCH, duration: 3200, essential: true });
+        map.once('moveend', () => { if (token === legToken) begin(token); });
+      }, 900);
+    } else if (skipAnim) {
+      begin(token);
+    } else {
+      // Smooth glide to the new leg's departure, THEN sail — no jump/re-fit between scenes.
+      map.easeTo({ center: [start.lng, start.lat], zoom: L.followZoom, pitch: VOYAGE_PITCH, duration: LEG_EASE_MS, essential: true });
+      map.once('moveend', () => { if (token === legToken) begin(token); });
+    }
+  };
+
+  const playLeg = (leg, opts = {}) => {
+    const n = Number(leg) || 0;
+    if (!ready) { pendingLeg = { leg: n, opts }; return; }
+    runLeg(n, opts);
+  };
+
   const whenReady = (fn) => {
     if (map.isStyleLoaded() || map.loaded()) { fn(); return; }
     map.once('load', fn);
   };
   whenReady(() => {
-    ships = addVoyageShips(map, { beforeId: undefined, only: voyage, ambient: false });
-    // Fog under the fleet (beforeId) — the ships must render above the fog they dispel. The
-    // corridor samples ships.pointAt so the discovery front always sits exactly at the fleet.
-    fog = addVoyageFog(map, {
-      unknown: route.unknown,
-      beforeId: 'voyage-ships',
-      samplePoint: (t) => ships.pointAt(voyage, t),
-    });
-    etch = attachShoreEtch(map); // native layer below the fog — discovery handles masking
-    ships.setYear(year);
-    f0 = ships.fractionAtWaypoint(voyage, legDef.wp[0]);
-    f1 = ships.fractionAtWaypoint(voyage, legDef.wp[1]);
-    if (fog) fog.revealTo(f0, { force: true }); // earlier legs stay discovered on later scenes
-    start = ships.pointAt(voyage, f0);
-    end = ships.pointAt(voyage, f1);
-    // Follow zoom: whole leg readable — shorter legs get a closer camera.
-    const spanDeg = Math.max(Math.abs(end.lng - start.lng), Math.abs(end.lat - start.lat), 2);
-    followZoom = Math.min(5.2, Math.max(3.0, 7.2 - Math.log2(spanDeg) - 1.2));
-    if (intro && !reducedMotion) {
-      map.jumpTo({ center: [start.lng, start.lat], zoom: 1.05, pitch: 0 });
-      setChip(departMs, pack.title || '');
-      setTimeout(() => {
-        if (cancelled) return;
-        map.easeTo({ center: [start.lng, start.lat], zoom: followZoom, duration: 3200, essential: true });
-        map.once('moveend', () => { if (!cancelled) begin(); });
-      }, 900);
-    } else {
-      map.jumpTo({ center: [start.lng, start.lat], zoom: followZoom });
-      begin();
+    ships = addVoyageShips(map, { beforeId: undefined, only: voyage, ambient: false, flagshipOnly: true, def: route, shipScale: Number(MO.ship_scale) || 1, shipAnchored: !!MO.ship_anchored });
+    // The ship is a 3D custom layer added last, so it would otherwise sit ON TOP of the place names.
+    // Lift every text label above it so a landfall name (e.g. "La Gomera") reads over the ship.
+    ['lesson-labels', 'city-labels', 'hcity-label'].forEach((id) => { if (map.getLayer(id)) { try { map.moveLayer(id); } catch (_) { /* noop */ } } });
+    const readWater = () => { try { return map.getPaintProperty('bg', 'background-color'); } catch (_) { return null; } };
+    // Fog is driven ENTIRELY by the lesson's editable painted regions (game_config.voyage_fog).
+    // The catalog's `unknown` is only a SEED — copied into voyage_fog at lesson-build time — so a
+    // teacher can reshape or delete every masked area instead of fighting a baked-in polygon.
+    fog = addVoyageFog(map, { unknown: [...PAINTED], beforeId: 'voyage-ships', samplePoint: (t) => ships.pointAt(voyage, t), waterColor: readWater() });
+    onMapStyle = () => { if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60); };
+    window.addEventListener('lessonmap:style', onMapStyle);
+    // Route trail line — sits just above the land/coast but BELOW every text label, so place names
+    // (and city names) read cleanly on top of the sailed route instead of being struck through.
+    // Anchor before the first label layer that exists; fall back to below the fleet.
+    // Always build the trail layer (visibility follows RL.enabled) so the route line can be toggled
+    // and restyled LIVE via setRouteLine() — no re-mount when the teacher tweaks colour/width/style.
+    if (!map.getSource('voyage-trail')) {
+      // Anchor the trail BELOW the 3D ship so the sailed line runs under the hull (not over the deck).
+      // The label layers are moved to the very top earlier, so anchoring before them would place the
+      // trail ABOVE the ship — anchor before voyage-ships explicitly, falling back to the labels.
+      const trailBefore = map.getLayer('voyage-ships')
+        ? 'voyage-ships'
+        : ['city-labels', 'lesson-labels', 'hcity-label'].find((l) => map.getLayer(l));
+      // lineMetrics:true so the trail can fade along its length (line-gradient / line-progress).
+      map.addSource('voyage-trail', { type: 'geojson', lineMetrics: true, data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+      map.addLayer({
+        id: 'voyage-trail', type: 'line', source: 'voyage-trail',
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: RL.enabled ? 'visible' : 'none' },
+        // line-gradient fades the sailed path from a low floor (oldest) to full at the ship (newest).
+        // line-color is ignored while a gradient is set; line-opacity still scales the whole line.
+        paint: { 'line-gradient': trailGradient(), 'line-opacity': Number(RL.opacity), 'line-width': Number(RL.thickness) },
+      }, trailBefore);
     }
+    // Editor-only: a transient preview of the CURRENT leg while the teacher drags a bend on it. The
+    // real trail is fixed until the drop persists + re-mounts, so during the drag we hide it and draw
+    // this line following the cursor — the route visibly bends in real time. Empty (hidden) at rest.
+    if (editable && !map.getSource('voyage-edit-line')) {
+      const editBefore = map.getLayer('voyage-ships')
+        ? 'voyage-ships'
+        : ['city-labels', 'lesson-labels', 'hcity-label'].find((l) => map.getLayer(l));
+      map.addSource('voyage-edit-line', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+      map.addLayer({
+        id: 'voyage-edit-line', type: 'line', source: 'voyage-edit-line',
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: { 'line-color': RL.color, 'line-opacity': 1, 'line-width': Number(RL.thickness) },
+      }, editBefore);
+    }
+    // Editor-only: a visible amber wash + dashed outline over the teacher-painted regions. The real
+    // fog is water-coloured (invisible over sea), so without this the teacher gets no feedback on
+    // what they masked — and nothing to aim the eraser at. Rendered ABOVE the fog/ships.
+    if (editable && !map.getSource('voyage-paint')) {
+      map.addSource('voyage-paint', { type: 'geojson', data: paintFC() });
+      map.addLayer({
+        id: 'voyage-paint-fill', type: 'fill', source: 'voyage-paint',
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.22 },
+      });
+      map.addLayer({
+        id: 'voyage-paint-line', type: 'line', source: 'voyage-paint',
+        layout: { 'line-join': 'round' },
+        paint: { 'line-color': '#f59e0b', 'line-opacity': 0.85, 'line-width': 1.5, 'line-dasharray': [2, 2] },
+      });
+    }
+    // Apply the lesson's per-element label/city/border style overrides once the base layers exist.
+    try { inst.setDetailStyle(MO); } catch (_) { /* map style not ready */ }
+    ready = true;
+    if (pendingLeg) { runLeg(pendingLeg.leg, pendingLeg.opts); pendingLeg = null; }
   });
 
   return {
+    playLeg,
+    map,   // the live MapLibre instance (used by the text projector; handy for debugging)
+    /**
+     * Apply map-detail settings LIVE — hide/show cities/borders + refresh place labels — without
+     * rebuilding the tour. Lets the editor toggle a map setting while staying on the map (no flash,
+     * no re-opened gallery).
+     */
+    setMapOptions(newMapOptions, newLegLabels) {
+      const prevZoomPct = MO.ocean_zoom;
+      if (newMapOptions) MO = Object.assign(MO, newMapOptions);
+      if (Array.isArray(newLegLabels)) LL = newLegLabels;
+      // The follow zoom is a global slider. When it changes, re-zoom the parked landfall live so the
+      // teacher sees the new level (during a sail the frame loop already drives the zoom, so skip then).
+      if (MO.ocean_zoom !== prevZoomPct) {
+        L.followZoom = voyageFollowZoom(MO.ocean_zoom);
+        if (!sailing) { try { map.easeTo({ center: map.getCenter(), zoom: L.followZoom, duration: 400, essential: true }); } catch (_) {} }
+      }
+      try { inst.setLayerToggles({ cities: MO.cities, borders: MO.borders }); } catch (_) { /* map not ready */ }
+      try { inst.setLabels(resolveLabels()); } catch (_) { /* idem */ }
+      try { inst.setDetailStyle(MO); } catch (_) { /* idem — MO carries the *_color/_size/_width keys */ }
+      try { ships && ships.setShipScale(Number(MO.ship_scale) || 1, !!MO.ship_anchored); } catch (_) { /* ships not ready */ }
+    },
+    /**
+     * Reshape the voyage's ROUTE geometry LIVE from an edited voyage_def (a dragged/inserted/moved
+     * waypoint) — WITHOUT re-mounting the tour. The ship track, route trail, fog corridor and the
+     * current leg's landfall HUD all update in place at the SAME camera (no jump, no flash, no
+     * re-opened gallery). This is the fix for "the map refreshes every time I edit the route".
+     * `leg` is the leg the editor is parked on; its endpoint/handles are recomputed from the new track.
+     */
+    setVoyageDef(newDef, leg) {
+      if (!newDef || !Array.isArray(newDef.waypoints) || newDef.waypoints.length < 2) return;
+      route.waypoints = newDef.waypoints;
+      if (Array.isArray(newDef.legs)) route.legs = newDef.legs;
+      if (newDef.id) route.id = newDef.id;
+      try { ships.setDef(voyage, newDef); } catch (_) { /* ships not ready */ }
+      const n = Number.isFinite(Number(leg)) ? Number(leg) : 0;
+      const legDef = route.legs[n];
+      if (!legDef) return;
+      // Recompute the parked leg from the NEW track — no camera move (unlike runLeg → begin's jumpTo).
+      const f0 = ships.fractionAtWaypoint(voyage, legDef.wp[0]);
+      const f1 = ships.fractionAtWaypoint(voyage, legDef.wp[1]);
+      // Refresh the stop's landfall name too (the editable leg title wins), so the date chip updates.
+      const packStop = pack.legs?.[n]?.stop || null;
+      const legTitle = (legDef && typeof legDef.title === 'string') ? legDef.title.trim() : '';
+      const legStop = legTitle ? Object.assign({}, packStop, { place: legTitle, title: legTitle }) : (L.stop || packStop);
+      L = Object.assign({}, L, { def: legDef, stop: legStop, f0, f1, start: ships.pointAt(voyage, f0), end: ships.pointAt(voyage, f1) });
+      try { ships.setTourProgress(voyage, f1); } catch (_) {}
+      updateTrail(f1);
+      if (fog) { try { fog.revealTo(f1, { force: true }); } catch (_) {} }
+      try { setChip(L.arriveMs, L.stop ? L.stop.place : ''); } catch (_) { /* chip not ready */ }
+      try { buildArrivalHud(); } catch (_) { /* HUD not ready */ }
+    },
+    /** Replace the teacher-painted "undiscovered" regions and repaint the fog + editor wash live. */
+    setPaintedFog(rings) {
+      PAINTED = Array.isArray(rings) ? rings : [];
+      try { fog?.setRegions([...PAINTED]); } catch (_) { /* fog not ready */ }
+      updatePaintPreview();
+    },
+    /**
+     * Restyle the route line LIVE — colour / opacity / width via paint props, enabled via layer
+     * visibility, and curve / wobble by recomputing the trail geometry at the current fraction. No
+     * re-mount, so editing the route line never glitches the whole world.
+     */
+    setRouteLine(newRl) {
+      if (!newRl || typeof newRl !== 'object') return;
+      Object.assign(RL, newRl);
+      try {
+        if (map.getLayer('voyage-trail')) {
+          map.setLayoutProperty('voyage-trail', 'visibility', RL.enabled ? 'visible' : 'none');
+          map.setPaintProperty('voyage-trail', 'line-gradient', trailGradient());   // colour → refade
+          map.setPaintProperty('voyage-trail', 'line-opacity', Number(RL.opacity));
+          map.setPaintProperty('voyage-trail', 'line-width', Number(RL.thickness));
+        }
+        updateTrail(lastTrailF);   // curve/wobble changed the sampled path → redraw it
+      } catch (_) { /* map not ready */ }
+    },
+    /** Switch the map projection (flat ↔ globe) LIVE, without tearing down the tour. */
+    setView(newView) {
+      try { map.setProjection({ type: newView === 'globe' ? 'globe' : 'mercator' }); } catch (_) { /* older maplibre */ }
+    },
+    /** The current painted regions — the single source the paint overlay reads (never its own copy). */
+    getPaintedFog() { return PAINTED.slice(); },
+    /**
+     * Update the CURRENT leg's gallery/thumbnails/hotspot and rebuild the map pins LIVE — no tour
+     * rebuild, no camera move, and an open gallery modal is left alone. Lets an image added to the
+     * gallery pin on the map immediately.
+     */
+    refreshArrivalContent(opts) {
+      if (opts && typeof opts === 'object') {
+        if ('gallery' in opts) L.gallery = opts.gallery || null;
+        if ('stopImages' in opts) L.stopImages = opts.stopImages || [];
+        if ('hotspot' in opts) L.hotspot = opts.hotspot || null;
+      }
+      try { buildArrivalHud(); } catch (_) { /* HUD not ready (e.g. still sailing) */ }
+    },
+    /**
+     * Index of the top-most painted region under a screen point (for the eraser), or -1. Searches
+     * back-to-front so the most recently painted blob wins when regions overlap.
+     */
+    paintedRegionAt(pt) {
+      try {
+        const c = map.unproject([pt.x, pt.y]);
+        for (let i = PAINTED.length - 1; i >= 0; i--) {
+          const ring = PAINTED[i];
+          if (Array.isArray(ring) && ring.length >= 4 && turfPointInPolygon([c.lng, c.lat], turfPolygon([ring]))) return i;
+        }
+      } catch (_) { /* map/geometry not ready */ }
+      return -1;
+    },
+    /**
+     * Turn a freehand brush stroke (screen pixels, relative to the map container) into a geo ring:
+     * unproject each point, then buffer the path by the brush radius so a drag paints a band of
+     * "undiscovered" land. Returns a [[lng,lat],…] ring, or null if the stroke is too short.
+     */
+    /** Screen-pixel radius of a brushKm circle at a given screen point (for the live brush cursor). */
+    brushRadiusPx(pt, brushKm = 250) {
+      try {
+        const c = map.unproject([pt.x, pt.y]);
+        const dest = turfDestination([c.lng, c.lat], Math.max(30, brushKm), 90, { units: 'kilometers' });
+        const a = map.project([c.lng, c.lat]);
+        const b = map.project(dest.geometry.coordinates);
+        return Math.hypot(b.x - a.x, b.y - a.y);
+      } catch (_) { return 20; }
+    },
+    strokeToRing(points, brushKm = 250) {
+      if (!Array.isArray(points) || points.length < 2) return null;
+      try {
+        const lngLat = points.map((p) => { const c = map.unproject([p.x, p.y]); return [c.lng, c.lat]; });
+        const line = turfLine(lngLat);
+        const buffered = turfBuffer(line, Math.max(30, brushKm), { units: 'kilometers' });
+        if (!buffered) return null;
+        const simple = turfSimplify(buffered, { tolerance: 0.15, highQuality: false });
+        const geom = simple.geometry;
+        const ring = geom.type === 'MultiPolygon' ? geom.coordinates[0][0] : geom.coordinates[0];
+        return ring && ring.length >= 4 ? ring : null;
+      } catch (_) { return null; }
+    },
     destroy() {
-      cancelled = true;
+      legToken++;   // invalidate any in-flight leg
       if (raf) cancelAnimationFrame(raf);
-      try { etch?.destroy(); } catch (_) { /* map may already be gone */ }
+      if (onMapStyle) { try { window.removeEventListener('lessonmap:style', onMapStyle); } catch (_) { /* noop */ } onMapStyle = null; }
+      try { galleryClose && galleryClose(); } catch (_) { /* clears the gallery interval */ }
+      try { if (map.getLayer('voyage-trail')) map.removeLayer('voyage-trail'); if (map.getSource('voyage-trail')) map.removeSource('voyage-trail'); } catch (_) { /* map gone */ }
+      try { if (map.getLayer('voyage-edit-line')) map.removeLayer('voyage-edit-line'); if (map.getSource('voyage-edit-line')) map.removeSource('voyage-edit-line'); } catch (_) { /* map gone */ }
+      try {
+        if (map.getLayer('voyage-paint-line')) map.removeLayer('voyage-paint-line');
+        if (map.getLayer('voyage-paint-fill')) map.removeLayer('voyage-paint-fill');
+        if (map.getSource('voyage-paint')) map.removeSource('voyage-paint');
+      } catch (_) { /* map gone */ }
       try { fog?.destroy(); } catch (_) { /* idem */ }
-      try { ships.destroy(); } catch (_) { /* idem */ }
+      try { ships?.destroy(); } catch (_) { /* idem */ }
       try { inst.destroy(); } catch (_) { /* idem */ }
       el.innerHTML = '';
     },

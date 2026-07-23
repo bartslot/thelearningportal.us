@@ -43,6 +43,7 @@ class Lesson extends Model
         'focus',
         'focus_tags',
         'title_bg_path',
+        'poster_image',
         'subject',
         'grade_level',
         'tone',
@@ -504,6 +505,11 @@ class Lesson extends Model
      */
     public function cardImageUrl(): ?string
     {
+        // A teacher-chosen poster always wins — it's the explicit override.
+        if ($url = $this->posterOverrideUrl()) {
+            return $url;
+        }
+
         // 0. Pre-rendered local WebP cover (small, cropped) — by far the lightest option, so it
         //    wins outright. The chain below remains the SOURCE for generation and the fallback
         //    shown until app:generate-lesson-covers has run for this lesson.
@@ -553,6 +559,78 @@ class Lesson extends Model
         }
 
         return null;
+    }
+
+    /** The teacher's explicit poster override as a usable URL, or null when unset. */
+    public function posterOverrideUrl(): ?string
+    {
+        $poster = trim((string) ($this->poster_image ?? ''));
+        if ($poster === '') {
+            return null;
+        }
+
+        // Full URLs (Cloudinary/Commons) and root-relative paths pass through; a bare storage
+        // path is resolved on the public disk like every other stored image.
+        return preg_match('#^(https?:)?//#i', $poster) || str_starts_with($poster, '/')
+            ? $poster
+            : $this->publicMediaUrl($poster);
+    }
+
+    /**
+     * The lesson's poster — NEVER empty. The teacher's override wins; otherwise the first image
+     * already loaded in the lesson (auto-pick), then the general card fallback chain, and finally
+     * the narrator portrait (which itself has a built-in placeholder).
+     */
+    public function posterUrl(): string
+    {
+        return $this->posterOverrideUrl()
+            ?? ($this->posterCandidates()[0]['url'] ?? null)
+            ?? $this->cardImageUrl()
+            ?? $this->portraitUrl();
+    }
+
+    /**
+     * Every image already loaded in this lesson, as picker candidates. Unions the lesson-level
+     * imagery with each scene's imagery (generated art, skyboxes, and voyage/gallery config images),
+     * de-duplicated, so a teacher can pick any of them as the poster.
+     *
+     * @return array<int,array{url:string,label:string}>
+     */
+    public function posterCandidates(): array
+    {
+        $out = [];
+        $push = function (?string $url, string $label) use (&$out): void {
+            $url = trim((string) $url);
+            if ($url !== '' && ! isset($out[$url])) {
+                $out[$url] = ['url' => $url, 'label' => $label];
+            }
+        };
+
+        // Lesson-level imagery.
+        if ($u = $this->publicMediaUrl($this->title_bg_path)) {
+            $push($u, 'Title background');
+        }
+        foreach ($this->slideshowImages() as $img) {
+            $push($img['url'] ?? null, $img['title'] ?? 'Slideshow image');
+        }
+
+        // Per-scene imagery, in order — includes voyage/gallery config images (URLs already absolute).
+        foreach ($this->scenes()->ordered()->get() as $scene) {
+            $push($this->publicMediaUrl($scene->skybox_image_path), 'Scene panorama');
+            $push($this->publicMediaUrl($scene->image_path), 'Scene image');
+            $cfg = $scene->config ?? [];
+            foreach (($cfg['stop_images'] ?? []) as $u) {
+                $push(is_string($u) ? $u : ($u['url'] ?? null), 'Landfall image');
+            }
+            foreach (($cfg['images'] ?? []) as $u) {
+                $push(is_array($u) ? ($u['url'] ?? null) : $u, 'Gallery image');
+            }
+            foreach ((($cfg['gallery'] ?? [])['images'] ?? []) as $u) {
+                $push(is_array($u) ? ($u['url'] ?? null) : $u, 'Gallery image');
+            }
+        }
+
+        return array_values($out);
     }
 
     /**

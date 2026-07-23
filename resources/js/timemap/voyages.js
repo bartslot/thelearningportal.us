@@ -11,7 +11,7 @@ import voyagesData from './voyages.json';
 
 // Catmull-Rom spline through the hand-curated waypoints so routes read as drawn curves, not
 // dot-to-dot segments. `per` = interpolated points per waypoint pair.
-const smooth = (points, per = 10) => {
+export const smooth = (points, per = 10) => {
   if (points.length < 3) return points;
   const pt = (i) => points[Math.max(0, Math.min(points.length - 1, i))];
   const out = [points[0]];

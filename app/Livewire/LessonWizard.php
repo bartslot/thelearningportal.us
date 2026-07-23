@@ -39,6 +39,15 @@ class LessonWizard extends Component
             $this->step = $resolvedStep ?? 1;
         }
     }
+    public function goBackStep()
+    {
+        // Check if we are currently in Step 4 or 5 before allowing the move back
+        if (in_array((int) $this->step, [5])) {
+            $this->step = 4; // Programmatically set the step to 3
+            // OPTIONAL: If you need to load data specific to Step 3 when going back:
+            // $this->loadStep3Data(); 
+        }
+    }
 
     /** True when the lesson has scenes, all ready, and none of the narration kind — nothing for
      *  the generation pipeline to do, so the Generate step would sit at a bogus low percentage. */

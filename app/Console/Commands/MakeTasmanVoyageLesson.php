@@ -79,7 +79,9 @@ class MakeTasmanVoyageLesson extends Command
             $stop = $leg['stop'];
             $images = self::LEG_IMAGES[$i] ?? ['gallery' => [], 'pins' => []];
 
-            // Map scene: sail this leg, arrive at the stop.
+            // ONE scene per landfall: sail this leg, arrive at the stop, and carry the gallery
+            // (title + story + images) inline as config.gallery — opened as a modal via the
+            // landfall hotspot in the player. No more separate 'gallery' scenes.
             $lesson->scenes()->create([
                 'order' => $order++,
                 'kind' => 'voyage',
@@ -91,17 +93,7 @@ class MakeTasmanVoyageLesson extends Command
                     'view' => 'flat',
                     'intro' => $i === 0,
                     'stop_images' => array_map($img, $images['pins']),
-                ],
-            ]);
-
-            // Gallery scene: the drawings/paintings belonging to this landfall.
-            if ($images['gallery'] !== []) {
-                $lesson->scenes()->create([
-                    'order' => $order++,
-                    'kind' => 'gallery',
-                    'status' => 'ready',
-                    'location' => $stop['place'],
-                    'config' => [
+                    'gallery' => [
                         'title' => $stop['title'] ?? $stop['place'],
                         'date_label' => $stop['date_label'] ?? '',
                         'story' => $stop['story'] ?? '',
@@ -110,8 +102,8 @@ class MakeTasmanVoyageLesson extends Command
                             $images['gallery']
                         ),
                     ],
-                ]);
-            }
+                ],
+            ]);
         }
 
         $this->info("Lesson '{$lesson->title}' ready — code {$lesson->lesson_code}, {$lesson->scenes()->count()} scenes.");

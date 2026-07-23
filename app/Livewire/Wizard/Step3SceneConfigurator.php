@@ -21,15 +21,21 @@ use App\Models\Scene;
 use App\Models\StrategyGame;
 use App\Support\PolityCapitals;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Step3SceneConfigurator extends Component
 {
     use EditsQuizQuestions;
     use EditsSceneArtwork;
     use EditsStoryGame;
+    use WithFileUploads;
+
+    /** Teacher's own image file, uploaded from the Add-image modal. */
+    public $uploadImage = null;
 
     private const EDITABLE_FIELDS = [
         'config',
@@ -67,16 +73,30 @@ class Step3SceneConfigurator extends Component
 
     public ?string $prevSelectedStatus = null;
 
+    /** Set from ?modal=1 on a preview deep-link — the JS reopens the landfall gallery once mounted. */
+    public bool $openModalOnLoad = false;
+
     public function mount(Lesson $lesson): void
     {
         abort_unless($lesson->teacher_id === auth()->id(), 403);
         $this->lesson = $lesson;
         $this->lesson->update(['status' => LessonStatus::Configuring, 'wizard_step' => 4]);
 
-        $first = $this->lesson->scenes()->ordered()->first();
-        if ($first) {
-            $this->selectSceneInternal($first->id);
+        // Repair legacy lessons where two voyage scenes shared one leg (older "add leg" reused the
+        // last catalog leg) — so editing one leg's destination no longer drags another's.
+        $this->ensureUniqueVoyageLegs();
+
+        // Deep-link from the owner-preview "Edit scene" (?scene=&modal=): open the EXACT scene the
+        // teacher was viewing, and remember whether its gallery/landfall modal was open.
+        $deepScene = request()->integer('scene');
+        $target = ($deepScene && $this->lesson->scenes()->whereKey($deepScene)->exists())
+            ? $deepScene
+            : optional($this->lesson->scenes()->ordered()->first())->id;
+
+        if ($target) {
+            $this->selectSceneInternal($target);
         }
+        $this->openModalOnLoad = request()->boolean('modal');
     }
 
     #[Computed]
@@ -109,7 +129,6 @@ class Step3SceneConfigurator extends Component
     {
         $this->addSceneOpen = true;
     }
-
     /**
      * URL-form shots for the preview JS (scene:load payload AND the inert
      * scenes JSON in the blade — the bridge falls back to the latter when the
@@ -194,8 +213,22 @@ class Step3SceneConfigurator extends Component
             'identityTitle' => $scene->config['identity_title'] ?? null,
             'hideIdentity' => (bool) ($scene->config['hide_identity'] ?? false),
             'kind' => $scene->kind,
-            'config' => $scene->config,
+            // For voyages the projection is GLOBAL — inject the lesson-wide voyage_view so every
+            // waypoint previews with the same flat/globe setting (the JS reads config.view).
+            'config' => $scene->kind === 'voyage'
+                ? array_merge($scene->config ?? [], ['view' => $this->voyageView()])
+                : $scene->config,
             'lesson_map_style' => $this->lesson->map_style, // lesson-wide default a map block inherits
+            // Voyage scenes preview against the lesson's editable route copy (falls back to the
+            // shared catalog until the first edit clones it) — the wizard overlay passes this to
+            // renderVoyageTour as `def`.
+            'voyage_def' => $scene->kind === 'voyage' ? $this->voyageDef() : null,
+            'route_line' => $scene->kind === 'voyage' ? $this->routeLine() : null,
+            // Lesson-wide voyage-map detail (hide cities/borders, show place labels) + the landfall
+            // labels themselves, derived from every voyage scene's location.
+            'voyage_map' => $scene->kind === 'voyage' ? $this->voyageMap() : null,
+            'leg_labels' => $scene->kind === 'voyage' ? $this->voyageLegLabels() : [],
+            'voyage_fog' => $scene->kind === 'voyage' ? $this->voyageFog() : [],
             'gameType' => $scene->game_type,
             'quizQuestionCount' => $scene->quiz_question_count,
             // Quiz scenes preview their actual questions on the canvas.
@@ -1037,6 +1070,814 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    // ── Voyage lesson: per-lesson editable route/fleet copy + scene editors ──────────────
+    // Route geometry, legs (from/to) and fleet live in the shared, git-committed catalog
+    // (resources/js/timemap/voyages.json) that the student player AND the standalone history
+    // Time-Map both read. So the CMS never edits that file: on the first edit we clone the chosen
+    // voyage into the lesson's own game_config['voyage_def'], and every reader (player + wizard
+    // preview) prefers the lesson-local copy, falling back to the catalog by id.
+
+    /** Per-scene stop-image pins and gallery images are capped so config can't grow unbounded. */
+    private const STOP_IMAGES_MAX = 6;
+
+    private const GALLERY_IMAGES_MAX = 12;
+
+    /**
+     * The voyage definition to render in the inspector + preview: the lesson's editable copy if
+     * it exists, else the shared catalog entry (read-only until the first edit clones it).
+     *
+     * @return array<string,mixed>|null
+     */
+    #[Computed]
+    public function voyageDef(): ?array
+    {
+        $gc = $this->lesson->game_config ?? [];
+        if (isset($gc['voyage_def']['legs'])) {
+            return $gc['voyage_def'];
+        }
+
+        return isset($gc['voyage']) ? $this->catalogVoyage((string) $gc['voyage']) : null;
+    }
+
+    /** Look up one voyage entry in the shared catalog by id. */
+    private function catalogVoyage(string $id): ?array
+    {
+        $catalog = json_decode(File::get(resource_path('js/timemap/voyages.json')), true);
+
+        return collect($catalog['voyages'] ?? [])->firstWhere('id', $id);
+    }
+
+    /**
+     * Ensure the lesson has its own editable copy of the voyage definition, cloned verbatim from
+     * the catalog on first edit (a FULL copy — waypoints + legs + fleet + unknown — so wp-index
+     * lookups against catalog ship geometry stay consistent while only dates are editable in
+     * phase 1). Returns the full game_config array with voyage_def guaranteed present when possible.
+     *
+     * @return array<string,mixed>
+     */
+    private function ensureVoyageDef(): array
+    {
+        $gc = $this->lesson->game_config ?? [];
+        if (isset($gc['voyage_def']['legs'])) {
+            return $gc;
+        }
+        $entry = isset($gc['voyage']) ? $this->catalogVoyage((string) $gc['voyage']) : null;
+        if (! $entry) {
+            return $gc;
+        }
+        $gc['voyage_def'] = $entry;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);   // bust the computed cache
+
+        return $gc;
+    }
+
+    /**
+     * Give every voyage scene its OWN leg. Legacy lessons could have two scenes pointing at the same
+     * leg (the old "add leg" reused the last catalog leg), which made their destinations move together.
+     * For each duplicate, append a fresh leg continuing from the shared leg's landfall and repoint it.
+     * Idempotent: once every scene owns a distinct leg it does nothing (and never clones the catalog).
+     */
+    private function ensureUniqueVoyageLegs(): void
+    {
+        if (($this->lesson->game_type ?? null) !== 'voyage') {
+            return;
+        }
+        $scenes = $this->lesson->scenes()->where('kind', 'voyage')->orderBy('order')->get();
+
+        // Cheap scan first — bail (no catalog clone) unless a leg index is genuinely shared.
+        $seen = [];
+        $hasDupe = false;
+        foreach ($scenes as $s) {
+            $leg = (int) ($s->config['leg'] ?? 0);
+            if (isset($seen[$leg])) {
+                $hasDupe = true;
+                break;
+            }
+            $seen[$leg] = true;
+        }
+        if (! $hasDupe) {
+            return;
+        }
+
+        $gc = $this->ensureVoyageDef();
+        if (empty($gc['voyage_def']['waypoints']) || empty($gc['voyage_def']['legs'])) {
+            return;
+        }
+        $wps = array_values($gc['voyage_def']['waypoints']);
+        $legs = array_values($gc['voyage_def']['legs']);
+
+        $used = [];
+        foreach ($scenes as $scene) {
+            $leg = (int) ($scene->config['leg'] ?? 0);
+            if (! isset($used[$leg]) && isset($legs[$leg])) {
+                $used[$leg] = true;
+
+                continue;
+            }
+            // Duplicate (or dangling) leg → append a new one continuing from this leg's landfall.
+            $src = $legs[$leg] ?? end($legs);
+            $startIdx = (int) ($src['wp'][1] ?? 0);
+            $startWp = $wps[$startIdx] ?? [0.0, 20.0];
+            $wps[] = [max(-179.0, min(179.0, (float) $startWp[0] + 12.0)), (float) $startWp[1]];
+            $endIdx = count($wps) - 1;
+            $depart = $src['arrive'] ?? '1500-01-01';
+            $arrive = date('Y-m-d', strtotime($depart.' +14 days'));
+            $legs[] = ['depart' => $depart, 'arrive' => $arrive, 'wp' => [$startIdx, $endIdx]];
+            $newLeg = count($legs) - 1;
+            $used[$newLeg] = true;
+
+            $cfg = $scene->config ?? [];
+            $cfg['leg'] = $newLeg;
+            $scene->update(['config' => $cfg]);
+        }
+
+        $gc['voyage_def']['waypoints'] = $wps;
+        $gc['voyage_def']['legs'] = $legs;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+    }
+
+    /** Default look of the sailed route line, merged over the lesson's saved overrides. */
+    private const ROUTE_LINE_DEFAULTS = [
+        'enabled' => true, 'color' => '#7c2d12', 'opacity' => 0.9, 'thickness' => 3.0, 'wobble' => 0.3, 'curve' => 'bezier',
+    ];
+
+    /**
+     * The route-line style for this voyage lesson (one setting for every leg), defaults filled in.
+     *
+     * @return array<string,mixed>
+     */
+    #[Computed]
+    public function routeLine(): array
+    {
+        return array_merge(self::ROUTE_LINE_DEFAULTS, $this->lesson->game_config['route_line'] ?? []);
+    }
+
+    /** Edit one route-line setting (lesson-wide). Coerces each field, then repaints the preview. */
+    public function setRouteLine(string $key, $value): void
+    {
+        if (! array_key_exists($key, self::ROUTE_LINE_DEFAULTS)) {
+            return;
+        }
+        $current = $this->routeLine();
+        $coerced = match ($key) {
+            'enabled' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            'color' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value) ? (string) $value : $current['color'],
+            'curve' => in_array($value, ['bezier', 'straight'], true) ? $value : 'bezier',
+            'opacity' => max(0.0, min(1.0, (float) $value)),
+            'thickness' => max(0.5, min(12.0, (float) $value)),
+            'wobble' => max(0.0, min(1.0, (float) $value)),
+            default => $value,
+        };
+
+        $gc = $this->lesson->game_config ?? [];
+        $gc['route_line'] = array_merge($this->routeLine(), [$key => $coerced]);
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->routeLine);
+
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → preview repaints
+        }
+    }
+
+    // Lesson-wide voyage-map detail: hide anachronistic modern cities/borders and show period place
+    // labels (drawn from the landfalls). Defaults keep the normal atlas so existing lessons don't change.
+    private const VOYAGE_MAP_DEFAULTS = [
+        'cities' => true, 'borders' => true, 'labels' => true,
+        // Per-element style (applied live over the base atlas palette). Defaults match lesson-map.js.
+        'label_color' => '#3a2c1a', 'label_size' => 1.0,
+        'city_color' => '#3a2c1a', 'city_size' => 1.0,
+        'border_color' => '#5b4a36', 'border_width' => 0.6, 'border_opacity' => 0.3,
+        // Ship + camera (whole-voyage). ship_scale = on-screen size multiplier; ship_anchored = the
+        // ship is pinned to the map (grows/shrinks with zoom) instead of a constant screen size.
+        // ocean_zoom (0–100) = how far the sailing camera pulls back: 0 = tight on the ship + a small
+        // island, 100 = a continental view (never the whole world). cam_dolly_arrival = extra zoom in
+        // as the ship makes landfall. The camera moves play during the sail (Preview / student player).
+        'ship_scale' => 1.0, 'ship_anchored' => false,
+        'ocean_zoom' => 30, 'cam_dolly_arrival' => false,
+    ];
+
+    /** @return array<string,bool> */
+    #[Computed]
+    public function voyageMap(): array
+    {
+        return array_merge(self::VOYAGE_MAP_DEFAULTS, $this->lesson->game_config['voyage_map'] ?? []);
+    }
+
+    /** Set one voyage-map option: a visibility toggle (cities/borders/labels) or a style value. */
+    public function setVoyageMap(string $key, $value): void
+    {
+        if (! array_key_exists($key, self::VOYAGE_MAP_DEFAULTS)) {
+            return;
+        }
+        $coerced = match (true) {
+            in_array($key, ['cities', 'borders', 'labels', 'ship_anchored', 'cam_dolly_arrival'], true) => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            $key === 'ocean_zoom' => max(0, min(100, (int) $value)),
+            str_ends_with($key, '_color') => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value) ? (string) $value : self::VOYAGE_MAP_DEFAULTS[$key],
+            $key === 'border_opacity' => max(0.0, min(1.0, (float) $value)),
+            in_array($key, ['label_size', 'city_size'], true) => max(0.3, min(3.0, (float) $value)),
+            $key === 'border_width' => max(0.0, min(8.0, (float) $value)),
+            $key === 'ship_scale' => max(0.4, min(2.5, (float) $value)),
+            default => $value,
+        };
+
+        $gc = $this->lesson->game_config ?? [];
+        $gc['voyage_map'] = array_merge($this->voyageMap(), [$key => $coerced]);
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageMap);
+
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → preview repaints
+        }
+    }
+
+    // Teacher-painted "undiscovered" fog regions (lesson-wide) — polygon rings [[lng,lat],…] the
+    // teacher brushes onto the voyage map. Merged with the catalog fog at render.
+    private const VOYAGE_FOG_MAX = 60;
+
+    /** @return array<int,array<int,array{0:float,1:float}>> */
+    #[Computed]
+    public function voyageFog(): array
+    {
+        return array_values((array) ($this->lesson->game_config['voyage_fog'] ?? []));
+    }
+
+    /**
+     * Append one painted region (a ring of [lng,lat] pairs). Sanitised: numeric coords only, in
+     * range, capped in length; ignored if degenerate.
+     *
+     * @param  array<int,mixed>  $ring
+     */
+    public function addFogRegion(array $ring): void
+    {
+        $clean = [];
+        foreach ($ring as $pt) {
+            if (! is_array($pt) || count($pt) < 2) {
+                continue;
+            }
+            $lng = (float) $pt[0];
+            $lat = (float) $pt[1];
+            if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+                continue;
+            }
+            $clean[] = [round($lng, 3), round($lat, 3)];
+            if (count($clean) >= 400) {
+                break;
+            }
+        }
+        if (count($clean) < 4) {
+            return;   // not a usable polygon
+        }
+
+        $fog = $this->voyageFog();
+        if (count($fog) >= self::VOYAGE_FOG_MAX) {
+            return;
+        }
+        $fog[] = $clean;
+
+        $gc = $this->lesson->game_config ?? [];
+        $gc['voyage_fog'] = array_values($fog);
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageFog);
+    }
+
+    /** Remove one painted region by index (the eraser — click a blob to unpaint it). Live, no re-mount. */
+    public function removeFogRegion(int $index): void
+    {
+        $fog = $this->voyageFog();
+        if ($index < 0 || $index >= count($fog)) {
+            return;
+        }
+        array_splice($fog, $index, 1);
+
+        $gc = $this->lesson->game_config ?? [];
+        if (empty($fog)) {
+            unset($gc['voyage_fog']);
+        } else {
+            $gc['voyage_fog'] = array_values($fog);
+        }
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageFog);
+    }
+
+    /** Undo the last painted region (CMD-Z / Undo button). Re-fires scene:load so the preview follows. */
+    public function undoFog(): void
+    {
+        $fog = $this->voyageFog();
+        if (empty($fog)) {
+            return;
+        }
+        array_pop($fog);
+
+        $gc = $this->lesson->game_config ?? [];
+        if (empty($fog)) {
+            unset($gc['voyage_fog']);
+        } else {
+            $gc['voyage_fog'] = array_values($fog);
+        }
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageFog);
+
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → preview drops that region
+        }
+    }
+
+    /** Clear all teacher-painted fog regions (back to just the catalog fog). */
+    public function clearFog(): void
+    {
+        $gc = $this->lesson->game_config ?? [];
+        unset($gc['voyage_fog']);
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageFog);
+
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → preview clears painted fog
+        }
+    }
+
+    /**
+     * Landfall labels for the voyage map: every voyage scene's location, tagged with its leg index
+     * (the JS resolves the leg to its arrival waypoint coordinate).
+     *
+     * @return array<int,array{text:string,leg:int}>
+     */
+    public function voyageLegLabels(): array
+    {
+        return $this->lesson->scenes()->where('kind', 'voyage')->whereNotNull('location')->ordered()->get()
+            ->map(fn ($s) => ['text' => (string) $s->location, 'leg' => (int) ($s->config['leg'] ?? 0)])
+            ->all();
+    }
+
+    /**
+     * The voyage's map projection (flat 2D vs 3D globe). GLOBAL to the whole voyage — every waypoint
+     * shares it, like all the other voyage map settings — so it lives in game_config, not scene.config.
+     */
+    public function voyageView(): string
+    {
+        $v = $this->lesson->game_config['voyage_view'] ?? null;
+        // Back-compat: seed from the first voyage scene's old per-scene view if the global isn't set.
+        if ($v === null) {
+            $seed = $this->lesson->scenes()->where('kind', 'voyage')->ordered()->get()
+                ->map(fn ($s) => $s->config['view'] ?? null)->filter()->first();
+            $v = $seed ?: 'flat';
+        }
+
+        return in_array($v, ['flat', 'globe'], true) ? $v : 'flat';
+    }
+
+    /** Flip the voyage's map projection (flat 2D mercator vs 3D globe) — GLOBAL to the whole voyage. */
+    public function setVoyageView(string $view): void
+    {
+        $gc = $this->lesson->game_config ?? [];
+        $gc['voyage_view'] = in_array($view, ['flat', 'globe'], true) ? $view : 'flat';
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        // Re-fire scene:load so the running tour applies the new projection in place (no re-mount).
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /** Voyage scene: toggle the "from space" intro fly-in (only meaningful on the first leg). */
+    public function setVoyageIntro(bool $on): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $this->selectedScene['config']['intro'] = $on;
+        $this->saveSelected();
+    }
+
+    /** Voyage scene: edit this leg's departure date (writes voyage_def, not scene.config). */
+    public function setLegDepart(string $date): void
+    {
+        $this->setLegDate('depart', $date);
+    }
+
+    /** Voyage scene: edit this leg's arrival date (writes voyage_def, not scene.config). */
+    public function setLegArrive(string $date): void
+    {
+        $this->setLegDate('arrive', $date);
+    }
+
+    /**
+     * Shared leg-date writer. The leg lives in the lesson's voyage_def, not in scene.config, so
+     * saveSelected() (which only diffs scene.config) would not repaint — we re-fire scene:load
+     * ourselves after persisting.
+     */
+    private function setLegDate(string $field, string $date): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        // Only accept the YYYY-MM-DD shape renderVoyageTour's Date.parse relies on.
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg])) {
+            return;
+        }
+        $gc['voyage_def']['legs'][$leg][$field] = $date;
+
+        // Soft validation: a crossed pair still animates (duration is clamped) but shows a
+        // nonsensical date chip — warn, don't block.
+        $depart = $gc['voyage_def']['legs'][$leg]['depart'] ?? null;
+        $arrive = $gc['voyage_def']['legs'][$leg]['arrive'] ?? null;
+        if ($depart && $arrive && strtotime($arrive) <= strtotime($depart)) {
+            $this->dispatch('toast', message: __('Arrival is on or before departure — check the dates.'), type: 'warning');
+        }
+
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);   // repaint the voyage preview
+    }
+
+    /**
+     * The waypoint's STOP TITLE — the landfall's name (e.g. "Hispaniola"). Stored in the voyage format
+     * (voyage_def.legs[i].title), NOT the gallery title. It is the single source for the landfall name
+     * everywhere: the green map label, the date chip and the scene-rail label. We mirror it into
+     * scene.location too, because the map's place labels (voyageLegLabels) and the rail read from there.
+     */
+    public function setLegTitle(string $title): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        $title = trim($title);
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg])) {
+            return;
+        }
+        $gc['voyage_def']['legs'][$leg]['title'] = $title;
+        $this->lesson->update(['game_config' => $gc]);
+        // Keep the landfall name in sync on the scene itself → map place labels + rail update.
+        $this->lesson->scenes()->whereKey($this->selectedSceneId)->update(['location' => $title !== '' ? $title : null]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /**
+     * Move this leg's FROM or TO endpoint to a [lng,lat] — the teacher drags the landfall on the map.
+     * Writes the shared voyage_def waypoint (so the FROM end is the previous leg's landfall too).
+     */
+    #[On('voyageLegEndpointMoved')]
+    public function setLegWaypoint(int $sceneId, string $which, $lng, $lat): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        if (! in_array($which, ['from', 'to'], true)) {
+            return;
+        }
+        $lng = (float) $lng;
+        $lat = (float) $lat;
+        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
+        if (! is_array($wp)) {
+            return;
+        }
+        $idx = (int) ($which === 'from' ? ($wp[0] ?? 0) : ($wp[1] ?? 0));
+        if (! isset($gc['voyage_def']['waypoints'][$idx])) {
+            return;
+        }
+        $gc['voyage_def']['waypoints'][$idx] = [round($lng, 3), round($lat, 3)];
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);   // re-render the route to the new landfall
+    }
+
+    /**
+     * Move ANY of the current leg's waypoints (destination or an intermediate "bend") by its global
+     * voyage_def index — the teacher drags a route point around land (e.g. through Gibraltar).
+     */
+    #[On('voyageWaypointMoved')]
+    public function setVoyageWaypoint(int $sceneId, int $wpIndex, $lng, $lat): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        $lng = (float) $lng;
+        $lat = (float) $lat;
+        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
+        // Only points that belong to THIS leg's span may be moved from here.
+        if (! is_array($wp) || $wpIndex < (int) $wp[0] || $wpIndex > (int) $wp[1] || ! isset($gc['voyage_def']['waypoints'][$wpIndex])) {
+            return;
+        }
+        $gc['voyage_def']['waypoints'][$wpIndex] = [round($lng, 3), round($lat, 3)];
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /**
+     * Insert a NEW bend waypoint into the current leg at an arbitrary position — fired when the teacher
+     * drags the route line itself to bend it around land. The bend lands just after $afterWpIndex (which
+     * must be inside the current leg), and every later leg index shifts by one to stay valid.
+     */
+    #[On('voyageWaypointInserted')]
+    public function insertVoyageWaypoint(int $sceneId, int $afterWpIndex, $lng, $lat): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        $lng = (float) $lng;
+        $lat = (float) $lat;
+        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
+        // The bend must fall between two of THIS leg's own waypoints: start <= afterWpIndex < end.
+        if (! is_array($wp) || $afterWpIndex < (int) $wp[0] || $afterWpIndex >= (int) $wp[1]) {
+            return;
+        }
+        $wps = array_values($gc['voyage_def']['waypoints']);
+        $legs = array_values($gc['voyage_def']['legs']);
+        $insertAt = $afterWpIndex + 1;
+        array_splice($wps, $insertAt, 0, [[round($lng, 3), round($lat, 3)]]);
+        foreach ($legs as &$L) {
+            if ((int) $L['wp'][0] >= $insertAt) {
+                $L['wp'][0] = (int) $L['wp'][0] + 1;
+            }
+            if ((int) $L['wp'][1] >= $insertAt) {
+                $L['wp'][1] = (int) $L['wp'][1] + 1;
+            }
+        }
+        unset($L);
+
+        $gc['voyage_def']['waypoints'] = $wps;
+        $gc['voyage_def']['legs'] = $legs;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /**
+     * Add a draggable "bend" waypoint to the current leg (just before its landfall), so the teacher
+     * can steer the route around land. Inserted into the shared waypoints array with every later leg
+     * index shifted to stay valid.
+     */
+    public function addLegWaypoint(): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg]['wp'])) {
+            return;
+        }
+        $wps = array_values($gc['voyage_def']['waypoints']);
+        $legs = array_values($gc['voyage_def']['legs']);
+        [$start, $end] = [(int) $legs[$leg]['wp'][0], (int) $legs[$leg]['wp'][1]];
+        // New bend halfway between the point before the landfall and the landfall.
+        $a = $wps[$end - 1] ?? $wps[$start] ?? [0.0, 20.0];
+        $b = $wps[$end] ?? [0.0, 20.0];
+        $mid = [round(((float) $a[0] + (float) $b[0]) / 2, 3), round(((float) $a[1] + (float) $b[1]) / 2, 3)];
+
+        $insertAt = $end;   // slot the bend just before the landfall
+        array_splice($wps, $insertAt, 0, [$mid]);
+        foreach ($legs as &$L) {
+            if ((int) $L['wp'][0] >= $insertAt) {
+                $L['wp'][0] = (int) $L['wp'][0] + 1;
+            }
+            if ((int) $L['wp'][1] >= $insertAt) {
+                $L['wp'][1] = (int) $L['wp'][1] + 1;
+            }
+        }
+        unset($L);
+
+        $gc['voyage_def']['waypoints'] = $wps;
+        $gc['voyage_def']['legs'] = $legs;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /** Voyage scene: append a coastal thumbnail pin (URL string) shown at the landfall. */
+    public function addStopImage(string $url): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $url = trim($url);
+        if ($url === '') {
+            return;
+        }
+        $imgs = array_values((array) ($this->selectedScene['config']['stop_images'] ?? []));
+        if (count($imgs) >= self::STOP_IMAGES_MAX) {
+            $this->dispatch('toast', message: __('Maximum of :n stop images reached.', ['n' => self::STOP_IMAGES_MAX]), type: 'warning');
+
+            return;
+        }
+        $imgs[] = $url;
+        $this->selectedScene['config']['stop_images'] = $imgs;
+        $this->saveSelected();
+    }
+
+    /** Voyage scene: remove the stop image at $index. */
+    public function removeStopImage(int $index): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $imgs = array_values((array) ($this->selectedScene['config']['stop_images'] ?? []));
+        if (! isset($imgs[$index])) {
+            return;
+        }
+        array_splice($imgs, $index, 1);
+        $this->selectedScene['config']['stop_images'] = array_values($imgs);
+        $this->saveSelected();
+    }
+
+    /** Voyage scene: reorder a stop image from one slot to another. */
+    public function moveStopImage(int $from, int $to): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $imgs = array_values((array) ($this->selectedScene['config']['stop_images'] ?? []));
+        if (! isset($imgs[$from]) || $to < 0 || $to >= count($imgs)) {
+            return;
+        }
+        $moved = array_splice($imgs, $from, 1);
+        array_splice($imgs, $to, 0, $moved);
+        $this->selectedScene['config']['stop_images'] = array_values($imgs);
+        $this->saveSelected();
+    }
+
+    // Two gallery shapes share these mutators: a VOYAGE landfall gallery lives at
+    // config.gallery.images (opened by the hotspot), while a STANDALONE story slide (kind 'gallery',
+    // the intro/outro) keeps its images at config.images. Route to the right path by scene kind so
+    // the same add/remove/reorder buttons work for both.
+    private function galleryImagesAtRoot(): bool
+    {
+        return ($this->selectedScene['kind'] ?? null) === 'gallery';
+    }
+
+    /** @return array<int,array{url:string,credit:string}> */
+    private function galleryImages(): array
+    {
+        $cfg = $this->selectedScene['config'] ?? [];
+        $imgs = $this->galleryImagesAtRoot() ? ($cfg['images'] ?? []) : ($cfg['gallery']['images'] ?? []);
+
+        return array_values((array) $imgs);
+    }
+
+    /** @param  array<int,mixed>  $imgs */
+    private function setGalleryImages(array $imgs): void
+    {
+        if ($this->galleryImagesAtRoot()) {
+            $this->selectedScene['config']['images'] = array_values($imgs);
+        } else {
+            $this->selectedScene['config']['gallery']['images'] = array_values($imgs);
+        }
+        $this->saveSelected();
+    }
+
+    /** How gallery images sit in the frame: 'cover' (fill, may crop) or 'fit' (letterbox + blur). */
+    public function setGalleryFit(string $fit): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $fit = $fit === 'cover' ? 'cover' : 'fit';
+        if ($this->galleryImagesAtRoot()) {
+            $this->selectedScene['config']['fit'] = $fit;
+        } else {
+            $this->selectedScene['config']['gallery']['fit'] = $fit;
+        }
+        $this->saveSelected();
+    }
+
+    /** Voyage gallery: append an image ({url, credit}). */
+    public function addGalleryImage(string $url, string $credit = ''): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $url = trim($url);
+        if ($url === '') {
+            return;
+        }
+        $imgs = $this->galleryImages();
+        if (count($imgs) >= self::GALLERY_IMAGES_MAX) {
+            $this->dispatch('toast', message: __('Maximum of :n gallery images reached.', ['n' => self::GALLERY_IMAGES_MAX]), type: 'warning');
+
+            return;
+        }
+        $imgs[] = ['url' => $url, 'credit' => trim($credit)];
+        $this->setGalleryImages($imgs);
+    }
+
+    /** Voyage gallery: remove the image at $index. */
+    public function removeGalleryImage(int $index): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $imgs = $this->galleryImages();
+        if (! isset($imgs[$index])) {
+            return;
+        }
+        array_splice($imgs, $index, 1);
+        $this->setGalleryImages($imgs);
+    }
+
+    /** Voyage gallery: reorder an image from one slot to another. */
+    public function moveGalleryImage(int $from, int $to): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $imgs = $this->galleryImages();
+        if (! isset($imgs[$from]) || $to < 0 || $to >= count($imgs)) {
+            return;
+        }
+        $moved = array_splice($imgs, $from, 1);
+        array_splice($imgs, $to, 0, $moved);
+        $this->setGalleryImages($imgs);
+    }
+
+    /** Voyage gallery: edit the credit line on the image at $index. */
+    public function setGalleryImageCredit(int $index, string $credit): void
+    {
+        if (! $this->selectedScene) {
+            return;
+        }
+        $imgs = $this->galleryImages();
+        if (! isset($imgs[$index])) {
+            return;
+        }
+        $imgs[$index]['credit'] = trim($credit);
+        $this->setGalleryImages($imgs);
+    }
+
+    /**
+     * Inline-edit the gallery title / date / story straight on the scene (the teacher edits the
+     * text where it's shown, not only in the side drawer). Fired by the gallery overlay's
+     * contenteditable fields via the 'galleryTextChanged' event.
+     */
+    #[On('galleryTextChanged')]
+    public function setGalleryText(int $sceneId, string $field, string $value): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        if (! in_array($field, ['title', 'date_label', 'story'], true)) {
+            return;
+        }
+        $this->selectedScene['config']['gallery'][$field] = $value;
+        $this->saveSelected();
+    }
+
+    /**
+     * Persist the teacher-dragged position of a voyage leg's info hotspot (the gallery opener), as a
+     * geo coordinate on the scene config. `config.hotspot` is excluded from the JS re-mount key, so
+     * saving it applies live without glitching the map.
+     */
+    #[On('voyageHotspotMoved')]
+    public function setVoyageHotspot(int $sceneId, $lng, $lat): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        $lng = (float) $lng;
+        $lat = (float) $lat;
+        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+            return;
+        }
+        $this->selectedScene['config']['hotspot'] = ['lng' => round($lng, 4), 'lat' => round($lat, 4)];
+        $this->saveSelected();
+    }
+
     /**
      * Coerce focus items to a safe shape; pass unknown types through untouched so future
      * annotation kinds survive a phase-1 save. Drops malformed focus items.
@@ -1289,6 +2130,88 @@ class Step3SceneConfigurator extends Component
         $this->openPaintingPickerCommon();
     }
 
+    /** Voyage inspector "+ Add image" → pick art to pin at the landfall as a stop image. */
+    public function openStopImagePicker(): void
+    {
+        $this->paintingPickerMode = 'voyage_stop';
+        $this->openPaintingPickerCommon();
+        $this->seedLandfallImageSearch();
+    }
+
+    /** Gallery inspector "+ Add image" → pick art to append to the gallery slideshow. */
+    public function openGalleryImagePicker(): void
+    {
+        $this->paintingPickerMode = 'gallery_image';
+        $this->openPaintingPickerCommon();
+        $this->seedLandfallImageSearch();
+    }
+
+    /**
+     * Auto-search the picker for a voyage landfall: pre-fill the query from the scene's place
+     * (e.g. "Mauritius") and turn on Commons live-search, since landfalls are usually too obscure
+     * for the paintings corpus. Runs AFTER openPaintingPickerCommon() (which clears both).
+     */
+    private function seedLandfallImageSearch(): void
+    {
+        $scene = $this->selectedSceneModel();
+        // Place, minus any parenthetical qualifier: "Moordenaarsbaai (Golden Bay, NZ)" → "Moordenaarsbaai".
+        $place = trim(preg_replace('/\s*\(.*$/', '', (string) ($scene?->location ?? '')));
+        // Pair it with the voyage/explorer name so the search lands on PERIOD works ("Mauritius Abel
+        // Tasman" → Tasman's chart of Mauritius) instead of the modern namesake (HMS Mauritius, 1942).
+        $voyageName = trim((string) ($this->voyageDef()['name'] ?? ''));
+        $this->paintingQuery = trim($place.' '.$voyageName);
+        $this->paintingCommonsLoaded = true;   // landfalls are usually too obscure for the corpus alone
+    }
+
+    /**
+     * Teacher uploaded their own image in the Add-image modal — store it and apply it to whatever
+     * the modal was opened for (landfall thumbnail, gallery image, or the scene background).
+     * Fires automatically on file selection (wire:model="uploadImage").
+     */
+    public function updatedUploadImage(): void
+    {
+        $this->validate(['uploadImage' => 'image|mimes:jpg,jpeg,png,webp,gif|max:8192']);   // 8 MB
+
+        $mode = $this->paintingPickerMode;
+        $this->paintingPickerOpen = false;
+
+        // Landfall/gallery images are referenced by URL in scene config, so host them on Cloudinary
+        // (falls back to local storage when Cloudinary isn't configured). The scene BACKGROUND uses a
+        // relative image_path rendered via asset('storage/…'), so that one stays local for now.
+        if (in_array($mode, ['voyage_stop', 'gallery_image'], true)) {
+            $cloud = app(\App\Services\CloudinaryService::class);
+            $url = $cloud->configured()
+                ? $cloud->uploadBytes($this->uploadImage->get(), "lessons/{$this->lesson->id}")
+                : null;
+            $url ??= '/storage/'.$this->uploadImage->store("lessons/{$this->lesson->id}/uploads", 'public');
+            $this->reset('uploadImage');
+            $mode === 'voyage_stop' ? $this->addStopImage($url) : $this->addGalleryImage($url, '');
+
+            return;
+        }
+
+        $path = $this->uploadImage->store("lessons/{$this->lesson->id}/uploads", 'public');
+        $this->reset('uploadImage');
+        $this->applyUploadedBackground($path);
+    }
+
+    /** Set an uploaded image as the selected scene's flat background (map/narration scenes). */
+    private function applyUploadedBackground(string $path): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $scene->update([
+            'image_path' => $path,
+            'shots' => $this->shotsPreservingArtwork($scene, $path),
+            'skybox_image_path' => null,
+            'scene_view' => 'slideshow',
+            'status' => 'ready',
+        ]);
+        $this->selectSceneInternal($scene->id);
+    }
+
     private function openPaintingPickerCommon(): void
     {
         $this->paintingPickerOpen = true;
@@ -1302,15 +2225,92 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('painting-picker:open');
     }
 
-    /** Thumbnail click → route to background-swap or add-as-layer per the mode the picker opened in. */
+    /** Thumbnail click → route to background-swap / add-as-layer / voyage-stop / gallery per mode. */
     public function applyPaintingChoice(string $source, string $key): void
     {
-        if ($this->paintingPickerMode === 'layer') {
-            $this->applyPaintingAsLayer($source, $key);
+        match ($this->paintingPickerMode) {
+            'layer' => $this->applyPaintingAsLayer($source, $key),
+            'voyage_stop' => $this->applyPaintingAsStopImage($source, $key),
+            'gallery_image' => $this->applyPaintingAsGalleryImage($source, $key),
+            default => $this->applyPaintingBackground($source, $key),
+        };
+    }
 
+    /** Download a picked painting to lesson storage and pin it as this voyage leg's stop image. */
+    public function applyPaintingAsStopImage(string $source, string $key): void
+    {
+        if (! $this->selectedSceneId) {
             return;
         }
-        $this->applyPaintingBackground($source, $key);
+        $this->paintingPickerOpen = false;
+        $stored = $this->storePickedPainting($source, $key, 'stop');
+        if ($stored) {
+            $this->addStopImage($stored['url']);
+        }
+    }
+
+    /** Download a picked painting to lesson storage and append it to this gallery scene. */
+    public function applyPaintingAsGalleryImage(string $source, string $key): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $this->paintingPickerOpen = false;
+        $stored = $this->storePickedPainting($source, $key, 'gallery');
+        if ($stored) {
+            $this->addGalleryImage($stored['url'], $stored['credit']);
+        }
+    }
+
+    /**
+     * Download a picked corpus/Commons painting into lesson storage and return its public URL + a
+     * one-line credit. Shared by the voyage stop-image and gallery-image flows so picked art is
+     * stored locally (no student-runtime hotlinking), mirroring applyPaintingBackground().
+     *
+     * @return array{url:string,credit:string}|null
+     */
+    private function storePickedPainting(string $source, string $key, string $prefix): ?array
+    {
+        [$imageUrl, $credit, $fileStem] = match ($source) {
+            'corpus' => $this->corpusPaintingPayload($key),
+            'commons' => $this->commonsPaintingPayload($key),
+            default => [null, null, null],
+        };
+        if (! $imageUrl) {
+            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+
+            return null;
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'User-Agent' => 'LearningPortal/1.0 (thelearningportal.us; lesson voyage images)',
+            ])->timeout(30)->get($imageUrl.'?width=1600');
+            if (! $response->successful() || $response->body() === '') {
+                throw new \RuntimeException('HTTP '.$response->status());
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+
+            return null;
+        }
+
+        $creditLine = trim(($credit['title'] ?? '')
+            .(! empty($credit['creator']) ? ' — '.$credit['creator'] : ''));
+
+        // Host on Cloudinary (off our storage/bandwidth); fall back to a root-relative local path.
+        $cloud = app(\App\Services\CloudinaryService::class);
+        $url = $cloud->configured() ? $cloud->uploadBytes($response->body(), "lessons/{$this->lesson->id}") : null;
+        if (! $url) {
+            $ext = str_contains((string) $response->header('Content-Type'), 'png') ? 'png' : 'jpg';
+            $path = "lessons/{$this->lesson->id}/voyage/{$prefix}-{$fileStem}.{$ext}";
+            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
+            // Root-relative (NOT Storage::url(), which prepends APP_URL → a host-fragile absolute URL).
+            $url = '/storage/'.$path;
+        }
+
+        return ['url' => $url, 'credit' => $creditLine];
     }
 
     /**
@@ -1394,6 +2394,10 @@ class Step3SceneConfigurator extends Component
             $kind = $this->paintingKind ?: null;
             $target = $this->matchTarget;
             $preferRegions = $this->regionPreference();
+            // Corpus failure (down, or the artworks table absent) must NOT take down the Commons
+            // top-up below — obscure landfalls (Mauritius, Tonga) live on Commons, not the corpus.
+            $corpus = collect();
+            try {
             $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
                 if ($term !== '') {
                     // Search: the term filters, but rank by the lesson's subject/region context so
@@ -1453,6 +2457,9 @@ class Step3SceneConfigurator extends Component
 
                 return $suggested;
             });
+            } catch (\Throwable $corpusErr) {
+                report($corpusErr);   // degrade to Commons-only rather than an empty grid
+            }
 
             // Hand-matched story images (scraped → resolved to open Commons originals) lead the
             // grid for an event lesson — the teacher still sees the rest of the corpus below them.
@@ -1488,8 +2495,11 @@ class Step3SceneConfigurator extends Component
             if ($this->paintingCommonsLoaded && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
                 $commons = app(\App\Services\CommonsImageService::class);
                 $live = collect();
+                // Landfall art is often maps / engravings / views, not "paintings" — appending that
+                // word buries the good period results, so search the raw term for voyage modes.
+                $isLandfall = in_array($this->paintingPickerMode, ['voyage_stop', 'gallery_image'], true);
                 if ($term !== '') {
-                    $live = collect($commons->searchText($term.' painting'));
+                    $live = collect($commons->searchText($isLandfall ? $term : $term.' painting'));
                 } else {
                     if ($topicQid) {
                         $live = collect($commons->searchDepicting($topicQid));
@@ -1915,10 +2925,12 @@ class Step3SceneConfigurator extends Component
         }
     }
 
-    public function addScene(string $kind = 'narration', ?string $gameType = null): void
+    public function addScene(string $kind = 'narration', ?string $gameType = null, $destLng = null, $destLat = null): void
     {
         $this->addSceneOpen = false;
-        $kind = in_array($kind, ['game', 'map'], true) ? $kind : 'narration';
+        $isVoyageLesson = ($this->lesson->game_type ?? null) === 'voyage';
+        $allowed = $isVoyageLesson ? ['game', 'map', 'voyage'] : ['game', 'map'];
+        $kind = in_array($kind, $allowed, true) ? $kind : 'narration';
         $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
         $insertAfterSceneId = $this->selectedSceneId;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
@@ -1928,8 +2940,58 @@ class Step3SceneConfigurator extends Component
             'order' => $next,
             'kind' => $kind,
             'image_style' => $this->lesson->image_style,
-            'status' => $kind === 'map' ? 'ready' : 'pending',
+            'status' => in_array($kind, ['map', 'voyage'], true) ? 'ready' : 'pending',
         ];
+
+        if ($kind === 'voyage') {
+            // Append a REAL new leg to the lesson's editable voyage copy: it sails from the previous
+            // landfall (the last waypoint) to a NEW waypoint dropped just east of it, which the teacher
+            // then drags to the real landfall. Dates continue from the previous leg. No generation.
+            $gc = $this->ensureVoyageDef();
+            $def = $gc['voyage_def'] ?? null;
+            if (! $def || empty($def['waypoints'])) {
+                return;   // no catalog geometry to extend
+            }
+            $wps = array_values($def['waypoints']);
+            $legs = array_values($def['legs'] ?? []);
+            $last = ! empty($legs) ? $legs[count($legs) - 1] : null;
+            $startIdx = $last ? (int) ($last['wp'][1] ?? 0) : 0;
+            $startWp = $wps[$startIdx] ?? [0.0, 20.0];
+            // Drop the new landfall at the teacher's current map centre (they pan to roughly where the
+            // leg should end); fall back to 12° east of the previous landfall when no centre is given.
+            $hasDest = is_numeric($destLng) && is_numeric($destLat)
+                && (float) $destLng >= -180 && (float) $destLng <= 180 && (float) $destLat >= -90 && (float) $destLat <= 90;
+            $wps[] = $hasDest
+                ? [round((float) $destLng, 3), round((float) $destLat, 3)]
+                : [max(-179.0, min(179.0, (float) $startWp[0] + 12.0)), (float) $startWp[1]];
+            $endIdx = count($wps) - 1;
+            $depart = $last['arrive'] ?? '1500-01-01';
+            $arrive = date('Y-m-d', strtotime($depart.' +14 days'));
+            $legs[] = ['depart' => $depart, 'arrive' => $arrive, 'wp' => [$startIdx, $endIdx]];
+            $def['waypoints'] = $wps;
+            $def['legs'] = $legs;
+            $gc['voyage_def'] = $def;
+            $this->lesson->update(['game_config' => $gc]);
+            $this->lesson->refresh();
+            unset($this->voyageDef);
+
+            $payload += [
+                'location' => null,
+                'config' => [
+                    'voyage' => $gc['voyage'] ?? ($def['id'] ?? null),
+                    'leg' => count($legs) - 1,
+                    'view' => 'flat',
+                    'intro' => false,
+                    'stop_images' => [],
+                    'gallery' => ['title' => '', 'date_label' => '', 'story' => '', 'images' => []],
+                ],
+            ];
+            $scene = Scene::create($payload);
+            $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
+            $this->selectSceneInternal($scene->id);
+
+            return;
+        }
 
         if ($kind === 'map') {
             $payload += Scene::mapPayloadForLesson($this->lesson);
@@ -2122,6 +3184,25 @@ class Step3SceneConfigurator extends Component
         $this->lesson->refresh();
     }
 
+    /** Override the lesson poster — only a URL that's actually one of the lesson's own images. */
+    public function selectPoster(string $url): void
+    {
+        $url = trim($url);
+        $isOwn = collect($this->lesson->posterCandidates())->contains(fn ($c) => $c['url'] === $url);
+        if ($url === '' || ! $isOwn) {
+            return;
+        }
+        $this->lesson->update(['poster_image' => $url]);
+        $this->lesson->refresh();
+    }
+
+    /** Clear the override → the lesson auto-picks its poster again. */
+    public function resetPoster(): void
+    {
+        $this->lesson->update(['poster_image' => null]);
+        $this->lesson->refresh();
+    }
+
     #[On('open-lesson-settings')]
     public function openSettings(): void
     {
@@ -2272,7 +3353,12 @@ class Step3SceneConfigurator extends Component
     public function continueToPreview(): void
     {
         $this->lesson->update(['wizard_step' => 5, 'status' => LessonStatus::Previewable]);
-        $this->redirectRoute('teacher.lessons.wizard', ['lesson' => $this->lesson->id, 'step' => 5], navigate: true);
+        // Carry the scene the teacher is on → the preview autoplays FROM here, not the first scene.
+        $this->redirectRoute('teacher.lessons.wizard', array_filter([
+            'lesson' => $this->lesson->id,
+            'step' => 5,
+            'scene' => $this->selectedSceneId,
+        ]), navigate: true);
     }
 
     /** Called on every poll tick — pushes updated world status to the canvas. */

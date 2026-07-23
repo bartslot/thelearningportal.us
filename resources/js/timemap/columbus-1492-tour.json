@@ -1,0 +1,81 @@
+{
+  "voyage": "columbus-1492",
+  "title": "De eerste reis van Columbus (1492-1493)",
+  "subtitle": "Over de Oceaanzee naar een onbekende wereld",
+  "fleet": ["Santa María", "Pinta", "Niña"],
+  "intro": {
+    "place": "Spanje",
+    "date_label": "1485 – 1492",
+    "title": "Op zoek naar geld voor een droom",
+    "story": "Columbus had een gewaagd plan: de rijke landen van Azië bereiken door naar het WESTEN te varen in plaats van de lange route om Afrika. Maar de meeste geleerden dachten dat de aarde veel groter was en de oceaan veel te breed. Eerst vroeg hij de koning van Portugal om schepen — diens rekenmeesters zeiden dat Columbus de afstand veel te klein had geschat, en wezen hem af. Ook in Engeland en Frankrijk, waar zijn broer het plan bracht, kreeg hij geen geld. Pas Spanje zei uiteindelijk ja: koningin Isabella van Castilië en koning Ferdinand. Zij waren jarenlang in oorlog om de stad Granada te heroveren; toen die in januari 1492 viel, hadden ze eindelijk geld en tijd. In een contract — de Capitulaties van Santa Fe — beloofden ze Columbus adellijke titels en een tiende van alle rijkdom die hij zou vinden. Zo kreeg hij drie schepen uit de haven van Palos.",
+    "images": [
+      "https://upload.wikimedia.org/wikipedia/commons/9/99/Emanuel_Gottlieb_Leutze_-_Columbus_Before_the_Queen.JPG",
+      "https://upload.wikimedia.org/wikipedia/commons/9/95/Capitulaciones_de_Santa_Fe%2C_Archivo_General_de_Indias.jpg"
+    ]
+  },
+  "legs": [
+    {
+      "depart": "1492-08-03",
+      "arrive": "1492-08-12",
+      "stop": {
+        "place": "La Gomera",
+        "date_label": "12 augustus 1492",
+        "title": "Canarische Eilanden",
+        "story": "Voordat Columbus de onbekende oceaan op durfde, zeilde hij eerst naar de Canarische Eilanden. Op La Gomera liet hij de drie schepen — de Santa María, de Pinta en de Niña — repareren, water en proviand innemen en de zeilen van de Niña ombouwen tot vierkante razeilen. Op 6 september 1492 zette de kleine vloot koers naar het westen, het lege water in dat op geen enkele kaart stond.",
+        "images": [
+          "https://upload.wikimedia.org/wikipedia/commons/0/0c/Barcelona_-_Replica_of_Santa_Maria_Caravel.jpg"
+        ]
+      }
+    },
+    {
+      "depart": "1492-09-06",
+      "arrive": "1492-10-12",
+      "stop": {
+        "place": "San Salvador",
+        "date_label": "12 oktober 1492",
+        "title": "Land in zicht!",
+        "story": "Vijf weken lang zag de bemanning niets dan water. De angst groeide — nog nooit was iemand zó lang uit de kust gevaren, en de mannen dreigden te muiten. In de nacht van 11 op 12 oktober 1492 riep uitkijk Rodrigo de Triana eindelijk 'Tierra!' — land! De vloot bereikte een eiland dat de Taíno-bewoners Guanahani noemden; Columbus doopte het San Salvador en dacht dat hij de rand van Azië had bereikt.",
+        "images": [
+          "https://upload.wikimedia.org/wikipedia/commons/b/b4/Landing_of_Columbus_%282%29.jpg",
+          "https://upload.wikimedia.org/wikipedia/commons/b/ba/Alain_Manesson_Mallet_-_circa_1685_-_The_Islet_Guanahani_or_San_Salvador_-_Fig_22.jpg"
+        ]
+      }
+    },
+    {
+      "depart": "1492-10-14",
+      "arrive": "1492-10-28",
+      "stop": {
+        "place": "Cuba",
+        "date_label": "28 oktober 1492",
+        "title": "Op zoek naar Cathay",
+        "story": "Op zoek naar de rijke steden van de 'Grote Khan' zeilde Columbus verder en bereikte de noordkust van Cuba. Hij was ervan overtuigd dat dit het vasteland van Azië was. In plaats van goud en zijde vonden zijn mannen groene bergen, vreedzame dorpen en mensen die gedroogde bladeren oprookten — de eerste Europese ontmoeting met tabak.",
+        "images": [
+          "https://upload.wikimedia.org/wikipedia/commons/7/71/1500_map_by_Juan_de_la_Cosa.jpg"
+        ]
+      }
+    },
+    {
+      "depart": "1492-12-05",
+      "arrive": "1492-12-06",
+      "stop": {
+        "place": "Hispaniola",
+        "date_label": "25 december 1492",
+        "title": "La Navidad",
+        "story": "Bij het eiland Hispaniola liep het vlaggenschip de Santa María in de kerstnacht op een rif en verging. Van het wrakhout timmerden de mannen een klein fort: La Navidad, de eerste Europese nederzetting in de Nieuwe Wereld. Columbus liet 39 bemanningsleden achter en keerde met de Niña terug naar Spanje om zijn ontdekking te melden — een reis die twee werelden voorgoed met elkaar zou verbinden.",
+        "images": [
+          "https://upload.wikimedia.org/wikipedia/commons/a/a1/Construction_of_Navidad_fort_in_Hispaniola_%281493%29.jpg"
+        ]
+      }
+    }
+  ],
+  "outro": {
+    "place": "Barcelona",
+    "date_label": "maart 1493",
+    "title": "Een held én een omstreden man",
+    "story": "In maart 1493 keerde Columbus als held terug. In een grote optocht werd hij ontvangen aan het hof van Isabella en Ferdinand in Barcelona. Daar toonde hij wat hij had meegebracht: goud, kleurrijke papegaaien en vreemde planten — en, veel pijnlijker, een aantal Taíno-mensen die hij gevangen had genomen en meenam om aan het hof te laten zien. Columbus kreeg de titel 'Admiraal van de Oceaanzee' en mocht nog drie keer terugvaren. Tot zijn dood bleef hij geloven dat hij Azië had bereikt. Maar deze eerste reis was het begin van de Europese verovering van Amerika — met ziektes, dwangarbeid en geweld werd dat voor de oorspronkelijke bewoners een ramp. Zo veranderde één reis de hele wereld: twee werelddelen die elkaar nooit hadden gekend, waren nu voorgoed verbonden.",
+    "images": [
+      "https://upload.wikimedia.org/wikipedia/commons/1/1d/Flickr_-_USCapitol_-_Entry_of_Columbus_into_Barcelona_%281493%29.jpg",
+      "https://upload.wikimedia.org/wikipedia/commons/5/5b/The_return_of_Columbus_in_Spain%2C_1493.jpg"
+    ]
+  }
+}

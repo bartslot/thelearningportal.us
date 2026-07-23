@@ -1,6 +1,45 @@
 <div class="space-y-4 pt-6" x-data="wizardFlow()" x-on:flow-next.window="advance()">
 
     {{-- ═══════════════════════════════════════════════
+         VOYAGE lessons — picked from the historical-voyage catalog (no topic/generation).
+         Only offered when starting a brand-new lesson.
+    ════════════════════════════════════════════════ --}}
+    @if (! $lesson && count($this->voyageOptions))
+        {{-- Selection lives in Alpine (pick) and is handed to the server only on Create, so choosing
+             a voyage never round-trips + collapses the panel mid-flow (Livewire re-render gotcha). --}}
+        <div data-flow-group class="wizard-flow-group rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4"
+             x-data="{ open: false, pick: '' }">
+            <button type="button" class="flex w-full items-center gap-3 text-left" x-on:click="open = !open">
+                <x-lesson.icon-voyage class="h-7 w-7 text-indigo-300" />
+                <span class="flex-1">
+                    <span class="block text-sm font-semibold text-indigo-200">Start from a historical voyage</span>
+                    <span class="block text-xs text-slate-400">Sail a real expedition on the map — no topic or generation needed. Ready to edit in seconds.</span>
+                </span>
+                <svg class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-90'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></svg>
+            </button>
+
+            <div x-show="open" x-collapse class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label class="form-control flex-1">
+                    <span class="text-[10px] uppercase tracking-wider text-slate-400">Voyage</span>
+                    <select x-model="pick" class="select select-sm select-bordered bg-slate-900 mt-1">
+                        <option value="">Choose a voyage…</option>
+                        @foreach ($this->voyageOptions as $id => $name)
+                            <option value="{{ $id }}">{{ $name }}</option>
+                        @endforeach
+                    </select>
+                    @error('voyagePick') <span class="mt-1 text-xs text-rose-300">{{ $message }}</span> @enderror
+                </label>
+                <button type="button" x-on:click="$wire.createVoyageLesson(pick)"
+                        wire:loading.attr="disabled" wire:target="createVoyageLesson"
+                        class="btn btn-sm btn-primary">
+                    <span wire:loading.remove wire:target="createVoyageLesson">Create voyage lesson</span>
+                    <span wire:loading wire:target="createVoyageLesson">Building…</span>
+                </button>
+            </div>
+        </div>
+    @endif
+
+    {{-- ═══════════════════════════════════════════════
          TOPIC (always visible, hero field)
     ════════════════════════════════════════════════ --}}
     <div data-flow-group class="wizard-flow-group bg-base-300 rounded-2xl p-6 space-y-3">

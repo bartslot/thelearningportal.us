@@ -1,11 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {
-      "name": "web",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "php artisan serve --port=$PORT --host=127.0.0.1"],
-      "autoPort": true
-    }
+    { "name": "serve", "runtimeExecutable": "php", "runtimeArgs": ["artisan", "serve", "--port=8000"], "port": 8000 }
   ]
 }
