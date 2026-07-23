@@ -48,6 +48,7 @@
                 <x-lesson.scene-thumb :scene="$scene"
                                       :selected="$scene->id === $selectedSceneId"
                                       :number="$loop->iteration"
+                                      :editable="$editable"
                                       wide />
             @endforeach
 

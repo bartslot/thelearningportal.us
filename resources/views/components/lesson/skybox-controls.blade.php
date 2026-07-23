@@ -272,7 +272,7 @@
                         wire:click="generateSkyboxCandidates({{ $scene->id }})"
                         wire:loading.attr="disabled" wire:target="generateSkyboxCandidates"
                         @disabled($isBusy)
-                        class="btn btn-xs btn-outline btn-sm border-slate-600 text-slate-400 hover:border-sky-500 hover:text-sky-400 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                        class="btn btn-outline btn-sm border-slate-600 text-slate-400 hover:border-sky-500 hover:text-sky-400 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                     <span wire:loading wire:target="generateSkyboxCandidates"><x-icons.spinner class="w-3 h-3 animate-spin" /></span>
                     <span wire:loading.remove wire:target="generateSkyboxCandidates">↻ Regenerate</span>
                     <span wire:loading wire:target="generateSkyboxCandidates">Generating…</span>

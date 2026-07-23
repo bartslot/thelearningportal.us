@@ -13,7 +13,7 @@
     {{-- Papery overlay: a tileable parchment grain blended over the whole map for an old-paper feel.
          pointer-events-none so it never blocks map interaction. Swap public/timemap/parchment.png
          for your own scan to change the paper. --}}
-    <div class="pointer-events-none absolute inset-0 z-[5]"
+    <div class="pointer-events-none absolute inset-0 z-5"
          style="mix-blend-mode:overlay;opacity:0.2;background-image:url('{{ asset('timemap/parchment.png') }}');background-repeat:repeat;background-size:360px 360px"></div>
 
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
@@ -55,7 +55,7 @@
            "
            {{-- Mobile: start below the settings cog (right-4 top-4, z-30) — at w-80 on a phone the
                 cog lands exactly on the panel's ✕ close button and steals its taps. --}}
-           class="absolute left-4 top-[4.5rem] z-20 max-h-[calc(100%-10.5rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl sm:top-4 sm:max-h-[calc(100%-7rem)]"
+           class="absolute left-4 top-18 z-20 max-h-[calc(100%-10.5rem)] w-80 overflow-y-auto rounded-box bg-base-100/95 p-4 shadow-xl sm:top-4 sm:max-h-[calc(100%-7rem)]"
            style="display:none">
         <template x-if="loading">
             <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm"></span> {{ __('Loading…') }}</p>
@@ -145,7 +145,7 @@
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     {{-- Full name, wrapping — truncation made most figures unidentifiable in the 320px panel. --}}
-                                    <p class="break-words font-semibold leading-tight" :title="f.name" x-text="f.name"></p>
+                                    <p class="wrap-break-word font-semibold leading-tight" :title="f.name" x-text="f.name"></p>
                                     <p class="truncate text-xs capitalize opacity-60" x-text="[f.kind, f.era].filter(Boolean).join(' · ')"></p>
                                 </div>
                                 <button type="button"
@@ -167,7 +167,7 @@
     </aside>
 
     {{-- Time slider (oldmapsonline-style) --}}
-    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-[44rem] max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-176 max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
          x-ref="sliderbox"
          x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>
@@ -252,7 +252,7 @@
          }"
          x-on:timemap-audio.window="visible = $event.detail.visible; playing = $event.detail.playing; cur = $event.detail.currentTime; dur = $event.detail.duration"
          x-show="visible" style="display:none"
-         class="absolute left-1/2 top-4 z-30 flex w-[22rem] max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-box bg-base-100/95 px-3 py-2 shadow-xl">
+         class="absolute left-1/2 top-4 z-30 flex w-88 max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-box bg-base-100/95 px-3 py-2 shadow-xl">
         <button type="button" x-on:click="window.__timemapToggleSpeak && window.__timemapToggleSpeak()"
                 class="btn btn-circle btn-sm btn-warning shrink-0 text-black"
                 :aria-label="playing ? '{{ __('Pause') }}' : '{{ __('Play') }}'">

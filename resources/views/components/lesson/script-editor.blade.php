@@ -22,14 +22,13 @@
      :style="`left:var(--rail-w,11rem);right:var(--work-right,16rem);height:${panelH}px`">
 
     {{-- Top edge = resize handle. Drag up/down to resize; drag it small to hide. --}}
-    <div class="relative flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-b border-slate-700/60 bg-base-200/60 py-1.5"
+    <div class="relative flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-t border-slate-700/60 pb-2"
          x-on:pointerdown="dragStart($event)"
          x-on:pointermove.window="dragMove($event)"
          x-on:pointerup.window="dragEnd($event)"
          x-on:pointercancel.window="dragEnd($event)"
          role="separator" aria-orientation="horizontal"
          aria-label="{{ __('Resize the script panel · drag small to hide') }}">
-        <span class="h-1 w-9 rounded-full bg-slate-600" aria-hidden="true"></span>
     </div>
 
     @if ($paragraphs === [])
@@ -72,7 +71,7 @@
              focused paragraph from a short prompt; Summarize to list drops an on-slide bullet card.
              mousedown.prevent keeps the paragraph's focus (and focusedPara) alive through the click. --}}
         <div x-show="focusedPara !== null" x-cloak
-             class="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-700/60 bg-base-200/40 px-3 py-1.5"
+             class="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-700/60 bg-base-200/40 px-3"
              x-on:mousedown.prevent>
             <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{{ __('Paragraph') }}</span>
             {{-- Regenerate with a prompt (inline expanding input). --}}

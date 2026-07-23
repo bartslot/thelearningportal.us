@@ -23,6 +23,12 @@ class LessonGoalParser
 
     private const MAX_TEXT_LENGTH = 120;
 
+    /** Dutch primary "groep N": a pupil is (N + 3) years old at the start of the school year. */
+    private const GROEP_AGE_OFFSET = 3;
+
+    /** Dutch secondary "klas N": a pupil is (N + 11) years old at the start of the school year. */
+    private const KLAS_AGE_OFFSET = 11;
+
     public function __construct(private readonly OpenAiLlmService $llm) {}
 
     /**
@@ -43,7 +49,7 @@ class LessonGoalParser
         return [
             'summary' => $this->cleanText($raw['summary'] ?? null),
             'topic' => $this->cleanText($raw['topic'] ?? null),
-            'age' => $this->cleanAge($raw['age'] ?? null),
+            'age' => self::dutchGradeAge($goal) ?? $this->cleanAge($raw['age'] ?? null),
             'preset_key' => $this->cleanPresetKey($raw['preset_key'] ?? null),
             'story_query' => $this->cleanText($raw['story_query'] ?? null),
             'language' => in_array($raw['language'] ?? null, ['nl', 'en'], true) ? $raw['language'] : null,
@@ -61,6 +67,28 @@ class LessonGoalParser
             'story_query' => null,
             'language' => null,
         ];
+    }
+
+    /**
+     * Deterministic age from a Dutch school-grade phrase, overriding the LLM's guess.
+     *
+     * The LLM systematically reads "groep 7"/"klas 3" as US grades and returns ~age 12-14,
+     * so when a goal names a Dutch grade we map it ourselves. Ages are the start-of-year age:
+     *   - Basisschool (primary) groep 1-8 → ages 4-11, i.e. (groep + 3): groep 1 ≈ 4, groep 7 ≈ 10.
+     *   - Middelbare school (secondary) klas 1-6 → ages 12-17, i.e. (klas + 11): klas 1 ≈ 12.
+     * Returns null for anything else (English grades, plain ages) so the LLM's value stands.
+     */
+    public static function dutchGradeAge(string $goal): ?int
+    {
+        if (preg_match('/\bgroep\s*([1-8])\b/iu', $goal, $m) === 1) {
+            return (int) $m[1] + self::GROEP_AGE_OFFSET;
+        }
+
+        if (preg_match('/\bklas\s*([1-6])\b/iu', $goal, $m) === 1) {
+            return (int) $m[1] + self::KLAS_AGE_OFFSET;
+        }
+
+        return null;
     }
 
     private function systemPrompt(): string

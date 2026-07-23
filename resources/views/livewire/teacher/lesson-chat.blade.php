@@ -2,7 +2,7 @@
     <h1 class="mb-6 text-3xl font-semibold text-base-content sm:text-4xl">{{ __('New lesson') }}</h1>
 
     <section
-        class="relative flex h-auto max-h-[calc(100vh-11rem)] min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-base-content/10 bg-base-200/70 shadow-2xl shadow-black/20"
+        class="relative flex h-auto max-h-[calc(100vh-11rem)] min-h-88 flex-col overflow-hidden rounded-2xl border border-base-content/10 bg-base-200/70 shadow-2xl shadow-black/20"
         x-data="{
             pinnedToBottom: true,
             transcriptObserver: null,
@@ -252,7 +252,7 @@
                             x-ref="goalInput"
                             wire:model="goal"
                             rows="1"
-                            class="goal-ring-composer__input textarea textarea-bordered w-full resize-none text-base leading-6 min-h-[2.5rem] max-h-[4.5rem] h-auto"
+                            class="goal-ring-composer__input textarea textarea-bordered w-full resize-none text-base leading-6 min-h-10 max-h-18 h-auto"
                             placeholder="{{ __('Type the learning goal…') }}"
                             aria-label="{{ __('Learning goal') }}"
                             autofocus
@@ -322,7 +322,7 @@
                                             </svg>
                                         </button>
                                     @else
-                                        <span class="inline-flex h-[26px] w-12 items-center justify-center rounded-md border border-dashed border-base-content/20 text-base-content/25" aria-hidden="true">
+                                        <span class="inline-flex h-6.5 w-12 items-center justify-center rounded-md border border-dashed border-base-content/20 text-base-content/25" aria-hidden="true">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                             </svg>
