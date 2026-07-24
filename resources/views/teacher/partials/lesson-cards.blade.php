@@ -33,7 +33,7 @@
                         <x-icons.chevron-right class="h-5 w-5" />
                     </button>
 
-                    <div x-ref="row" class="flex snap-x gap-4 overflow-x-auto pb-2 no-scrollbar">
+                    <div x-ref="row" class="flex snap-x gap-4 overflow-x-auto py-2 no-scrollbar">
                         @foreach($shelf['lessons'] as $lesson)
                             @php
                                 $cardImage = $lesson->cardImageUrl();
@@ -56,7 +56,7 @@
                             {{-- Poster card: full-height image, title-only over a bottom shadow scrim.
                                  The whole card links to the lesson dashboard (settings + configurator). --}}
                             <a href="{{ route('teacher.lessons.show', $lesson) }}"
-                               class="group relative aspect-[2/3] w-[13rem] shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
+                               class="group relative aspect-2/3 w-52 shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
                                 @if($cardImage)
                                     <img
                                         src="{{ $cardImage }}"
@@ -82,6 +82,9 @@
                                 <h4 class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
                                     {{ $lesson->title ?: $lesson->topic }}
                                 </h4>
+                                <p class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
+                                    {{ $lesson->grade ?: $lesson->grade_level ?: __(' ') }}
+                                </p>
                             </a>
                         @endforeach
                     </div>
