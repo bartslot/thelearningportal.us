@@ -42,6 +42,18 @@ const KNOWN_WORLD_BOXES = [
   [94, -11, 142, 9],   // Maritime SE Asia / Indonesia
 ];
 
+// Coastline geometry for the landfall draw-on. Fetched once (module-cached) and filtered by proximity
+// — more reliable than querySourceFeatures, which returns globally-scattered, antimeridian-clipped bits.
+let _coastGeoPromise = null;
+const loadCoastGeo = () => {
+  if (!_coastGeoPromise) {
+    _coastGeoPromise = fetch(`${location.origin}/timemap/coastline.geojson`)
+      .then((r) => r.json())
+      .catch(() => ({ features: [] }));
+  }
+  return _coastGeoPromise;
+};
+
 // The route trail fades behind the ship: bright at the ship's current position, dimming to a low
 // (still visible) floor over the earliest sailed path — so students see where the ship has been.
 const TRAIL_FADE_FLOOR = 0.32;   // opacity of the oldest sailed segment (0 = invisible, 1 = full)
@@ -146,6 +158,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   let raf = null;
   let galleryClose = null;
   let placeMarkers = null;   // the current leg's 'move' handler (removed on the next leg)
+  let coastDrawOn = null;    // { svg, onMove } — the landfall coastline draw-on (fog-of-war only)
   let arrivalPins = [];      // current landfall polaroid pins (tracked so a live refresh can replace them)
   let arrivalHotspot = null; // current gallery-opener button
   let arrivalHandles = [];   // editor-only draggable endpoint / bend handles + the hover ghost
@@ -272,8 +285,16 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   };
 
   // Remove the previous leg's transient HUD (pins/hotspot/gallery), keep the persistent chip.
+  const clearCoastDrawOn = () => {
+    if (!coastDrawOn) return;
+    try { map.off('move', coastDrawOn.onMove); } catch (_) { /* noop */ }
+    try { coastDrawOn.svg.remove(); } catch (_) { /* gone */ }
+    coastDrawOn = null;
+  };
+
   const clearLegHud = () => {
     if (galleryClose) { try { galleryClose(); } catch (_) { /* noop */ } }
+    clearCoastDrawOn();
     if (placeMarkers) { map.off('move', placeMarkers); placeMarkers = null; }
     if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
     if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
@@ -577,6 +598,79 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
   // Landfall: build the HUD, then the arrival extras — the date chip, the faded-in place name, and
   // (only on a deep-link) the reopened gallery modal.
+  // Landfall coastline draw-on (AUTO fog-of-war only): the reached region's coast was blank sea until
+  // now, so sweep it on with an SVG stroke-dashoffset (offset-path) + fade, ≤4s scaled to its length.
+  const buildCoastDrawOn = (endLng, endLat) => {
+    clearCoastDrawOn();
+    if (!MO.fog_auto) return;
+    const token = legToken;   // a leg switch mid-fetch cancels this draw-on
+    loadCoastGeo().then((geo) => {
+      if (token !== legToken || !MO.fog_auto || !geo || !geo.features) return;
+      drawCoastFrom(geo.features, endLng, endLat);
+    }).catch(() => { /* coastline unavailable */ });
+  };
+
+  const drawCoastFrom = (feats, endLng, endLat) => {
+    if (!feats.length) return;
+    // Collect coast segments within ~4.5° of the landfall (its local coastline). Antimeridian-safe:
+    // distances compared in the wrapped [-180,180] frame (Tonga ≈ 184.8°E lives at -175.2 in coastline).
+    const wrap = (l) => ((l + 180) % 360 + 360) % 360 - 180;
+    const cLng = wrap(endLng), R = 4.5;
+    const near = (lng, lat) => {
+      let dl = Math.abs(wrap(lng) - cLng); if (dl > 180) dl = 360 - dl;
+      return dl <= R && Math.abs(lat - endLat) <= R;
+    };
+    const segs = [];
+    for (const f of feats) {
+      const g = f.geometry; if (!g) continue;
+      const lines = g.type === 'MultiLineString' ? g.coordinates : (g.type === 'LineString' ? [g.coordinates] : []);
+      for (const line of lines) if (Array.isArray(line) && line.some((c) => near(c[0], c[1]))) segs.push(line);
+      if (segs.length > 400) break;   // dense coasts: cap so we don't build a monster path
+    }
+    if (!segs.length) return;
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');
+    svg.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2;overflow:visible;';
+    const path = document.createElementNS(NS, 'path');
+    const coast = (() => { try { return map.getPaintProperty('coast-bold', 'line-color'); } catch (_) { return '#211809'; } })() || '#211809';
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', coast);
+    path.setAttribute('stroke-width', '2.4');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    hud.appendChild(svg);
+
+    const renderD = () => {
+      let d = '';
+      for (const line of segs) {
+        let started = false;
+        for (const c of line) {
+          const q = map.project([sameCopyLng(c[0]), c[1]]);
+          d += (started ? 'L' : 'M') + q.x.toFixed(1) + ',' + q.y.toFixed(1) + ' ';
+          started = true;
+        }
+      }
+      path.setAttribute('d', d.trim());
+    };
+    renderD();
+    let len = 0; try { len = path.getTotalLength(); } catch (_) { /* not measurable */ }
+    const dur = Math.max(700, Math.min(4000, len * 1.4));
+    path.style.strokeDasharray = `${len} ${len}`;
+    path.style.strokeDashoffset = String(len);
+    try {
+      path.animate(
+        [{ strokeDashoffset: len, opacity: 0 }, { opacity: 1, offset: 0.06 }, { strokeDashoffset: 0, opacity: 1 }],
+        { duration: dur, easing: 'ease-out', fill: 'forwards' },
+      );
+    } catch (_) { path.style.strokeDashoffset = '0'; }
+    const onMove = () => renderD();   // keep the drawn coast aligned if the camera pans/zooms after arrival
+    map.on('move', onMove);
+    coastDrawOn = { svg, onMove };
+  };
+
   const showArrival = (token) => {
     if (token !== legToken) return;
     setChip(L.arriveMs, L.stop ? L.stop.place : '');
@@ -587,6 +681,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     // Keep the waypoint titles on top every time a landfall reveals one (the leg-play flow can re-lift
     // the historical-city layers above them).
     try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* noop */ }
+    // Auto fog-of-war: draw the just-reached coastline on (offset-path sweep + fade).
+    try { buildCoastDrawOn(L.end.lng, L.end.lat); } catch (_) { /* coastline not ready */ }
     // The gallery is opened on demand (hotspot / thumbnail) — never auto-opened, EXCEPT once when a
     // preview "Edit scene" deep-link arrived with its modal open (openGalleryOnArrive), so the editor
     // restores exactly what the teacher was looking at.
