@@ -1616,7 +1616,8 @@
     {{-- Add-scene picker (Keynote-style). Replaces the old DaisyUI dropdown (broke in v5: the
          menu stayed opacity:0 on focus). Open state is Livewire-driven; tiles call addScene(). --}}
     <div class="modal modal-bottom sm:modal-middle {{ $addSceneOpen ? 'modal-open' : '' }}"
-         role="dialog" aria-modal="true">
+         role="dialog" aria-modal="true"
+         x-data x-on:keydown.escape.window="if ($wire.addSceneOpen) $wire.set('addSceneOpen', false)">
         <div class="modal-box max-w-lg border border-slate-700/70 bg-base-300">
             <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-slate-100">Add a scene</h2>

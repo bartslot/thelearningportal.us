@@ -236,8 +236,12 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     close.style.cssText = 'position:absolute;top:calc(4% + 10px);right:calc(4% + 14px);z-index:50;width:36px;height:36px;border-radius:9999px;border:none;background:rgba(15,23,42,.92);color:#e2e8f0;font-size:18px;line-height:1;cursor:pointer;';
     overlay.appendChild(close);
     window.__voyageGalleryOpen = true;
-    galleryClose = () => { try { gInst.destroy(); } catch (_) { /* gone */ } overlay.remove(); galleryClose = null; window.__voyageGalleryOpen = false; };
+    // Esc closes the modal (matches DaisyUI's native <dialog>); backdrop click closes it too.
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); galleryClose && galleryClose(); } };
+    galleryClose = () => { try { gInst.destroy(); } catch (_) { /* gone */ } overlay.remove(); document.removeEventListener('keydown', onKey); galleryClose = null; window.__voyageGalleryOpen = false; };
     close.onclick = galleryClose;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) galleryClose(); });
+    document.addEventListener('keydown', onKey);
     el.appendChild(overlay);
   };
 
