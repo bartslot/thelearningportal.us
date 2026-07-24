@@ -62,6 +62,16 @@
                 </a>
             @endif
         </div>
+    @elseif ($lesson->scheduled_publish_at)
+        {{-- Scheduled to auto-publish — a clear amber badge with a one-click cancel. --}}
+        <div class="fixed top-20 right-4 z-40 flex flex-col items-end gap-1.5">
+            <span class="flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-950/85 px-3 py-2 text-sm font-semibold text-amber-300 shadow-lg backdrop-blur">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                {{ __('Scheduled') }} · {{ $lesson->scheduled_publish_at->isoFormat('D MMM YYYY, HH:mm') }}
+            </span>
+            <button type="button" wire:click="cancelSchedule"
+                    class="text-xs text-slate-400 underline transition hover:text-rose-300">{{ __('Cancel schedule') }}</button>
+        </div>
     @endif
 
     {{-- The big moment: full-screen splash after publishing. A standard closable modal (X + Esc +

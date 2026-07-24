@@ -158,6 +158,12 @@ class Step4Preview extends Component
         $this->showPublishSplash = false;
     }
 
+    /** Clear a pending scheduled publish (from the preview's scheduled badge). */
+    public function cancelSchedule(): void
+    {
+        $this->lesson->update(['scheduled_publish_at' => null]);
+    }
+
     /** The teacher's own classes — for the publish modal's "Assign to class" picker. */
     #[Computed]
     public function classrooms()
