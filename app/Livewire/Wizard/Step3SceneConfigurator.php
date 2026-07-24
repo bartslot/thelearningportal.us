@@ -1300,6 +1300,10 @@ class Step3SceneConfigurator extends Component
         // as the ship makes landfall. The camera moves play during the sail (Preview / student player).
         'ship_scale' => 1.0, 'ship_anchored' => false,
         'ocean_zoom' => 30, 'cam_dolly_arrival' => false,
+        // Fog-of-war: when true, ALL land along the route is "undiscovered" (water-coloured) except a
+        // known-world set; the ship's range unmasks land as it nears + draws the coastline on landfall.
+        // Replaces the manual fog paint. (Render engine: increments 2-4 in voyage-fog-of-war-plan.)
+        'fog_auto' => false,
     ];
 
     /** @return array<string,bool> */
@@ -1316,7 +1320,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $coerced = match (true) {
-            in_array($key, ['cities', 'borders', 'labels', 'ship_anchored', 'cam_dolly_arrival'], true) => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            in_array($key, ['cities', 'borders', 'labels', 'ship_anchored', 'cam_dolly_arrival', 'fog_auto'], true) => filter_var($value, FILTER_VALIDATE_BOOLEAN),
             $key === 'ocean_zoom' => max(0, min(100, (int) $value)),
             str_ends_with($key, '_color') => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value) ? (string) $value : self::VOYAGE_MAP_DEFAULTS[$key],
             $key === 'border_opacity' => max(0.0, min(1.0, (float) $value)),

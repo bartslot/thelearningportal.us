@@ -311,10 +311,20 @@
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
                     Undiscovered land
                 </div>
-                <span class="text-[10px] text-slate-500">{{ count($voyageFog) }} painted</span>
+                <span class="text-[10px] text-slate-500">{{ ($voyageMap['fog_auto'] ?? false) ? 'auto' : count($voyageFog).' painted' }}</span>
             </div>
 
-            <div wire:ignore x-data="{ paint: false, erase: false, brush: 250 }"
+            {{-- AUTO fog-of-war: mask all new land along the route; the ship's range unmasks it on
+                 approach and the coastline draws on at landfall. When on, the manual brush is hidden. --}}
+            <label class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-800/40 px-2.5 py-2">
+                <span class="text-[11px] text-slate-300">Fog undiscovered land automatically</span>
+                <input type="checkbox" @checked($voyageMap['fog_auto'] ?? false)
+                       wire:change="setVoyageMap('fog_auto', $event.target.checked)"
+                       class="toggle toggle-sm toggle-warning" />
+            </label>
+
+            <div @class(['mt-2 opacity-40 pointer-events-none' => ($voyageMap['fog_auto'] ?? false)])
+                 wire:ignore x-data="{ paint: false, erase: false, brush: 250 }"
                  x-init="window.__voyagePaint = window.__voyagePaint || {}; window.__voyagePaint.brushKm = brush; window.__voyagePaint.erase = false">
                 <button type="button"
                         x-on:click="paint = !paint; window.__voyagePaint.active = paint; if(!paint){erase=false; window.__voyagePaint.erase=false;} window.dispatchEvent(new Event('voyage-paint-changed'))"
