@@ -673,6 +673,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     if (!best) return;
     const ring = best.ring; const s = best.i;
     const closed = ring.length > 3 && Math.abs(ring[0][0] - ring[ring.length - 1][0]) < 1e-6 && Math.abs(ring[0][1] - ring[ring.length - 1][1]) < 1e-6;
+    // If the reached land is an ISLAND (a closed loop, or endpoints nearly meeting), un-fog its whole
+    // interior so the land fill shows under the drawn coast — not just the 450 km sailed corridor.
+    const nearlyClosed = closed || (ring.length > 8 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1.5);
+    if (nearlyClosed && fog && typeof fog.revealRegion === 'function') { try { fog.revealRegion(ring); } catch (_) { /* fog not ready */ } }
     const N = ring.length;
     const segLen = (a, b) => { let dl = Math.abs(wrap(a[0]) - wrap(b[0])); if (dl > 180) dl = 360 - dl; return Math.hypot(dl, b[1] - a[1]); };
 

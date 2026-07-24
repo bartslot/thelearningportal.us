@@ -1,4 +1,4 @@
-import { buffer as turfBuffer, difference as turfDifference, union as turfUnion, featureCollection, polygon as turfPolygon, rewind } from '@turf/turf';
+import { buffer as turfBuffer, difference as turfDifference, union as turfUnion, featureCollection, polygon as turfPolygon, rewind, simplify as turfSimplify } from '@turf/turf';
 
 // Fog of war for voyage tours — Van Braam engraving behavior: coasts the expedition has not
 // yet reached are blank sea. A voyage declares its `unknown` region (rings in voyages.json);
@@ -76,11 +76,23 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
     return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
   };
 
+  // Permanent reveals for landfalls the ship has REACHED — the whole island un-fogs when its coast is
+  // drawn (the corridor alone only clears a 450 km swath, leaving a big island half-green). Unioned
+  // into every reveal below, so it survives corridor updates.
+  let landfallReveals = null;
+  const addLandfall = (poly) => {
+    if (!poly) return;
+    try { landfallReveals = landfallReveals ? (turfUnion(featureCollection([landfallReveals, poly])) || landfallReveals) : poly; } catch (_) { /* keep prior */ }
+  };
+
   const fogAt = (f) => {
     let revealed = null;
     try {
       revealed = turfBuffer(corridorLine(f), CORRIDOR_KM, { units: 'kilometers' });
     } catch (_) { /* fall through — no reveal is safer than no fog */ }
+    if (landfallReveals) {
+      try { revealed = revealed ? turfUnion(featureCollection([revealed, landfallReveals])) : landfallReveals; } catch (_) { /* keep corridor only */ }
+    }
 
     // AUTO: whole route-bbox minus (sailed corridor ∪ known world). One clean difference.
     if (autoMode && worldPoly) {
@@ -139,6 +151,23 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
       current = fogAt(f);
       const src = map.getSource(FOG_SRC);
       if (src) src.setData(current);
+    },
+    /** Permanently un-fog a REACHED landfall — pass its coastline ring ([[lng,lat],…]); the island's
+     *  interior (the land fill) is revealed so it no longer reads as sea. Idempotent + unioned. */
+    revealRegion(ring) {
+      if (!Array.isArray(ring) || ring.length < 4) return;
+      try {
+        const closed = ring.map((p) => [p[0], p[1]]);
+        const a = closed[0], b = closed[closed.length - 1];
+        if (a[0] !== b[0] || a[1] !== b[1]) closed.push([a[0], a[1]]);
+        let poly = turfPolygon([closed]);
+        try { poly = turfSimplify(poly, { tolerance: 0.03, highQuality: false }) || poly; } catch (_) { /* use full ring */ }
+        try { poly = rewind(poly, { reverse: false }) || poly; } catch (_) { /* winding as-is */ }
+        addLandfall(poly);
+        current = fogAt(lastF < 0 ? 0 : lastF);
+        const src = map.getSource(FOG_SRC);
+        if (src) src.setData(current);
+      } catch (_) { /* a malformed ring must not break the fog */ }
     },
     /** Repaint the fog to a new water colour (call on style change). */
     setWaterColor(c) {

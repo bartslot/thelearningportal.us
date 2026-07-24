@@ -43,7 +43,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-C_0BUOa2.css",
+    "file": "assets/app-CIbwhgys.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -107,7 +107,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-CAARim7G.js",
+    "file": "assets/lesson-player-f3gcOSpj.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -208,7 +208,7 @@
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-DA-Qhu3k.js",
+    "file": "assets/voyage-tour-DzxcQO_E.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,
