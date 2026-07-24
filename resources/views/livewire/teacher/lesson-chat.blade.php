@@ -256,7 +256,7 @@
                             placeholder="{{ __('Type the learning goal…') }}"
                             aria-label="{{ __('Learning goal') }}"
                             autofocus
-                            @input="$root.resizeGoalTextarea()"
+                            @input="resizeGoalTextarea()"
                             @keydown="handleGoalTextareaKeydown($event)"
                         ></textarea>
 
