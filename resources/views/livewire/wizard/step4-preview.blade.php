@@ -68,7 +68,8 @@
          natural place (right after the teacher finished creating). --}}
     @if ($showPublishSplash)
         <x-splash-screen :title="__('Your lesson is now live!')"
-                         :subtitle="$lesson->title ?? $lesson->topic">
+                         :subtitle="$lesson->title ?? $lesson->topic"
+                         close="dismissPublishSplash">
             <x-slot:actions>
                 <a href="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}"
                    class="btn btn-lg bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 px-8">
