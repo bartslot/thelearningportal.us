@@ -458,9 +458,14 @@ export function renderLessonMap (el, opts = {}) {
           'text-halo-width': 1.4,
         },
       })
-      // Render ABOVE the normal city labels: addLayer(layer, beforeId) inserts BELOW beforeId, so we
-      // append on top (no beforeId) — moving it after city-labels if that layer exists.
-      if (map.getLayer('city-labels')) map.moveLayer('hcity-label')
+      // Render ABOVE the normal city labels but BELOW the voyage waypoint titles (lesson-labels), which
+      // must always stay on top. The hcities tiles load async and would otherwise jump above them.
+      if (map.getLayer('lesson-labels')) {
+        if (map.getLayer('hcity-dot')) map.moveLayer('hcity-dot', 'lesson-labels')
+        map.moveLayer('hcity-label', 'lesson-labels')
+      } else if (map.getLayer('city-labels')) {
+        map.moveLayer('hcity-label')
+      }
       // This overlay can load AFTER the annotations set its focus names, so re-apply the current
       // exclusion now that `hcity-label` exists (no-op when no focus cities are present).
       applyFocusExclusion('hcity-label', lastFocusNames)

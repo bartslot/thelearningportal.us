@@ -584,6 +584,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     // Fade the landfall's place name in now that the ship has arrived here (nearest label to the
     // leg's endpoint). Cumulative — earlier landfalls stay revealed as the voyage continues.
     try { inst.revealLabelNear(L.end.lng, L.end.lat); } catch (_) { /* labels not ready */ }
+    // Keep the waypoint titles on top every time a landfall reveals one (the leg-play flow can re-lift
+    // the historical-city layers above them).
+    try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* noop */ }
     // The gallery is opened on demand (hotspot / thumbnail) — never auto-opened, EXCEPT once when a
     // preview "Edit scene" deep-link arrived with its modal open (openGalleryOnArrive), so the editor
     // restores exactly what the teacher was looking at.
@@ -758,6 +761,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }
     // Apply the lesson's per-element label/city/border style overrides once the base layers exist.
     try { inst.setDetailStyle(MO); } catch (_) { /* map style not ready */ }
+    // Waypoint titles (landfall place names) sit ABOVE everything — fog, ship, trail, city names,
+    // graticule, paint wash and the historical-city dots/labels. Re-lift lesson-labels to the very top
+    // as the LAST step (after setDetailStyle, which itself re-lifts the hcity layers). Never covered.
+    try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* noop */ }
     ready = true;
     if (pendingLeg) { runLeg(pendingLeg.leg, pendingLeg.opts); pendingLeg = null; }
   });
@@ -783,6 +790,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       try { inst.setLayerToggles({ cities: MO.cities, borders: MO.borders }); } catch (_) { /* map not ready */ }
       try { inst.setLabels(resolveLabels()); } catch (_) { /* idem */ }
       try { inst.setDetailStyle(MO); } catch (_) { /* idem — MO carries the *_color/_size/_width keys */ }
+      try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* keep waypoint titles on top */ }
       try { ships && ships.setShipScale(Number(MO.ship_scale) || 1, !!MO.ship_anchored); } catch (_) { /* ships not ready */ }
       try { fog && fog.setAuto(!!MO.fog_auto, fogKnownBoxes, fogWorldBox); } catch (_) { /* fog not ready */ }
     },
