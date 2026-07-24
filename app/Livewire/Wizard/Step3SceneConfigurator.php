@@ -3484,9 +3484,45 @@ class Step3SceneConfigurator extends Component
             return;
         }
 
-        $this->lesson->update(['status' => LessonStatus::Published]);
+        $this->lesson->update(['status' => LessonStatus::Published, 'scheduled_publish_at' => null]);
         $this->publishOk = true;
         $this->publishNotice = __('Lesson published.');
+    }
+
+    /** Schedule the lesson to auto-publish at a future time (lessons:publish-due does the flip). */
+    public function schedulePublish(string $when): void
+    {
+        if ($this->lesson->scenes()->where('status', '!=', 'ready')->exists()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('All scenes must be ready before you can schedule publishing.');
+
+            return;
+        }
+        try {
+            $at = \Illuminate\Support\Carbon::parse($when);
+        } catch (\Throwable) {
+            $this->publishOk = false;
+            $this->publishNotice = __('That date/time could not be read.');
+
+            return;
+        }
+        if ($at->isPast()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('Pick a time in the future.');
+
+            return;
+        }
+        $this->lesson->update(['scheduled_publish_at' => $at]);
+        $this->publishOk = true;
+        $this->publishNotice = __('Scheduled to publish on :when.', ['when' => $at->isoFormat('D MMM YYYY, HH:mm')]);
+    }
+
+    /** Clear a pending publish schedule. */
+    public function cancelSchedule(): void
+    {
+        $this->lesson->update(['scheduled_publish_at' => null]);
+        $this->publishOk = true;
+        $this->publishNotice = __('Publish schedule cleared.');
     }
 
     #[On('lesson:play')]

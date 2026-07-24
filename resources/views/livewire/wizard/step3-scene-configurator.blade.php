@@ -1160,16 +1160,43 @@
             <span class="text-[10px] font-medium">{{ __('Settings') }}</span>
         </button>
 
-        {{-- Publish — make the lesson available (every scene must be ready) --}}
-        <button type="button"
-                onclick="Livewire.dispatch('lesson:publish')"
-                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
-                title="{{ __('Publish this lesson') }}" aria-label="{{ __('Publish') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
-            </svg>
-            <span class="text-[10px] font-medium">{{ __('Publish') }}</span>
-        </button>
+        {{-- Publish — now, or schedule for later (every scene must be ready) --}}
+        <div x-data="{ open: false, when: '' }" class="relative" @click.outside="open = false" @keydown.escape.window="open = false">
+            <button type="button" @click="open = !open"
+                    class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+                    :class="open && 'bg-amber-500/15 text-amber-300'"
+                    title="{{ __('Publish this lesson') }}" aria-label="{{ __('Publish') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                </svg>
+                <span class="text-[10px] font-medium">{{ __('Publish') }}</span>
+            </button>
+            <div x-show="open" x-transition x-cloak
+                 class="absolute right-0 top-full z-70 mt-1 w-64 rounded-xl border border-slate-700 bg-base-300 p-2 text-left shadow-2xl">
+                <button type="button" @click="open = false; Livewire.dispatch('lesson:publish')"
+                        class="flex w-full items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/></svg>
+                    {{ __('Publish now') }}
+                </button>
+                <div class="mt-2 border-t border-slate-700/50 pt-2">
+                    <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{{ __('Schedule for later') }}</span>
+                    <input type="datetime-local" x-model="when"
+                           class="input input-xs input-bordered w-full bg-slate-900" />
+                    <button type="button" x-bind:disabled="!when"
+                            @click="if (when) { $wire.schedulePublish(when); open = false }"
+                            class="mt-1.5 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 disabled:opacity-40">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/></svg>
+                        {{ __('Schedule') }}
+                    </button>
+                </div>
+                @if ($lesson->scheduled_publish_at)
+                    <div class="mt-2 flex items-center justify-between gap-2 border-t border-slate-700/50 pt-2 text-[11px] text-amber-300">
+                        <span>{{ __('Scheduled') }}: {{ $lesson->scheduled_publish_at->isoFormat('D MMM, HH:mm') }}</span>
+                        <button type="button" wire:click="cancelSchedule" class="text-rose-300 underline hover:text-rose-200">{{ __('Cancel') }}</button>
+                    </div>
+                @endif
+            </div>
+        </div>
         </div>
     </div>
 

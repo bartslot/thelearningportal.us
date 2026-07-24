@@ -19,5 +19,8 @@ Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=2')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Publish lessons whose scheduled publish time has arrived (schedule:run fires every minute).
+Schedule::command('lessons:publish-due')->everyMinute()->withoutOverlapping();
+
 // Email the admin when AI provider credits run low (ElevenLabs narration quota).
 Schedule::command('tokens:check')->dailyAt('08:00');

@@ -53,6 +53,7 @@ class Lesson extends Model
         'wikipedia_source',
         'script',
         'status',
+        'scheduled_publish_at',
         'error_message',
         'generation_attempts',
         'portrait_path',
@@ -120,6 +121,7 @@ class Lesson extends Model
     {
         return [
             'status' => LessonStatus::class,
+            'scheduled_publish_at' => 'datetime',
             'narrative_framework' => NarrativeFramework::class,
             'generation_attempts' => 'integer',
             'duration_seconds' => 'integer',
