@@ -12,7 +12,8 @@ import { buffer as turfBuffer, difference as turfDifference, union as turfUnion,
 // keeps its chart lines — unknown world is still paper, not a hole.
 
 const FOG_SRC = 'voyage-fog';
-const CORRIDOR_KM = 300;         // how far the crew "sees" — tuned so Tasman reveals a coastal strip
+const CORRIDOR_KM = 450;         // how far the crew "sees" — wide enough that a visited landmass reveals
+                                 // its nearby extent too (e.g. all of NZ, not just the South Island coast)
 const WATER_FALLBACK = '#c7d4c6'; // soft-atlas water; real colour comes from the active style
 
 // A [minLng,minLat,maxLng,maxLat] box → a closed polygon ring (kept in the route's unwrapped lng

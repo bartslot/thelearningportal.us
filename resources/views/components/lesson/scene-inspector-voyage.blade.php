@@ -346,12 +346,13 @@
                                 :class="erase ? 'bg-rose-500 text-slate-950' : 'text-slate-300 hover:text-slate-100'"
                                 class="rounded-md py-1 text-[11px] font-medium transition-colors">Erase</button>
                     </div>
-                    <p class="mt-1 text-[10px] text-slate-500" x-text="erase ? 'Click a masked area to remove it.' : 'Drag over land to hide it.'"></p>
-                    <label class="mt-2 block" x-show="!erase">
+                    <p class="mt-1 text-[10px] text-slate-500" x-text="erase ? 'Drag over masked land to reveal it.' : 'Drag over land to hide it.'"></p>
+                    {{-- Brush size — shared between Paint and Erase (the value stays put when you switch). --}}
+                    <label class="mt-2 block">
                         <span class="flex justify-between text-[11px] text-slate-300">Brush size <span class="text-slate-500" x-text="brush + ' km'"></span></span>
                         <input type="range" min="60" max="600" step="20" x-model.number="brush"
                                x-on:input="window.__voyagePaint.brushKm = brush"
-                               class="range range-xs range-warning mt-1" />
+                               class="range range-xs mt-1" :class="erase ? 'range-error' : 'range-warning'" />
                     </label>
                 </div>
             </div>
@@ -499,6 +500,14 @@
                 </div>
             </div>
         </details>
+
+        {{-- Recover a route tangled by dragging — revert the geometry to the original catalog route. --}}
+        <button type="button" wire:click="resetVoyageRoute"
+                wire:confirm="Reset the whole route to its original shape? Your dragged waypoints and bends will be discarded (dates, gallery and map settings stay)."
+                class="mt-2 flex items-center gap-1.5 border-t border-slate-700/50 pt-3 text-[11px] text-slate-400 hover:text-amber-300">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"/></svg>
+            Reset route to original
+        </button>
     </div>
 
     {{-- Footer — always visible under the tabs. --}}

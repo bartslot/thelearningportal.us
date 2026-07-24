@@ -1392,7 +1392,54 @@ class Step3SceneConfigurator extends Component
         unset($this->voyageFog);
     }
 
-    /** Remove one painted region by index (the eraser — click a blob to unpaint it). Live, no re-mount. */
+    /**
+     * Replace the whole painted-fog set. The erase BRUSH recomputes the surviving rings client-side
+     * (turf.difference of the brush footprint) and sends them here. Sanitised like addFogRegion.
+     *
+     * @param  array<int,mixed>  $rings
+     */
+    public function setVoyageFog(array $rings): void
+    {
+        $clean = [];
+        foreach ($rings as $ring) {
+            if (! is_array($ring)) {
+                continue;
+            }
+            $pts = [];
+            foreach ($ring as $pt) {
+                if (! is_array($pt) || count($pt) < 2) {
+                    continue;
+                }
+                $lng = (float) $pt[0];
+                $lat = (float) $pt[1];
+                if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+                    continue;
+                }
+                $pts[] = [round($lng, 3), round($lat, 3)];
+                if (count($pts) >= 400) {
+                    break;
+                }
+            }
+            if (count($pts) >= 4) {
+                $clean[] = $pts;
+            }
+            if (count($clean) >= self::VOYAGE_FOG_MAX) {
+                break;
+            }
+        }
+
+        $gc = $this->lesson->game_config ?? [];
+        if (empty($clean)) {
+            unset($gc['voyage_fog']);
+        } else {
+            $gc['voyage_fog'] = array_values($clean);
+        }
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageFog);
+    }
+
+    /** Remove one painted region by index (legacy click-eraser path). Live, no re-mount. */
     public function removeFogRegion(int $index): void
     {
         $fog = $this->voyageFog();
@@ -1589,7 +1636,7 @@ class Step3SceneConfigurator extends Component
         }
         $lng = (float) $lng;
         $lat = (float) $lat;
-        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+        if (! is_finite($lng) || $lat < -90 || $lat > 90) {
             return;
         }
         $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
@@ -1602,11 +1649,53 @@ class Step3SceneConfigurator extends Component
         if (! isset($gc['voyage_def']['waypoints'][$idx])) {
             return;
         }
+        // Antimeridian-safe: unwrap to sit within ±180° of the neighbouring waypoint (see setVoyageWaypoint).
+        $ref = $gc['voyage_def']['waypoints'][$idx - 1][0] ?? ($gc['voyage_def']['waypoints'][$idx + 1][0] ?? null);
+        $lng = self::unwrapLngNear($lng, $ref === null ? null : (float) $ref);
         $gc['voyage_def']['waypoints'][$idx] = [round($lng, 3), round($lat, 3)];
         $this->lesson->update(['game_config' => $gc]);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);   // re-render the route to the new landfall
+    }
+
+    /**
+     * Unwrap a longitude to within ±180° of a reference so a route stays contiguous across the
+     * antimeridian. Pacific waypoints legitimately exceed ±180° (Tonga ≈ 185°E); storing them wrapped
+     * to [-180,180] put them ~360° from their neighbours and drew the route around the whole world.
+     */
+    private static function unwrapLngNear(float $lng, ?float $ref): float
+    {
+        if ($ref === null || ! is_finite($lng)) {
+            return $lng;
+        }
+        while ($lng - $ref > 180) {
+            $lng -= 360;
+        }
+        while ($lng - $ref < -180) {
+            $lng += 360;
+        }
+        return $lng;
+    }
+
+    /**
+     * Recover a route tangled by edits: drop the lesson's edited voyage_def so the pristine CATALOG
+     * route is used again. Map settings + fog are lesson-wide and untouched. Also re-contiguates any
+     * already-stored waypoints as a belt-and-braces (older data saved before the antimeridian fix).
+     */
+    public function resetVoyageRoute(): void
+    {
+        $gc = $this->lesson->game_config ?? [];
+        if (! isset($gc['voyage_def'])) {
+            return;
+        }
+        unset($gc['voyage_def']);
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);
+        }
     }
 
     /**
@@ -1621,7 +1710,7 @@ class Step3SceneConfigurator extends Component
         }
         $lng = (float) $lng;
         $lat = (float) $lat;
-        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+        if (! is_finite($lng) || $lat < -90 || $lat > 90) {
             return;
         }
         $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
@@ -1631,6 +1720,10 @@ class Step3SceneConfigurator extends Component
         if (! is_array($wp) || $wpIndex < (int) $wp[0] || $wpIndex > (int) $wp[1] || ! isset($gc['voyage_def']['waypoints'][$wpIndex])) {
             return;
         }
+        // Unwrap the dragged longitude to sit within ±180° of the neighbour so a Pacific crossing stays
+        // contiguous (Tonga ≈ 185°E) instead of jumping ~360° and drawing the route around the world.
+        $ref = $gc['voyage_def']['waypoints'][$wpIndex - 1][0] ?? ($gc['voyage_def']['waypoints'][$wpIndex + 1][0] ?? null);
+        $lng = self::unwrapLngNear($lng, $ref === null ? null : (float) $ref);
         $gc['voyage_def']['waypoints'][$wpIndex] = [round($lng, 3), round($lat, 3)];
         $this->lesson->update(['game_config' => $gc]);
         $this->lesson->refresh();
@@ -1651,7 +1744,7 @@ class Step3SceneConfigurator extends Component
         }
         $lng = (float) $lng;
         $lat = (float) $lat;
-        if ($lng < -180 || $lng > 180 || $lat < -90 || $lat > 90) {
+        if (! is_finite($lng) || $lat < -90 || $lat > 90) {
             return;
         }
         $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
@@ -1664,6 +1757,8 @@ class Step3SceneConfigurator extends Component
         $wps = array_values($gc['voyage_def']['waypoints']);
         $legs = array_values($gc['voyage_def']['legs']);
         $insertAt = $afterWpIndex + 1;
+        // Keep the bend contiguous with the point it follows (antimeridian-safe, see setVoyageWaypoint).
+        $lng = self::unwrapLngNear($lng, isset($wps[$afterWpIndex][0]) ? (float) $wps[$afterWpIndex][0] : null);
         array_splice($wps, $insertAt, 0, [[round($lng, 3), round($lat, 3)]]);
         foreach ($legs as &$L) {
             if ((int) $L['wp'][0] >= $insertAt) {

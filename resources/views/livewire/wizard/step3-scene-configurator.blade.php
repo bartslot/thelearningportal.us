@@ -140,29 +140,19 @@
         const rel = (e) => { const r = overlay.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
         const showCursor = (p) => {
             lastR = inst.brushRadiusPx(p, brushKm());
-            // Erase mode: a small fixed red ring (a pointer, not a band); paint mode: the true footprint.
-            const r = isErase() ? 10 : Math.max(4, lastR);
+            // Both paint and erase show the TRUE brush footprint (same size slider) — amber to add fog,
+            // red to reveal. The drawn band matches the painted/erased band.
+            const r = Math.max(4, lastR);
             cursor.setAttribute('cx', p.x); cursor.setAttribute('cy', p.y); cursor.setAttribute('r', r);
             cursor.setAttribute('stroke', isErase() ? 'rgba(248,113,113,0.95)' : 'rgba(226,232,240,0.9)');
             cursor.setAttribute('fill', isErase() ? 'rgba(248,113,113,0.15)' : 'rgba(148,163,184,0.18)');
             cursor.style.display = 'block';
+            path.setAttribute('stroke', isErase() ? 'rgba(248,113,113,0.55)' : 'rgba(245,158,11,0.5)');
             path.setAttribute('stroke-width', Math.max(4, lastR * 2));   // the drawn band == the painted band
         };
         overlay.addEventListener('pointerdown', (e) => {
             if (!window.__voyagePaint.active) return;
-            if (isErase()) {
-                // Click a painted blob to remove it (top-most under the cursor wins).
-                const idx = inst.paintedRegionAt(rel(e));
-                if (idx >= 0) {
-                    const next = inst.getPaintedFog();
-                    next.splice(idx, 1);
-                    try { inst.setPaintedFog(next); } catch (_) {}
-                    const w = window.__step3Wire();
-                    if (w && typeof w.removeFogRegion === 'function') { try { w.removeFogRegion(idx); } catch (_) {} }
-                }
-                e.preventDefault();
-                return;
-            }
+            // Paint AND erase are the same gesture — a brush stroke sized by the shared Brush size slider.
             drawing = true; pts = [rel(e)]; overlay.setPointerCapture(e.pointerId); e.preventDefault();
         });
         overlay.addEventListener('pointermove', (e) => {
@@ -180,9 +170,19 @@
             const ring = inst.strokeToRing(pts, brushKm());
             pts = [];
             if (!ring) return;
+            const w = window.__step3Wire();
+            if (isErase()) {
+                // Subtract the brush footprint from the painted fog (turf.difference) → reveal.
+                let next = null;
+                try { next = inst.eraseFog(ring); } catch (_) { next = null; }
+                if (next) {
+                    try { inst.setPaintedFog(next); } catch (_) {}                                 // instant feedback
+                    if (w && typeof w.setVoyageFog === 'function') { try { w.setVoyageFog(next); } catch (_) {} }  // persist
+                }
+                return;
+            }
             try { inst.setPaintedFog([...inst.getPaintedFog(), ring]); } catch (_) {}   // instant feedback
-            const w = window.__step3Wire();                             // persist on the RIGHT component
-            if (w && typeof w.addFogRegion === 'function') { try { w.addFogRegion(ring); } catch (_) {} }
+            if (w && typeof w.addFogRegion === 'function') { try { w.addFogRegion(ring); } catch (_) {} }   // persist
         };
         overlay.addEventListener('pointerup', finish);
         overlay.addEventListener('pointercancel', finish);

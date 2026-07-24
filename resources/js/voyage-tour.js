@@ -1,9 +1,10 @@
 import { renderLessonMap } from './lesson-map.js';
 import { renderGallery } from './gallery-scene.js';
+import { EASE, EASING } from './easing.js';
 import { voyageRoutes, smooth } from './timemap/voyages.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
-import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon } from '@turf/turf';
+import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
 
 // Voyage tour — the whole voyage is ONE persistent map. Legs play via playLeg(): the map, ships,
 // fog and route trail are built once, and moving between scenes eases the camera to the next leg
@@ -287,8 +288,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   // Remove the previous leg's transient HUD (pins/hotspot/gallery), keep the persistent chip.
   const clearCoastDrawOn = () => {
     if (!coastDrawOn) return;
-    try { map.off('move', coastDrawOn.onMove); } catch (_) { /* noop */ }
-    try { coastDrawOn.svg.remove(); } catch (_) { /* gone */ }
+    try { coastDrawOn.cancel && coastDrawOn.cancel(); } catch (_) { /* noop */ }
+    try { if (map.getLayer(coastDrawOn.srcId)) map.removeLayer(coastDrawOn.srcId); if (map.getSource(coastDrawOn.srcId)) map.removeSource(coastDrawOn.srcId); } catch (_) { /* map gone */ }
     coastDrawOn = null;
   };
 
@@ -344,7 +345,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           { transform: `rotate(${rot}deg) scale(0.3)`, opacity: 0 },
           { transform: `rotate(${rot}deg) scale(1.14)`, opacity: 1, offset: 0.65 },
           { transform: `rotate(${rot}deg) scale(1)`, opacity: 1 },
-        ], { duration: 460, delay: i * 90, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+        ], { duration: 460, delay: i * 90, easing: EASE.pop, fill: 'backwards' });
       } catch (_) { /* WAAPI unavailable — pin just appears */ }
     });
     arrivalPins = pins;
@@ -376,7 +377,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           { transform: 'scale(0.6)', opacity: 0 },
           { transform: 'scale(1.06)', opacity: 1, offset: 0.7 },
           { transform: 'scale(1)', opacity: 1 },
-        ], { duration: 380, delay: 140, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+        ], { duration: 380, delay: 140, easing: EASE.pop, fill: 'backwards' });
       } catch (_) { /* WAAPI unavailable */ }
 
       // Click opens the gallery. When onHotspotMove is provided (the editor) the teacher can also DRAG
@@ -610,65 +611,132 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }).catch(() => { /* coastline unavailable */ });
   };
 
+  // Stitch unordered coastline segments into ordered polylines by shared endpoints (Natural-Earth
+  // splits the coast at feature/tile edges, but the endpoints match exactly). → the island's ring.
+  const stitchCoast = (segments) => {
+    const K = (p) => `${Math.round(p[0] * 1000)}_${Math.round(p[1] * 1000)}`;
+    const byEnd = new Map();
+    const add = (k, seg) => { const a = byEnd.get(k); if (a) a.push(seg); else byEnd.set(k, [seg]); };
+    segments.forEach((seg) => { if (seg.length >= 2) { add(K(seg[0]), seg); add(K(seg[seg.length - 1]), seg); } });
+    const used = new Set();
+    const out = [];
+    segments.forEach((seed) => {
+      if (used.has(seed) || seed.length < 2) return;
+      used.add(seed);
+      let chain = seed.slice();
+      // grow forward from the tail, then backward from the head, following matching endpoints
+      for (const dir of [1, -1]) {
+        let grow = true;
+        while (grow) {
+          grow = false;
+          const anchor = dir === 1 ? chain[chain.length - 1] : chain[0];
+          for (const seg of (byEnd.get(K(anchor)) || [])) {
+            if (used.has(seg)) continue;
+            const atStart = K(seg[0]) === K(anchor);
+            const piece = atStart ? seg.slice(1) : seg.slice(0, -1).reverse();
+            chain = dir === 1 ? chain.concat(piece) : piece.concat(chain);
+            used.add(seg); grow = true; break;
+          }
+        }
+      }
+      out.push(chain);
+    });
+    return out;
+  };
+
   const drawCoastFrom = (feats, endLng, endLat) => {
     if (!feats.length) return;
-    // Collect coast segments within ~4.5° of the landfall (its local coastline). Antimeridian-safe:
-    // distances compared in the wrapped [-180,180] frame (Tonga ≈ 184.8°E lives at -175.2 in coastline).
+    // Collect coast segments within ~5° of the landfall. Antimeridian-safe: distances compared in the
+    // wrapped [-180,180] frame (Tonga ≈ 184.8°E lives at -175.2 in the coastline data).
     const wrap = (l) => ((l + 180) % 360 + 360) % 360 - 180;
-    const cLng = wrap(endLng), R = 4.5;
-    const near = (lng, lat) => {
-      let dl = Math.abs(wrap(lng) - cLng); if (dl > 180) dl = 360 - dl;
-      return dl <= R && Math.abs(lat - endLat) <= R;
-    };
+    const cLng = wrap(endLng), R = 5;
+    const near = (lng, lat) => { let dl = Math.abs(wrap(lng) - cLng); if (dl > 180) dl = 360 - dl; return dl <= R && Math.abs(lat - endLat) <= R; };
     const segs = [];
     for (const f of feats) {
       const g = f.geometry; if (!g) continue;
       const lines = g.type === 'MultiLineString' ? g.coordinates : (g.type === 'LineString' ? [g.coordinates] : []);
       for (const line of lines) if (Array.isArray(line) && line.some((c) => near(c[0], c[1]))) segs.push(line);
-      if (segs.length > 400) break;   // dense coasts: cap so we don't build a monster path
+      if (segs.length > 500) break;
     }
     if (!segs.length) return;
 
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');
-    svg.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2;overflow:visible;';
-    const path = document.createElementNS(NS, 'path');
-    const coast = (() => { try { return map.getPaintProperty('coast-bold', 'line-color'); } catch (_) { return '#211809'; } })() || '#211809';
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', coast);
-    path.setAttribute('stroke-width', '2.4');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(path);
-    hud.appendChild(svg);
-
-    const renderD = () => {
-      let d = '';
-      for (const line of segs) {
-        let started = false;
-        for (const c of line) {
-          const q = map.project([sameCopyLng(c[0]), c[1]]);
-          d += (started ? 'L' : 'M') + q.x.toFixed(1) + ',' + q.y.toFixed(1) + ' ';
-          started = true;
-        }
+    // Stitch → ordered rings, then find the vertex nearest the landing point (where the ship arrived).
+    const rings = stitchCoast(segs);
+    let best = null;
+    for (const ring of rings) {
+      for (let i = 0; i < ring.length; i++) {
+        let dl = Math.abs(wrap(ring[i][0]) - cLng); if (dl > 180) dl = 360 - dl;
+        const d = dl * dl + (ring[i][1] - endLat) ** 2;
+        if (!best || d < best.d) best = { ring, i, d };
       }
-      path.setAttribute('d', d.trim());
+    }
+    if (!best) return;
+    const ring = best.ring; const s = best.i;
+    const closed = ring.length > 3 && Math.abs(ring[0][0] - ring[ring.length - 1][0]) < 1e-6 && Math.abs(ring[0][1] - ring[ring.length - 1][1]) < 1e-6;
+    const N = ring.length;
+    const segLen = (a, b) => { let dl = Math.abs(wrap(a[0]) - wrap(b[0])); if (dl > 180) dl = 360 - dl; return Math.hypot(dl, b[1] - a[1]); };
+
+    // Two arcs sweeping OUTWARD from the landing point — one each way around the coast. Capped so a
+    // continental landfall draws only a local stretch (an island draws its whole ring).
+    const MAX_DEG = 16;
+    const buildArc = (dir) => {
+      const pts = [ring[s]]; let acc = 0; let i = s;
+      for (let step = 0; step < N; step++) {
+        let ni = i + dir;
+        if (closed) ni = ((ni % N) + N) % N;
+        else if (ni < 0 || ni >= N) break;
+        if (ni === s) break;                       // came all the way round
+        acc += segLen(ring[i], ring[ni]);
+        pts.push(ring[ni]);
+        if (acc > MAX_DEG) break;
+        i = ni;
+      }
+      return pts;
     };
-    renderD();
-    let len = 0; try { len = path.getTotalLength(); } catch (_) { /* not measurable */ }
-    const dur = Math.max(700, Math.min(4000, len * 1.4));
-    path.style.strokeDasharray = `${len} ${len}`;
-    path.style.strokeDashoffset = String(len);
+    const arcsPts = [buildArc(1), buildArc(-1)].filter((p) => p.length >= 2);
+    if (!arcsPts.length) return;
+
+    // Render the reveal as a MAP line layer (geo coordinates) at the SHORE level — below the trail,
+    // ship, labels and the whole DOM HUD — so it composites with the map exactly like the real coast
+    // and can never overlay the pins / hotspot / place names. An amber front sweeps out from the
+    // landing point along each arc, leaving the dark coast behind; ease-IN (slow build → speeds up),
+    // and the tinier the island the longer the amber lingers.
+    const AMBER = '#f59e0b';
+    const CLEAR = 'rgba(0,0,0,0)';
+    const DARK = (() => { try { return map.getPaintProperty('coast-bold', 'line-color'); } catch (_) { return '#211809'; } })() || '#211809';
+    const SRC = 'voyage-coast-draw';
+    try { if (map.getLayer(SRC)) map.removeLayer(SRC); if (map.getSource(SRC)) map.removeSource(SRC); } catch (_) { /* noop */ }
+    const features = arcsPts.map((pts) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts.map((c) => [c[0], c[1]]) } }));
     try {
-      path.animate(
-        [{ strokeDashoffset: len, opacity: 0 }, { opacity: 1, offset: 0.06 }, { strokeDashoffset: 0, opacity: 1 }],
-        { duration: dur, easing: 'ease-out', fill: 'forwards' },
-      );
-    } catch (_) { path.style.strokeDashoffset = '0'; }
-    const onMove = () => renderD();   // keep the drawn coast aligned if the camera pans/zooms after arrival
-    map.on('move', onMove);
-    coastDrawOn = { svg, onMove };
+      map.addSource(SRC, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features } });
+      const before = ['voyage-trail', 'voyage-ships', 'lesson-labels'].find((l) => map.getLayer(l));
+      map.addLayer({
+        id: SRC, type: 'line', source: SRC,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-width': 2.6, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, CLEAR, 1, CLEAR] },
+      }, before);
+    } catch (_) { coastDrawOn = null; return; }
+
+    // Amber comet at the draw-front `p` (0..1 of each arc's length): dark behind, amber head, clear ahead.
+    const grad = (p) => {
+      const pc = Math.max(0.002, Math.min(0.998, p));
+      const back = Math.max(0.001, pc - 0.14);
+      return ['interpolate', ['linear'], ['line-progress'], 0, DARK, back, DARK, pc, AMBER, Math.min(0.999, pc + 0.003), CLEAR, 1, CLEAR];
+    };
+    const solid = ['interpolate', ['linear'], ['line-progress'], 0, DARK, 1, DARK];
+    // Duration inverse to arc size: a tiny island's amber front lingers; a big coast draws briskly.
+    let maxDeg = 0;
+    for (const pts of arcsPts) { let a = 0; for (let k = 1; k < pts.length; k++) a += segLen(pts[k - 1], pts[k]); if (a > maxDeg) maxDeg = a; }
+    const dur = Math.round(Math.max(1400, Math.min(4200, 4200 - Math.min(15, maxDeg) * 190)));
+    let raf = null; const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / dur);
+      const p = EASING.easeInCubic(t);
+      try { map.setPaintProperty(SRC, 'line-gradient', t < 1 ? grad(p) : solid); } catch (_) {}
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    coastDrawOn = { srcId: SRC, cancel: () => { if (raf) cancelAnimationFrame(raf); } };
   };
 
   const showArrival = (token) => {
@@ -950,6 +1018,31 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     },
     /** The current painted regions — the single source the paint overlay reads (never its own copy). */
     getPaintedFog() { return PAINTED.slice(); },
+    /**
+     * Erase brush: subtract the brush footprint (a ring) from every painted region via turf.difference,
+     * so the eraser reveals a brush-sized bite of fog (symmetric with the paint brush) instead of
+     * deleting a whole blob. Returns the new ring list; holes (erasing a blob's middle) fall back to
+     * leaving the outer ring — edge-erasing to reveal coastline is the common case.
+     */
+    eraseFog(ring) {
+      if (!Array.isArray(ring) || ring.length < 3) return PAINTED.slice();
+      const closed = (r) => { const c = r.map((p) => [p[0], p[1]]); const a = c[0], b = c[c.length - 1]; if (a[0] !== b[0] || a[1] !== b[1]) c.push([a[0], a[1]]); return c; };
+      let brush; try { brush = turfPolygon([closed(ring)]); } catch (_) { return PAINTED.slice(); }
+      const out = [];
+      for (const r of PAINTED) {
+        if (!Array.isArray(r) || r.length < 3) continue;
+        let region; try { region = turfPolygon([closed(r)]); } catch (_) { out.push(r); continue; }
+        let diff; try { diff = turfDifference(turfFC([region, brush])); } catch (_) { diff = region; }
+        if (!diff || !diff.geometry) continue;   // fully erased
+        const g = diff.geometry;
+        const polys = g.type === 'MultiPolygon' ? g.coordinates : (g.type === 'Polygon' ? [g.coordinates] : []);
+        for (const poly of polys) { const outer = poly[0]; if (outer && outer.length >= 4) out.push(outer.map((c) => [c[0], c[1]])); }
+      }
+      PAINTED = out;
+      try { fog?.setRegions([...PAINTED]); } catch (_) { /* fog not ready */ }
+      updatePaintPreview();
+      return out.slice();
+    },
     /**
      * Update the CURRENT leg's gallery/thumbnails/hotspot and rebuild the map pins LIVE — no tour
      * rebuild, no camera move, and an open gallery modal is left alone. Lets an image added to the
