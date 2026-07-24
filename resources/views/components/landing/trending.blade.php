@@ -126,7 +126,7 @@
                 <div class="js-disney-carousel">
                     @foreach ($features as $feature)
                     <article class="carousel-cell group relative mx-2 w-[15rem] shrink-0 sm:w-[16rem] lg:w-[17rem]">
-                        <div class="relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10 bg-white/5 shadow-[0_16px_34px_rgba(0,0,0,0.25)] transition duration-300 ease-out hover:-translate-y-1 hover:border-sky-400/20 hover:bg-white/[0.07]">
+                        <div class="relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10 bg-white/5 shadow-[0_16px_34px_rgba(0,0,0,0.25)] transition duration-300 ease-out hover:-translate-y-1 hover:border-sky-400/20 hover:bg-white/7">
                             <img
                                 src="{{ $feature['image'] }}"
                                 alt="{{ $feature['title'] }}"

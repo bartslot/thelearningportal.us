@@ -148,7 +148,7 @@
          independent of the scene Ken Burns / 3D skybox engine. --}}
     <template x-if="lesson.title_bg_url">
         <div x-show="phase === 'TITLE_SCREEN'" x-transition.opacity
-             class="absolute inset-0 z-[1]" aria-hidden="true">
+             class="absolute inset-0 z-1" aria-hidden="true">
             <div class="absolute inset-0 bg-cover bg-center"
                  :style="`background-image:url('${lesson.title_bg_url}')`"></div>
             {{-- Darken for title legibility --}}
@@ -196,7 +196,7 @@
          the player auto-advances to block 1 the moment it ends (see _endWelcomeVideo). --}}
     @if ($welcomeVideoUrl = $lesson->avatar?->welcomeVideoUrl())
         <div x-show="phase === 'WELCOME_VIDEO'" x-cloak
-             class="absolute inset-0 z-[60] flex items-center justify-center pointer-events-auto"
+             class="absolute inset-0 z-60 flex items-center justify-center pointer-events-auto"
              style="background:#0f172a;">
 
             {{-- Black vignette --}}
@@ -205,11 +205,11 @@
 
             {{-- src is chosen at runtime (full vs lite) by _welcomeSrc() based on connection/screen. --}}
             <video x-ref="welcomeVideo" playsinline preload="auto"
-                   class="relative z-[1] max-h-full max-w-full object-contain"></video>
+                   class="relative z-1 max-h-full max-w-full object-contain"></video>
 
             {{-- Skip — small, unobtrusive --}}
             <button @click="_endWelcomeVideo()"
-                    class="absolute bottom-8 right-8 z-[2] flex items-center gap-2 rounded-full border border-white/20
+                    class="absolute bottom-8 right-8 z-2 flex items-center gap-2 rounded-full border border-white/20
                            bg-black/40 px-5 py-2 text-sm font-semibold text-white/80 backdrop-blur-sm
                            transition hover:bg-black/60 hover:text-white active:scale-95">
                 {{ __('Skip') }}
@@ -222,7 +222,7 @@
     <div class="absolute inset-0 z-10 pointer-events-none bg-linear-to-b from-black/50 to-[#0C2033]/50"></div>
 
     {{-- Cinematic film-grain overlay (reuses the .lp-grain brand utility). --}}
-    <div class="lp-grain pointer-events-none absolute inset-0 z-[11]"></div>
+    <div class="lp-grain pointer-events-none absolute inset-0 z-11"></div>
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
