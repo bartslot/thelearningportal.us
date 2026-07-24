@@ -32,6 +32,16 @@ const voyageFollowZoom = (pct) => {
 const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
 const smoothstep = (t) => t * t * (3 - 2 * t);
 
+// AUTO fog-of-war: old-world coastlines already charted by 17th-c. European voyagers → never fogged.
+// [minLng,minLat,maxLng,maxLat]. Curated by geography (per the teacher's choice); the voyage's home
+// port is added at runtime. Only the boxes that overlap the route's bbox actually matter.
+const KNOWN_WORLD_BOXES = [
+  [-12, 34, 45, 72],   // Europe
+  [-18, -36, 52, 38],  // Africa
+  [40, 5, 150, 62],    // Asia (mainland)
+  [94, -11, 142, 9],   // Maritime SE Asia / Indonesia
+];
+
 // The route trail fades behind the ship: bright at the ship's current position, dimming to a low
 // (still visible) floor over the earliest sailed path — so students see where the ship has been.
 const TRAIL_FADE_FLOOR = 0.32;   // opacity of the oldest sailed segment (0 = invisible, 1 = full)
@@ -113,6 +123,22 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
   let ships = null;
   let fog = null;
+  // Auto fog-of-war geometry (computed once the route is known): the whole-route bbox that gets masked
+  // and the "known world" boxes (old-world coasts + home port) that stay charted. Kept in the route's
+  // unwrapped lng frame so Pacific voyages line up with the corridor reveal.
+  const routeBbox = () => {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const w of (route.waypoints || [])) {
+      if (!Array.isArray(w)) continue;
+      a = Math.min(a, w[0]); c = Math.max(c, w[0]); b = Math.min(b, w[1]); d = Math.max(d, w[1]);
+    }
+    if (!Number.isFinite(a)) return [-180, -85, 180, 85];
+    return [a - 20, Math.max(-85, b - 15), c + 20, Math.min(85, d + 15)];
+  };
+  const fogWorldBox = routeBbox();
+  const fogHome = route.waypoints && route.waypoints[0];
+  const fogKnownBoxes = [...KNOWN_WORLD_BOXES];
+  if (Array.isArray(fogHome)) fogKnownBoxes.push([fogHome[0] - 7, fogHome[1] - 7, fogHome[0] + 7, fogHome[1] + 7]);
   let onMapStyle = null;
   let ready = false;         // map + ships + fog + trail built
   let pendingLeg = null;     // a playLeg() that arrived before the map was ready
@@ -673,7 +699,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     // Fog is driven ENTIRELY by the lesson's editable painted regions (game_config.voyage_fog).
     // The catalog's `unknown` is only a SEED — copied into voyage_fog at lesson-build time — so a
     // teacher can reshape or delete every masked area instead of fighting a baked-in polygon.
-    fog = addVoyageFog(map, { unknown: [...PAINTED], beforeId: 'voyage-ships', samplePoint: (t) => ships.pointAt(voyage, t), waterColor: readWater() });
+    fog = addVoyageFog(map, {
+      unknown: [...PAINTED], beforeId: 'voyage-ships', samplePoint: (t) => ships.pointAt(voyage, t), waterColor: readWater(),
+      auto: !!MO.fog_auto, knownBoxes: fogKnownBoxes, worldBox: fogWorldBox,
+    });
     onMapStyle = () => { if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60); };
     window.addEventListener('lessonmap:style', onMapStyle);
     // Route trail line — sits just above the land/coast but BELOW every text label, so place names
@@ -755,6 +784,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       try { inst.setLabels(resolveLabels()); } catch (_) { /* idem */ }
       try { inst.setDetailStyle(MO); } catch (_) { /* idem — MO carries the *_color/_size/_width keys */ }
       try { ships && ships.setShipScale(Number(MO.ship_scale) || 1, !!MO.ship_anchored); } catch (_) { /* ships not ready */ }
+      try { fog && fog.setAuto(!!MO.fog_auto, fogKnownBoxes, fogWorldBox); } catch (_) { /* fog not ready */ }
     },
     /**
      * Reshape the voyage's ROUTE geometry LIVE from an edited voyage_def (a dragged/inserted/moved

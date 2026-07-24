@@ -1,4 +1,4 @@
-import { buffer as turfBuffer, difference as turfDifference, featureCollection, polygon as turfPolygon, rewind } from '@turf/turf';
+import { buffer as turfBuffer, difference as turfDifference, union as turfUnion, featureCollection, polygon as turfPolygon, rewind } from '@turf/turf';
 
 // Fog of war for voyage tours — Van Braam engraving behavior: coasts the expedition has not
 // yet reached are blank sea. A voyage declares its `unknown` region (rings in voyages.json);
@@ -15,7 +15,11 @@ const FOG_SRC = 'voyage-fog';
 const CORRIDOR_KM = 300;         // how far the crew "sees" — tuned so Tasman reveals a coastal strip
 const WATER_FALLBACK = '#c7d4c6'; // soft-atlas water; real colour comes from the active style
 
-export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor }) {
+// A [minLng,minLat,maxLng,maxLat] box → a closed polygon ring (kept in the route's unwrapped lng
+// frame so Pacific/antimeridian voyages, e.g. Tonga ≈ 184.8°E, stay contiguous).
+const boxRing = (b) => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]];
+
+export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, auto = false, knownBoxes = [], worldBox = null }) {
   // Always build the layer — even with zero regions — so a teacher can paint fog from scratch (or
   // after erasing everything) and setRegions() has a live source to update. Regions now come from
   // the lesson's editable voyage_fog, which may legitimately start empty.
@@ -42,6 +46,22 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor }
   const toPolys = (rings) => (rings || []).map((ring) => rewind(turfPolygon([closeRing(ring)])));
   let unknownPolys = toPolys(unknown);
 
+  // ── AUTO fog-of-war ──────────────────────────────────────────────────────────────────────────
+  // In auto mode the base masked area is the WHOLE route bbox (one polygon), and the "known world"
+  // boxes are permanently revealed (subtracted) — so all NEW land along the route reads as blank sea
+  // until the sailed corridor reaches it, while Europe/Asia/Indonesia/home port stay charted.
+  let autoMode = !!auto;
+  let worldPoly = worldBox ? turfPolygon([boxRing(worldBox)]) : null;
+  const buildKnownReveal = (boxes) => {
+    const polys = (boxes || []).filter((b) => Array.isArray(b) && b.length === 4).map((b) => turfPolygon([boxRing(b)]));
+    if (!polys.length) return null;
+    return polys.reduce((acc, p) => {
+      if (!acc) return p;
+      try { return turfUnion(featureCollection([acc, p])) || acc; } catch (_) { return acc; }
+    }, null);
+  };
+  let knownReveal = buildKnownReveal(knownBoxes);
+
   // Traversed track up to voyage-fraction f, sampled through the ships' own pointAt so the
   // corridor front sits EXACTLY at the fleet. (Fractions are arc-length based — slicing the
   // route's coordinate array by index instead overshoots far ahead on long ocean crossings.)
@@ -60,6 +80,22 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor }
     try {
       revealed = turfBuffer(corridorLine(f), CORRIDOR_KM, { units: 'kilometers' });
     } catch (_) { /* fall through — no reveal is safer than no fog */ }
+
+    // AUTO: whole route-bbox minus (sailed corridor ∪ known world). One clean difference.
+    if (autoMode && worldPoly) {
+      let reveal = revealed;
+      if (knownReveal) {
+        try { reveal = reveal ? turfUnion(featureCollection([reveal, knownReveal])) : knownReveal; } catch (_) { /* keep corridor only */ }
+      }
+      if (!reveal) return { type: 'FeatureCollection', features: [worldPoly] };
+      try {
+        const cut = turfDifference(featureCollection([worldPoly, reveal]));
+        return { type: 'FeatureCollection', features: cut ? [cut] : [] };
+      } catch (_) {
+        return { type: 'FeatureCollection', features: [worldPoly] };
+      }
+    }
+
     const features = unknownPolys
       .map((poly) => {
         if (!revealed) return poly;
@@ -110,9 +146,20 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor }
       try { map.setPaintProperty('voyage-fog', 'fill-color', c); } catch (_) { /* layer gone */ }
       try { map.setPaintProperty('voyage-fog-edge', 'line-color', c); } catch (_) { /* layer gone */ }
     },
-    /** Replace the undiscovered regions (catalog + teacher-painted) and repaint at the current reveal. */
+    /** Replace the undiscovered regions (catalog + teacher-painted) and repaint. Ignored in auto mode
+     *  (the whole-route mask owns the fog then). */
     setRegions(rings) {
       unknownPolys = toPolys(rings);
+      if (autoMode) return;
+      current = fogAt(lastF < 0 ? 0 : lastF);
+      const src = map.getSource(FOG_SRC);
+      if (src) src.setData(current);
+    },
+    /** Toggle auto fog-of-war live (whole-route mask ⇄ teacher-painted regions) — no re-mount. */
+    setAuto(a, boxes, wbox) {
+      autoMode = !!a;
+      if (Array.isArray(boxes)) knownReveal = buildKnownReveal(boxes);
+      if (Array.isArray(wbox) && wbox.length === 4) worldPoly = turfPolygon([boxRing(wbox)]);
       current = fogAt(lastF < 0 ? 0 : lastF);
       const src = map.getSource(FOG_SRC);
       if (src) src.setData(current);
