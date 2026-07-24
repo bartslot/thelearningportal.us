@@ -1,5 +1,5 @@
 <div x-data="{ open: false }"
-     class="fixed bottom-4 right-4 z-[100] print:hidden"
+     class="fixed bottom-4 right-4 z-100 print:hidden"
      wire:key="dev-test-panel">
 
     {{-- Toggle button --}}

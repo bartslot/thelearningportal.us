@@ -55,7 +55,7 @@
                 <div @class([
                     'group relative flex flex-col rounded-[1.5rem] p-8 transition duration-300 ease-out',
                     'border border-amber-400/40 bg-gradient-to-b from-slate-800/90 to-slate-900/90 shadow-[0_24px_60px_rgba(245,158,11,0.18)] ring-1 ring-amber-400/30 lg:-my-3 lg:py-11' => $tier['featured'],
-                    'border border-white/10 bg-white/[0.04] shadow-[0_16px_40px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:border-amber-400/30 hover:bg-white/[0.06]' => ! $tier['featured'],
+                    'border border-white/10 bg-white/4 shadow-[0_16px_40px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:border-amber-400/30 hover:bg-white/6' => ! $tier['featured'],
                 ])>
                     @if (! empty($tier['badge']))
                         <span class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-amber-400/40 bg-amber-500/15 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.1em] text-amber-300">

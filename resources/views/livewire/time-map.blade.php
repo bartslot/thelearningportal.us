@@ -13,7 +13,7 @@
     {{-- Papery overlay: a tileable parchment grain blended over the whole map for an old-paper feel.
          pointer-events-none so it never blocks map interaction. Swap public/timemap/parchment.png
          for your own scan to change the paper. --}}
-    <div class="pointer-events-none absolute inset-0 z-[5]"
+    <div class="pointer-events-none absolute inset-0 z-5"
          style="mix-blend-mode:overlay;opacity:0.2;background-image:url('{{ asset('timemap/parchment.png') }}');background-repeat:repeat;background-size:360px 360px"></div>
 
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}

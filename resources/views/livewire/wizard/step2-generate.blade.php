@@ -210,8 +210,8 @@ $machineState = $isFailed ? 'error' : ($isStalled ? 'stalled' : ($isDone ? 'read
             role="alert"
             @class([
                 'mx-auto mt-10 max-w-3xl border p-5 sm:p-6',
-                'border-rose-500/35 bg-rose-500/[0.06]' => $isFailed,
-                'border-orange-400/35 bg-orange-400/[0.06]' => $isStalled && ! $isFailed,
+                'border-rose-500/35 bg-rose-500/6' => $isFailed,
+                'border-orange-400/35 bg-orange-400/6' => $isStalled && ! $isFailed,
             ])
         >
             <div class="flex items-start gap-4">
