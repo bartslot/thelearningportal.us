@@ -158,6 +158,35 @@ class Step4Preview extends Component
         $this->showPublishSplash = false;
     }
 
+    /** The teacher's own classes — for the publish modal's "Assign to class" picker. */
+    #[Computed]
+    public function classrooms()
+    {
+        return auth()->user()->classrooms()->orderBy('name')->get(['id', 'name']);
+    }
+
+    /** Ids of the classes this lesson is already assigned to (drives the ✓ in the picker). */
+    #[Computed]
+    public function assignedClassIds(): array
+    {
+        return $this->lesson->classrooms()->pluck('classrooms.id')->all();
+    }
+
+    /** Toggle this lesson's assignment to one of the teacher's classes (from the publish modal). */
+    public function assignToClass(int $classroomId): void
+    {
+        $class = auth()->user()->classrooms()->find($classroomId);
+        if (! $class) {
+            return;
+        }
+        if (in_array($classroomId, $this->assignedClassIds, true)) {
+            $class->lessons()->detach($this->lesson->id);
+        } else {
+            $class->lessons()->syncWithoutDetaching([$this->lesson->id => ['assigned_at' => now()]]);
+        }
+        unset($this->assignedClassIds);   // recompute the ✓ state
+    }
+
     public function render()
     {
         return view('livewire.wizard.step4-preview');

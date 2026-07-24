@@ -64,25 +64,68 @@
         </div>
     @endif
 
-    {{-- The big moment: full-screen splash after publishing, with the rating widget in its
-         natural place (right after the teacher finished creating). --}}
+    {{-- The big moment: full-screen splash after publishing. A standard closable modal (X + Esc +
+         backdrop via the `close` prop) with the primary next steps: Play, Share, Schedule, Assign. --}}
     @if ($showPublishSplash)
-        <x-splash-screen :title="__('Your lesson is now live!')"
+        @php $playUrl = route('lesson.play', ['lessonCode' => $lesson->lesson_code]); @endphp
+        <x-splash-screen :title="__('Your lesson is published!')"
                          :subtitle="$lesson->title ?? $lesson->topic"
                          close="dismissPublishSplash">
-            <x-slot:actions>
-                <a href="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}"
-                   class="btn btn-lg bg-amber-500 text-slate-950 hover:bg-amber-400 border-0 px-8">
-                    {{ __('View lesson') }} →
+            {{-- Primary: play + share --}}
+            <div class="grid grid-cols-2 gap-3">
+                <a href="{{ $playUrl }}"
+                   class="flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-base font-semibold text-slate-950 transition hover:bg-amber-400">
+                    <x-icons.play class="h-5 w-5" /> {{ __('Play lesson') }}
                 </a>
-                <button type="button" wire:click="dismissPublishSplash" class="btn btn-lg btn-ghost">
-                    {{ __('Keep editing') }}
+                <button type="button"
+                        x-data="{ copied: false, share() { const u = @js($playUrl); if (navigator.share) { navigator.share({ title: @js($lesson->title ?? $lesson->topic), url: u }).catch(() => {}); } else { navigator.clipboard.writeText(u).then(() => { this.copied = true; setTimeout(() => this.copied = false, 1600); }); } } }"
+                        x-on:click="share()"
+                        class="flex items-center justify-center gap-2 rounded-2xl bg-slate-800 px-5 py-4 text-base font-semibold text-slate-100 transition hover:bg-slate-700">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/></svg>
+                    <span x-text="copied ? @js(__('Link copied!')) : @js(__('Share'))"></span>
                 </button>
-            </x-slot:actions>
+            </div>
 
-            <p class="mb-2 text-xs uppercase tracking-wider text-slate-400">{{ __('How was creating this lesson?') }}</p>
-            <div class="flex justify-center">
-                <livewire:lesson-feedback-widget :lesson="$lesson" />
+            {{-- Schedule or assign --}}
+            <p class="mt-5 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">{{ __('Schedule or assign') }}</p>
+            <div class="mt-2 grid grid-cols-2 gap-3">
+                <button type="button" disabled title="{{ __('Coming soon') }}"
+                        class="flex cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-slate-800/50 px-5 py-4 text-base font-semibold text-slate-500">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/></svg>
+                    {{ __('Schedule') }}
+                    <span class="rounded-full bg-slate-700 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-300">{{ __('Soon') }}</span>
+                </button>
+
+                {{-- Assign to class — inline picker of the teacher's own classes (toggle per class). --}}
+                <div x-data="{ open: false }" class="relative" @click.outside="open = false">
+                    <button type="button" @click="open = !open"
+                            class="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-800 px-5 py-4 text-base font-semibold text-slate-100 transition hover:bg-slate-700">
+                        <x-icons.users class="h-5 w-5" /> {{ __('Assign to class') }}
+                    </button>
+                    <div x-show="open" x-transition x-cloak
+                         class="absolute inset-x-0 z-10 mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-base-300 p-1.5 text-left shadow-2xl">
+                        @forelse ($this->classrooms as $class)
+                            <button type="button" wire:click="assignToClass({{ $class->id }})"
+                                    class="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10">
+                                <span class="truncate">{{ $class->name }}</span>
+                                @if (in_array($class->id, $this->assignedClassIds, true))
+                                    <svg class="h-4 w-4 shrink-0 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                                @endif
+                            </button>
+                        @empty
+                            <a href="{{ route('teacher.classes.index') }}" wire:navigate
+                               class="block rounded-lg px-3 py-2 text-sm text-amber-300 hover:bg-white/10">{{ __('Create a class first') }} →</a>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+
+            {{-- Feedback prompt, quieter, under a divider --}}
+            <div class="mt-5 border-t border-white/10 pt-4">
+                <p class="mb-2 text-xs uppercase tracking-wider text-slate-400">{{ __('How was creating this lesson?') }}</p>
+                <div class="flex justify-center">
+                    <livewire:lesson-feedback-widget :lesson="$lesson" />
+                </div>
             </div>
         </x-splash-screen>
     @endif
