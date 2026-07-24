@@ -6,7 +6,6 @@ namespace App\Livewire\Wizard\Concerns;
 
 use App\Models\Scene;
 use App\Models\SvgAsset;
-use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 
