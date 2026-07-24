@@ -225,6 +225,7 @@
         let lastVoyageId = null       // the mounted voyage's id — the ONLY thing that forces a REBUILD
         let lastVoyageDefStr = null   // last applied route geometry (waypoints/legs) — reshaped in place
         let lastLeg = null            // last-played leg index (for the no-rebuild leg switch)
+        let lastGalleryId = null      // mounted standalone-gallery scene id — content edits refresh in place
         let currentSceneId = null     // the selected scene (callbacks read this, not the mount-time id)
         // Identity of the MAP is the VOYAGE ID alone. Switching legs, editing the route geometry
         // (dragging / inserting a waypoint) and toggling map detail all keep the same map instance —
@@ -234,7 +235,7 @@
             if (inst) { inst.destroy(); inst = null }
             host.innerHTML = ''
             host.style.display = 'none'
-            lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null
+            lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null; lastGalleryId = null
         }
 
         // A re-mount key for voyage/gallery scenes: only scene-DEFINING bits belong in it, so the
@@ -331,9 +332,14 @@
                     lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr
                     return
                 }
-                // Gallery scene: same scene → live content refresh; otherwise fall through to a mount.
-                if (inst && p.kind === 'gallery' && key === lastKey) {
-                    applyLiveMap()
+                // Gallery scene: SAME scene → refresh content in place (title/date/story/fit/images)
+                // instead of destroy+rebuild, so an inspector edit never restarts the slideshow / flashes.
+                // Nothing changed → just return. A DIFFERENT gallery scene falls through to a fresh mount.
+                if (inst && p.kind === 'gallery' && lastGalleryId === p.sceneId) {
+                    if (key !== lastKey && typeof inst.setContent === 'function') {
+                        try { inst.setContent(p.config || {}) } catch (_) {}
+                    }
+                    lastKey = key
                     return
                 }
                 destroy(); wireTextProjector()
@@ -381,8 +387,10 @@
                         gallery: vcfg.gallery || null,
                         hotspot: vcfg.hotspot || null,
                     })
+                    lastGalleryId = null
                 } else if (p.kind === 'gallery' && window.renderGallery) {
                     inst = window.renderGallery(stageInner, vcfg)
+                    lastGalleryId = p.sceneId
                 } else {
                     console.error('[wizard] voyage/gallery renderer unavailable — is the module loaded?')
                 }
@@ -408,14 +416,16 @@
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }
-            // Same scene + same year, only the linked territory (qid) changed → move the red
-            // highlight in place instead of remounting. Remounting on every territory pick was
-            // what made the map blink and jump east (a fresh mount re-fits to the polity).
+            // SAME scene, only the YEAR and/or the linked territory (qid) changed → update the live
+            // map in place instead of remounting. Remounting on every year/territory tweak was what
+            // made the map blink and jump (a fresh mount re-fits + reloads tiles). setYear() reshapes
+            // the period borders in place; setPolity() moves the red highlight — both keep the camera.
             const prev = lastKey ? lastKey.split('|') : null
-            if (inst && prev && prev[0] === String(p.sceneId) && prev[2] === String(year)) {
+            if (inst && prev && prev[0] === String(p.sceneId)) {
                 lastKey = key
                 try { inst.setStyle(style) } catch (_) {}
-                try { inst.setPolity(cfg.qid || null) } catch (_) {}
+                if (prev[2] !== String(year)) { try { inst.setYear(year) } catch (_) {} }
+                if (prev[1] !== String(cfg.qid || '')) { try { inst.setPolity(cfg.qid || null) } catch (_) {} }
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }

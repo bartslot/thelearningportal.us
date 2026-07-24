@@ -19,8 +19,8 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 export function renderGallery(el, cfg = {}, { startIndex = 0, editable = false, onEdit = null } = {}) {
-  const images = Array.isArray(cfg.images) ? cfg.images : [];
-  const objFit = cfg.fit === 'cover' ? 'cover' : 'contain';   // 'fit' → contain (letterbox + blur backdrop)
+  let images = Array.isArray(cfg.images) ? cfg.images : [];   // mutable so setContent() can swap the set live
+  let objFit = cfg.fit === 'cover' ? 'cover' : 'contain';     // 'fit' → contain (letterbox + blur backdrop)
 
   // When editable, each text field gets a data-field hook + a placeholder so empty fields are
   // still clickable. The subtle outline appears on hover/focus (see the injected <style>).
@@ -45,9 +45,9 @@ export function renderGallery(el, cfg = {}, { startIndex = 0, editable = false, 
       <p data-credit style="position:absolute;left:1rem;bottom:0.75rem;margin:0;color:#cbd5e1;font-size:0.72rem;opacity:0.8;text-shadow:0 1px 3px rgba(0,0,0,.7);"></p>
     </div>
     <div style="width:22rem;max-width:38%;padding:2.2rem 1.8rem;background:rgba(9,16,30,0.92);color:#e2e8f0;display:flex;flex-direction:column;justify-content:center;">
-      <p ${edit('date_label', 'Date…')} style="margin:0;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:#93a4bd;">${esc(cfg.date_label)}</p>
-      <h2 ${edit('title', 'Title…')} style="margin:0.4rem 0 0;font-size:1.5rem;line-height:1.2;color:#fff;">${esc(cfg.title)}</h2>
-      <p ${edit('story', 'Tell what happened at this stop…')} style="margin-top:1rem;font-size:0.95rem;line-height:1.65;white-space:pre-wrap;">${esc(cfg.story)}</p>
+      <p data-field="date_label" ${edit('date_label', 'Date…')} style="margin:0;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:#93a4bd;">${esc(cfg.date_label)}</p>
+      <h2 data-field="title" ${edit('title', 'Title…')} style="margin:0.4rem 0 0;font-size:1.5rem;line-height:1.2;color:#fff;">${esc(cfg.title)}</h2>
+      <p data-field="story" ${edit('story', 'Tell what happened at this stop…')} style="margin-top:1rem;font-size:0.95rem;line-height:1.65;white-space:pre-wrap;">${esc(cfg.story)}</p>
     </div>`;
   el.appendChild(host);
 
@@ -89,12 +89,42 @@ export function renderGallery(el, cfg = {}, { startIndex = 0, editable = false, 
     cursor++;
   };
   show();
-  const timer = images.length > 1 ? setInterval(show, CYCLE_MS) : null;
+  let timer = images.length > 1 ? setInterval(show, CYCLE_MS) : null;
+  // Auto-cycle only makes sense with 2+ images — keep the interval in sync when the set changes live.
+  const syncTimer = () => {
+    if (images.length > 1 && !timer) timer = setInterval(show, CYCLE_MS);
+    else if (images.length <= 1 && timer) { clearInterval(timer); timer = null; }
+  };
 
   return {
     destroy() {
       if (timer) clearInterval(timer);
       el.innerHTML = '';
+    },
+    /**
+     * Live-refresh content (title/date/story/fit/images) WITHOUT rebuilding — so an inspector edit
+     * doesn't restart the slideshow or flash. Skips a text field the teacher is currently editing.
+     */
+    setContent(next = {}) {
+      ['date_label', 'title', 'story'].forEach((f) => {
+        const node = host.querySelector(`[data-field="${f}"]`);
+        // Never clobber the field being typed into (contenteditable): its value is already current.
+        if (node && document.activeElement !== node) node.textContent = next[f] == null ? '' : String(next[f]);
+      });
+      const nf = next.fit === 'cover' ? 'cover' : 'contain';
+      if (nf !== objFit) { objFit = nf; slides.forEach((s) => { s.style.objectFit = nf; }); }
+      if (Array.isArray(next.images)) {
+        const wasEmpty = images.length === 0;
+        images = next.images;                     // the running show() reads this ref → new set, no restart
+        if (!images.length) {                     // nothing to show → clear the frame
+          slides.forEach((s) => { s.style.opacity = '0'; });
+          bgs.forEach((b) => { b.style.opacity = '0'; });
+          credit.textContent = '';
+        } else if (wasEmpty) {
+          cursor = 0; front = 0; show();           // first image just added → paint it now
+        }
+        syncTimer();
+      }
     },
   };
 }
