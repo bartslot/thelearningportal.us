@@ -20,6 +20,7 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\StrategyGame;
 use App\Support\PolityCapitals;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Computed;
@@ -135,17 +136,14 @@ class Step3SceneConfigurator extends Component
      * initial scene:load dispatch is missed during hydration).
      * Mirrors the lesson player's serialization in resources/views/lesson/player.blade.php.
      */
-    public function serializeShots(Scene $scene): array
+    public function serializeShots(Scene $scene, ?Collection $titles = null): array
     {
         $ts = $scene->updated_at?->timestamp ?? '';
 
         // Asset titles for the object-list labels ("Windmill silhouette", not "Clipart").
-        $assetIds = collect($scene->shots ?? [])
-            ->flatMap(fn ($shot) => collect($shot['layers'] ?? [])->pluck('asset_id'))
-            ->filter()->unique()->values();
-        $titles = $assetIds->isNotEmpty()
-            ? \App\Models\SvgAsset::whereIn('id', $assetIds)->pluck('title', 'id')
-            : collect();
+        // Callers rendering MANY scenes pass a pre-batched title map (one query for all scenes);
+        // a single-scene caller passes null and we look up just this scene's assets.
+        $titles ??= $this->assetTitlesFor([$scene]);
 
         return collect($scene->shots ?? [])->map(fn ($shot) => [
             'image_url' => ! empty($shot['image_path']) ? asset('storage/'.$shot['image_path']).'?v='.$ts : null,
@@ -177,6 +175,45 @@ class Step3SceneConfigurator extends Component
                 'draw_time' => isset($l['draw_time']) ? (float) $l['draw_time'] : null,
             ])->filter(fn ($l) => $l['url'])->values()->all() ?: null,
         ])->filter(fn ($shot) => $shot['image_url'])->values()->all();
+    }
+
+    /**
+     * Batch-load SvgAsset id→title for every layer across the given scenes in ONE query
+     * (avoids an N+1 of one SvgAsset lookup per scene when serializing the whole payload).
+     *
+     * @param  iterable<Scene>  $scenes
+     * @return Collection<int,string>
+     */
+    private function assetTitlesFor(iterable $scenes): Collection
+    {
+        $ids = collect($scenes)
+            ->flatMap(fn ($s) => collect($s->shots ?? [])
+                ->flatMap(fn ($shot) => collect($shot['layers'] ?? [])->pluck('asset_id')))
+            ->filter()->unique()->values();
+
+        return $ids->isNotEmpty()
+            ? \App\Models\SvgAsset::whereIn('id', $ids)->pluck('title', 'id')
+            : collect();
+    }
+
+    /**
+     * Full inert scenes payload for the first-paint hydration fallback (#step3-scenes-data).
+     * Batches asset titles once for all scenes, then serializes each. Read once by the preview
+     * bridge on initial paint; live edits flow through scene:load, not this blob.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function scenesData(): array
+    {
+        $scenes = $this->scenes;
+        $titles = $this->assetTitlesFor($scenes);
+
+        return $scenes->map(fn (Scene $s) => array_merge(
+            $s->only(['id', 'kind', 'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count', 'year', 'location', 'image_path', 'scene_view', 'skybox_blur', 'world_pano_path', 'audio_path', 'audio_alignment', 'duration_seconds', 'script_segment', 'animation_clip_id', 'background_color', 'kb_animated', 'kb_direction']),
+            // config carries per-scene flags the first paint needs (background focus, clipart-on-top …).
+            ['config' => $s->config ?? null],
+            ['shots' => $this->serializeShots($s, $titles)],
+        ))->all();
     }
 
     private function selectSceneInternal(int $id): void
@@ -3362,13 +3399,8 @@ class Step3SceneConfigurator extends Component
     }
 
     /** Called on every poll tick — pushes updated world status to the canvas. */
-    public function pollWorldStatus(): void
+    public function pollWorldStatus(?Scene $scene): void
     {
-        if (! $this->selectedSceneId) {
-            return;
-        }
-
-        $scene = $this->lesson->scenes()->find($this->selectedSceneId);
         if (! $scene || $scene->scene_view !== 'world') {
             return;
         }
@@ -3389,13 +3421,8 @@ class Step3SceneConfigurator extends Component
     }
 
     /** Re-fire scene:load whenever the selected scene's status changes. */
-    private function pollSceneReady(): void
+    private function pollSceneReady(?Scene $scene): void
     {
-        if (! $this->selectedSceneId) {
-            return;
-        }
-
-        $scene = $this->lesson->scenes()->find($this->selectedSceneId);
         if (! $scene) {
             return;
         }
@@ -3411,8 +3438,11 @@ class Step3SceneConfigurator extends Component
 
     public function render()
     {
-        $this->pollWorldStatus();
-        $this->pollSceneReady();
+        // Fetch the selected scene ONCE per tick and share it with both status pollers
+        // (was two identical queries every 3s).
+        $selected = $this->selectedSceneId ? $this->lesson->scenes()->find($this->selectedSceneId) : null;
+        $this->pollWorldStatus($selected);
+        $this->pollSceneReady($selected);
 
         return view('livewire.wizard.step3-scene-configurator');
     }

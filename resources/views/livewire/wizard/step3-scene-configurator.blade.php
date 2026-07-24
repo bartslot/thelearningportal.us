@@ -1845,14 +1845,12 @@
                 wire:click="$set('svgLibraryOpen', false)"></button>
     </div>
 
-    {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS --}}
-    <script type="application/json" id="step3-scenes-data">
-        {!! $this->scenes->map(fn ($s) => array_merge(
-            $s->only(['id','kind','game_type','quiz_question_count','quiz_timing','strategy_game_id','team_count','year','location','image_path','scene_view','skybox_blur','world_pano_path','audio_path','audio_alignment','duration_seconds','script_segment','animation_clip_id','background_color','kb_animated','kb_direction']),
-            // config carries per-scene flags the first paint needs (background focus, clipart-on-top …).
-            ['config' => $s->config ?? null],
-            ['shots' => $this->serializeShots($s)],
-        ))->toJson() !!}
+    {{-- Scenes payload as inert JSON so we don't string-interpolate it into JS. Built in PHP
+         (scenesData(), batched asset titles) and wire:ignore'd — the preview bridge reads it once on
+         first paint (live edits flow through scene:load), so the 3s status poll must not re-morph
+         this large blob every tick. --}}
+    <script type="application/json" id="step3-scenes-data" wire:ignore>
+        {!! json_encode($this->scenesData()) !!}
     </script>
 </div>
 
