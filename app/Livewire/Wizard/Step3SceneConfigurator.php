@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -52,6 +53,9 @@ class Step3SceneConfigurator extends Component
 
     public Lesson $lesson;
 
+    // Kept in the URL (?scene=<id>) so a plain refresh stays on the scene the teacher was editing
+    // instead of snapping back to the first one. Mount reads the same param for the preview deep-link.
+    #[Url(as: 'scene')]
     public ?int $selectedSceneId = null;
 
     /** @var array<string,mixed>|null */

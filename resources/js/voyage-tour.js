@@ -31,7 +31,6 @@ const voyageFollowZoom = (pct) => {
 
 const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
 const smoothstep = (t) => t * t * (3 - 2 * t);
-const wrapLng = (lng) => ((lng + 180) % 360 + 360) % 360 - 180;
 
 // The route trail fades behind the ship: bright at the ship's current position, dimming to a low
 // (still visible) floor over the earliest sailed path — so students see where the ship has been.
@@ -95,6 +94,16 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     showCities: MO.cities, showBorders: MO.borders, labels: resolveLabels(),
   });
   const map = inst.map;
+  // Project a lng into the SAME world copy the camera is showing (like the ship in voyage-ships.js),
+  // NOT a fixed [-180,180] wrap. Antimeridian crossings (Tonga ≈ 184.8°E) leave the camera centred on
+  // an unwrapped lng; a plain wrap would land the HUD 360° off-screen. Used for all overlay placement.
+  const sameCopyLng = (lng) => {
+    let l = lng;
+    const c = map.getCenter().lng;
+    while (l - c > 180) l -= 360;
+    while (l - c < -180) l += 360;
+    return l;
+  };
   // Pan + zoom, but no rotate/pitch drag — keep the map steady for placing points.
   if (editable) {
     try { map.dragRotate.disable(); } catch (_) { /* noop */ }
@@ -446,7 +455,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           const f = f0 + (f1 - f0) * (k / SAMPLES);
           const g = ships.pointAt(voyage, f);
           if (!g) continue;
-          const q = map.project([wrapLng(g.lng), g.lat]);
+          const q = map.project([sameCopyLng(g.lng), g.lat]);
           const d = Math.hypot(q.x - px, q.y - py);
           if (!best || d < best.d) best = { d, x: q.x, y: q.y, lng: g.lng, lat: g.lat, f };
         }
@@ -462,7 +471,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         for (let w = startIdx + 1; w < endIdx; w++) {
           const wp = route.waypoints[w];
           if (!Array.isArray(wp)) continue;
-          const q = map.project([wrapLng(wp[0]), wp[1]]);
+          const q = map.project([sameCopyLng(wp[0]), wp[1]]);
           if (Math.hypot(q.x - px, q.y - py) <= VERTEX_PX) return { wpIndex: w, lng: wp[0], lat: wp[1] };
         }
         return null;
@@ -478,7 +487,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         const bend = nearBend(px, py);
         const hit = bend ? { x: null, y: null, lng: bend.lng, lat: bend.lat } : nearestOnLeg(px, py);
         if (!hit) { ghost.style.display = 'none'; ghostDesc = null; return; }
-        const q = map.project([wrapLng(hit.lng), hit.lat]);
+        const q = map.project([sameCopyLng(hit.lng), hit.lat]);
         ghost.style.left = `${q.x}px`; ghost.style.top = `${q.y}px`; ghost.style.display = '';
         ghost._geo = { lng: hit.lng, lat: hit.lat };
         ghostDesc = bend ? { mode: 'move', wpIndex: bend.wpIndex } : { mode: 'insert', afterWpIndex: hit.afterWpIndex };
@@ -520,17 +529,17 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }
 
     placeMarkers = () => {
-      const p = map.project([wrapLng(L.end.lng), L.end.lat]);
+      const p = map.project([sameCopyLng(L.end.lng), L.end.lat]);
       pins.forEach((pin) => { pin.style.left = `${p.x + pin._dx}px`; pin.style.top = `${p.y + pin._dy}px`; });
       if (hotspot) {
         if (hotspotPos) {
-          const hp = map.project([wrapLng(hotspotPos.lng), hotspotPos.lat]);
+          const hp = map.project([sameCopyLng(hotspotPos.lng), hotspotPos.lat]);
           hotspot.style.left = `${hp.x}px`; hotspot.style.top = `${hp.y}px`;
         } else {
           hotspot.style.left = `${p.x + 46}px`; hotspot.style.top = `${p.y + 12}px`;
         }
       }
-      arrivalHandles.forEach((h) => { if (!h._geo) return; const q = map.project([wrapLng(h._geo.lng), h._geo.lat]); h.style.left = `${q.x}px`; h.style.top = `${q.y}px`; });
+      arrivalHandles.forEach((h) => { if (!h._geo) return; const q = map.project([sameCopyLng(h._geo.lng), h._geo.lat]); h.style.left = `${q.x}px`; h.style.top = `${q.y}px`; });
     };
     placeMarkers();
     map.on('move', placeMarkers);
@@ -544,7 +553,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     buildArrivalHud();
     // Fade the landfall's place name in now that the ship has arrived here (nearest label to the
     // leg's endpoint). Cumulative — earlier landfalls stay revealed as the voyage continues.
-    try { inst.revealLabelNear(wrapLng(L.end.lng), L.end.lat); } catch (_) { /* labels not ready */ }
+    try { inst.revealLabelNear(L.end.lng, L.end.lat); } catch (_) { /* labels not ready */ }
     // The gallery is opened on demand (hotspot / thumbnail) — never auto-opened, EXCEPT once when a
     // preview "Edit scene" deep-link arrived with its modal open (openGalleryOnArrive), so the editor
     // restores exactly what the teacher was looking at.
