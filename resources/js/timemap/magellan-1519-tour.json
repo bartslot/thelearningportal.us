@@ -1,0 +1,70 @@
+{
+  "voyage": "magellan-1519",
+  "title": "Magellan & Elcano: the first voyage around the world",
+  "subtitle": "One planet, one impossible circle, 1519–1522",
+  "fleet": ["Trinidad", "Victoria", "Concepción", "San Antonio", "Santiago"],
+  "intro": {
+    "place": "Sanlúcar de Barrameda, Spain",
+    "date_label": "20 September 1519",
+    "title": "West to the spice islands",
+    "story": "Portugal controlled the eastward route to the Spice Islands, so Spain bet on the opposite direction: sail WEST, all the way around the world, to reach them. Ferdinand Magellan, a Portuguese captain in Spanish service, set out with five ships and about 270 men. Almost nobody believed it could be done. Three years later, one ship and 18 survivors would prove the Earth could be circled."
+  },
+  "legs": [
+    {
+      "depart": "1519-09-20",
+      "arrive": "1520-03-31",
+      "stop": {
+        "place": "Patagonia",
+        "date_label": "March 1520",
+        "title": "Mutiny at the end of the world",
+        "story": "After crossing the Atlantic the fleet crept down the coast of South America, hunting for a passage through it. As the southern winter closed in they wintered in bleak Patagonia, where a mutiny nearly ended everything. Magellan crushed it ruthlessly. One ship, the Santiago, was wrecked while scouting ahead."
+      }
+    },
+    {
+      "depart": "1520-10-21",
+      "arrive": "1520-11-28",
+      "stop": {
+        "place": "Strait of Magellan",
+        "date_label": "November 1520",
+        "title": "The strait",
+        "story": "At last they found it: a freezing, twisting 570-kilometre channel through the tip of South America, now called the Strait of Magellan. It took 38 days to thread. Here the San Antonio deserted and sailed home, taking much of the food with it. Three ships pushed out the far end into a vast, calm ocean Magellan named the Pacific — 'the peaceful sea'."
+      }
+    },
+    {
+      "depart": "1520-11-28",
+      "arrive": "1521-03-16",
+      "stop": {
+        "place": "The Pacific crossing",
+        "date_label": "March 1521",
+        "title": "The empty ocean",
+        "story": "Magellan expected a short hop. Instead the Pacific was almost unimaginably huge. For over three months the crews saw no land, ran out of food, and ate rats, leather and sawdust as scurvy killed them one by one. When they finally reached the islands that became the Philippines, the survivors were skeletal — but they had crossed the largest ocean on Earth."
+      }
+    },
+    {
+      "depart": "1521-04-27",
+      "arrive": "1521-11-08",
+      "stop": {
+        "place": "Mactan & the Spice Islands",
+        "date_label": "November 1521",
+        "title": "Magellan falls",
+        "story": "In the Philippines Magellan involved himself in local politics and was killed in battle on the island of Mactan on 27 April 1521. The survivors, now too few to man all the ships, burned the Concepción and sailed on. At last they reached the Spice Islands of the Moluccas and filled their holds with cloves worth a fortune in Europe."
+      }
+    },
+    {
+      "depart": "1521-12-21",
+      "arrive": "1522-09-06",
+      "stop": {
+        "place": "Sanlúcar de Barrameda",
+        "date_label": "6 September 1522",
+        "title": "The Victoria comes home",
+        "story": "Only one ship, the Victoria, was fit to attempt the long westward run home across the Indian Ocean and around Africa, commanded now by Juan Sebastián Elcano. Dodging Portuguese patrols, leaking and starving, she reached Spain on 6 September 1522 with just 18 of the original crew. They were the first human beings to circle the whole world — and the first to truly grasp how big it is."
+      }
+    }
+  ],
+  "outro": {
+    "place": "Around the world",
+    "date_label": "1522",
+    "title": "One world, measured",
+    "story": "The voyage cost four ships and most of its men, and the profit barely covered the loss. But it changed how humanity saw its own planet: the oceans were connected, the Earth was round and vast, and one continuous circle of water linked every shore. The survivors even discovered they had 'lost' a day — the first proof of what we now call the International Date Line."
+  }
+}

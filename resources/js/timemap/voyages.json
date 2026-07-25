@@ -228,6 +228,50 @@
      75.8,
      11.25
     ]
+   ],
+   "fleet": [
+    {
+     "name": "São Gabriel",
+     "masts": 3,
+     "flagship": true,
+     "model": "/timemap/assets/ship.fbx"
+    },
+    {
+     "name": "São Rafael",
+     "masts": 3,
+     "flagship": false
+    },
+    {
+     "name": "Berrio",
+     "masts": 2,
+     "flagship": false
+    }
+   ],
+   "legs": [
+    {
+     "depart": "1497-07-08",
+     "arrive": "1497-11-22",
+     "wp": [
+      0,
+      10
+     ]
+    },
+    {
+     "depart": "1497-11-25",
+     "arrive": "1498-04-14",
+     "wp": [
+      10,
+      15
+     ]
+    },
+    {
+     "depart": "1498-04-24",
+     "arrive": "1498-05-20",
+     "wp": [
+      15,
+      20
+     ]
+    }
    ]
   },
   {
@@ -397,6 +441,76 @@
      -366.35,
      36.78
     ]
+   ],
+   "fleet": [
+    {
+     "name": "Trinidad",
+     "masts": 3,
+     "flagship": true,
+     "model": "/timemap/assets/ship.fbx"
+    },
+    {
+     "name": "Victoria",
+     "masts": 3,
+     "flagship": false
+    },
+    {
+     "name": "Concepción",
+     "masts": 3,
+     "flagship": false
+    },
+    {
+     "name": "San Antonio",
+     "masts": 3,
+     "flagship": false
+    },
+    {
+     "name": "Santiago",
+     "masts": 2,
+     "flagship": false
+    }
+   ],
+   "legs": [
+    {
+     "depart": "1519-09-20",
+     "arrive": "1520-03-31",
+     "wp": [
+      0,
+      9
+     ]
+    },
+    {
+     "depart": "1520-10-21",
+     "arrive": "1520-11-28",
+     "wp": [
+      9,
+      14
+     ]
+    },
+    {
+     "depart": "1520-11-28",
+     "arrive": "1521-03-16",
+     "wp": [
+      14,
+      24
+     ]
+    },
+    {
+     "depart": "1521-04-27",
+     "arrive": "1521-11-08",
+     "wp": [
+      24,
+      32
+     ]
+    },
+    {
+     "depart": "1521-12-21",
+     "arrive": "1522-09-06",
+     "wp": [
+      32,
+      38
+     ]
+    }
    ]
   },
   {
@@ -474,6 +588,40 @@
      59.1,
      76.25
     ]
+   ],
+   "fleet": [
+    {
+     "name": "Barentsz's ship",
+     "masts": 3,
+     "flagship": true,
+     "model": "/timemap/assets/ship.fbx"
+    }
+   ],
+   "legs": [
+    {
+     "depart": "1596-05-13",
+     "arrive": "1596-06-17",
+     "wp": [
+      0,
+      8
+     ]
+    },
+    {
+     "depart": "1596-06-17",
+     "arrive": "1596-08-26",
+     "wp": [
+      8,
+      12
+     ]
+    },
+    {
+     "depart": "1596-08-26",
+     "arrive": "1597-06-20",
+     "wp": [
+      12,
+      15
+     ]
+    }
    ]
   },
   {
@@ -1150,6 +1298,56 @@
      -364.4,
      50.0
     ]
+   ],
+   "fleet": [
+    {
+     "name": "HM Bark Endeavour",
+     "masts": 3,
+     "flagship": true,
+     "model": "/timemap/assets/ship.fbx"
+    }
+   ],
+   "legs": [
+    {
+     "depart": "1768-08-26",
+     "arrive": "1769-01-16",
+     "wp": [
+      0,
+      10
+     ]
+    },
+    {
+     "depart": "1769-01-16",
+     "arrive": "1769-04-13",
+     "wp": [
+      10,
+      21
+     ]
+    },
+    {
+     "depart": "1769-07-13",
+     "arrive": "1769-10-06",
+     "wp": [
+      21,
+      28
+     ]
+    },
+    {
+     "depart": "1770-03-31",
+     "arrive": "1770-04-29",
+     "wp": [
+      28,
+      36
+     ]
+    },
+    {
+     "depart": "1770-08-23",
+     "arrive": "1771-07-12",
+     "wp": [
+      36,
+      42
+     ]
+    }
    ]
   }
  ]

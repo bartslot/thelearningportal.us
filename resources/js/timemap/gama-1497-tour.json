@@ -1,0 +1,50 @@
+{
+  "voyage": "gama-1497",
+  "title": "Vasco da Gama: the sea road to India",
+  "subtitle": "The first all-water route from Europe to Asia, 1497–1499",
+  "fleet": ["São Gabriel", "São Rafael", "Berrio"],
+  "intro": {
+    "place": "Lisbon",
+    "date_label": "8 July 1497",
+    "title": "Portugal's long gamble",
+    "story": "For most of the 1400s Portugal had been creeping down the coast of Africa, cape by cape, searching for a sea road to the spices and gold of the East. When Bartolomeu Dias rounded the southern tip of Africa in 1488, the door stood open. King Manuel I gave Vasco da Gama four ships and one order: reach India by sea. On 8 July 1497 the fleet sailed from Lisbon into the unknown."
+  },
+  "legs": [
+    {
+      "depart": "1497-07-08",
+      "arrive": "1497-11-22",
+      "stop": {
+        "place": "Cape of Good Hope",
+        "date_label": "November 1497",
+        "title": "The great Atlantic loop",
+        "story": "Rather than hug the African coast, da Gama swung far out into the open Atlantic in a huge arc to catch better winds — a bold bet that kept his crews at sea for 90 days, longer than Columbus had sailed. The gamble paid off: on 22 November 1497 the fleet rounded the Cape of Good Hope and entered the Indian Ocean, waters no European ship had ever crossed."
+      }
+    },
+    {
+      "depart": "1497-11-25",
+      "arrive": "1498-04-14",
+      "stop": {
+        "place": "Malindi",
+        "date_label": "April 1498",
+        "title": "The pilot who knew the way",
+        "story": "Up the coast of East Africa the Portuguese found rich Swahili trading cities that had done business with Arabia and India for centuries. At Malindi, da Gama took aboard an experienced pilot who knew the monsoon winds of the Indian Ocean. With his guidance the fleet could finally strike out across open water toward India."
+      }
+    },
+    {
+      "depart": "1498-04-24",
+      "arrive": "1498-05-20",
+      "stop": {
+        "place": "Calicut",
+        "date_label": "20 May 1498",
+        "title": "Arrival in India",
+        "story": "Carried by the monsoon, the ships reached Calicut on the Malabar coast on 20 May 1498 — the first Europeans to reach India by sea. Da Gama's cheap trade goods disappointed the wealthy local rulers, and he left with only a small cargo of spices. But the route itself was the true prize: it broke the old overland monopoly and opened an age of European empires in Asia."
+      }
+    }
+  ],
+  "outro": {
+    "place": "Lisbon",
+    "date_label": "1499",
+    "title": "The price of the spice road",
+    "story": "Barely a third of da Gama's men survived the return; scurvy killed the rest. Yet the cargo he brought back paid for the voyage many times over, and Portugal rushed to seize the route by force. The sea road to India made tiny Portugal briefly one of the richest powers on earth — and began five centuries in which European ships, guns and trading posts reshaped the Indian Ocean world."
+  }
+}

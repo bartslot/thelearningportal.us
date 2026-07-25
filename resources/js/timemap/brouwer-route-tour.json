@@ -1,0 +1,72 @@
+{
+  "voyage": "brouwer-route",
+  "title": "The VOC & the Brouwer Route",
+  "subtitle": "How the Dutch built a highway of wind to the East Indies",
+  "fleet": ["Eendracht", "Hoorn", "Dordrecht"],
+  "intro": {
+    "place": "The Dutch Republic",
+    "date_label": "1602 – 1616",
+    "title": "A company with the power of a state",
+    "story": "In 1602 the Dutch Republic bundled its competing spice traders into one giant company: the Verenigde Oostindische Compagnie, the VOC. It was the world's first multinational to sell shares to the public, and the States-General handed it powers no ordinary business had ever held — to wage war, sign treaties, build forts and mint coins on the far side of the world. Its goal was the fabulous wealth of the East Indies: pepper, nutmeg, mace and cloves that were worth more than their weight in silver back home. But the old route to Asia hugged the African coast and the calms near the equator, and could take a deadly year or more. The VOC needed something faster. In 1611 a skipper named Hendrik Brouwer proved there was a better way.",
+    "images": ["https://commons.wikimedia.org/wiki/Special:FilePath/Flag_of_the_Dutch_East_India_Company.svg"]
+  },
+  "legs": [
+    {
+      "depart": "1616-01-23",
+      "arrive": "1616-02-10",
+      "stop": {
+        "place": "Texel",
+        "date_label": "January 1616",
+        "title": "Departure from Texel",
+        "story": "On 23 January 1616 the Eendracht slipped out of the roadstead of Texel, the great deep-water anchorage where the VOC's East Indiamen gathered before an ocean crossing. Her skipper was Dirk Hartog, and like every VOC captain he carried sealed instructions built on Brouwer's discovery. The ships beat down the English Channel and out past the Bay of Biscay into the open Atlantic, trading the crowded, dangerous coastal lanes of Europe for the empty blue of the deep sea."
+      }
+    },
+    {
+      "depart": "1616-02-10",
+      "arrive": "1616-08-05",
+      "stop": {
+        "place": "Cape of Good Hope",
+        "date_label": "August 1616",
+        "title": "The refreshment station",
+        "story": "Six months out, the fleet reached the Cape of Good Hope at the southern tip of Africa. Here the VOC would later plant its famous refreshment station (1652), where scurvy-ridden crews took on fresh water, meat and greens before the hardest part of the voyage. The Cape was the hinge of the whole route: turn the corner too early and you crawled up the coast of Africa in the old, slow way; hold your course and you could ride the wind straight east."
+      }
+    },
+    {
+      "depart": "1616-08-27",
+      "arrive": "1616-10-10",
+      "stop": {
+        "place": "The Roaring Forties",
+        "date_label": "September 1616",
+        "title": "Brouwer's highway of wind",
+        "story": "This was Brouwer's genius. Instead of steering north-east toward India, the VOC ships dropped south to around 40 degrees latitude and let the ferocious westerly winds of the Roaring Forties hurl them across the empty Southern Ocean. It was cold, wild and lonely, with towering seas — but it was fast. The Brouwer Route cut the journey to the Indies from over a year to roughly six months, and it saved thousands of lives. There was only one catch: out here, far from any coast, a captain had to guess exactly when to turn north. Sailors could measure how far north or south they were, but they had no reliable way to know how far EAST they had come."
+      }
+    },
+    {
+      "depart": "1616-10-10",
+      "arrive": "1616-11-20",
+      "stop": {
+        "place": "The turn north",
+        "date_label": "October 1616",
+        "title": "The gamble of longitude",
+        "story": "Every skipper on the Roaring Forties faced the same anxious guess: turn north too late, and you would slam into a coast no chart yet showed. On 25 October 1616 that is exactly what happened to the Eendracht. Dirk Hartog struck land at an island off Western Australia — today called Dirk Hartog Island — and nailed a flattened pewter plate to a post to record his visit. It is the oldest known European artefact in Australia. Hartog had no idea he had brushed the edge of a whole continent; he simply noted the danger, turned north, and sailed on toward the Indies."
+      }
+    },
+    {
+      "depart": "1616-11-20",
+      "arrive": "1616-12-14",
+      "stop": {
+        "place": "Batavia",
+        "date_label": "December 1616",
+        "title": "The heart of the spice empire",
+        "story": "Threading the Sunda Strait between Sumatra and Java, the fleet finally reached the roadstead that would become Batavia (today Jakarta), the VOC's fortified Asian capital. From here the company ran a trading network that stretched from the Cape to Japan. For two centuries the Brouwer Route was the beating artery of that empire — but its wealth was built on monopoly and force, including the violent conquest of the Banda Islands for their nutmeg and a system of coerced and enslaved labour whose consequences still echo today."
+      }
+    }
+  ],
+  "outro": {
+    "place": "Dirk Hartog Island",
+    "date_label": "1616 and after",
+    "title": "The plate that proved it",
+    "story": "The Eendracht's accidental landfall was no fluke of one ship. Because the Brouwer Route sent dozens of VOC vessels racing east along the same latitude every year, more and more of them blundered into the western coast of the unknown southland the Dutch called 'New Holland'. Their careful charts of those wrecks and sightings slowly drew the first outline of Australia onto the map of the world — a continent stumbled upon by merchants chasing pepper. Dirk Hartog's pewter plate survived, and it remains the tangible proof of the day a spice route brushed against a new continent.",
+    "images": []
+  }
+}

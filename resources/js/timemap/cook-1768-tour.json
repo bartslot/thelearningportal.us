@@ -1,0 +1,70 @@
+{
+  "voyage": "cook-1768",
+  "title": "Captain Cook's first voyage",
+  "subtitle": "Science, stars and a new map of the Pacific, 1768–1771",
+  "fleet": ["HM Bark Endeavour"],
+  "intro": {
+    "place": "Plymouth",
+    "date_label": "26 August 1768",
+    "title": "A voyage disguised as science",
+    "story": "In 1768 the Royal Society sent James Cook and the ship Endeavour to the Pacific for a scientific mission: to observe the planet Venus crossing the face of the Sun from the island of Tahiti. But Cook also carried secret orders — to search the southern ocean for the rumoured great continent, and to claim useful lands for Britain. Aboard were astronomers, artists and the botanist Joseph Banks."
+  },
+  "legs": [
+    {
+      "depart": "1768-08-26",
+      "arrive": "1769-01-16",
+      "stop": {
+        "place": "Cape Horn",
+        "date_label": "January 1769",
+        "title": "Round the Horn",
+        "story": "The Endeavour crossed the Atlantic and rounded Cape Horn, the storm-lashed southern tip of South America, rather than risk the Spanish-controlled route through Magellan's strait. Cook was a brilliant navigator and a stubborn enforcer of shipboard cleanliness and fresh food, determined to beat the scurvy that killed so many sailors on long voyages."
+      }
+    },
+    {
+      "depart": "1769-01-16",
+      "arrive": "1769-04-13",
+      "stop": {
+        "place": "Tahiti",
+        "date_label": "April 1769",
+        "title": "The transit of Venus",
+        "story": "The Endeavour reached the lush island of Tahiti in good time. There, on 3 June 1769, the astronomers watched Venus cross the Sun — measurements that helped work out the true distance from the Earth to the Sun. The Tahitian priest and navigator Tupaia joined the ship, his deep knowledge of Pacific islands and stars proving invaluable."
+      }
+    },
+    {
+      "depart": "1769-07-13",
+      "arrive": "1769-10-06",
+      "stop": {
+        "place": "New Zealand",
+        "date_label": "October 1769",
+        "title": "Charting New Zealand",
+        "story": "Sailing south and west, Cook reached New Zealand and spent six months charting its coasts with astonishing accuracy, proving it was two large islands, not part of a southern continent. His crew met the Māori — encounters that ranged from cautious trade to deadly violence, a pattern that would shadow the whole voyage."
+      }
+    },
+    {
+      "depart": "1770-03-31",
+      "arrive": "1770-04-29",
+      "stop": {
+        "place": "Botany Bay",
+        "date_label": "April 1770",
+        "title": "The east coast of Australia",
+        "story": "Pressing west, the Endeavour became the first European ship to chart the fertile east coast of Australia, landing at a bay so rich in new plants that Banks had it named Botany Bay. The land was already home to Aboriginal peoples who had lived there for tens of thousands of years. Cook's charts and his later claim of the coast for Britain would, within two decades, bring British colonisation — with devastating consequences for those first peoples."
+      }
+    },
+    {
+      "depart": "1770-08-23",
+      "arrive": "1771-07-12",
+      "stop": {
+        "place": "England",
+        "date_label": "July 1771",
+        "title": "Home, and a changed map",
+        "story": "The voyage nearly ended on the Great Barrier Reef, where the Endeavour was holed and barely saved. Fever caught in Batavia then killed many of the crew, including Tupaia. Cook reached England in July 1771 having lost no one to scurvy — a landmark in seafaring — and carrying charts, specimens and drawings that redrew the map of the Pacific and made him the most famous navigator of his age."
+      }
+    }
+  ],
+  "outro": {
+    "place": "The Pacific",
+    "date_label": "1771 and after",
+    "title": "Discovery and its shadow",
+    "story": "Cook's voyages opened the Pacific to European science — and to European empire. The same charts that advanced knowledge of the world's geography also guided the ships that colonised Australia, New Zealand and the Pacific islands, uprooting peoples who had lived there for millennia. Cook's story is a reminder that 'discovery' always has two sides, and that the lands he mapped were never truly empty."
+  }
+}

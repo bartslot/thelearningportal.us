@@ -1,0 +1,50 @@
+{
+  "voyage": "barentsz-1596",
+  "title": "Willem Barentsz: trapped in the Arctic",
+  "subtitle": "The Dutch hunt for a north-east passage, 1596–1597",
+  "fleet": ["Barentsz's ship"],
+  "intro": {
+    "place": "Amsterdam",
+    "date_label": "1596",
+    "title": "A shortcut over the top of the world",
+    "story": "The Dutch dreamed of reaching the riches of China and the Indies without sailing past their Spanish and Portuguese rivals. Their idea was daring: sail NORTH-EAST, over the top of Russia, through the Arctic. Navigator Willem Barentsz had already tried twice. In 1596 he set out again, straight into the ice."
+  },
+  "legs": [
+    {
+      "depart": "1596-05-13",
+      "arrive": "1596-06-17",
+      "stop": {
+        "place": "Spitsbergen",
+        "date_label": "June 1596",
+        "title": "The discovery of Spitsbergen",
+        "story": "Sailing far to the north, Barentsz's expedition sighted a wild, mountainous, ice-fringed land they named Spitsbergen ('pointed mountains') — today part of Svalbard, and among the northernmost land ever reached by Europeans at that time. Whales and walruses swarmed its waters. But pack ice blocked every path east."
+      }
+    },
+    {
+      "depart": "1596-06-17",
+      "arrive": "1596-08-26",
+      "stop": {
+        "place": "Novaya Zemlya",
+        "date_label": "August 1596",
+        "title": "Into the ice trap",
+        "story": "Turning toward the Russian Arctic island of Novaya Zemlya, Barentsz tried to round its northern tip and slip through to the east. Instead the drifting pack ice closed around the ship and crushed her fast. For the first time in recorded history, a European crew would have to survive an Arctic winter."
+      }
+    },
+    {
+      "depart": "1596-08-26",
+      "arrive": "1597-06-20",
+      "stop": {
+        "place": "Het Behouden Huys",
+        "date_label": "Winter 1596–1597",
+        "title": "The Saved House",
+        "story": "The men tore apart their doomed ship to build a cabin they called 'Het Behouden Huys' — the Saved House. Through the months of polar night they burned driftwood, fought off polar bears, and slowly starved and sickened. In spring the survivors set out in two open boats across the freezing sea. Barentsz died on the way, but most of his men, astonishingly, reached safety — and their story became a legend of Dutch endurance. The Barents Sea still carries his name."
+      }
+    }
+  ],
+  "outro": {
+    "place": "The Barents Sea",
+    "date_label": "1597 and after",
+    "title": "Defeated by the ice, remembered forever",
+    "story": "The north-east passage Barentsz sought was, in his lifetime, impossible — the Arctic ice was simply too much. But his careful charts, and the frozen camp rediscovered almost 300 years later with its logbooks and tools intact, made him one of the great figures of polar exploration. The Dutch would find their fortune not over the ice, but around the Cape — with the VOC."
+  }
+}
