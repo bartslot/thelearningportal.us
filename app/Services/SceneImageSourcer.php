@@ -61,14 +61,36 @@ class SceneImageSourcer
             $order = ['commons', 'corpus'];
         }
 
-        foreach ($order as $source) {
-            $hit = $source === 'corpus' ? $this->fromCorpus($query, $year) : $this->fromCommons($query);
-            if ($hit !== null) {
-                return $hit;
+        // Try the full phrase, then progressively broader ones. A specific query like
+        // "Amsterdam grachtengordel herenhuis" can match nothing, while "Amsterdam grachtengordel"
+        // matches plenty — this is what a teacher does when a search comes back empty.
+        foreach ($this->broadenings($query) as $attempt) {
+            foreach ($order as $source) {
+                $hit = $source === 'corpus' ? $this->fromCorpus($attempt, $year) : $this->fromCommons($attempt);
+                if ($hit !== null) {
+                    return $hit;
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * Progressively shorter versions of a query: the whole phrase, then its first words.
+     *
+     * @return list<string>
+     */
+    private function broadenings(string $query): array
+    {
+        $words = preg_split('/\s+/', $query, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $attempts = [$query];
+
+        for ($keep = count($words) - 1; $keep >= 2; $keep--) {
+            $attempts[] = implode(' ', array_slice($words, 0, $keep));
+        }
+
+        return array_values(array_unique($attempts));
     }
 
     /**

@@ -76,7 +76,11 @@ class LessonComposer
             'map_style' => (string) ($spec['map_style'] ?? 'antique'),
             'source_mode' => 'internet',
             'include_game' => true,
-            'game_type' => 'quiz',
+            // A spec containing voyage legs must declare game_type=voyage — that is what makes the
+            // player mount the animated route map instead of a plain slideshow.
+            'game_type' => collect($spec['scenes'] ?? [])->contains(fn ($s) => ($s['type'] ?? '') === 'voyage')
+                ? 'voyage'
+                : 'quiz',
             'status' => LessonStatus::Draft,
         ]);
         if ($lesson->trashed()) {
@@ -100,6 +104,7 @@ class LessonComposer
                 'quiz' => $this->quizScene($lesson, $sceneSpec, $order, ++$gameIndex),
                 'gallery' => $this->galleryScene($lesson, $sceneSpec, $order),
                 'map' => $this->mapScene($lesson, $sceneSpec, $order),
+                'voyage' => $this->voyageScene($lesson, $sceneSpec, $order),
                 '3d', 'video' => $this->embedScene($lesson, $sceneSpec, $order, $type),
                 default => $this->storyScene($lesson, $sceneSpec, $order),
             };
@@ -281,6 +286,48 @@ class LessonComposer
                 'playback_mode' => 'interactive',
                 'annotations' => $annotations,
             ], fn ($v) => $v !== null && $v !== []),
+        ]);
+    }
+
+    /**
+     * One leg of an animated voyage: the ship sails the catalogue route to this landfall, where a
+     * gallery of period imagery opens. The lesson must carry `game_type = voyage` for the player to
+     * mount the route map, which `build()` sets when a spec declares a `voyage`.
+     *
+     * @param  array<string,mixed>  $s
+     */
+    private function voyageScene(Lesson $lesson, array $s, int $order): Scene
+    {
+        $images = [];
+        foreach ((array) ($s['images'] ?? []) as $query) {
+            $hit = $this->images->find((string) $query, $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'));
+            if ($hit) {
+                $images[] = ['url' => $hit['url'], 'credit' => $hit['credit']];
+            }
+        }
+
+        return $lesson->scenes()->create([
+            'order' => $order,
+            'kind' => 'voyage',
+            'status' => 'ready',
+            'location' => $s['location'] ?? null,
+            'chapter_name' => $s['chapter'] ?? null,
+            'year' => $s['year'] ?? null,
+            'script_segment' => $s['script'] ?? null,
+            'config' => [
+                'voyage' => (string) ($s['voyage'] ?? ''),
+                'leg' => (int) ($s['leg'] ?? 0),
+                'view' => (string) ($s['view'] ?? 'flat'),
+                'intro' => (bool) ($s['intro'] ?? false),
+                // The first few gallery images double as thumbnails pinned to the landfall.
+                'stop_images' => array_slice(array_column($images, 'url'), 0, 3),
+                'gallery' => [
+                    'title' => (string) ($s['title'] ?? ($s['location'] ?? '')),
+                    'date_label' => (string) ($s['date_label'] ?? ''),
+                    'story' => (string) ($s['story'] ?? ''),
+                    'images' => $images,
+                ],
+            ],
         ]);
     }
 
