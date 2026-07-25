@@ -2342,12 +2342,15 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $cfg = $scene->config ?? [];
+        unset($cfg['bg_embed']);   // an image background replaces any 3D / video embed
         $scene->update([
             'image_path' => $path,
             'shots' => $this->shotsPreservingArtwork($scene, $path),
             'skybox_image_path' => null,
             'scene_view' => 'slideshow',
             'status' => 'ready',
+            'config' => $cfg,
         ]);
         $this->selectSceneInternal($scene->id);
     }
@@ -2383,6 +2386,97 @@ class Step3SceneConfigurator extends Component
         } catch (\Throwable) {
             // network / decode failure — leave the background unchanged
         }
+    }
+
+    /** Store an embed as the scene's background (mutually exclusive with an image/skybox). */
+    private function applyBgEmbed(array $embed): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $cfg = $scene->config ?? [];
+        $cfg['bg_embed'] = $embed;
+        $scene->update([
+            'config' => $cfg,
+            'image_path' => null,
+            'skybox_image_path' => null,
+            'scene_view' => 'embed',
+            'status' => 'ready',
+        ]);
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /** Set a Sketchfab 3D model (pasted model link or full <iframe> embed) as the scene background. */
+    public function setSketchfabEmbed(string $input): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $p = app(\App\Services\EmbedParser::class)->sketchfab($input);
+        if (! $p) {
+            $this->dispatch('toast', message: __('That doesn\'t look like a Sketchfab model link.'), type: 'warning');
+
+            return;
+        }
+        // Autostart the viewer + hide chrome so it reads as a background.
+        $p['src'] = $p['src'].'?autostart=1&ui_infos=0&ui_controls=1&ui_watermark=0&ui_hint=0';
+        $this->applyBgEmbed($p);
+    }
+
+    /** Set a video (YouTube / Vimeo / pasted iframe) as the scene background, with default settings. */
+    public function setVideoEmbed(string $input): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $parser = app(\App\Services\EmbedParser::class);
+        $p = $parser->video($input);
+        if (! $p) {
+            $this->dispatch('toast', message: __('Paste a YouTube, Vimeo or embed link.'), type: 'warning');
+
+            return;
+        }
+        $p['embed_base'] = $p['src'];   // bare src, so settings can be re-applied later
+        $p += ['autoplay' => true, 'start' => 0, 'end' => 0, 'fit' => 'cover', 'controls' => true];
+        $p['src'] = $parser->embedVideoSrc($p, $p);
+        $this->applyBgEmbed($p);
+    }
+
+    /** Live-update a video background's playback settings (autoplay / start / end / fit / controls). */
+    public function setEmbedOptions(array $opts): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $cfg = $scene->config ?? [];
+        $e = $cfg['bg_embed'] ?? null;
+        if (! is_array($e) || ($e['kind'] ?? '') !== 'video') {
+            return;
+        }
+        $e['autoplay'] = (bool) ($opts['autoplay'] ?? $e['autoplay'] ?? true);
+        $e['start'] = max(0, (int) ($opts['start'] ?? $e['start'] ?? 0));
+        $e['end'] = max(0, (int) ($opts['end'] ?? $e['end'] ?? 0));
+        $e['fit'] = in_array($opts['fit'] ?? '', ['cover', 'fit'], true) ? $opts['fit'] : ($e['fit'] ?? 'cover');
+        $e['controls'] = (bool) ($opts['controls'] ?? $e['controls'] ?? true);
+        $e['src'] = app(\App\Services\EmbedParser::class)->embedVideoSrc(
+            ['provider' => $e['provider'] ?? 'other', 'src' => $e['embed_base'] ?? $e['src']],
+            $e,
+        );
+        $cfg['bg_embed'] = $e;
+        $scene->update(['config' => $cfg]);
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /** Remove an embed background (back to a plain/image background). */
+    public function clearBgEmbed(): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $cfg = $scene->config ?? [];
+        unset($cfg['bg_embed']);
+        $scene->update(['config' => $cfg, 'scene_view' => null]);
+        $this->selectSceneInternal($scene->id);
     }
 
     private function openPaintingPickerCommon(): void

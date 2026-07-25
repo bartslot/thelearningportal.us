@@ -446,6 +446,49 @@ Alpine.data('lessonGame', (lesson) => ({
     // Per-scene motion settings, set by _playScene before each _showFlatScene call.
     _kbAnimated: true,
     _kbNamedDirection: null,
+    _embedBg: null,   // Sketchfab-3D / video iframe used as a scene background
+    _embedRO: null,   // ResizeObserver keeping a 'cover' video sized to the stage
+
+    _hideEmbedBg () {
+      if (this._embedRO) { try { this._embedRO.disconnect() } catch (_) { /* gone */ } this._embedRO = null }
+      if (this._embedBg) { this._embedBg.remove(); this._embedBg = null }
+    },
+
+    // A Sketchfab 3D model or a video (YouTube/Vimeo/…) as the full-bleed scene background.
+    _showEmbedBg (embed) {
+      const bg = document.getElementById('background-layer')
+      if (!bg || !embed || !embed.src) return
+      this._hideEmbedBg()
+      const wrap = document.createElement('div')
+      wrap.id = 'lesson-embed-bg'
+      wrap.className = 'absolute inset-0 overflow-hidden'
+      wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;z-index:1;'
+      const iframe = document.createElement('iframe')
+      iframe.src = embed.src
+      iframe.title = embed.kind === 'sketchfab' ? '3D background' : 'Video background'
+      iframe.setAttribute('allow', 'autoplay; fullscreen; xr-spatial-tracking; encrypted-media; picture-in-picture')
+      iframe.setAttribute('allowfullscreen', 'true')
+      iframe.style.border = '0'
+      iframe.style.position = 'absolute'
+      const coverVideo = embed.kind === 'video' && (embed.fit || 'cover') === 'cover'
+      if (!coverVideo) {
+        // Sketchfab fills; a 'fit' video letterboxes inside a full-bleed iframe.
+        iframe.style.inset = '0'; iframe.style.width = '100%'; iframe.style.height = '100%'
+      } else {
+        // Cover a 16:9 video: overflow the shorter axis + centre; keep sized on resize.
+        iframe.style.left = '50%'; iframe.style.top = '50%'; iframe.style.transform = 'translate(-50%,-50%)'
+        const fit = () => {
+          const cw = wrap.clientWidth || 1, ch = wrap.clientHeight || 1, a = 16 / 9
+          if (cw / ch > a) { iframe.style.width = cw + 'px'; iframe.style.height = (cw / a) + 'px' }
+          else { iframe.style.height = ch + 'px'; iframe.style.width = (ch * a) + 'px' }
+        }
+        fit()
+        try { this._embedRO = new ResizeObserver(fit); this._embedRO.observe(wrap) } catch (_) { /* no RO */ }
+      }
+      wrap.appendChild(iframe)
+      bg.appendChild(wrap)
+      this._embedBg = wrap
+    },
 
     _showBgImage (img, layer) {
       const el = layer === 'A' ? this._bgLayerA : this._bgLayerB
@@ -930,6 +973,15 @@ Alpine.data('lessonGame', (lesson) => ({
       // Teacher text annotations for this scene (URLs render as link chips → iframe modal).
       // Before the map early-return, so a map scene clears the previous scene's texts too.
       this._renderSceneTexts(scene)
+
+      // Embed background (Sketchfab 3D / video) — a full-bleed iframe behind the scene overlay.
+      // Works for flat AND game scenes (quiz/debate); map/voyage own their whole stage so skip them.
+      const _embed = scene.config && scene.config.bg_embed
+      if (_embed && _embed.src && scene.kind !== 'map' && scene.kind !== 'voyage') {
+        this._showEmbedBg(_embed)
+      } else {
+        this._hideEmbedBg()
+      }
 
       // Map block — render the historical atlas as a slide (no audio).
       if (scene.kind === 'map') { this._playMapScene(index, scene); return }
