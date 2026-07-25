@@ -6,6 +6,7 @@ namespace Tests\Feature\Services;
 
 use App\Models\Scene;
 use App\Models\User;
+use Illuminate\Support\Facades\File;
 use App\Services\VoyageLessonBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -32,18 +33,30 @@ class VoyageLessonBuilderTest extends TestCase
     {
         $playable = $this->builder()->playableVoyages();
 
-        // Columbus + Tasman have legs authored; the rest are waypoint-only (not lesson-ready yet).
+        // Every catalogue voyage that has legs authored is offered. A waypoint-only entry is not:
+        // `brouwer-route` etc. gained legs, so assert the RULE rather than a frozen catalogue list.
         $this->assertArrayHasKey('columbus-1492', $playable);
         $this->assertArrayHasKey('tasman-1642', $playable);
-        $this->assertArrayNotHasKey('gama-1497', $playable, 'da Gama has no legs → not offered');
-        $this->assertArrayNotHasKey('magellan-1519', $playable);
+
+        $catalog = json_decode(File::get(resource_path('js/timemap/voyages.json')), true)['voyages'] ?? [];
+        foreach ($catalog as $entry) {
+            $hasLegs = ! empty($entry['legs']);
+            $this->assertSame(
+                $hasLegs,
+                array_key_exists($entry['id'], $playable),
+                "{$entry['id']}: playable should follow leg presence",
+            );
+        }
     }
 
     public function test_is_playable_reflects_leg_presence(): void
     {
         $b = $this->builder();
+        // Every catalogue voyage now has legs authored, so isPlayable tracks that; an id that is
+        // not in the catalogue at all is simply not playable (and must not blow up).
         $this->assertTrue($b->isPlayable('columbus-1492'));
-        $this->assertFalse($b->isPlayable('cook-1768'));
+        $this->assertTrue($b->isPlayable('brouwer-route'));
+        $this->assertFalse($b->isPlayable('not-a-real-voyage-id'));
     }
 
     public function test_build_creates_voyage_legs_wrapped_by_intro_and_outro_story_scenes(): void
@@ -96,11 +109,11 @@ class VoyageLessonBuilderTest extends TestCase
         $this->assertSame(6, $second->scenes()->count(), 'scenes rebuilt cleanly (not doubled)');
     }
 
-    public function test_build_rejects_a_voyage_without_legs(): void
+    public function test_build_rejects_an_unknown_voyage(): void
     {
         $teacher = User::factory()->create(['role' => 'teacher']);
 
         $this->expectException(RuntimeException::class);
-        $this->builder()->build('gama-1497', $teacher);
+        $this->builder()->build('not-a-real-voyage-id', $teacher);
     }
 }

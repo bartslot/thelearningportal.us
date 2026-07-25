@@ -1098,9 +1098,11 @@
     };
     document.addEventListener('alpine:init', __registerViewStore);
     document.addEventListener('livewire:navigated', __registerViewStore);
-    // …and register NOW when Alpine has already booted. This script is @push'ed, so on some loads it
-    // runs AFTER alpine:init has fired — then neither listener ever calls it, $store.view stays
-    // undefined, and every x-effect reading it throws (which kills the panels and the preview mount).
+    // …and register NOW when Alpine has already booted. This script is pushed to the scripts stack,
+    // so on some loads it runs AFTER alpine:init has fired — then neither listener ever calls it,
+    // $store.view stays undefined, and every x-effect reading it throws (which kills the panels and
+    // the preview mount). NB: never write a bare Blade directive name in these comments — Blade
+    // compiles it even inside a JS comment.
     __registerViewStore();
     </script>
     @endpush
