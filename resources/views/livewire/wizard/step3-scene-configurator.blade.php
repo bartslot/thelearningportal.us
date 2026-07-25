@@ -56,6 +56,13 @@
              style="display:none;
                     left: var(--work-left); right: var(--work-right, 16rem);
                     top: var(--top-inset); bottom: var(--work-bottom, 0px);"></div>
+        {{-- Editable clipart layers a teacher drops ON TOP of a Route waypoint (voyage) map. Same
+             letterboxed coordinate box as the text overlay (and the student player), so a layer's
+             %-position matches between editor and playback. z-6: above the map (z-5), below text
+             (z-7) by default; raised to z-8 when the teacher stacks clipart above text. The host is
+             transparent + pointer-events:none (only the layer nodes catch), so map panning still
+             works between layers. --}}
+        <div id="lesson-voyage-art" class="absolute inset-0 z-6" style="display:none; pointer-events:none;"></div>
     </div>
 
     {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (16rem
@@ -218,6 +225,49 @@
         const host = document.getElementById('lesson-map-preview')
         if (!host) return
         let inst = null
+
+        // ── Editable clipart layers on a voyage map ───────────────────────────────
+        // A single reusable ArtworkOverlay lives in #lesson-voyage-art (a canvas-root child, so it
+        // survives map re-mounts). It's shown only on voyage scenes; its %-coordinates match the
+        // student player because both use the same letterboxed box. Same object-list / selection /
+        // delete plumbing as slideshow clipart, via window.__lessonArtworkLayer.
+        let artOverlay = null
+        let artSig = null
+        const voyageArtHost = () => document.getElementById('lesson-voyage-art')
+        const ensureArtOverlay = () => {
+            if (artOverlay) return artOverlay
+            const h = voyageArtHost()
+            const Cls = window.LessonScene?.ArtworkOverlay
+            if (!h || !Cls) return null   // scene bundle still loading — a later scene:load retries
+            artOverlay = new Cls(h, {
+                onChange: (assetId, t) =>
+                    window.Livewire.dispatch('artwork:move', { assetId, x: t.x, y: t.y, scale: t.scale }),
+            })
+            return artOverlay
+        }
+        const showVoyageArt = (p) => {
+            const overlay = ensureArtOverlay()
+            const h = voyageArtHost()
+            if (!overlay || !h) return
+            const layers = ((p.shots || [])[0]?.layers || []).filter((l) => l && l.url && l.asset_id != null)
+            const onTop = !!(p.config || {}).clipart_on_top
+            overlay.setOnTop(onTop)
+            h.style.zIndex = onTop ? '8' : '6'      // above text (7) when stacked on top, else below it
+            h.style.display = ''
+            // Skip re-seeding on identical poll re-renders — it would reset an in-progress drag.
+            const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url).split('?')[0]]))
+            if (sig !== artSig) { artSig = sig; overlay.setLayers(layers) }
+            window.__lessonArtworkLayer = overlay
+        }
+        const hideVoyageArt = () => {
+            const h = voyageArtHost()
+            if (h) h.style.display = 'none'
+            artSig = null
+            if (artOverlay) { try { artOverlay.clear() } catch (_) {} }
+            // Release the shared handle only if it still points at MY overlay (a slideshow scene
+            // reclaims it on its own render).
+            if (window.__lessonArtworkLayer === artOverlay) window.__lessonArtworkLayer = null
+        }
         // The current voyage map centre — a new leg drops its destination here (the teacher pans to
         // roughly where the leg should end). null when no voyage map is mounted.
         window.__voyageCenter = () => { try { return (inst && inst.map) ? inst.map.getCenter() : null } catch (_) { return null } }
@@ -235,6 +285,7 @@
             if (inst) { inst.destroy(); inst = null }
             host.innerHTML = ''
             host.style.display = 'none'
+            hideVoyageArt()
             lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null; lastGalleryId = null
         }
 
@@ -340,6 +391,7 @@
                         } catch (_) {}
                     }
                     lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr
+                    showVoyageArt(p)   // keep the clipart layers in sync (a poll/leg switch may add/move one)
                     return
                 }
                 // Gallery scene: SAME scene → refresh content in place (title/date/story/fit/images)
@@ -350,6 +402,7 @@
                         try { inst.setContent(p.config || {}) } catch (_) {}
                     }
                     lastKey = key
+                    hideVoyageArt()   // gallery scenes don't carry map clipart
                     return
                 }
                 destroy(); wireTextProjector()
@@ -404,6 +457,8 @@
                 } else {
                     console.error('[wizard] voyage/gallery renderer unavailable — is the module loaded?')
                 }
+                // Clipart layers ride ABOVE the voyage map (never on a standalone gallery scene).
+                if (p.kind === 'voyage') showVoyageArt(p); else hideVoyageArt()
                 return
             }
 

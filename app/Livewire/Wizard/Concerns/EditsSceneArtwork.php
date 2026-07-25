@@ -78,8 +78,22 @@ trait EditsSceneArtwork
 
         // Immutable transformation: build new arrays, never mutate in place
         if (empty($shots)) {
-            // No shots exist. Create scene needs an image_path to generate shots.
-            if (!$scene->image_path) {
+            // Map-backed scenes (voyage / map) have no flat background image — the MAP itself is
+            // the backdrop. Still allow clipart on top: create a shot carrying ONLY the asset layer
+            // (no cover). The editor renders these over the map; serializeShots keeps layer-only shots.
+            if (! $scene->image_path) {
+                if ($scene->kind === 'voyage') {
+                    $shots = [[
+                        'order' => 0,
+                        'layers' => [$newLayer],
+                    ]];
+                    $scene->update(['shots' => $shots]);
+                    $this->selectSceneInternal($scene->id);
+                    $this->svgLibraryOpen = false;
+
+                    return;
+                }
+
                 $this->dispatch('toast', message: 'Generate a scene image first.', type: 'warning');
 
                 return;
@@ -190,7 +204,12 @@ trait EditsSceneArtwork
             }
 
             return array_merge($shot, ['layers' => $layers]);
-        })->all();
+        })
+            // A map-backed scene's shot is layer-only (no image_path). Once its last clipart is
+            // removed it carries nothing — drop the empty shot so shots collapses back to [].
+            ->reject(fn (array $shot) => empty($shot['image_path']) && empty($shot['layers'] ?? []))
+            ->values()
+            ->all();
 
         $scene->update(['shots' => $shots]);
         $this->selectSceneInternal($scene->id);

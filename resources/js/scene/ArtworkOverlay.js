@@ -21,9 +21,10 @@ const MAX_SCALE = 3
 export const artObjId = (assetId) => `art_${assetId}`
 
 export class ArtworkOverlay {
-  constructor(hostEl, { onChange = null } = {}) {
+  constructor(hostEl, { onChange = null, readonly = false } = {}) {
     this.host = hostEl
     this.onChange = onChange
+    this.readonly = readonly   // playback: render the layers but never let the viewer drag them
     this._layers = []
     this._selectedId = null
     this.host.style.pointerEvents = 'none'   // the host is transparent; only layer nodes catch events
@@ -137,9 +138,14 @@ export class ArtworkOverlay {
     // width:max-content so the node sizes to the image's natural aspect at the given height.
     // (A plain shrink-to-fit box collapses to a wrong tall/narrow shape when the child img
     // uses percentage height — that distorted the selection box.)
+    // Playback nodes are inert (pointer-events:none) so a student can't drag the decoration and it
+    // never steals a map pan; editor nodes catch pointers to move/select.
+    const interact = this.readonly
+      ? 'pointer-events:none; cursor:default;'
+      : 'pointer-events:auto; cursor:grab;'
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
       width:max-content; transform:${this._transform(item)}; transform-origin:center;
-      pointer-events:auto; cursor:grab; touch-action:none; user-select:none;`
+      ${interact} touch-action:none; user-select:none;`
 
     const img = document.createElement('img')
     img.src = item.url

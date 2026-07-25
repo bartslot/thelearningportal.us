@@ -7,5 +7,6 @@ export { SceneTimelinePlayer } from './SceneTimelinePlayer.js';
 export { GameTimerOverlay } from './GameTimerOverlay.js';
 export { QuizOverlay } from './QuizOverlay.js';
 export { TextOverlayLayer } from './TextOverlayLayer.js';
+export { ArtworkOverlay } from './ArtworkOverlay.js';
 export { AmplitudeWaveform } from './AmplitudeWaveform.js';
 export { mountWizardScene } from './wizard-bridge.js';

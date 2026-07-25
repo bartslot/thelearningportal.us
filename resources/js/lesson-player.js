@@ -973,6 +973,9 @@ Alpine.data('lessonGame', (lesson) => ({
       // Teacher text annotations for this scene (URLs render as link chips → iframe modal).
       // Before the map early-return, so a map scene clears the previous scene's texts too.
       this._renderSceneTexts(scene)
+      // Teacher clipart layers a voyage scene carries ON TOP of the map (read-only in playback).
+      // Also before the early-returns, so leaving a decorated scene clears its clipart.
+      this._renderSceneArtwork(scene)
 
       // Embed background (Sketchfab 3D / video) — a full-bleed iframe behind the scene overlay.
       // Works for flat AND game scenes (quiz/debate); map/voyage own their whole stage so skip them.
@@ -1332,6 +1335,23 @@ Alpine.data('lessonGame', (lesson) => ({
         this._textLayer.setProjector(_mapInstance.textProjector(host))
         _mapInstance.map.on('move', () => this._textLayer?.refreshPositions())
       }
+    },
+
+    // Read-only clipart layers a teacher placed ON TOP of a voyage map. Same %-coordinate box as
+    // the text overlay (both full-bleed, above the map stage), so a layer sits where the editor
+    // showed it. Any non-voyage scene has no such layers → the host hides itself.
+    async _renderSceneArtwork (scene) {
+      const host = document.getElementById('lesson-voyage-art')
+      if (!host) return
+      const layers = ((scene.shots || [])[0]?.layers || []).filter(l => l && l.url && l.asset_id != null)
+      if (!layers.length && !this._artLayer) { host.style.display = 'none'; return }
+      const { ArtworkOverlay } = await import('./scene/ArtworkOverlay.js')
+      this._artLayer = this._artLayer || new ArtworkOverlay(host, { readonly: true })
+      const onTop = !!(scene.config || {}).clipart_on_top
+      this._artLayer.setOnTop(onTop)
+      host.style.zIndex = onTop ? '32' : '30'   // above text (31) when stacked on top, else below it
+      host.style.display = layers.length ? '' : 'none'
+      this._artLayer.setLayers(layers)
     },
 
     // Quiz segment: step through the lesson's questions in the card overlay, then

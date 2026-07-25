@@ -1,15 +1,10 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 /**
  * Switching between legs of the SAME voyage must NOT rebuild the map — the tour plays the new leg on
  * the existing instance, preserving zoom / centre / globe-flat projection and the loaded tiles.
  */
 const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
-
-async function voyageSceneClicks(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    [...document.querySelectorAll('[wire\\:click^="selectScene"]')].map((e) => e.getAttribute('wire:click') || ''));
-}
 
 test('switching voyage legs plays live on the same map (no re-mount)', async ({ page }) => {
   test.setTimeout(120_000);
@@ -20,17 +15,36 @@ test('switching voyage legs plays live on the same map (no re-mount)', async ({ 
 
   await page.goto(WIZARD_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!(window as any).renderVoyageTour && !!(window as any).Livewire);
-  await page.evaluate(() => {
-    const w = window as any;
-    w.__origRVT = w.renderVoyageTour; w.__mounts = 0;
-    w.renderVoyageTour = function (...a: any[]) { w.__mounts++; const i = w.__origRVT.apply(this, a); w.__cap = i; return i; };
+
+  // Pick the first two VOYAGE legs by their actual kind (from the bootstrap scene JSON) — the
+  // lesson also has non-voyage intro scenes (a quiz + a gallery), so a positional index is wrong.
+  const { intro, legA, legB } = await page.evaluate(() => {
+    const scenes = JSON.parse(document.getElementById('step3-scenes-data')?.textContent || '[]');
+    const voyages = scenes.filter((s: any) => s.kind === 'voyage').map((s: any) => s.id);
+    const nonVoyage = scenes.find((s: any) => s.kind !== 'voyage')?.id;
+    return { intro: nonVoyage, legA: voyages[0], legB: voyages[1] };
   });
 
-  // Find the voyage scenes (ids in wire:click). Columbus: 36..39 are the four legs.
-  const clicks = await voyageSceneClicks(page);
-  const sceneIds = clicks.map((c) => Number(c.match(/selectScene\((\d+)\)/)?.[1])).filter(Boolean);
-  const legA = sceneIds[1]; // 2nd scene = first voyage leg
-  const legB = sceneIds[2]; // 3rd scene = second voyage leg
+  // The wizard may persist a VOYAGE scene as selected, so the map can mount during hydration —
+  // before we wrap renderVoyageTour. Land on the non-voyage intro first to tear any such map down,
+  // so the counter below only sees the mount we trigger.
+  await page.evaluate((id) => (window as any).Livewire.all().find((x: any) => x.name === 'wizard.step3-scene-configurator').$wire.selectScene(id), intro);
+  await page.waitForTimeout(1500);
+
+  // Wrap via a getter/setter: the lazy voyage-tour chunk re-assigns window.renderVoyageTour on load,
+  // which clobbers a plain assignment — the accessor keeps our counter wrapping whatever it sets.
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__mounts = 0;
+    let real = w.renderVoyageTour;
+    const wrap = (fn: any) => function (this: any, ...a: any[]) { w.__mounts++; const i = fn.apply(this, a); w.__cap = i; return i; };
+    let wrapped = wrap(real);
+    Object.defineProperty(w, 'renderVoyageTour', {
+      configurable: true,
+      get: () => wrapped,
+      set: (fn) => { real = fn; wrapped = wrap(fn); },
+    });
+  });
 
   // Land on the first leg (this mount is expected).
   await page.evaluate((id) => (window as any).Livewire.all().find((x: any) => x.name === 'wizard.step3-scene-configurator').$wire.selectScene(id), legA);

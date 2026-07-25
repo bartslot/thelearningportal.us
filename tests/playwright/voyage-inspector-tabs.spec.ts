@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * Voyage scene inspector — the tabbed redesign (Leg / Map / Route).
+ * Voyage scene inspector — the tabbed redesign (Waypoint / Map / Route).
  * Asserts: tabs render, switching shows the right panel, the active tab SURVIVES the component's
  * 3s wire:poll, and a Livewire action inside a tab round-trips 200 with no console/page errors.
  * Runs against the Columbus fixture (lesson 3) in the local wizard (AutoLoginDev signs us in).
@@ -38,11 +38,11 @@ test('voyage inspector: tabs switch, survive the poll, and actions round-trip', 
   await openFirstVoyageScene(page);
 
   // 1) All three tabs render.
-  await expect(page.getByRole('tab', { name: 'Leg' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Waypoint' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Map' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Route' })).toBeVisible();
 
-  // 2) Default tab is Leg → its "Dates" group is visible, Route's "Route line" is not.
+  // 2) Default tab is Waypoint → its "Dates" group is visible, Route's "Route line" is not.
   await expect(page.getByText('Gallery / description')).toBeVisible();
   await expect(page.getByText('Route line')).toBeHidden();
 

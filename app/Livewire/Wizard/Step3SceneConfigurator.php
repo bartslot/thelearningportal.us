@@ -178,7 +178,10 @@ class Step3SceneConfigurator extends Component
                 'ink_fill' => $l['ink_fill'] ?? null,
                 'draw_time' => isset($l['draw_time']) ? (float) $l['draw_time'] : null,
             ])->filter(fn ($l) => $l['url'])->values()->all() ?: null,
-        ])->filter(fn ($shot) => $shot['image_url'])->values()->all();
+            // Keep a shot when it has EITHER a background image OR clipart layers. Map-backed scenes
+            // (voyage / map) carry layer-only shots — the MAP is the backdrop, so there's no image_url,
+            // but the clipart layers must still reach the editor/player overlay.
+        ])->filter(fn ($shot) => $shot['image_url'] || ! empty($shot['layers']))->values()->all();
     }
 
     /**

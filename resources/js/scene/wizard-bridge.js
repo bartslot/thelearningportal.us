@@ -912,8 +912,11 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                             window.Livewire?.dispatch('artwork:move', { assetId, x: t.x, y: t.y, scale: t.scale })
                         },
                     })
-                    window.__lessonArtworkLayer = _artworkOverlay
                 }
+                // Reclaim the shared object-list handle on EVERY slideshow render — a voyage scene
+                // may have pointed it at its own map overlay, so re-point it here whenever a
+                // slideshow scene with clipart is the one on stage.
+                window.__lessonArtworkLayer = _artworkOverlay
                 // Clipart can be stacked above the text overlay (teacher drags it there in the object
                 // list). The host is cached with z-index:2, so re-apply the flag on every scene load.
                 const clipartOnTop = !!payload.clipartOnTop

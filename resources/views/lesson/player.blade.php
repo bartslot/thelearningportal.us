@@ -81,6 +81,10 @@
                     // Multiplane layers (E3c): [{path|url, depth, kind, scale, height, sway}] back→front.
                     'layers'          => collect($shot['layers'] ?? [])->map(fn($l) => [
                         'url'    => !empty($l['path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($l['path']) : ($l['url'] ?? null),
+                        // asset_id + x/y drive the free-positioned clipart overlay (voyage-map layers).
+                        'asset_id' => isset($l['asset_id']) ? (int) $l['asset_id'] : null,
+                        'x'      => isset($l['x']) ? (float) $l['x'] : null,
+                        'y'      => isset($l['y']) ? (float) $l['y'] : null,
                         'depth'  => (float) ($l['depth'] ?? 1),
                         'kind'   => in_array($l['kind'] ?? 'cover', ['cover', 'figure', 'strip'], true) ? ($l['kind'] ?? 'cover') : 'cover',
                         'scale'  => (float) ($l['scale'] ?? 1),
@@ -94,7 +98,9 @@
                         'z'       => isset($l['z']) ? (int) $l['z'] : null,
                     ])->filter(fn($l) => $l['url'])->values()->all() ?: null,
                     'anchor_sentence' => $shot['anchor_sentence'] ?? null,
-                ])->filter(fn($shot) => $shot['image_url'])->values()->all() ?: null,
+                    // Keep a shot with EITHER a background image OR clipart layers — a voyage scene's
+                    // shot is layer-only (the map is the backdrop), so it has no image_url.
+                ])->filter(fn($shot) => $shot['image_url'] || !empty($shot['layers']))->values()->all() ?: null,
                 'alignment'   => $s->audio_alignment ?: null,
                 'duration_seconds' => $s->duration_seconds,
                 'background_color' => $s->background_color,
@@ -137,8 +143,13 @@
         {{-- Populated by lesson-player.js --}}
     </div>
 
-    {{-- Teacher text annotations per scene (links open an iframe modal). --}}
-    <div id="lesson-text-overlay" class="absolute inset-0 z-10 pointer-events-none"></div>
+    {{-- Teacher text annotations per scene (links open an iframe modal). z-31: above the map stage
+         (z-20) so text a teacher placed on a voyage/history map is visible, below the quiz overlay. --}}
+    <div id="lesson-text-overlay" class="absolute inset-0 z-31 pointer-events-none"></div>
+    {{-- Teacher clipart layers a scene carries ON TOP of the voyage map. z-30 (below text) by default,
+         raised to z-32 when the teacher stacked clipart above text — mirrors the editor's ordering.
+         Read-only in playback (pointer-events:none) so it never steals a map pan. --}}
+    <div id="lesson-voyage-art" class="absolute inset-0 z-30 pointer-events-none" style="display:none"></div>
 
     {{-- Quiz question cards (QuizOverlay mounts here during quiz segments). --}}
     <div id="lesson-game-overlay" class="absolute inset-0 z-40 pointer-events-none"></div>

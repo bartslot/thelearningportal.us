@@ -177,6 +177,52 @@ class SceneArtworkTest extends TestCase
         $this->assertNull($this->scene->shots);
     }
 
+    public function test_attach_on_imageless_voyage_scene_creates_a_layer_only_shot(): void
+    {
+        // A Route waypoint (voyage) scene has no flat background image — the map is the backdrop.
+        // Clipart must still attach, as a shot carrying only the asset layer (no cover).
+        $this->scene->update(['kind' => 'voyage', 'image_path' => null]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id);
+
+        $this->scene->refresh();
+        $shots = $this->scene->shots;
+
+        $this->assertNotNull($shots);
+        $this->assertCount(1, $shots);
+
+        $layers = $shots[0]['layers'] ?? [];
+        $this->assertCount(1, $layers, 'Only the asset layer — no cover for a map-backed scene');
+        $this->assertSame($this->asset1->id, $layers[0]['asset_id']);
+        $this->assertSame('figure', $layers[0]['kind']);
+        $this->assertArrayNotHasKey('image_path', $shots[0]);
+    }
+
+    public function test_detaching_the_last_clipart_from_a_voyage_scene_collapses_shots_to_null(): void
+    {
+        // A layer-only voyage shot carries nothing once its clipart is removed — it must not
+        // linger as an empty shot (which would keep the scene "having shots" for no reason).
+        $this->scene->update([
+            'kind' => 'voyage',
+            'image_path' => null,
+            'shots' => [
+                ['order' => 0, 'layers' => [
+                    ['asset_id' => $this->asset1->id, 'path' => 'assets/test1.svg', 'kind' => 'figure', 'depth' => 1.3],
+                ]],
+            ],
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('detachArtwork', $this->asset1->id);
+
+        $this->assertSame([], $this->scene->refresh()->shots);
+    }
+
     public function test_attach_does_not_duplicate_the_same_asset(): void
     {
         $this->scene->update([
