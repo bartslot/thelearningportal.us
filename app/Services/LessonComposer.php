@@ -10,6 +10,7 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
@@ -123,14 +124,51 @@ class LessonComposer
         return $lesson->fresh();
     }
 
-    /** Narrate a scene with the configured TTS provider (Azure locally), tolerating failure. */
+    /**
+     * Narrate a scene with the configured TTS provider (Azure locally), tolerating failure.
+     *
+     * Rebuilding a lesson recreates its scenes, so the naive path re-synthesises every line even
+     * when the script never changed. Audio is therefore cached by script hash under the LESSON
+     * (not the scene) and copied back into place — editing one sentence in a spec then costs one
+     * TTS call, not sixteen.
+     */
     private function narrate(Scene $scene): void
     {
+        $script = (string) $scene->script_segment;
+        $hash = sha1($script);
+        $cached = "lessons/{$scene->lesson_id}/narration-cache/{$hash}.mp3";
+        $disk = Storage::disk('public');
+
+        if ($disk->exists($cached)) {
+            $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/narration.mp3";
+            $disk->put($path, $disk->get($cached));
+            $scene->update([
+                'audio_path' => $path,
+                'audio_script_hash' => $hash,
+                'duration_seconds' => $this->estimateDuration($script),
+            ]);
+            $this->say('     ↳ narration reused from cache');
+
+            return;
+        }
+
         try {
             GenerateSceneAudio::dispatchSync($scene->id);
+            $scene->refresh();
+            if ($scene->audio_path && $disk->exists($scene->audio_path)) {
+                $disk->put($cached, $disk->get($scene->audio_path));
+            }
         } catch (Throwable $e) {
             $this->say('     ! narration failed: '.substr($e->getMessage(), 0, 90));
         }
+    }
+
+    /** Spoken length estimate (~2.6 words/sec) — mirrors GenerateSceneAudio's fallback. */
+    private function estimateDuration(string $script): int
+    {
+        $words = max(1, str_word_count(strip_tags($script)));
+
+        return (int) ceil(max(3.0, round($words / 2.6, 1)));
     }
 
     /**

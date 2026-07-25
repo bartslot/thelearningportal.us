@@ -80,10 +80,13 @@ return [
             'qid' => 'Q55',
             'projection' => 'mercator',
             'script' => 'Look carefully at this map, because the whole of Anne\'s story fits inside it. Here is Amsterdam, where the Frank family made their new home. On the Prinsengracht canal stands the building we now call the Anne Frank House, with the hiding place behind it. And far to the north east, in the empty heathland of Drenthe, is Westerbork: the transit camp from which more than one hundred thousand Jewish people were put on trains to the east. The distance between these places is small. The journey between them changed everything.',
+            // Labels must be far enough apart to stay legible once the camera fits the whole
+            // country — two Amsterdam pins 1 km apart overprint into mush at this scale.
+            // These three also trace the journey: hiding place → transit camp → destination.
             'labels' => [
-                ['Anne Frank House', 4.8840, 52.3752],
-                ['Merwedeplein — the family home', 4.8977, 52.3436],
+                ['Amsterdam — the Secret Annex', 4.8840, 52.3752],
                 ['Westerbork transit camp', 6.6069, 52.9186],
+                ['Bergen-Belsen', 9.9075, 52.7580],
             ],
         ],
 
