@@ -147,6 +147,100 @@ trait EditsSceneArtwork
     }
 
     /**
+     * Add a 3D (Sketchfab) or video (YouTube/Vimeo/embed) as a free-positioned LAYER on top of the
+     * scene — the sibling of a clipart layer, but its node is an <iframe> instead of an <img>. Parsed
+     * by the same EmbedParser as the backgrounds; stored in shots[].layers with kind='embed' and a
+     * synthetic asset_id so the existing move / reorder / delete plumbing (all keyed on asset_id) works.
+     *
+     * $kind: '3d' (Sketchfab) or 'video' (YouTube / Vimeo / pasted iframe).
+     */
+    public function addEmbedLayer(string $input, string $kind): void
+    {
+        if (! $this->selectedSceneId) {
+            $this->dispatch('toast', message: __('No scene selected.'), type: 'warning');
+
+            return;
+        }
+
+        $parser = app(\App\Services\EmbedParser::class);
+        if ($kind === '3d') {
+            $p = $parser->sketchfab($input);
+            if (! $p) {
+                $this->dispatch('toast', message: __('That doesn\'t look like a Sketchfab model link.'), type: 'warning');
+
+                return;
+            }
+            // Clean, autospinning, no-chrome — a decoration, not an interactive widget.
+            $embed = [
+                'type' => 'sketchfab',
+                'title' => __('3D model'),
+                'src' => $p['src'].'?'.http_build_query([
+                    'autostart' => 1, 'autospin' => 0.2, 'ui_controls' => 0, 'ui_infos' => 0,
+                    'ui_watermark' => 0, 'ui_watermark_link' => 0, 'ui_hint' => 0, 'ui_ar' => 0,
+                    'ui_help' => 0, 'ui_settings' => 0, 'ui_vr' => 0, 'ui_fullscreen' => 0,
+                    'ui_annotations' => 0, 'ui_stop' => 0, 'scrollwheel' => 0, 'dnt' => 1,
+                ]),
+            ];
+        } else {
+            $p = $parser->video($input);
+            if (! $p) {
+                $this->dispatch('toast', message: __('Paste a YouTube, Vimeo or embed link.'), type: 'warning');
+
+                return;
+            }
+            // A video layer autoplays muted with no controls, and letterboxes (contain) so nothing crops.
+            $opts = ['autoplay' => true, 'controls' => false, 'start' => 0, 'end' => 0];
+            $embed = [
+                'type' => 'video',
+                'title' => __('Video'),
+                'provider' => $p['provider'] ?? 'other',
+                'embed_base' => $p['src'],
+                'src' => $parser->embedVideoSrc($p, $opts),
+            ];
+        }
+
+        $newLayer = [
+            'asset_id' => random_int(1_000_000_001, 1_999_999_999),   // synthetic id (no SvgAsset row)
+            'kind' => 'embed',
+            'embed' => $embed,
+            'depth' => 1.0,
+            'scale' => 1.0,
+            'height' => 45,
+            'x' => 50.0,
+            'y' => 50.0,
+        ];
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $shots = $scene->shots ?? [];
+
+        if (empty($shots)) {
+            if ($scene->image_path) {
+                $shots = [[
+                    'order' => 0,
+                    'image_path' => $scene->image_path,
+                    'layers' => [
+                        ['path' => $scene->image_path, 'kind' => 'cover', 'depth' => 0.4],
+                        $newLayer,
+                    ],
+                ]];
+            } else {
+                // Map-backed (voyage) scene — layer-only shot, the map is the backdrop.
+                $shots = [['order' => 0, 'layers' => [$newLayer]]];
+            }
+        } else {
+            $layers = $shots[0]['layers'] ?? [];
+            if (empty($layers) && ! empty($shots[0]['image_path'])) {
+                $layers[] = ['path' => $shots[0]['image_path'], 'kind' => 'cover', 'depth' => 0.4];
+            }
+            $layers[] = $newLayer;
+            $shots[0] = array_merge($shots[0], ['layers' => $layers]);
+        }
+
+        $scene->update(['shots' => $shots]);
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /**
      * Build a shots array carrying the given background image plus any clipart layers already on
      * the scene, so swapping the background (painting / pasted URL) doesn't silently delete the
      * teacher's manually-placed clipart. Returns null when there is no clipart to preserve — the

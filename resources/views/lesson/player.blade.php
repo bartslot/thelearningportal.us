@@ -96,7 +96,9 @@
                         'blend'   => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
                         'wobble'  => isset($l['wobble']) ? (int) $l['wobble'] : null,
                         'z'       => isset($l['z']) ? (int) $l['z'] : null,
-                    ])->filter(fn($l) => $l['url'])->values()->all() ?: null,
+                        // 3D / video layers ride as an iframe embed instead of an image.
+                        'embed'   => isset($l['embed']) && is_array($l['embed']) ? $l['embed'] : null,
+                    ])->filter(fn($l) => $l['url'] || $l['embed'])->values()->all() ?: null,
                     'anchor_sentence' => $shot['anchor_sentence'] ?? null,
                     // Keep a shot with EITHER a background image OR clipart layers — a voyage scene's
                     // shot is layer-only (the map is the backdrop), so it has no image_url.

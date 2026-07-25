@@ -177,7 +177,9 @@ class Step3SceneConfigurator extends Component
                 'ink_preset' => $l['ink_preset'] ?? null,
                 'ink_fill' => $l['ink_fill'] ?? null,
                 'draw_time' => isset($l['draw_time']) ? (float) $l['draw_time'] : null,
-            ])->filter(fn ($l) => $l['url'])->values()->all() ?: null,
+                // Embed layers (3D / video) carry an iframe embed instead of an image url.
+                'embed' => isset($l['embed']) && is_array($l['embed']) ? $l['embed'] : null,
+            ])->filter(fn ($l) => $l['url'] || $l['embed'])->values()->all() ?: null,
             // Keep a shot when it has EITHER a background image OR clipart layers. Map-backed scenes
             // (voyage / map) carry layer-only shots — the MAP is the backdrop, so there's no image_url,
             // but the clipart layers must still reach the editor/player overlay.
@@ -2419,8 +2421,26 @@ class Step3SceneConfigurator extends Component
 
             return;
         }
-        // Autostart the viewer + hide chrome so it reads as a background.
-        $p['src'] = $p['src'].'?autostart=1&ui_infos=0&ui_controls=1&ui_watermark=0&ui_hint=0';
+        // Autostart + gently autospin, and hide ALL viewer chrome so it reads as a clean background
+        // (no controls, no info panel, no watermark link, no hint/help/AR/VR/settings/fullscreen).
+        $p['src'] = $p['src'].'?'.http_build_query([
+            'autostart' => 1,
+            'autospin' => 0.2,
+            'ui_controls' => 0,
+            'ui_infos' => 0,
+            'ui_watermark' => 0,
+            'ui_watermark_link' => 0,
+            'ui_hint' => 0,
+            'ui_ar' => 0,
+            'ui_help' => 0,
+            'ui_settings' => 0,
+            'ui_vr' => 0,
+            'ui_fullscreen' => 0,
+            'ui_annotations' => 0,
+            'ui_stop' => 0,
+            'scrollwheel' => 0,
+            'dnt' => 1,
+        ]);
         $this->applyBgEmbed($p);
     }
 

@@ -223,6 +223,50 @@ class SceneArtworkTest extends TestCase
         $this->assertSame([], $this->scene->refresh()->shots);
     }
 
+    public function test_add_embed_layer_adds_a_3d_iframe_layer_to_a_voyage_scene(): void
+    {
+        $this->scene->update(['kind' => 'voyage', 'image_path' => null]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('addEmbedLayer', 'https://sketchfab.com/3d-models/eendracht-5122ceb52cfd4bf5be518fdf693efbb3', '3d');
+
+        $layer = $this->scene->refresh()->shots[0]['layers'][0];
+        $this->assertSame('embed', $layer['kind']);
+        $this->assertSame('sketchfab', $layer['embed']['type']);
+        $this->assertStringContainsString('5122ceb52cfd4bf5be518fdf693efbb3', $layer['embed']['src']);
+        $this->assertStringContainsString('ui_controls=0', $layer['embed']['src']);   // clean, no chrome
+        $this->assertIsInt($layer['asset_id']);   // synthetic id → move/reorder/delete plumbing works
+    }
+
+    public function test_add_embed_layer_adds_a_muted_autoplay_video_layer(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)   // has image_path → cover + embed
+            ->call('addEmbedLayer', 'https://www.youtube.com/watch?v=-E9T6UWaDRA', 'video');
+
+        $layers = $this->scene->refresh()->shots[0]['layers'];
+        $embed = collect($layers)->firstWhere('kind', 'embed')['embed'];
+        $this->assertSame('video', $embed['type']);
+        $this->assertStringContainsString('youtube.com/embed/-E9T6UWaDRA', $embed['src']);
+        $this->assertStringContainsString('autoplay=1', $embed['src']);
+        $this->assertStringContainsString('mute=1', $embed['src']);
+        $this->assertStringContainsString('controls=0', $embed['src']);
+    }
+
+    public function test_add_embed_layer_rejects_a_non_embed_link(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('addEmbedLayer', 'not a link', '3d');
+
+        // No layer added — shots stays null (the scene had none).
+        $this->assertNull($this->scene->refresh()->shots);
+    }
+
     public function test_attach_does_not_duplicate_the_same_asset(): void
     {
         $this->scene->update([

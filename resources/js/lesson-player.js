@@ -1343,7 +1343,7 @@ Alpine.data('lessonGame', (lesson) => ({
     async _renderSceneArtwork (scene) {
       const host = document.getElementById('lesson-voyage-art')
       if (!host) return
-      const layers = ((scene.shots || [])[0]?.layers || []).filter(l => l && l.url && l.asset_id != null)
+      const layers = ((scene.shots || [])[0]?.layers || []).filter(l => l && (l.url || l.embed) && l.asset_id != null)
       if (!layers.length && !this._artLayer) { host.style.display = 'none'; return }
       const { ArtworkOverlay } = await import('./scene/ArtworkOverlay.js')
       this._artLayer = this._artLayer || new ArtworkOverlay(host, { readonly: true })

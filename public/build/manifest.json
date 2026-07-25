@@ -32,8 +32,8 @@
     "file": "assets/preload-helper-DIdkKO6w.js",
     "name": "preload-helper"
   },
-  "_voyages-CFmY1uLK.js": {
-    "file": "assets/voyages-CFmY1uLK.js",
+  "_voyages-DksAkJLM.js": {
+    "file": "assets/voyages-DksAkJLM.js",
     "name": "voyages"
   },
   "node_modules/three/build/three.module.js": {
@@ -52,7 +52,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-Chi1a73z.js",
+    "file": "assets/app-BC3Spqhj.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -107,7 +107,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-uxd3Jbio.js",
+    "file": "assets/lesson-player-DqX7EEqU.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-C_x5UbH-.js",
+    "file": "assets/ArtworkOverlay-V1GECbvY.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true
@@ -164,7 +164,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-C5HsMwxQ.js",
+    "file": "assets/index-DogvGcgV.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -184,14 +184,14 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-IP27CoqT.js",
+    "file": "assets/index-CJpZsrbi.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
       "_preload-helper-DIdkKO6w.js",
       "_map-volcanoes-BtFq4ki9.js",
-      "_voyages-CFmY1uLK.js",
+      "_voyages-DksAkJLM.js",
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
@@ -199,18 +199,18 @@
     ]
   },
   "resources/js/timemap/voyage-ships.js": {
-    "file": "assets/voyage-ships-6qhmO3IF.js",
+    "file": "assets/voyage-ships-Dv9KTqgL.js",
     "name": "voyage-ships",
     "src": "resources/js/timemap/voyage-ships.js",
     "isDynamicEntry": true,
     "imports": [
       "node_modules/three/build/three.module.js",
       "_FBXLoader-Bvfl7Vye.js",
-      "_voyages-CFmY1uLK.js"
+      "_voyages-DksAkJLM.js"
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-DzxcQO_E.js",
+    "file": "assets/voyage-tour-B1-xJSl6.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,
@@ -218,7 +218,7 @@
     "imports": [
       "resources/js/lesson-map.js",
       "resources/js/gallery-scene.js",
-      "_voyages-CFmY1uLK.js",
+      "_voyages-DksAkJLM.js",
       "resources/js/timemap/voyage-ships.js",
       "__commonjsHelpers-CqkleIqs.js",
       "_map-volcanoes-BtFq4ki9.js",

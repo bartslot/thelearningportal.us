@@ -249,14 +249,17 @@
             const overlay = ensureArtOverlay()
             const h = voyageArtHost()
             if (!overlay || !h) return
-            const layers = ((p.shots || [])[0]?.layers || []).filter((l) => l && l.url && l.asset_id != null)
+            const layers = ((p.shots || [])[0]?.layers || []).filter((l) => l && (l.url || l.embed) && l.asset_id != null)
             const onTop = !!(p.config || {}).clipart_on_top
             overlay.setOnTop(onTop)
             h.style.zIndex = onTop ? '8' : '6'      // above text (7) when stacked on top, else below it
             h.style.display = ''
             // Skip re-seeding on identical poll re-renders — it would reset an in-progress drag.
-            const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url).split('?')[0]]))
+            const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || (l.embed && l.embed.src) || '').split('?')[0]]))
             if (sig !== artSig) { artSig = sig; overlay.setLayers(layers) }
+            // A dedicated handle the object list reads on voyage scenes — the SHARED handle can be
+            // repointed by a slideshow render (wizard-bridge), so it isn't reliable here.
+            window.__voyageArtworkLayer = overlay
             window.__lessonArtworkLayer = overlay
         }
         const hideVoyageArt = () => {
@@ -264,6 +267,7 @@
             if (h) h.style.display = 'none'
             artSig = null
             if (artOverlay) { try { artOverlay.clear() } catch (_) {} }
+            window.__voyageArtworkLayer = null
             // Release the shared handle only if it still points at MY overlay (a slideshow scene
             // reclaims it on its own render).
             if (window.__lessonArtworkLayer === artOverlay) window.__lessonArtworkLayer = null
@@ -874,19 +878,23 @@
                 const textItems = withZ.map(({ t }) => t.kind === 'rect'
                     ? { id: t.id, icon: t.side === 'right' ? 'panelR' : 'panelL', label: (t.side || 'left') + ' half', bg: false }
                     : { id: t.id, icon: 'text', label: (t.text || 'Text').slice(0, 40), bg: false });
-                // Clipart / artwork layers (own overlay, drag-reorderable). _layers is bottom-first
+                // Clipart / artwork / embed layers (own overlay, drag-reorderable). _layers is bottom-first
                 // (last painted = on top), so reverse it to list front-most first like the text rows.
-                const arts = (window.__lessonArtworkLayer && window.__lessonArtworkLayer._layers) || [];
+                // On a voyage scene read the DEDICATED voyage overlay handle — the shared one can be
+                // repointed to a slideshow overlay by wizard-bridge, dropping the voyage layers.
+                const objKind = (window.__objScene || {}).kind;
+                const artLayer = (objKind === 'voyage' && window.__voyageArtworkLayer) || window.__lessonArtworkLayer;
+                const arts = (artLayer && artLayer._layers) || [];
                 const artItems = [...arts].reverse().map((a) =>
-                    ({ id: 'art_' + a.asset_id, icon: 'photo', label: a.title || 'Clipart', bg: false, art: true }));
+                    ({ id: 'art_' + a.asset_id, icon: a.embed ? (a.embed.type === 'video' ? 'photo' : 'map') : 'photo',
+                       label: a.title || (a.embed ? (a.embed.type === 'video' ? 'Video' : '3D model') : 'Clipart'), bg: false, art: true }));
                 // The clipart group sits above the text objects only when the teacher dragged it there
                 // (config.clipart_on_top → the overlay host's z-index is raised above the text layer).
-                const onTop = !!(window.__lessonArtworkLayer && window.__lessonArtworkLayer.onTop);
+                const onTop = !!(artLayer && artLayer.onTop);
                 const items = onTop ? [...artItems, ...textItems] : [...textItems, ...artItems];
                 // Bottom layer(s), pinned (not drag-reorderable). A Route waypoint scene lists its own
                 // stack — the Gallery overlay ON TOP of the Waypoint map — instead of a bare Background;
                 // every other scene lists a single Background (or Slideshow for a standalone gallery).
-                const objKind = (window.__objScene || {}).kind;
                 if (objKind === 'voyage') {
                     items.push({ id: '__gallery__', icon: 'photo', label: 'Gallery', bg: true, voyage: 'gallery' });
                     items.push({ id: '__waypoint__', icon: 'map', label: 'Waypoint', bg: true, voyage: 'waypoint' });
@@ -1188,6 +1196,17 @@
                         class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
                     <x-icons.puzzle-piece class="h-4 w-4 shrink-0 text-slate-400" />
                     <span>{{ __('Clipart') }}</span>
+                </button>
+                {{-- 3D model / video AS A LAYER (an iframe layer on top of the scene, like clipart). --}}
+                <button type="button" @click="const l = window.prompt(@js(__('Paste a Sketchfab 3D model link'))); if (l) $wire.addEmbedLayer(l, '3d'); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
+                    <span>{{ __('3D model') }}</span>
+                </button>
+                <button type="button" @click="const l = window.prompt(@js(__('Paste a YouTube / Vimeo link'))); if (l) $wire.addEmbedLayer(l, 'video'); addOpen = false"
+                        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h8.25a2.25 2.25 0 0 0 2.25-2.25V7.5a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                    <span>{{ __('Video') }}</span>
                 </button>
                 <div class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-200 hover:bg-base-200" role="group" aria-label="{{ __('Add panel') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true">

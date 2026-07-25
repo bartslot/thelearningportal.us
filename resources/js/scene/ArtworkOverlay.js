@@ -41,10 +41,12 @@ export class ArtworkOverlay {
 
   setLayers(layers) {
     this._layers = (Array.isArray(layers) ? layers : [])
-      .filter(l => l && l.url && (l.asset_id != null))
+      // A layer is renderable if it has an image url OR an iframe embed (3D / video).
+      .filter(l => l && (l.url || l.embed) && (l.asset_id != null))
       .map(l => ({
         asset_id: l.asset_id,
-        url: l.url,
+        url: l.url || null,
+        embed: l.embed || null,   // { type:'sketchfab'|'video', src, title, ... } for iframe layers
         x: Number.isFinite(l.x) ? l.x : 50,
         y: Number.isFinite(l.y) ? l.y : 58,
         scale: Number.isFinite(l.scale) ? l.scale : 1,
@@ -53,7 +55,7 @@ export class ArtworkOverlay {
         blur: Number.isFinite(l.blur) ? l.blur : 0,
         opacity: Number.isFinite(l.opacity) ? l.opacity : 1,
         kind: l.kind || 'figure',
-        title: l.title || 'Clipart',
+        title: l.title || (l.embed && l.embed.title) || 'Clipart',
       }))
     this._render()
   }
@@ -143,6 +145,44 @@ export class ArtworkOverlay {
     const interact = this.readonly
       ? 'pointer-events:none; cursor:default;'
       : 'pointer-events:auto; cursor:grab;'
+
+    if (item.embed) {
+      // 3D / video layer — an <iframe> instead of an <img>. It has no intrinsic aspect, so give the
+      // node an explicit ratio (video 16:9, model viewer 4:3) and derive width from the % height.
+      const ratio = item.embed.type === 'video' ? '16 / 9' : '4 / 3'
+      node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
+        aspect-ratio:${ratio}; width:auto; transform:${this._transform(item)}; transform-origin:center;
+        ${interact} touch-action:none; user-select:none;`
+
+      const frame = document.createElement('iframe')
+      frame.src = item.embed.src
+      frame.title = item.title || item.embed.title || '3D / video'
+      frame.setAttribute('frameborder', '0')
+      frame.setAttribute('allow', 'autoplay; fullscreen; xr-spatial-tracking; encrypted-media; picture-in-picture')
+      frame.setAttribute('allowfullscreen', 'true')
+      // Editor: the iframe must NOT eat pointer events or the layer can't be dragged — a transparent
+      // shield over it is the drag surface. Playback: a Sketchfab model stays interactive (rotate),
+      // a video stays inert (it just plays); both never block a map pan because the host is pe:none.
+      const live = this.readonly && item.embed.type === 'sketchfab'
+      frame.style.cssText = `position:absolute; inset:0; width:100%; height:100%; display:block; border:0;
+        pointer-events:${live ? 'auto' : 'none'}; border-radius:6px; overflow:hidden; background:#000;`
+      if (item.opacity < 1) frame.style.opacity = String(Math.max(0.05, item.opacity))
+      node.appendChild(frame)
+
+      if (!this.readonly) {
+        const shield = document.createElement('div')
+        shield.style.cssText = 'position:absolute; inset:0; pointer-events:auto; cursor:grab; background:transparent;'
+        node.appendChild(shield)
+        this._wireDrag(item, node)
+      }
+      return node
+    }
+
+    // width:max-content so the node sizes to the image's natural aspect at the given height.
+    // (A plain shrink-to-fit box collapses to a wrong tall/narrow shape when the child img
+    // uses percentage height — that distorted the selection box.)
+    // Playback nodes are inert (pointer-events:none) so a student can't drag the decoration and it
+    // never steals a map pan; editor nodes catch pointers to move/select.
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
       width:max-content; transform:${this._transform(item)}; transform-origin:center;
       ${interact} touch-action:none; user-select:none;`
