@@ -938,9 +938,36 @@ Alpine.data('lessonGame', (lesson) => ({
       this._playScene(i)
     },
 
+    /**
+     * Silence and release the current narration.
+     *
+     * `new Audio()` plays independently of the DOM, so simply assigning a new one to `this._audio`
+     * leaves the previous track audible — every jump between chapters stacked another voice. Pausing
+     * is not enough either: the old element's `ended`/`timeupdate` listeners stay live and a late
+     * `ended` would advance the queue from a scene the student already left. So detach the handlers,
+     * stop the fetch, and drop the reference.
+     */
+    _stopAudio () {
+      const a = this._audio
+      this._audio = null
+      // A pending no-audio scene hold is the same kind of stale timer — cancel it too.
+      clearTimeout(this._noAudioHold)
+      if (!a) return
+      try {
+        a.pause()
+        a.removeAttribute('src')
+        a.load()          // aborts any in-flight download
+      } catch (_) { /* element already torn down */ }
+      this.audioPlaying = false
+    },
+
     _playScene (index) {
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
+
+      // Whatever was narrating belongs to the scene we are leaving — silence it before anything
+      // else, or jumping chapters layers voice over voice.
+      this._stopAudio()
 
       // Chapter caption + bar (Micrio serial-tour). Chapters are filtered (no games), so look the
       // current one up by its queue index. A game scene (quiz) is not a chapter → hide the bar.
@@ -1024,15 +1051,18 @@ Alpine.data('lessonGame', (lesson) => ({
       }
 
       // Narrator is a flat 2D portrait badge — play the scene audio directly.
-      this._audio = new Audio(scene.audio_url)
+      // Every handler is gated on `a` still being the CURRENT track: if the student jumps away
+      // mid-sentence, this element is discarded and must not advance the queue behind them.
+      const a = this._audio = new Audio(scene.audio_url)
       this._attachAudioListeners()
       this._lastEventIndex = 0
-      this._audio.addEventListener('loadedmetadata', () => {
-        this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
+      a.addEventListener('loadedmetadata', () => {
+        if (this._audio !== a) return
+        this._scriptEvents = parseScriptTags(scene.script, a.duration)
       })
-      this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
-      this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
-      this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      a.addEventListener('timeupdate', () => { if (this._audio === a) this._processScriptEvents() })
+      a.addEventListener('ended', () => { if (this._audio === a) this._afterSceneAudio(index, scene) }, { once: true })
+      a.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
     },
 
     // ── Game scene (quiz / strategy / debate) ──────────────────────────
@@ -1046,15 +1076,17 @@ Alpine.data('lessonGame', (lesson) => ({
         this._showFlatColor(scene.background_color)
       }
       if (scene.audio_url) {
-        this._audio = new Audio(scene.audio_url)
+        // Same discipline as _playScene: a discarded track must not start the quiz behind the student.
+        const a = this._audio = new Audio(scene.audio_url)
         this._attachAudioListeners()
         this._lastEventIndex = 0
-        this._audio.addEventListener('loadedmetadata', () => {
-          this._scriptEvents = parseScriptTags(scene.script, this._audio.duration)
+        a.addEventListener('loadedmetadata', () => {
+          if (this._audio !== a) return
+          this._scriptEvents = parseScriptTags(scene.script, a.duration)
         })
-        this._audio.addEventListener('timeupdate', () => this._processScriptEvents())
-        this._audio.addEventListener('ended', () => this._afterSceneAudio(index, scene), { once: true })
-        this._audio.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+        a.addEventListener('timeupdate', () => { if (this._audio === a) this._processScriptEvents() })
+        a.addEventListener('ended', () => { if (this._audio === a) this._afterSceneAudio(index, scene) }, { once: true })
+        a.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
       } else {
         this._afterSceneAudio(index, scene)   // no narration → begin the quiz/challenge now
       }
@@ -1118,8 +1150,25 @@ Alpine.data('lessonGame', (lesson) => ({
 
     // ── Voyage tour leg (kind 'voyage') ────────────────────────────────
     async _playVoyageScene (index, scene) {
-      if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
+      // (_playScene has already silenced the previous scene's narration.)
       const cfg = scene.config || {}
+
+      // Narrate the leg as a VOICE-OVER while the ship sails. Deliberately not wired to
+      // _afterSceneAudio: a voyage leg is paced by the map (onArrived → showMapContinue →
+      // _startVoyageAuto), not by the length of the audio, so the track must never advance
+      // the queue. Without this the narration authored for each leg was generated and stored
+      // but never heard.
+      if (scene.audio_url) {
+        const a = this._audio = new Audio(scene.audio_url)
+        this._attachAudioListeners()
+        this._lastEventIndex = 0
+        a.addEventListener('loadedmetadata', () => {
+          if (this._audio !== a) return
+          this._scriptEvents = parseScriptTags(scene.script, a.duration)
+        })
+        a.addEventListener('timeupdate', () => { if (this._audio === a) this._processScriptEvents() })
+        a.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      }
       if (!window.renderVoyageTour) {
         try {
           await import('./voyage-tour.js')
@@ -1535,13 +1584,14 @@ Alpine.data('lessonGame', (lesson) => ({
     // ── Teardown ───────────────────────────────────────────────────────
     // Fully stop every Audio object. They live outside the DOM, so nothing
     // else releases them when the page goes away.
+    // Leaving the page: silence the narration AND the intel-drop overlay.
     _stopAllAudio () {
-      for (const a of [this._audio, this._intelAudio]) {
-        if (!a) continue
-        try { a.pause(); a.src = ''; a.load?.() } catch (_) {}
-      }
-      this._audio = null
+      this._stopAudio()
+      const intel = this._intelAudio
       this._intelAudio = null
+      if (intel) {
+        try { intel.pause(); intel.removeAttribute('src'); intel.load?.() } catch (_) {}
+      }
       this.audioPlaying = false
     },
 
