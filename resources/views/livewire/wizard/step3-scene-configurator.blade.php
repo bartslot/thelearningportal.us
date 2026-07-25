@@ -275,6 +275,16 @@
             const p = Array.isArray(e) ? e[0]?.payload : e?.payload
             if (!p) { destroy(); wireTextProjector(); return }
 
+            // Tell the object/layers list what KIND of scene is on stage, so a Route waypoint scene can
+            // list its own layers (the Waypoint map + the Gallery overlay) instead of a bare "Background".
+            const _vcfg = p.config || {}
+            const _gal = _vcfg.gallery || {}
+            window.__objScene = {
+                kind: p.kind,
+                hasGallery: !!(_gal.title || _gal.story || (_gal.images && _gal.images.length) || (_vcfg.stop_images && _vcfg.stop_images.length)),
+            }
+            try { window.dispatchEvent(new CustomEvent('objscene-changed')) } catch (_) { /* noop */ }
+
             // Voyage tour + image gallery are map-family stage scenes — preview them in the same
             // #lesson-map-preview host, reusing the student player's renderers so the wizard shows
             // exactly what students see. A voyage re-mounts ONLY when the voyage id itself changes;
@@ -772,6 +782,7 @@
         panelR: '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.0122 3.86951C21.1168 3.86951 22.0122 4.76494 22.0122 5.86951V18.475C22.0122 19.5796 21.1168 20.475 20.0122 20.475H3.98779L3.78369 20.4642C2.84228 20.3688 2.0942 19.6204 1.99854 18.6791L1.98779 18.475V5.86951C1.98779 4.76494 2.88322 3.86951 3.98779 3.86951H20.0122ZM3.98779 5.36951C3.71165 5.36951 3.48779 5.59336 3.48779 5.86951V18.475C3.48806 18.7509 3.71181 18.975 3.98779 18.975H13.4478V5.36951H3.98779Z" fill="currentColor"/></svg>',
         photo:  '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M2.25 15.75L7.409 10.591C7.61793 10.3821 7.86597 10.2163 8.13896 10.1033C8.41194 9.99018 8.70452 9.93198 9 9.93198C9.29548 9.93198 9.58806 9.99018 9.86104 10.1033C10.134 10.2163 10.3821 10.3821 10.591 10.591L15.75 15.75M14.25 14.25L15.659 12.841C15.8679 12.6321 16.116 12.4663 16.389 12.3533C16.6619 12.2402 16.9545 12.182 17.25 12.182C17.5455 12.182 17.8381 12.2402 18.111 12.3533C18.384 12.4663 18.6321 12.6321 18.841 12.841L21.75 15.75M3.75 19.5H20.25C20.6478 19.5 21.0294 19.342 21.3107 19.0607C21.592 18.7794 21.75 18.3978 21.75 18V6C21.75 5.60218 21.592 5.22064 21.3107 4.93934C21.0294 4.65804 20.6478 4.5 20.25 4.5H3.75C3.35218 4.5 2.97064 4.65804 2.68934 4.93934C2.40804 5.22064 2.25 5.60218 2.25 6V18C2.25 18.3978 2.40804 18.7794 2.68934 19.0607C2.97064 19.342 3.35218 19.5 3.75 19.5ZM14.625 8.25C14.625 8.66421 14.2892 9 13.875 9C13.4608 9 13.125 8.66421 13.125 8.25C13.125 7.83579 13.4608 7.5 13.875 7.5C14.2892 7.5 14.625 7.83579 14.625 8.25Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         solid:  '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M20.0049 19.6379H9.00488C8.73967 19.6379 8.48531 19.5325 8.29778 19.345C8.11024 19.1574 8.00488 18.9031 8.00488 18.6379V10.6379C8.00488 10.3727 8.11024 10.1183 8.29778 9.93077C8.48531 9.74324 8.73967 9.63788 9.00488 9.63788H20.0049C20.2701 9.63788 20.5245 9.74324 20.712 9.93077C20.8995 10.1183 21.0049 10.3727 21.0049 10.6379V18.6379C21.0049 18.9031 20.8995 19.1574 20.712 19.345C20.5245 19.5325 20.2701 19.6379 20.0049 19.6379Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.1345 9.6989C14.1345 6.75148 11.7451 4.36212 8.79772 4.36212C5.8503 4.36212 3.46095 6.75148 3.46095 9.6989C3.44224 11.3303 4.45651 14.5767 8.41688 14.5767" stroke="currentColor" stroke-width="1.5"/></svg>',
+        map:    '<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4"><path d="M9 6.75 3.75 4.5v12.75L9 19.5m0-12.75 6 2.25m-6-2.25v12.75m6-10.5 5.25-2.25V15L15 17.25m0-10.5v10.5m0 0-6-2.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     };
     // Object list — reads the live text layer (title/text boxes + backing panels) so the teacher
     // can find, flash-locate, and restack objects that overlap on the stage.
@@ -784,6 +795,7 @@
             init() {
                 this.refresh();
                 setInterval(() => { if (!this.dragging && window.Alpine?.store('view')?.objects) this.refresh(); }, 2000);
+                window.addEventListener('objscene-changed', () => this.refresh());   // scene switched → relist layers
                 this.$nextTick(() => this.initSortable());
                 // Compact (icons-only) toggle via a data attribute, NOT a CSS container query:
                 // container-type would make this panel a containing block for SortableJS's
@@ -816,8 +828,16 @@
                 // (config.clipart_on_top → the overlay host's z-index is raised above the text layer).
                 const onTop = !!(window.__lessonArtworkLayer && window.__lessonArtworkLayer.onTop);
                 const items = onTop ? [...artItems, ...textItems] : [...textItems, ...artItems];
-                // The background is the bottom-most object on every scene — always listed last, not draggable.
-                items.push({ id: '__bg__', icon: 'photo', label: 'Background', bg: true });
+                // Bottom layer(s), pinned (not drag-reorderable). A Route waypoint scene lists its own
+                // stack — the Gallery overlay ON TOP of the Waypoint map — instead of a bare Background;
+                // every other scene lists a single Background (or Slideshow for a standalone gallery).
+                const objKind = (window.__objScene || {}).kind;
+                if (objKind === 'voyage') {
+                    items.push({ id: '__gallery__', icon: 'photo', label: 'Gallery', bg: true, voyage: 'gallery' });
+                    items.push({ id: '__waypoint__', icon: 'map', label: 'Waypoint', bg: true, voyage: 'waypoint' });
+                } else {
+                    items.push({ id: '__bg__', icon: 'photo', label: objKind === 'gallery' ? 'Slideshow' : 'Background', bg: true });
+                }
                 // Skip the re-render (and its churn under SortableJS) when nothing actually changed —
                 // the 2s poll would otherwise rebuild identical rows and fight the drag layer.
                 const sig = items.map((i) => i.id + ':' + i.icon + ':' + i.label).join('|');
@@ -882,6 +902,13 @@
             // (the layer broadcasts back so canvas↔list stay in sync), and scroll it into view.
             select(obj) {
                 this.selectedId = obj.id;
+                if (obj.voyage) {
+                    // Route waypoint layers → open the Format inspector and focus the Waypoint tab
+                    // (Gallery also scrolls to its section). The voyage inspector listens for this.
+                    try { window.dispatchEvent(new CustomEvent('inspector-open')); } catch (_) { /* noop */ }
+                    try { window.dispatchEvent(new CustomEvent('voyage-obj-focus', { detail: { which: obj.voyage } })); } catch (_) { /* noop */ }
+                    return;
+                }
                 if (obj.bg) {
                     window.__lessonTextLayer?.select?.('__bg__');   // clears any canvas object ring
                     this.locate(obj);                                // route to the Background inspector
@@ -1684,7 +1711,7 @@
                             @click="const c = (window.__voyageCenter && window.__voyageCenter()) || null; $wire.addScene('voyage', null, c ? c.lng : null, c ? c.lat : null)"
                             class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
                         <x-lesson.scene-type-thumb kind="voyage" />
-                        <span class="text-sm font-medium text-slate-200">Voyage leg</span>
+                        <span class="text-sm font-medium text-slate-200">Route waypoint</span>
                     </button>
                 @endif
             </div>

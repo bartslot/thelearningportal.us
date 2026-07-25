@@ -22,7 +22,8 @@
      map looks) and Route (the sailed line + fleet). Alpine owns the active tab; Livewire preserves
      that state across the component's 3s wire:poll, and every panel stays in the DOM (x-show) so the
      wire:model bindings never detach. --}}
-<div class="text-sm" x-data="{ tab: 'leg' }">
+<div class="text-sm" x-data="{ tab: 'leg' }"
+     x-on:voyage-obj-focus.window="tab = 'leg'; if ($event.detail?.which === 'gallery') $nextTick(() => $refs.gallerySection?.scrollIntoView({ block: 'start', behavior: 'smooth' }))">
     {{-- Header --}}
     <div class="flex items-center justify-between gap-2">
         <h3 class="flex items-center gap-2 font-semibold text-indigo-300">
@@ -114,7 +115,7 @@
 
         {{-- GALLERY / DESCRIPTION — the "just a description" layer. Opens as a modal over the map when
              the landfall hotspot (or a thumbnail) is clicked, so it lives in THIS voyage scene. --}}
-        <section class="border-t border-slate-700/50 pt-3">
+        <section x-ref="gallerySection" class="border-t border-slate-700/50 pt-3">
             <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/></svg>
                 Gallery / description
