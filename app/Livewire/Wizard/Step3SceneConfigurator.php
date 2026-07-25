@@ -2352,6 +2352,39 @@ class Step3SceneConfigurator extends Component
         $this->selectSceneInternal($scene->id);
     }
 
+    /**
+     * Reuse an image ALREADY in this lesson (from posterCandidates) as the selected scene's flat
+     * background. Local /storage URLs reuse their path directly; external URLs (Cloudinary / gallery)
+     * are fetched once into this lesson's uploads so the background stays a local storage path.
+     */
+    public function useLessonImageBackground(string $url): void
+    {
+        $url = trim($url);
+        if ($url === '' || ! $this->selectedSceneId) {
+            return;
+        }
+        if (preg_match('#/storage/(.+)$#', $url, $m)) {
+            $this->applyUploadedBackground(rawurldecode($m[1]));
+
+            return;
+        }
+        try {
+            $resp = \Illuminate\Support\Facades\Http::timeout(15)->get($url);
+            if (! $resp->successful()) {
+                return;
+            }
+            $ext = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+            if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif'], true)) {
+                $ext = 'jpg';
+            }
+            $path = "lessons/{$this->lesson->id}/uploads/reuse-".\Illuminate\Support\Str::random(10).'.'.$ext;
+            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $resp->body());
+            $this->applyUploadedBackground($path);
+        } catch (\Throwable) {
+            // network / decode failure — leave the background unchanged
+        }
+    }
+
     private function openPaintingPickerCommon(): void
     {
         $this->paintingPickerOpen = true;

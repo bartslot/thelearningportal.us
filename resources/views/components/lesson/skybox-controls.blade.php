@@ -148,6 +148,39 @@
                 </div>
             </div>
 
+            {{-- Reuse an image already in THIS lesson — a single-row carousel (latest first), arrows to
+                 scroll. Clicking sets it as this scene's background (local paths reused; external
+                 URLs downloaded once). Mirrors the Poster picker's "pick from the lesson" idea. --}}
+            @php $reuseImages = array_reverse($scene->lesson?->posterCandidates() ?? []); @endphp
+            @if (count($reuseImages))
+                <div x-data="{ scroll(d) { const el = $refs.strip; el.scrollBy({ left: d * el.clientWidth * 0.8, behavior: 'smooth' }); } }">
+                    <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{{ __('Reuse from this lesson') }}</span>
+                    <div class="flex items-center gap-1">
+                        <button type="button" @click="scroll(-1)" aria-label="{{ __('Previous') }}"
+                                class="flex h-8 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-800 hover:text-slate-100">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"/></svg>
+                        </button>
+                        <div x-ref="strip" class="flex flex-1 gap-1.5 overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden" style="scrollbar-width:none">
+                            @foreach ($reuseImages as $img)
+                                <button type="button" wire:click="useLessonImageBackground(@js($img['url']))" title="{{ $img['label'] ?? '' }}"
+                                        @class([
+                                            'h-12 w-16 shrink-0 overflow-hidden rounded ring-1 transition',
+                                            'ring-amber-400' => $backgroundImageUrl === $img['url'],
+                                            'ring-slate-700 hover:ring-amber-400' => $backgroundImageUrl !== $img['url'],
+                                        ])>
+                                    <img src="{{ $img['url'] }}" alt="{{ $img['label'] ?? '' }}" class="h-full w-full object-cover" loading="lazy"
+                                         onerror="this.closest('button').style.display='none'" />
+                                </button>
+                            @endforeach
+                        </div>
+                        <button type="button" @click="scroll(1)" aria-label="{{ __('Next') }}"
+                                class="flex h-8 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-800 hover:text-slate-100">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>
+                        </button>
+                    </div>
+                </div>
+            @endif
+
             <div class="flex overflow-hidden rounded-lg border border-slate-700/70 text-[11px] font-medium">
                 @foreach (['ai' => __('AI Gen'), 'paintings' => __('Paintings'), 'url' => __('Drawing')] as $sv => $sl)
                     <button type="button" @click="imgSrc = '{{ $sv }}'"
