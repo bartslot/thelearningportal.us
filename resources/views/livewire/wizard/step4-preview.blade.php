@@ -35,7 +35,11 @@
              256px min-height that pushes the caption off a short stage; its cqh coefficients are
              tuned for the padding-free host. overflow-hidden clips the caption to the canvas. --}}
         <div id="lesson-overlay" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
-        <!-- <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div> -->
+        {{-- Game/challenge timer host. MUST exist: mountWizardScene builds a GameTimerOverlay on it and
+             SceneTimelinePlayer calls timer.hide() on every non-game scene — with the host commented
+             out that threw on a null element, the stage never finished mounting, and the preview's
+             Play button did nothing for EVERY lesson. --}}
+        <div id="lesson-game-overlay" class="absolute inset-0 pointer-events-none"></div>
     </div>
     @endif
 

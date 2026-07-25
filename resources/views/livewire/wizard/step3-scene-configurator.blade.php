@@ -8,8 +8,11 @@
 @endpush
 
 <div class="contents" x-data="step3SceneConfigurator" wire:poll.3s
-     x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view.objects ? $store.view.objectsW + 'px' : '0px');
-               document.documentElement.style.setProperty('--ruler-w', $store.view.rulers ? '20px' : '0px');
+     {{-- Optional chaining throughout: this effect runs on first paint, which can beat the view
+          store's registration (a pushed script racing alpine:init). Without the `?.` the effect
+          throws and Alpine tears down the component's reactive effects. --}}
+     x-effect="document.documentElement.style.setProperty('--objlist-w', $store.view?.objects ? ($store.view?.objectsW ?? 208) + 'px' : '0px');
+               document.documentElement.style.setProperty('--ruler-w', $store.view?.rulers ? '20px' : '0px');
                window.__placeRulers && requestAnimationFrame(window.__placeRulers)">
 
     {{-- Letterboxed canvas stage. The lesson lives in the WORK AREA between the fixed chrome —
@@ -1095,6 +1098,10 @@
     };
     document.addEventListener('alpine:init', __registerViewStore);
     document.addEventListener('livewire:navigated', __registerViewStore);
+    // …and register NOW when Alpine has already booted. This script is @push'ed, so on some loads it
+    // runs AFTER alpine:init has fired — then neither listener ever calls it, $store.view stays
+    // undefined, and every x-effect reading it throws (which kills the panels and the preview mount).
+    __registerViewStore();
     </script>
     @endpush
 

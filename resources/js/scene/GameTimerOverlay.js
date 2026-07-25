@@ -16,6 +16,7 @@ export class GameTimerOverlay {
 
   show({ durationSeconds }) {
     this._remaining = Math.max(0, Math.floor(durationSeconds))
+    if (!this.host) return   // preview may omit the timer host — never throw and break stage mount
     this.host.innerHTML = `
       <div style="position:absolute; inset:0; background:rgba(0,0,0,0.55); display:flex; flex-direction:column; align-items:center; justify-content:center; color:white;">
         <div style="font-size:14px; letter-spacing:0.2em; text-transform:uppercase; opacity:0.85;">TIME TO COMPLETE THE CHALLENGE</div>
@@ -42,7 +43,7 @@ export class GameTimerOverlay {
     this._remaining = Math.max(0, Math.floor(seconds))
     if (this._timerEl) this._timerEl.textContent = this._format(this._remaining)
   }
-  hide() { this._stop(); this.host.innerHTML = '' }
+  hide() { this._stop(); if (this.host) this.host.innerHTML = '' }
 
   _stop() { if (this._intervalId) { clearInterval(this._intervalId); this._intervalId = null } }
   _format(s) {

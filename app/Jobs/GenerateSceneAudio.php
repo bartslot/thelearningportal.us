@@ -80,10 +80,29 @@ class GenerateSceneAudio implements ShouldQueue
             $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/narration.{$ext}";
             Storage::disk('public')->put($path, $audio);
 
+            // Duration for the wizard timeline + pacing. Providers with word/character timings
+            // (ElevenLabs, edge-tts) give an exact end; Azure returns audio only, so estimate from
+            // the spoken word count (~2.6 words/sec, adjusted for the voice speed). Without this a
+            // narration scene has duration_seconds=null → the Step-5 preview timeline is 0:00 and
+            // its Play button does nothing.
+            $alignment = $timing['character_timings'] ?? [];
+            $duration = 0.0;
+            if (! empty($alignment)) {
+                $last = end($alignment);
+                $duration = (float) ($last['end'] ?? $last['time'] ?? $last['endTime'] ?? 0);
+            }
+            if ($duration <= 0.0) {
+                $words = max(1, str_word_count(strip_tags($text)));
+                $speed = (float) ($avatar?->voice_speed ?? 1.0) ?: 1.0;
+                $duration = round($words / (2.6 * $speed), 1);
+            }
+            $duration = max(3.0, $duration);
+
             $scene->update([
                 'audio_path'        => $path,
-                'audio_alignment'   => $timing['character_timings'] ?? [],
+                'audio_alignment'   => $alignment,
                 'audio_script_hash' => sha1($script),
+                'duration_seconds'  => (int) ceil($duration),
             ]);
 
             $this->maybeMarkReady($scene->fresh());
