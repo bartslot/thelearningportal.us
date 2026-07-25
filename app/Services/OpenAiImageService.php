@@ -191,7 +191,17 @@ class OpenAiImageService
             // the .webp paths and clean them all up in finally.
             $tmpInBase = tempnam(sys_get_temp_dir(), 'upscayl_in_');
             $tmpOutBase = tempnam(sys_get_temp_dir(), 'upscayl_out_');
-            $tmpIn = $tmpInBase.'.webp';
+            // upscayl-bin picks its DECODER from the file extension, so the input temp file must
+            // carry the bytes' REAL format. Naming a JPEG/PNG ".webp" made it fail to decode and
+            // fall through to "return original bytes" — which is why sourced (non-webp) imagery
+            // silently never got upscaled.
+            $inExt = match (@getimagesizefromstring($bytes)[2] ?? null) {
+                IMAGETYPE_JPEG => 'jpg',
+                IMAGETYPE_PNG => 'png',
+                IMAGETYPE_WEBP => 'webp',
+                default => 'png',
+            };
+            $tmpIn = $tmpInBase.'.'.$inExt;
             $tmpOut = $tmpOutBase.'.webp';
 
             file_put_contents($tmpIn, $bytes);
