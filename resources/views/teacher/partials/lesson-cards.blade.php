@@ -82,8 +82,8 @@
                                 <h4 class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
                                     {{ $lesson->title ?: $lesson->topic }}
                                 </h4>
-                                <p class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
-                                    {{ $lesson->grade ?: $lesson->grade_level ?: __(' ') }}
+                                <p class="absolute inset-x-0 top-6 right-0 p-4 text-sm leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
+                                    Grade {{ $lesson->grade ?: $lesson->grade_level ?: __(' ') }}
                                 </p>
                             </a>
                         @endforeach

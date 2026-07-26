@@ -154,7 +154,7 @@
     <div id="lesson-voyage-art" class="absolute inset-0 z-30 pointer-events-none" style="display:none"></div>
 
     {{-- Quiz question cards (QuizOverlay mounts here during quiz segments). --}}
-    <div id="lesson-game-overlay" class="absolute inset-0 z-40 pointer-events-none"></div>
+    <div id="lesson-game-overlay" class="absolute inset-0 z-30 pointer-events-none"></div>
 
     {{-- ── LAYER 0b: Title-screen background (Wikipedia lead image) ──────────
          Pinned during TITLE_SCREEN so the catalog topic's image is the hero backdrop,

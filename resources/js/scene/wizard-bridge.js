@@ -384,6 +384,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // for layered shots (E3c).
     const slideshowTextureCache = new Map()
     let currentBgFocus = 'center'   // 'top' anchors portrait backgrounds so faces survive the crop
+    // A top-focused (portrait) background starts its crop this far down the image: 0 = dead centre,
+    // 1 = flush with the top edge. 0.9 keeps the face with ~10% headroom. Mirrors the player's
+    // `background-position: center 10%` so the editor and playback crop identically.
+    const PORTRAIT_TOP_BIAS = 0.9
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
         const isCurrent = motion.isCurrent ?? (() => true)
         currentBgFocus = motion.focus || 'center'
@@ -486,9 +490,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (vpAspect > imgAspect) {
             // viewport wider — fill by width, crop top/bottom
             const rY = imgAspect / vpAspect
-            // Portrait focus: anchor the crop to the TOP (oY = 1-rY) so the face isn't lost;
-            // otherwise centre it. (flipY textures: v=1 is the image top.)
-            const oY = currentBgFocus === 'top' ? (1 - rY) : (1 - rY) / 2
+            // Portrait focus: start the crop 10% down from the image top, so the face is kept
+            // with a little headroom instead of being jammed against the edge. Otherwise centre.
+            // (flipY textures: v=1 is the image top, so oY = (1-rY) is hard-top.)
+            const oY = currentBgFocus === 'top' ? (1 - rY) * PORTRAIT_TOP_BIAS : (1 - rY) / 2
             return { rX: 1, rY, oX: 0, oY }
         } else {
             // viewport taller — fill by height, crop left/right

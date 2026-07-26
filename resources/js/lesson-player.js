@@ -497,6 +497,10 @@ Alpine.data('lessonGame', (lesson) => ({
       el.style.backgroundImage = `url(${img.url})`
       el.style.backgroundSize  = 'cover'
       el.style.backgroundColor = ''
+      // Crop anchor. A portrait cropped to a 16:9 stage from the centre loses the head, so a
+      // top-focused scene starts its crop 10% down the image — the face, with a little headroom.
+      // (Same 10% the wizard's 3D stage uses via PORTRAIT_TOP_BIAS, so both crop identically.)
+      el.style.backgroundPosition = this._bgFocus === 'top' ? 'center 10%' : 'center center'
 
       // Motion off for this scene → a calm, static image.
       if (this._kbAnimated === false) {
@@ -1025,6 +1029,8 @@ Alpine.data('lessonGame', (lesson) => ({
       // Per-scene background motion settings (Animated toggle + Ken Burns direction).
       this._kbAnimated = scene.kb_animated !== false
       this._kbNamedDirection = scene.kb_direction || null
+      // Crop anchor for this scene's background ('top' for portraits — see _showBgImage).
+      this._bgFocus = scene.config?.background_focus || scene.focus || 'center'
 
       // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per
       // scene; no image at all = the scene's solid backdrop (brand navy by default).

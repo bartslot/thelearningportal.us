@@ -52,7 +52,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-csfoF9Wq.js",
+    "file": "assets/app-Da_6t_Fr.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -107,7 +107,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-DC9u9CQ8.js",
+    "file": "assets/lesson-player-D8rZNk6J.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -164,7 +164,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-DzrWrgo7.js",
+    "file": "assets/index-BVzFwPpS.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

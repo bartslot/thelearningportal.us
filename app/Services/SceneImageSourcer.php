@@ -154,6 +154,16 @@ class SceneImageSourcer
             return null;
         }
 
+        // Portraits must be cropped from near the TOP or a cover-fit decapitates the sitter.
+        // Same tag list the teacher-facing painting picker uses.
+        $tags = is_array($artwork->tags)
+            ? $artwork->tags
+            : array_filter(explode(',', trim((string) $artwork->tags, '{}')));
+        $isPortrait = array_intersect(
+            ['portrait', 'group-portrait', 'equestrian-portrait', 'self-portrait'],
+            $tags,
+        ) !== [];
+
         return [
             // renditionUrl knows the Europeana exception (its CDN ignores ?width=).
             'url' => $artwork->renditionUrl(self::TARGET_WIDTH),
@@ -161,6 +171,7 @@ class SceneImageSourcer
                 .($artwork->source === 'europeana' ? 'Europeana' : 'Wikimedia Commons')),
             'title' => (string) ($artwork->title ?: $query),
             'source' => 'corpus',
+            'focus' => $isPortrait ? 'top' : 'center',
         ];
     }
 
@@ -242,6 +253,9 @@ class SceneImageSourcer
                             .' — '.strip_tags((string) ($meta['LicenseShortName']['value'] ?? 'see Commons')),
                         'title' => str_replace(['File:', '_'], ['', ' '], (string) ($page['title'] ?? $query)),
                         'source' => 'commons',
+                        // A taller-than-wide image loses its top to a 16:9 cover crop, and on a
+                        // person that top IS the face — so anchor the crop high.
+                        'focus' => ($h > $w * 1.05 || $this->looksLikeAPortrait($query, $title)) ? 'top' : 'center',
                     ];
                 }
             }
@@ -250,6 +264,20 @@ class SceneImageSourcer
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /** Does the subject read as a person? Then a cover crop must keep the head in frame. */
+    private function looksLikeAPortrait(string $query, string $title): bool
+    {
+        $haystack = mb_strtolower($query.' '.$title);
+
+        foreach (['portrait', 'portret', 'zelfportret', 'self-portrait', 'selfportrait', 'bust', 'buste'] as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -290,13 +318,17 @@ class SceneImageSourcer
                     continue;
                 }
                 $meta = $info['extmetadata'] ?? [];
+                $w = (int) ($info['width'] ?? 0);
+                $h = (int) ($info['height'] ?? 0);
+                $title = str_replace(['File:', '_'], ['', ' '], $fileName);
 
                 return [
                     'url' => (string) ($info['thumburl'] ?? $info['url'] ?? ''),
                     'credit' => trim(strip_tags((string) ($meta['Artist']['value'] ?? 'Wikimedia Commons')))
                         .' — '.strip_tags((string) ($meta['LicenseShortName']['value'] ?? 'see Commons')),
-                    'title' => str_replace(['File:', '_'], ['', ' '], $fileName),
+                    'title' => $title,
                     'source' => 'commons',
+                    'focus' => ($h > $w * 1.05 || $this->looksLikeAPortrait('', $title)) ? 'top' : 'center',
                 ];
             }
         } catch (Throwable) {

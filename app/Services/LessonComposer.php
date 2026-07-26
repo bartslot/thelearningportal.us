@@ -193,13 +193,11 @@ class LessonComposer
             'script_segment' => $s['script'] ?? null,
             'status' => 'pending',
             'kb_animated' => true,
-            'config' => array_filter([
-                'background_focus' => $s['focus'] ?? null,
-            ]),
+            'config' => [],
         ]);
 
         if (! empty($s['image'])) {
-            $this->attachBackground($scene, (string) $s['image'], $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'));
+            $this->attachBackground($scene, (string) $s['image'], $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'), $s['focus'] ?? null);
         }
 
         return $scene;
@@ -444,7 +442,7 @@ class LessonComposer
     }
 
     /** Source, download and attach a scene background image. */
-    private function attachBackground(Scene $scene, string $query, ?int $year, string $prefer): void
+    private function attachBackground(Scene $scene, string $query, ?int $year, string $prefer, ?string $focus = null): void
     {
         $hit = $this->images->find($query, $year, $prefer);
         if (! $hit) {
@@ -464,6 +462,9 @@ class LessonComposer
         $config['image_credit'] = $hit['credit'];
         // Remember where it came from so `lessons:enhance-images` can re-fetch a bigger original.
         $config['image_source_url'] = $hit['url'];
+        // Crop anchor. A portrait cropped to 16:9 from the centre loses the face — the sourcer
+        // flags those, and a spec can still override with an explicit `focus`.
+        $config['background_focus'] = (string) ($focus ?? $hit['focus'] ?? 'center');
 
         $scene->update(['image_path' => $path, 'config' => $config]);
     }
