@@ -48,7 +48,16 @@ class Step2Generate extends Component
     #[Computed]
     public function canContinue(): bool
     {
-        return $this->lesson->scenes()->where('status', 'ready')->exists();
+        // Something finished generating → there is a lesson to configure.
+        if ($this->lesson->scenes()->where('status', 'ready')->exists()) {
+            return true;
+        }
+
+        // A FAILED generation must not trap the teacher. The failure panel tells them they can
+        // "continue and build the lesson yourself", but generation can die before creating a single
+        // scene — and then this returned false, so the only offered escape hatch was greyed out and
+        // the wizard was a dead end. Let them into the editor to build by hand.
+        return $this->lesson->status === LessonStatus::Failed;
     }
 
     /**
@@ -65,6 +74,10 @@ class Step2Generate extends Component
             LessonStatus::Previewable,
             LessonStatus::Ready,
             LessonStatus::Published,
+            // Never skate past a failure. canContinue() is deliberately true for a failed lesson so
+            // the teacher can choose to build by hand — but that must stay a CHOICE, or the poll
+            // would redirect them off the error screen before they ever read what went wrong.
+            LessonStatus::Failed,
         ], true);
     }
 
