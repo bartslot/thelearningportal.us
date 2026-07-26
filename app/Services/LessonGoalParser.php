@@ -43,7 +43,10 @@ class LessonGoalParser
                 'error' => $e->getMessage(),
             ]);
 
-            return self::empty();
+            // Keep whatever the goal states outright. A grade or age is plain text, not a judgement
+            // call, so losing it because the LLM is unavailable made the assistant ignore a teacher
+            // who had already said "group 7" and pitch the lesson at 12-14 year olds.
+            return [...self::empty(), 'age' => self::dutchGradeAge($goal)];
         }
 
         return [
@@ -80,7 +83,10 @@ class LessonGoalParser
      */
     public static function dutchGradeAge(string $goal): ?int
     {
-        if (preg_match('/\bgroep\s*([1-8])\b/iu', $goal, $m) === 1) {
+        // "groep 7", and its English spelling "group 7" — teachers using the English UI of a Dutch
+        // product write it both ways, and only matching the Dutch spelling silently fell back to
+        // the default age (a group-7 lesson was pitched at 12-14 year olds).
+        if (preg_match('/\bgro[eu]?p\s*([1-8])\b/iu', $goal, $m) === 1) {
             return (int) $m[1] + self::GROEP_AGE_OFFSET;
         }
 
@@ -88,7 +94,24 @@ class LessonGoalParser
             return (int) $m[1] + self::KLAS_AGE_OFFSET;
         }
 
+        // An age stated outright: "age 11", "ages 10-11", "11 years old", "11-year-olds".
+        // (US "grade N" / UK "year N" are deliberately NOT guessed — they disagree by a year, and a
+        // wrong reading is worse than letting the teacher pick.)
+        if (preg_match('/\bages?\s*(\d{1,2})\b/iu', $goal, $m) === 1) {
+            return self::inAgeRange((int) $m[1]);
+        }
+
+        if (preg_match('/\b(\d{1,2})[\s-]*year[\s-]*olds?\b/iu', $goal, $m) === 1) {
+            return self::inAgeRange((int) $m[1]);
+        }
+
         return null;
+    }
+
+    /** Only trust a stated age inside the range the product actually serves. */
+    private static function inAgeRange(int $age): ?int
+    {
+        return ($age >= 4 && $age <= 18) ? $age : null;
     }
 
     private function systemPrompt(): string

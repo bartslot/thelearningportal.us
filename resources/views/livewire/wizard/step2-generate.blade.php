@@ -27,6 +27,17 @@ $step = $statusSteps[$currentStatus] ?? [
     'pct' => 2,
 ];
 
+// A failed lesson has no entry in $statusSteps, so it used to fall through to the generic
+// "Building your lesson / processing the next step" — with a live spinner — while the real error sat
+// below the fold. The teacher watched a spinner for a lesson that had already died. Say it here.
+if ($lesson->status === LessonStatus::Failed) {
+    $step = [
+        'label' => __('Lesson generation stopped'),
+        'detail' => __('Nothing was lost. You can retry, or continue and build the lesson yourself.'),
+        'pct' => null,
+    ];
+}
+
 if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->exists() && $this->overallProgress >= 100) {
     $step = [
         'label' => __('Your lesson is ready'),
@@ -183,7 +194,13 @@ $machineState = $isFailed ? 'error' : ($isStalled ? 'stalled' : ($isDone ? 'read
                                     <path d="m6.5 10 2.2 2.2 4.8-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
                             @elseif ($task['state'] === 'active')
-                                <svg viewBox="0 0 20 20" class="h-4 w-4 animate-spin text-amber-300">
+                                {{-- Nothing is running once generation has failed: freeze the step it died on
+                                     (rose, static) instead of spinning forever as if work continued. --}}
+                                <svg viewBox="0 0 20 20" @class([
+                                    'h-4 w-4',
+                                    'animate-spin text-amber-300' => ! $isFailed,
+                                    'text-rose-300' => $isFailed,
+                                ])>
                                     <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="30 20" />
                                 </svg>
                             @else
@@ -224,7 +241,18 @@ $machineState = $isFailed ? 'error' : ($isStalled ? 'stalled' : ($isDone ? 'read
                     </h2>
                     <p class="mt-1 text-sm leading-6 text-slate-400">
                         @if ($isFailed)
-                            {{ $lesson->error_message ?: __('A worker stopped before completing the lesson.') }}
+                            {{-- Translate the worker's raw exception into something a teacher can act on.
+                                 "OpenAI API returned 429" tells them nothing about what to do next. --}}
+                            @php $rawError = (string) $lesson->error_message; @endphp
+                            @if (preg_match('/\b429\b|quota|rate limit|insufficient_quota/i', $rawError))
+                                {{ __('The AI writing service is unavailable right now (it is rate-limited or out of credit). Your settings are saved — retry in a few minutes, or continue and build the lesson yourself.') }}
+                            @elseif (preg_match('/\b(401|403)\b|api key|unauthorized/i', $rawError))
+                                {{ __('The AI service rejected our credentials. An administrator needs to check the API key — your lesson settings are saved in the meantime.') }}
+                            @elseif (preg_match('/timeout|timed out|cURL error 28/i', $rawError))
+                                {{ __('The AI service took too long to answer. Retrying usually works.') }}
+                            @else
+                                {{ $rawError ?: __('A worker stopped before completing the lesson.') }}
+                            @endif
                         @else
                             {{ __('No progress has been reported for :minutes minutes. You can keep waiting, retry this lesson, or remove the stalled session and start clean.', ['minutes' => $this->stalledForMinutes]) }}
                         @endif

@@ -139,7 +139,7 @@ class LessonChat extends Component
         $this->presetKey = null;
         $this->storyQuery = $parsed['story_query'];
         $this->gradeLevel = 'Age '.$this->snapToGradeChip($parsed['age'] ?? self::DEFAULT_AGE);
-        $this->topic = $context['canonical_subject'] ?? $parsed['topic'] ?? Str::limit($goalText, 80, '');
+        $this->topic = $context['canonical_subject'] ?? $parsed['topic'] ?? $this->subjectFromGoal($goalText);
         $this->goalSummary = $parsed['summary'] ?? $this->topic;
         $this->subjectDescription = $context['description'];
         $this->region = $context['region'];
@@ -552,12 +552,68 @@ class LessonChat extends Component
         }
 
         return __(
-            'I suggest a :type lesson. :pitch',
+            'I suggest a :type. :pitch',
             [
-                'type' => __($this->suggestedPreset->label),
+                'type' => $this->presetTypePhrase($this->suggestedPreset),
                 'pitch' => $this->presetPitch($this->suggestedPreset->key),
             ],
         );
+    }
+
+    /**
+     * "a 10-minute <type>" — the preset label with the word "lesson" appended only when the label
+     * doesn't already end in it. "Story lesson" + " lesson" read as "Story lesson lesson"; "Deep
+     * dive" genuinely needs the noun.
+     */
+    private function presetTypePhrase(LessonPreset $preset): string
+    {
+        $label = __($preset->label);
+
+        foreach ([__('lesson'), 'lesson', 'les'] as $noun) {
+            if (Str::endsWith(Str::lower($label), Str::lower($noun))) {
+                return $label;
+            }
+        }
+
+        return trim($label.' '.__('lesson'));
+    }
+
+    /**
+     * Last-resort subject when neither the catalogue nor the parser recognised the goal.
+     *
+     * A teacher types an instruction ("Teach my group 7 class about Columbus and the crossing of
+     * 1492 — the voyage, …"), not a subject. Blindly truncating that to 80 characters produced
+     * replies cut off mid-clause — "Ah, Teach my group 7 class about Columbus and the crossing of
+     * 1492 — the voyage, the." So: drop the instruction opener, keep only the first clause, and
+     * end on a word.
+     */
+    private function subjectFromGoal(string $goal): string
+    {
+        $text = trim($goal);
+
+        // "Teach my group 7 class about X", "I want to teach them about X", "Lesson on X" → X
+        $text = (string) preg_replace(
+            '/^\s*(?:i\s+(?:want|would\s+like)\s+to\s+)?(?:teach|explain|show|tell|cover|make|create|build|give)\b'
+            .'[^.]*?\b(?:about|on|over|regarding)\s+/iu',
+            '',
+            $text,
+        );
+        $text = (string) preg_replace('/^\s*(?:a\s+)?lesson\s+(?:about|on|over)\s+/iu', '', $text);
+
+        // Keep the first clause only — an em dash, semicolon, colon or sentence end starts the
+        // teacher's elaboration, which is detail rather than subject.
+        $text = (string) preg_split('/\s*(?:—|–|;|:|\.|\?|!)\s*/u', trim($text), 2)[0];
+
+        // Still long? Cut on a word boundary rather than mid-word.
+        $text = trim($text, " \t\n\r,;:-–—");
+        if (mb_strlen($text) > 80) {
+            $text = (string) preg_replace('/\s+\S*$/u', '', mb_substr($text, 0, 80));
+        }
+
+        $text = trim($text, " \t\n\r,;:-–—");
+
+        // Give the reply a capital, and never hand back an empty subject.
+        return $text === '' ? Str::limit(trim($goal), 60, '') : Str::ucfirst($text);
     }
 
     #[Computed]
@@ -660,9 +716,9 @@ class LessonChat extends Component
         }
 
         $subject = $this->selectedStory?->title ?? $this->topic;
-        $message = __('Great. I’ll build a :minutes-minute :type lesson for ages :ages about :topic.', [
+        $message = __('Great. I’ll build a :minutes-minute :type for ages :ages about :topic.', [
             'minutes' => $preset->durationTargetMinutes,
-            'type' => __($preset->label),
+            'type' => $this->presetTypePhrase($preset),
             'ages' => $this->ageBand($this->selectedAge()),
             'topic' => $subject,
         ]);

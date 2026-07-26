@@ -28,13 +28,22 @@ class LessonGoalParserTest extends TestCase
             'groep 1 lower bound' => ['groep 1', 4],
             'groep 8 upper bound' => ['groep 8', 11],
             'groep without space' => ['groep7 snapt de Gouden Eeuw', 10],
+            // "group N" is how teachers on the English UI write "groep N" — it must map the same way,
+            // or a group-7 lesson silently gets pitched at the default 12-14 year olds.
+            'english spelling group 7' => ['Teach my group 7 class about Columbus', 10],
             // Middelbare school (secondary): klas N → age (N + 11).
             'klas 3 havo' => ['klas 3 havo bespreekt de Franse Revolutie', 14],
             'klas 1 brugklas' => ['klas 1', 12],
             'klas 6 vwo' => ['klas 6 vwo', 17],
-            // English / plain-age goals defer to the LLM — no deterministic override.
+            // An age stated outright is unambiguous, so it is read deterministically — the LLM is
+            // optional and must not be required to honour something the teacher already spelled out.
+            'plain age years old' => ['for 10 year olds', 10],
+            'plain age hyphenated' => ['for 11-year-olds about Van Gogh', 11],
+            'plain age "ages N"' => ['a lesson for ages 9 about the hunebedden', 9],
+            'plain age out of range' => ['for 40 year olds', null],
+            // US "grade N" and UK "year N" disagree by a year, so they are deliberately NOT guessed —
+            // the teacher picks from the age chips instead of us silently getting it wrong.
             'english grade 4' => ['grade 4 learns about Ancient Egypt', null],
-            'plain age' => ['for 10 year olds', null],
             // Out-of-range grades are ignored (no groep 9, no klas 7-8).
             'groep 9 out of range' => ['groep 9', null],
             'klas 8 out of range' => ['klas 8', null],
