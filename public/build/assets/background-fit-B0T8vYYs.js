@@ -1,0 +1,1 @@
+const e=.9,a="center 10%";function T(n,o){return n>0&&o>0&&o>n*1.05}function c(n){return n==="contain"?"contain":"cover"}function i(n,o,r,t){return c(n)!=="cover"?!1:o==="top"||T(r,t)}export{a as P,e as a,i,c as n};
