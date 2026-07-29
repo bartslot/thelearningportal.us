@@ -17,6 +17,8 @@ import Alpine from 'alpinejs'
 import QRCode from 'qrcode'
 import { resolveAnchorTime, pickShotIndex } from './scene/shot-sync.js'
 import { renderGallery } from './gallery-scene.js'
+import { isTopAnchored, normalizeFit, PORTRAIT_TOP_CSS } from './scene/background-fit.js'
+import { buildCues, cueAt } from './scene/captions.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -154,6 +156,13 @@ Alpine.data('lessonGame', (lesson) => ({
     audioMuted: false,
     _audioMutedVolume: 1.0,  // remember pre-mute volume
 
+    // Subtitles — the narration written along the bottom while it is spoken. The teacher sets
+    // the starting state per lesson; a student toggling it (C) is remembered for this browser,
+    // because someone who needs captions needs them in every lesson, not just this one.
+    captionsOn:        false,
+    captionText:       '',
+    _cues:             [],
+
     // Chapters (Micrio-style serial-tour bar + list)
     chapters:          [],   // [{name, dur, index, kind}] — games excluded; `index` = queue index
     currentChapterName: '',
@@ -200,6 +209,12 @@ Alpine.data('lessonGame', (lesson) => ({
       lesson.scenes?.forEach(s => { s.audio_url = fixUrl(s.audio_url); s.image_url = fixUrl(s.image_url) })
       lesson.scene_images?.forEach(s => { s.url = fixUrl(s.url) })
       lesson.slideshow_images?.forEach(s => { s.url = fixUrl(s.url) })
+
+      // Subtitles start where the teacher set them for this lesson — unless this browser has
+      // already made its own choice, which wins: a pupil who needs captions should not have to
+      // switch them back on in every lesson.
+      const remembered = (() => { try { return localStorage.getItem('lp:captions') } catch (_) { return null } })()
+      this.captionsOn = remembered === null ? !!lesson.subtitles : remembered === '1'
 
       const { year, location } = extractYearAndLocation(lesson)
       this.lessonYear     = year
@@ -494,16 +509,41 @@ Alpine.data('lessonGame', (lesson) => ({
       const el = layer === 'A' ? this._bgLayerA : this._bgLayerB
       if (!el || !img?.url) return
 
-      el.style.backgroundImage = `url(${img.url})`
-      el.style.backgroundSize  = 'cover'
-      el.style.backgroundColor = ''
-      // Crop anchor. A portrait cropped to a 16:9 stage from the centre loses the head, so a
-      // top-focused scene starts its crop 10% down the image — the face, with a little headroom.
-      // (Same 10% the wizard's 3D stage uses via PORTRAIT_TOP_BIAS, so both crop identically.)
-      el.style.backgroundPosition = this._bgFocus === 'top' ? 'center 10%' : 'center center'
+      const fit = normalizeFit(this._bgFit)
 
-      // Motion off for this scene → a calm, static image.
-      if (this._kbAnimated === false) {
+      el.style.backgroundImage = `url(${img.url})`
+      el.style.backgroundSize  = fit
+      el.style.backgroundColor = ''
+
+      // Crop anchor. A portrait cropped to a 16:9 stage from the centre loses the head, so a
+      // top-anchored scene starts its crop 10% down the image — the face, with a little headroom.
+      // (Same anchor the wizard's 3D stage uses via PORTRAIT_TOP_BIAS, so both crop identically.)
+      const anchor = (w, h) => {
+        el.style.backgroundPosition = isTopAnchored(fit, this._bgFocus, w, h)
+          ? PORTRAIT_TOP_CSS
+          : 'center center'
+      }
+
+      // Apply what the stored hint already tells us, so a known portrait never flashes centred…
+      anchor(0, 0)
+
+      // …then measure the real file, because the hint is missing or wrong on plenty of scenes (a
+      // corpus painting tagged {battle,soldiers} is still a full-length portrait). The browser
+      // serves this from cache — it is the same URL the layer above is painting.
+      if (fit === 'cover' && this._bgFocus !== 'top') {
+        const probe = new Image()
+        probe.onload = () => {
+          // The scene may have moved on while this loaded — only anchor what is still on screen.
+          if (el.style.backgroundImage.includes(img.url)) {
+            anchor(probe.naturalWidth, probe.naturalHeight)
+          }
+        }
+        probe.src = img.url
+      }
+
+      // Motion off for this scene → a calm, static image. 'contain' is always static: the teacher
+      // asked to see the whole work, and a Ken Burns zoom would crop straight back into it.
+      if (this._kbAnimated === false || fit === 'contain') {
         el.style.transition = `opacity ${this._bgFadeDuration}ms ease-in-out`
         el.style.transform = 'none'
         return
@@ -792,6 +832,8 @@ Alpine.data('lessonGame', (lesson) => ({
         _parallax.update(this._audio.currentTime / this._audio.duration)
       }
 
+      this._updateCaptions()
+
       if (!this._shotPlan || this._shotPlan.length < 2) return
 
       const target = pickShotIndex(this._shotPlan, this._audio.currentTime, this._audio.duration || 0)
@@ -991,6 +1033,14 @@ Alpine.data('lessonGame', (lesson) => ({
       this._shotPlan = null
       this._shotCursor = 0
 
+      // Subtitles follow the narration of THIS scene. Cues are built on the first timeupdate,
+      // once the audio has reported its real length — every scene here goes on to play (or skip)
+      // its own track, so resetting for all of them keeps the last scene's lines off this one.
+      this._captionSource = { script: scene.script, alignment: scene.alignment || null }
+      this._cues = []
+      this._cueDuration = 0
+      this.captionText = ''
+
       // The persistent voyage map is kept ALIVE only between voyage legs. A voyage lesson can now
       // open/close with standalone story slides (kind 'gallery'), so when this scene is NOT a voyage
       // leg, fully release the map first — otherwise its dead DOM lingers and backward nav replays a
@@ -1031,6 +1081,8 @@ Alpine.data('lessonGame', (lesson) => ({
       this._kbNamedDirection = scene.kb_direction || null
       // Crop anchor for this scene's background ('top' for portraits — see _showBgImage).
       this._bgFocus = scene.config?.background_focus || scene.focus || 'center'
+      // How the background fills the stage: 'cover' (fill, crop) or 'contain' (whole image, bars).
+      this._bgFit = scene.config?.background_fit || scene.background_fit || 'cover'
 
       // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per
       // scene; no image at all = the scene's solid backdrop (brand navy by default).
@@ -1557,6 +1609,36 @@ Alpine.data('lessonGame', (lesson) => ({
       }
     },
 
+    // ── Subtitles ──────────────────────────────────────────────────────
+    // Cues are built from the scene script against the audio's REAL length, which only the client
+    // knows — duration_seconds is often unset, and Azure (the current narrator) returns no word
+    // timings at all. Built once per scene, on the first timeupdate that reports a duration.
+    _updateCaptions () {
+      if (!this.captionsOn || !this._audio) { this.captionText = ''; return }
+
+      const duration = this._audio.duration
+      if (!Number.isFinite(duration) || duration <= 0) return
+
+      if (!this._cues.length || this._cueDuration !== duration) {
+        this._cues = buildCues(this._captionSource?.script, duration, this._captionSource?.alignment)
+        this._cueDuration = duration
+      }
+
+      this.captionText = cueAt(this._cues, this._audio.currentTime)?.text || ''
+    },
+
+    /** Pick a state outright (the subtitles menu); toggleCaptions is the keyboard's way in. */
+    setCaptions (on) {
+      this.captionsOn = !!on
+      // Someone who needs captions needs them in every lesson, so the choice outlives this one.
+      try { localStorage.setItem('lp:captions', this.captionsOn ? '1' : '0') } catch (_) { /* private mode */ }
+      this._updateCaptions()
+    },
+
+    toggleCaptions () {
+      this.setCaptions(!this.captionsOn)
+    },
+
     // ── Keyboard shortcuts ─────────────────────────────────────────────
     _attachKeyboardListeners () {
       this._kbHandler = (e) => {
@@ -1582,6 +1664,9 @@ Alpine.data('lessonGame', (lesson) => ({
         } else if (e.code === 'KeyM') {
           e.preventDefault()
           this.toggleMute()
+        } else if (e.code === 'KeyC') {
+          e.preventDefault()
+          this.toggleCaptions()
         }
       }
       document.addEventListener('keydown', this._kbHandler)

@@ -38,6 +38,9 @@
         'region'                => $lesson->region,
         'map_style'             => $lesson->map_style, // lesson-wide default palette for map blocks
 
+        // Does this lesson start with the narration written along the bottom? The teacher sets the
+        // starting state; the student can still toggle it (C) while it plays.
+        'subtitles'             => (bool) $lesson->subtitles,
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
         'game_config'           => $lesson->game_config,
@@ -339,6 +342,71 @@
                 <svg x-show="!audioMuted" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M13.5 4.06c0-1.336-1.616-2.256-2.73-1.72l-5.24 2.97H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h.51l5.24 2.97c1.11.536 2.73-.384 2.73-1.72v-13zm3.67 3.88a1 1 0 1 0-1.33 1.49 6 6 0 0 1 0 7.06 1 1 0 1 0 1.33 1.49 8 8 0 0 0 0-9.54zm2.05-3.55a1 1 0 0 0-1.41 1.41A10 10 0 0 1 19.55 12a10 10 0 0 1-2.75 6.95 1 1 0 1 0 1.41 1.41A12 12 0 0 0 21.55 12a12 12 0 0 0-3.33-8.67z"/></svg>
                 <svg x-show="audioMuted" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M16.6915026,12.4744748 L21.5908951,7.5751461 L20.1876905,6.1719415 L15.2883018,11.0712702 L10.3909581,6.16346227 L8.9863711,7.5680493 L13.8837627,12.4744748 L9.01075265,17.338484 L10.4149653,18.7426997 L15.2883018,13.8693631 L20.1669881,18.7480694 L21.5711749,17.3438636 L16.6915026,12.4744748 Z"/></svg>
             </button>
+
+            {{-- Subtitles — the speech-bubble button opens a small menu (Netflix-style): the choice
+                 is listed and the active one is marked, rather than a button whose state you have
+                 to infer from its colour. C still toggles straight from the keyboard. --}}
+            <div class="relative" x-data="{ subsOpen: false }"
+                 @click.outside="subsOpen = false"
+                 @keydown.escape.window="subsOpen = false">
+                <button
+                    @click="subsOpen = !subsOpen"
+                    :title="'{{ __('Subtitles') }} (C)'"
+                    :aria-expanded="subsOpen"
+                    aria-haspopup="menu"
+                    class="flex h-9 w-9 items-center justify-center rounded-full border transition-all
+                           focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                    :class="captionsOn
+                        ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                        : 'border-slate-600/60 bg-slate-700/10 text-slate-400/80 hover:text-slate-200'"
+                >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                        <rect x="2.75" y="5.25" width="18.5" height="13.5" rx="2.25"/>
+                        <path stroke-linecap="round" d="M10 10.4a2.4 2.4 0 1 0 0 3.2M18 10.4a2.4 2.4 0 1 0 0 3.2"/>
+                    </svg>
+                </button>
+
+                {{-- No x-transition here on purpose: this menu sits inside the control cluster,
+                     which is itself an x-show with a transition, and Alpine's nested transition
+                     handling left the panel stuck a state behind — open when it should be shut.
+                     A menu that appears at once is right for a player control anyway. --}}
+                <div x-show="subsOpen" x-cloak
+                     role="menu"
+                     class="absolute right-0 top-11 w-52 overflow-hidden rounded-xl border border-white/10 bg-black/85 py-1.5 shadow-2xl backdrop-blur-md">
+                    <p class="px-3 pb-1.5 pt-1 text-[10px] uppercase tracking-widest text-white/40">{{ __('Subtitles') }}</p>
+                    {{-- Off first, like every player: it is the state you go back to. --}}
+                    <template x-for="option in [{ on: false, label: '{{ __('Off') }}' }, { on: true, label: '{{ __('On') }}' }]" :key="option.label">
+                        <button type="button" role="menuitemradio"
+                                :aria-checked="captionsOn === option.on"
+                                @click="setCaptions(option.on); subsOpen = false"
+                                class="flex w-full items-center gap-2.5 py-2 pl-2.5 pr-3 text-left text-sm transition hover:bg-white/10"
+                                :class="captionsOn === option.on ? 'text-white' : 'text-white/60'">
+                            {{-- The tick occupies its slot either way, so the labels never shift. --}}
+                            <svg class="h-4 w-4 shrink-0" :class="captionsOn === option.on ? 'text-amber-400' : 'text-transparent'"
+                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                            </svg>
+                            <span x-text="option.label"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        {{-- ── Subtitles — the narration written along the bottom while it is spoken ─────────── --}}
+        {{-- Sits above the chapter bar, never over it. x-text (never x-html): a script is teacher
+             copy and must not be able to inject markup into the student's player. --}}
+        <div
+            {{-- Same reason as the menu: an x-transition here left the (empty) bubble on screen
+                 after the captions were switched off, because the leave never applied. --}}
+            x-show="captionsOn && captionText && (phase === 'INTRO' || phase === 'GAME_ACTIVE')"
+            x-cloak
+            class="pointer-events-none absolute bottom-20 left-1/2 w-[min(56rem,90vw)] -translate-x-1/2 text-center"
+            style="z-index:47"
+            aria-live="polite"
+        >
+            <p x-text="captionText"
+               class="inline-block rounded-lg bg-black/70 px-4 py-2 text-balance text-lg leading-snug text-white shadow-lg backdrop-blur-sm sm:text-xl"></p>
         </div>
 
         {{-- Location + era — bottom-left, shown during INTRO / GAME_ACTIVE (no moon) --}}

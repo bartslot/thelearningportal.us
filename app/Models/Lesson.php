@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\LessonStatus;
 use App\Enums\NarrativeFramework;
+use App\Models\Concerns\BelongsToTeacher;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,7 @@ use Illuminate\Support\Str;
 
 class Lesson extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToTeacher, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'teacher_id',
@@ -74,6 +75,7 @@ class Lesson extends Model
         'outline',
         'wizard_step',
         'background_music',
+        'subtitles',
         'narrative_framework',
         'protagonist_qid',
         'protagonist_name',
@@ -136,6 +138,7 @@ class Lesson extends Model
             'game_split_count' => 'integer',
             'wizard_step' => 'integer',
             'focus_tags' => 'array',
+            'subtitles' => 'boolean',
         ];
     }
 
@@ -241,6 +244,29 @@ class Lesson extends Model
     public function modules(): HasMany
     {
         return $this->hasMany(LessonModule::class)->orderBy('order');
+    }
+
+    /**
+     * Which wizard step a lesson card on the dashboard should open.
+     *
+     * Teachers open an existing lesson to WATCH it far more often than to re-edit its settings, so a
+     * lesson that has scenes goes straight to Preview (step 5) instead of resuming wherever the
+     * wizard was last left. Two cases still resume instead, because a preview would be useless:
+     * a lesson mid-generation (its progress bar is the point) and one with no scenes yet.
+     *
+     * Returns null for "resume at wizard_step", which is what LessonWizard::mount() does with no
+     * ?step= in the URL.
+     *
+     * Reads the eager-loaded firstScene relation (both dashboard controllers load it), so this
+     * costs no extra query per card.
+     */
+    public function cardEntryStep(): ?int
+    {
+        if ($this->status->isGenerating() || $this->status === LessonStatus::Failed) {
+            return null;
+        }
+
+        return $this->firstScene !== null ? 5 : null;
     }
 
     public function firstScene(): \Illuminate\Database\Eloquent\Relations\HasOne
