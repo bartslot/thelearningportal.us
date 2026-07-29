@@ -143,6 +143,48 @@ export class TextOverlayLayer {
     this._render()
   }
 
+  /** Is a map live under this overlay? Only then can a label be pinned to a place. */
+  canPin() {
+    return !!this._projector
+  }
+
+  /** Is this label currently pinned to a lng/lat? */
+  isPinned(id) {
+    const item = this._texts.find((t) => t.id === id)
+    return !!item && item.anchor === 'map'
+  }
+
+  /**
+   * Pin a label to the place it is currently sitting over, or release it back to the screen.
+   *
+   * Pinning stores the lng/lat under the label's current x/y, so it then tracks the landmark
+   * through pan and zoom instead of sliding off it. Releasing drops the coordinates and leaves the
+   * label at whatever screen position it had, which is what the placement sliders edit.
+   *
+   * Shared by the on-canvas pin button and the Text inspector's toggle, so the two can never
+   * disagree about what pinning means.
+   *
+   * @returns {boolean} the anchor state after the toggle (true = pinned to the map)
+   */
+  togglePin(id) {
+    const item = this._texts.find((t) => t.id === id)
+    if (!item || !this._projector) return false
+
+    if (item.anchor === 'map') {
+      item.anchor = 'screen'
+      delete item.lng
+      delete item.lat
+    } else {
+      const ll = this._projector.unproject(item.x, item.y)
+      if (!ll) return false
+      item.anchor = 'map'
+      item.lng = ll.lng
+      item.lat = ll.lat
+    }
+    this._emitChange()
+    return item.anchor === 'map'
+  }
+
   /** Reposition map-anchored labels — call on every map move/zoom. */
   refreshPositions() {
     if (!this._projector) return
@@ -651,19 +693,8 @@ export class TextOverlayLayer {
       }
       paint()
       pin.addEventListener('click', () => {
-        if (item.anchor === 'map') {
-          item.anchor = 'screen'
-          delete item.lng
-          delete item.lat
-        } else {
-          const ll = this._projector.unproject(item.x, item.y)
-          if (!ll) return
-          item.anchor = 'map'
-          item.lng = ll.lng
-          item.lat = ll.lat
-        }
+        this.togglePin(item.id)
         paint()
-        this._emitChange()
       })
       bar.appendChild(pin)
     }

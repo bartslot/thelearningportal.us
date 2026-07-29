@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { Avatar3DPlayer } from '../avatar-3d.js'
+import { isTopAnchored, normalizeFit, PORTRAIT_TOP_BIAS } from './background-fit.js'
 
 /**
  * Push every alignment entry earlier by VISEME_LEAD_SECONDS. The avatar player
@@ -102,6 +103,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         kbDirection: payload.kbDirection,
                         backgroundColor: payload.backgroundColor,
                         focus: payload.focus ?? payload.config?.background_focus,
+                        fit: payload.fit ?? payload.config?.background_fit,
                         layers: firstShot?.layers ?? null,
                         parallax: !!payload.parallax,
                         clipartOnTop: !!payload.config?.clipart_on_top,
@@ -245,6 +247,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 kbDirection: e.detail?.kbDirection,
                 backgroundColor: e.detail?.backgroundColor,
                 focus: e.detail?.focus ?? e.detail?.config?.background_focus,
+                fit: e.detail?.fit ?? e.detail?.config?.background_fit,
                 layers: firstShot?.layers ?? null,
                 parallax: !!e.detail?.parallax,
                 clipartOnTop: !!e.detail?.config?.clipart_on_top,
@@ -384,13 +387,11 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
     // for layered shots (E3c).
     const slideshowTextureCache = new Map()
     let currentBgFocus = 'center'   // 'top' anchors portrait backgrounds so faces survive the crop
-    // A top-focused (portrait) background starts its crop this far down the image: 0 = dead centre,
-    // 1 = flush with the top edge. 0.9 keeps the face with ~10% headroom. Mirrors the player's
-    // `background-position: center 10%` so the editor and playback crop identically.
-    const PORTRAIT_TOP_BIAS = 0.9
+    let currentBgFit   = 'cover'    // 'contain' shows the whole work, letterboxed
     async function applySlideshowBackground(url, sceneId = 0, durationSec = 10, motion = {}) {
         const isCurrent = motion.isCurrent ?? (() => true)
         currentBgFocus = motion.focus || 'center'
+        currentBgFit   = normalizeFit(motion.fit)
         // Layered shot (E3c): render via ParallaxScene when the shot carries layers.
         if (Array.isArray(motion.layers) && motion.layers.length) {
             const didShow = await showLayeredSlideshowShot(motion)
@@ -412,7 +413,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             return
         }
         try {
-            let tex = slideshowTextureCache.get(url)
+            // Cache per fit: 'contain' needs its own padded copy of the same file.
+            const cacheKey = `${url}|${currentBgFit}`
+            let tex = slideshowTextureCache.get(cacheKey)
             if (!tex) {
                 tex = await new Promise((resolve, reject) => {
                     new THREE.TextureLoader().load(url, t => {
@@ -422,18 +425,22 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                         // Clamp (not wrap) so a top-anchored crop can never bleed the image's
                         // opposite edge in if an offset+repeat overshoots [0,1].
                         t.wrapS = t.wrapT   = THREE.ClampToEdgeWrapping
-                        resolve(t)
+                        resolve(currentBgFit === 'contain'
+                            ? padForContain(t.image, motion.backgroundColor)
+                            : t)
                     }, undefined, reject)
                 })
-                slideshowTextureCache.set(url, tex)
+                slideshowTextureCache.set(cacheKey, tex)
             }
             if (!isCurrent()) return
             // Hide sphere only after texture is ready — avoids black flash.
             if (activePlayer._skyboxSphere) activePlayer._skyboxSphere.visible = false
             activePlayer._scene.background = tex
 
-            if (motion.kbAnimated === false) {
-                // Motion off: freeze at a clean cover fit.
+            // 'contain' is always static — a Ken Burns zoom would crop back into the work the
+            // teacher just asked to see whole. Matches the player.
+            if (motion.kbAnimated === false || currentBgFit === 'contain') {
+                // Motion off: freeze at a clean fit.
                 kenBurnsState = null
                 const cv = coverScale(tex)
                 tex.repeat.set(cv.rX, cv.rY)
@@ -487,19 +494,72 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         const vpH  = activePlayer?.canvasEl?.clientHeight || 1
         const imgAspect = imgW / imgH
         const vpAspect  = vpW  / vpH
+
+        // 'contain': show the whole work and letterbox the rest. repeat > 1 samples beyond [0,1],
+        // which ClampToEdge fills with the border baked on by padForContain() — a real letterbox
+        // rather than a smear of the outermost pixel row.
+        if (normalizeFit(currentBgFit) === 'contain') {
+            if (vpAspect > imgAspect) {
+                const rX = vpAspect / imgAspect          // bars left/right
+                return { rX, rY: 1, oX: (1 - rX) / 2, oY: 0 }
+            }
+            const rY = imgAspect / vpAspect              // bars top/bottom
+            return { rX: 1, rY, oX: 0, oY: (1 - rY) / 2 }
+        }
+
+        // Measure the real texture rather than trusting the stored focus hint, so a portrait is
+        // anchored no matter how it was sourced. See scene/background-fit.js.
+        const topAnchored = isTopAnchored('cover', currentBgFocus, imgW, imgH)
+
         if (vpAspect > imgAspect) {
             // viewport wider — fill by width, crop top/bottom
             const rY = imgAspect / vpAspect
             // Portrait focus: start the crop 10% down from the image top, so the face is kept
             // with a little headroom instead of being jammed against the edge. Otherwise centre.
             // (flipY textures: v=1 is the image top, so oY = (1-rY) is hard-top.)
-            const oY = currentBgFocus === 'top' ? (1 - rY) * PORTRAIT_TOP_BIAS : (1 - rY) / 2
+            const oY = topAnchored ? (1 - rY) * PORTRAIT_TOP_BIAS : (1 - rY) / 2
             return { rX: 1, rY, oX: 0, oY }
         } else {
             // viewport taller — fill by height, crop left/right
             const rX = vpAspect / imgAspect
             return { rX, rY: 1, oX: (1 - rX) / 2, oY: 0 }
         }
+    }
+
+    /**
+     * Bake a border of the stage colour around an image so a 'contain' fit letterboxes cleanly.
+     *
+     * THREE has no border colour for textures: sampling outside [0,1] with ClampToEdgeWrapping
+     * repeats the outermost pixel row, which stretches the painting's edge across the bars. Padding
+     * the source makes that repeated row the letterbox colour instead — correct at any viewport
+     * aspect, with no texture rebuild on resize.
+     *
+     * Mipmaps must be OFF: at the repeat values a contained portrait needs (~3.5), THREE samples a
+     * coarse mip level in which a thin border has been averaged into the artwork, and the bars come
+     * back as faint horizontal streaks of the painting's edge colours.
+     */
+    const CONTAIN_PAD_PX = 4
+
+    function padForContain(img, bgColor) {
+        const w = img?.naturalWidth  || img?.width  || 1
+        const h = img?.naturalHeight || img?.height || 1
+        const canvas = document.createElement('canvas')
+        canvas.width  = w + CONTAIN_PAD_PX * 2
+        canvas.height = h + CONTAIN_PAD_PX * 2
+
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = bgColor || '#0f172a'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, CONTAIN_PAD_PX, CONTAIN_PAD_PX, w, h)
+
+        const tex = new THREE.CanvasTexture(canvas)
+        tex.colorSpace       = THREE.SRGBColorSpace
+        tex.mapping          = THREE.UVMapping
+        tex.matrixAutoUpdate = true
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
+        tex.generateMipmaps  = false
+        tex.minFilter        = THREE.LinearFilter
+        return tex
     }
 
     function tickKenBurns(now) {
@@ -530,7 +590,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         tex.repeat.set(cv.rX * r, cv.rY * r)
         // Top-anchored portraits pan the vertical drift DOWNWARD only, so it never rises past
         // the top edge (which would wrap the texture and bleed the image's bottom in at the top).
-        const oySign = currentBgFocus === 'top' ? -1 : 1
+        const kbImg = tex.image
+        const oySign = isTopAnchored(currentBgFit, currentBgFocus,
+            kbImg?.naturalWidth  || kbImg?.width  || 0,
+            kbImg?.naturalHeight || kbImg?.height || 0) ? -1 : 1
         tex.offset.set(cv.oX + ox * cv.rX, cv.oY + oySign * oy * cv.rY)
     }
 
@@ -1069,6 +1132,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
             kbAnimated:  normalizedScenes[0].kb_animated,
             kbDirection: normalizedScenes[0].kb_direction,
             focus: normalizedScenes[0].config?.background_focus,
+            fit: normalizedScenes[0].config?.background_fit,
             // The scene config rides along so first paint honours per-scene flags
             // (background focus, clipart-above-text stacking, …).
             config: normalizedScenes[0].config ?? null,
@@ -1092,6 +1156,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 kbAnimated:  scene?.kb_animated,
                 kbDirection: scene?.kb_direction,
                 focus: scene?.config?.background_focus,
+                fit: scene?.config?.background_fit,
                 textsReadonly: scene?.config?.texts || [],
             }),
         },

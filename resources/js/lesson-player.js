@@ -1259,6 +1259,7 @@ Alpine.data('lessonGame', (lesson) => ({
           view: cfg.view || 'globe',
           routeLine: lesson.game_config?.route_line || null, // styled/animated trail (lesson-wide)
           mapOptions: lesson.game_config?.voyage_map || null, // hide cities/borders, show place labels
+          style: cfg.map_style || lesson.map_style || 'soft-atlas', // same palette as a map scene
           legLabels,
           paintedFog: lesson.game_config?.voyage_fog || null, // teacher-painted undiscovered regions
           // On each arrival: show the carousel controls + start the 10s auto-advance.
