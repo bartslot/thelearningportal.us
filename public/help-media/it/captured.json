@@ -1,0 +1,15 @@
+{
+  "locale": "it",
+  "keys": [
+    "dashboard",
+    "new-lesson",
+    "wizard-steps",
+    "lessons",
+    "classes",
+    "results",
+    "timemap",
+    "settings",
+    "wizard-configure",
+    "wizard-play"
+  ]
+}

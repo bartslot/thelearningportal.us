@@ -127,3 +127,28 @@ test('timemap-local-tiles: borders load from the local Cliopatria tiles, not the
   expect(local.length, 'expected local Cliopatria tile requests').toBeGreaterThan(0);
   expect(remote, 'must not hit the live OHM tile server').toHaveLength(0);
 });
+
+/**
+ * Regression: the colour-strength slider used to lose its saved value.
+ *
+ * Its x-init held a `try` statement, and Alpine compiles an attribute as the right-hand side of an
+ * assignment — so the browser parsed `result = try { … }`, threw "Unexpected token 'try'", and
+ * dropped the whole expression. The page still rendered, which is why it went unnoticed; the
+ * preference simply never came back.
+ */
+test('the colour-strength slider restores the saved preference without a page error', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  await page.addInitScript(() => localStorage.setItem('tm-color-strength', '0.8'));
+
+  await loginAsTeacher(page);
+  await page.goto('/teacher/timemap', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(3_000);
+
+  await expect(page.locator('input[type="range"].range-primary')).toHaveValue('80');
+
+  // Headless Chromium renders WebGL through swiftshader and complains regardless; anything else
+  // is a real script error on the page.
+  expect(errors.filter((message) => !/WebGL|uniformMatrix4fv/i.test(message))).toEqual([]);
+});

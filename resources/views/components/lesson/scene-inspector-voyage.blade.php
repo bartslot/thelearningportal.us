@@ -1,4 +1,4 @@
-@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => []])
+@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas'])
 
 @php
     $config = $scene->config ?? [];
@@ -48,11 +48,11 @@
                     x-on:click="wide = !wide; wide ? window.__voyageTour?.showOverview?.() : window.__voyageTour?.hideOverview?.()"
                     :class="wide ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:text-amber-300'"
                     class="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition"
-                    :title="wide ? '{{ __('Back to this leg') }}' : '{{ __('See the whole voyage') }}'">
+                    :title="wide ? @js(__('Back to this leg')) : @js(__('See the whole voyage'))">
                 <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 5.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
                 </svg>
-                <span x-text="wide ? '{{ __('This leg') }}' : '{{ __('Whole trip') }}'"></span>
+                <span x-text="wide ? @js(__('This leg')) : @js(__('Whole trip'))"></span>
             </button>
             @if ($legCount)
                 <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Waypoint {{ $legIndex + 1 }} / {{ $legCount }}</span>
@@ -328,6 +328,12 @@
                            class="toggle toggle-sm toggle-warning" />
                 </label>
             </div>
+        </section>
+
+        {{-- MAP STYLE — the same lesson-wide palette a map block uses, voyages included (a voyage is
+             not a special case: pick the look once and every map in the lesson follows). --}}
+        <section class="border-t border-slate-700/50 pt-3">
+            <x-lesson.map-style-picker :effective-style="$lessonMapStyle" />
         </section>
 
         {{-- MAP DETAIL — hide anachronistic modern cities/borders (they didn't exist yet) and pin the

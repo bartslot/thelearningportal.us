@@ -253,7 +253,7 @@
     {{-- ── LAYER 3: UI overlay ──────────────────────────────────────────── --}}
     <div class="absolute inset-0 z-30 pointer-events-none">
 
-        @php $canEdit = auth()->check() && (int) auth()->id() === (int) $lesson->teacher_id; @endphp
+        @php $canEdit = (bool) auth()->user()?->canManage($lesson); @endphp
 
         {{-- Logo — top-left. Hidden for the owner-preview, where the slim Edit toolbar takes its spot. --}}
         @unless ($canEdit)
@@ -351,7 +351,7 @@
                  @keydown.escape.window="subsOpen = false">
                 <button
                     @click="subsOpen = !subsOpen"
-                    :title="'{{ __('Subtitles') }} (C)'"
+                    :title="@js(__('Subtitles').' (C)')"
                     :aria-expanded="subsOpen"
                     aria-haspopup="menu"
                     class="flex h-9 w-9 items-center justify-center rounded-full border transition-all
@@ -375,7 +375,7 @@
                      class="absolute right-0 top-11 w-52 overflow-hidden rounded-xl border border-white/10 bg-black/85 py-1.5 shadow-2xl backdrop-blur-md">
                     <p class="px-3 pb-1.5 pt-1 text-[10px] uppercase tracking-widest text-white/40">{{ __('Subtitles') }}</p>
                     {{-- Off first, like every player: it is the state you go back to. --}}
-                    <template x-for="option in [{ on: false, label: '{{ __('Off') }}' }, { on: true, label: '{{ __('On') }}' }]" :key="option.label">
+                    <template x-for="option in [{ on: false, label: @js(__('Off')) }, { on: true, label: @js(__('On')) }]" :key="option.label">
                         <button type="button" role="menuitemradio"
                                 :aria-checked="captionsOn === option.on"
                                 @click="setCaptions(option.on); subsOpen = false"

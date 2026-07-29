@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\OnboardingStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -24,6 +26,9 @@ class User extends Authenticatable
         'role',
         'locale',
         'tag',
+        'onboarded_at',
+        'onboarding_status',
+        'onboarding_step',
     ];
 
     protected $hidden = [
@@ -35,11 +40,26 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
+            'password' => 'hashed',
+            'onboarded_at' => 'datetime',
+            'onboarding_status' => OnboardingStatus::class,
+            'onboarding_step' => 'integer',
         ];
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
+
+    /** Has this account finished (or skipped) the welcome tour? */
+    public function hasOnboarded(): bool
+    {
+        return $this->onboardingStatus()->isFinished();
+    }
+
+    /** Never null: rows written before the column existed read as Pending. */
+    public function onboardingStatus(): OnboardingStatus
+    {
+        return $this->onboarding_status ?? OnboardingStatus::Pending;
+    }
 
     public function isTeacher(): bool
     {
@@ -54,6 +74,15 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    /**
+     * Ownership check for teacher-owned records (lessons, classrooms, …).
+     * Admin is a superuser role: it manages everything, whoever created it.
+     */
+    public function canManage(Model $record): bool
+    {
+        return $this->isAdmin() || (int) ($record->teacher_id ?? 0) === (int) $this->id;
     }
 
     // ── Teacher relationships ───────────────────────────────────────────────
@@ -73,7 +102,7 @@ class User extends Authenticatable
     public function enrolledClassrooms(): BelongsToMany
     {
         return $this->belongsToMany(Classroom::class, 'classroom_student', 'student_id', 'classroom_id')
-                    ->withPivot('joined_at');
+            ->withPivot('joined_at');
     }
 
     public function progress(): HasMany

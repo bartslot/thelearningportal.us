@@ -4,34 +4,34 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? config('app.name') }} — The Learning Portal</title>
+    <title>{{ $title ?? config('app.name') }} · The Learning Portal</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @stack('head-scripts')
     @livewireStyles
 </head>
-<body class="h-full bg-slate-950 text-slate-100 antialiased">
+{{-- min-h-dvh: short pages (settings, empty states) must still paint the gradient down to the
+     bottom of the viewport instead of stopping at the content and showing black beneath. --}}
+<body class="min-h-dvh bg-linear-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-100 antialiased">
     {{-- Canvas steps (Configure/Preview) are full-screen editors — hide the global menu bar
          so nothing overlaps the composition. The teacher exits via the back arrow (top-left). --}}
     @unless ($hideChrome ?? false)
         <x-app-nav />
     @endunless
 
-    @if(session('success'))
-        <div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-            <div class="rounded-lg border border-emerald-700 bg-emerald-900/40 px-4 py-3 text-sm text-emerald-300">
-                {{ session('success') }}
-            </div>
-        </div>
-    @endif
+    {{-- Every notification in the app renders here. Do not add a per-page banner; add a type to
+         the component instead, so a teacher recognises a message wherever it fires. --}}
+    <x-toast-host />
 
-    @if(session('error'))
-        <div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-            <div class="rounded-lg border border-rose-700 bg-rose-900/40 px-4 py-3 text-sm text-rose-300">
-                {{ session('error') }}
-            </div>
-        </div>
-    @endif
+    @foreach (['success', 'error', 'warning', 'info'] as $flashType)
+        @if (session($flashType))
+            <script data-flash-toast>
+                window.addEventListener('DOMContentLoaded', () => window.dispatchEvent(new CustomEvent('toast', {
+                    detail: { type: @js($flashType), message: @js(session($flashType)) },
+                })))
+            </script>
+        @endif
+    @endforeach
 
     <main @class([
         'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8' => ! ($hideChrome ?? false),

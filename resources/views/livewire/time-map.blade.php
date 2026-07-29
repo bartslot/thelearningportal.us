@@ -98,7 +98,7 @@
                    wire:navigate
                    class="btn btn-warning btn-sm mt-3 w-full gap-2 font-semibold">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.368 2.447a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.54 1.118l-3.367-2.447a1 1 0 00-1.175 0l-3.367 2.447c-.784.57-1.838-.196-1.539-1.118l1.286-3.957a1 1 0 00-.363-1.118L2.343 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
-                    <span x-text="selected.length ? '{{ __('Create lesson with') }} ' + selected[0].name + (selected.length > 1 ? ' +' + (selected.length - 1) : '') : '{{ __('Create lesson') }}'"></span>
+                    <span x-text="selected.length ? @js(__('Create lesson with').' ') + selected[0].name + (selected.length > 1 ? ' +' + (selected.length - 1) : '') : @js(__('Create lesson'))"></span>
                 </a>
 
                 {{-- flex-1/px-1: the three labels (esp. Dutch "Samenvatting/Personen/Door de tijd")
@@ -112,7 +112,7 @@
                 <div class="mt-3 text-sm">
                     {{-- Summary, with the Wikipedia article link underneath it. --}}
                     <div x-show="tab==='summary'" class="space-y-2">
-                        <p x-text="polity.summary || '{{ __('No summary yet.') }}'"></p>
+                        <p x-text="polity.summary || @js(__('No summary yet.'))"></p>
                         <template x-if="polity.wikipedia_url && polity.wikipedia_url.includes('wikipedia.org')">
                             <div>
                                 <p x-show="lead" x-text="lead" class="whitespace-pre-line leading-relaxed"></p>
@@ -126,7 +126,7 @@
                         </template>
                         <template x-if="polity.wikipedia_url && !polity.wikipedia_url.includes('wikipedia.org')">
                             <a :href="polity.wikipedia_url" target="_blank" rel="noopener" class="link link-primary text-xs"
-                               x-text="'{{ __('Open on World History Encyclopedia') }}' + ' ↗'"></a>
+                               x-text="@js(__('Open on World History Encyclopedia')) + ' ↗'"></a>
                         </template>
                     </div>
 
@@ -152,7 +152,7 @@
                                         x-on:click="selected.some(s => s.qid === f.qid) ? (selected = selected.filter(s => s.qid !== f.qid)) : (selected = [...selected, f])"
                                         class="btn btn-xs shrink-0"
                                         :class="selected.some(s => s.qid === f.qid) ? 'btn-success' : 'btn-outline'"
-                                        x-text="selected.some(s => s.qid === f.qid) ? '✓ {{ __('Selected') }}' : '{{ __('Use in lesson') }}'">
+                                        x-text="selected.some(s => s.qid === f.qid) ? @js('✓ '.__('Selected')) : @js(__('Use in lesson'))">
                                 </button>
                             </div>
                         </template>
@@ -176,8 +176,20 @@
          blue, Spain gold — see national-colors.json) stay recognisable; the slider trades subtle
          atlas wash against vivid distinct countries. Sits above the attribution line. --}}
     <div class="absolute bottom-12 right-4 z-20 flex items-center gap-2 rounded-box bg-base-100/85 px-3 py-1.5 shadow-lg"
-         x-data="{ v: 55 }"
-         x-init="try { const s = parseFloat(localStorage.getItem('tm-color-strength')); if (Number.isFinite(s)) v = Math.round(s * 100); } catch (e) {}">
+         {{-- Restoring the saved strength lives in init(), not x-init: Alpine compiles an attribute
+              as the right-hand side of an assignment, so a `try` statement there is a syntax error
+              ("Unexpected token 'try'") and the whole expression is dropped — which is why the
+              slider used to ignore what you had set. The try/catch itself stays: localStorage
+              throws outright when a browser blocks storage. --}}
+         x-data="{
+             v: 55,
+             init() {
+                 try {
+                     const saved = parseFloat(localStorage.getItem('tm-color-strength'))
+                     if (Number.isFinite(saved)) this.v = Math.round(saved * 100)
+                 } catch (e) {}
+             },
+         }">
         <span class="text-xs font-medium opacity-70">{{ __('Colour') }}</span>
         <input type="range" min="0" max="100" step="5" x-model.number="v"
                x-on:input="window.__tmSetColorStrength && window.__tmSetColorStrength(v / 100)"
@@ -190,7 +202,7 @@
          x-data="{ settingsOpen: false, paletteOpen: false,
                    style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
                    sound: (window.localStorage.getItem('tm-sound') === '1'),
-                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Tolkien'],['night','Night']] }"
+                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Tolkien'],['night','Night'],['satellite','Satellite']] }"
          x-on:click.outside="settingsOpen = false; paletteOpen = false">
 
         {{-- Cog --}}
@@ -227,7 +239,7 @@
         <div class="absolute" style="right: 2.5rem; top: 3.75rem; display: none;" x-show="settingsOpen" x-transition>
             <button type="button"
                     x-on:click="sound = !sound; window.localStorage.setItem('tm-sound', sound ? '1' : '0'); window.__timemapSoundOn = sound; if (!sound && window.__timemapStopSpeak) window.__timemapStopSpeak();"
-                    :aria-label="sound ? '{{ __('Sound on') }}' : '{{ __('Sound off') }}'"
+                    :aria-label="sound ? @js(__('Sound on')) : @js(__('Sound off'))"
                     class="btn btn-circle border-none shadow-lg" :class="sound ? 'bg-success text-white' : 'bg-base-100 text-base-content'">
                 {{-- Sound on: wave/equalizer bars --}}
                 <svg x-show="sound" class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -255,7 +267,7 @@
          class="absolute left-1/2 top-4 z-30 flex w-88 max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-box bg-base-100/95 px-3 py-2 shadow-xl">
         <button type="button" x-on:click="window.__timemapToggleSpeak && window.__timemapToggleSpeak()"
                 class="btn btn-circle btn-sm btn-warning shrink-0 text-black"
-                :aria-label="playing ? '{{ __('Pause') }}' : '{{ __('Play') }}'">
+                :aria-label="playing ? @js(__('Pause')) : @js(__('Play'))">
             <svg x-show="!playing" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             <svg x-show="playing" style="display:none" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
         </button>

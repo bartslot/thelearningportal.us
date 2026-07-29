@@ -21,8 +21,12 @@ const JOBS = [
   { gf: 'Inter:wght@500', family: 'Inter', weight: 500, style: 'normal', out: 'inter' }, // app sans — modern (city) names. lowercase folder = matches existing inter/ webfonts (case-sensitive prod)
 ]
 // Basic Latin + Latin-1 + Latin Extended-A/B + IPA + combining/Greek + Latin Extended Additional
-// (the last covers transliterated place names: ḥ ṣ ṭ ā … — avoids missing-glyph 404s on the map).
-const RANGES = [[0, 255], [256, 511], [512, 767], [768, 1023], [7680, 7935]]
+// (that one covers transliterated place names: ḥ ṣ ṭ ā …) + General Punctuation.
+//
+// General Punctuation (8192-8447) is not optional: voyage labels are built as "name  1642–1643"
+// with an EN DASH, and polity names carry curly quotes. Without the range MapLibre asks for
+// /fonts/Cinzel/8192-8447.pbf on every load, gets a 404, and those characters never draw.
+const RANGES = [[0, 255], [256, 511], [512, 767], [768, 1023], [7680, 7935], [8192, 8447]]
 const FONT_SIZE = 24, BUFFER = 3, RADIUS = 8, CUTOFF = 0.25
 
 // TinySDF source, transformed so it attaches to window inside the page.

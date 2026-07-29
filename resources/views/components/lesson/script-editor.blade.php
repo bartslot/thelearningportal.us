@@ -99,7 +99,7 @@
                         title="{{ __('Rewrite this paragraph from a prompt') }}">
                     <svg x-show="!regenPara" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
                     <svg x-show="regenPara" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>
-                    <span x-text="regenPara ? '{{ __('rewriting…') }}' : '{{ __('Regenerate') }}'"></span>
+                    <span x-text="regenPara ? @js(__('rewriting…')) : @js(__('Regenerate'))"></span>
                 </button>
             </div>
             <div class="flex min-w-0 flex-1 items-center gap-1" x-show="promptOpen" x-cloak>
@@ -119,7 +119,7 @@
                     title="{{ __('Summarize the narration into a bullet list on the slide') }}">
                 <svg x-show="!summarizing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
                 <svg x-show="summarizing" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>
-                <span x-text="summarizing ? '{{ __('summarizing…') }}' : '{{ __('Summarize to list') }}'"></span>
+                <span x-text="summarizing ? @js(__('summarizing…')) : @js(__('Summarize to list'))"></span>
             </button>
         </div>
 
@@ -128,7 +128,7 @@
         <div class="flex shrink-0 items-center gap-2.5 border-t border-slate-700/60 bg-base-200/60 px-3 py-1.5">
             <button type="button" x-on:click="onPlay()" :disabled="!ready && !dirty"
                     class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-slate-950 transition hover:bg-amber-400 disabled:opacity-40"
-                    :title="dirty ? '{{ __('Re-narrate the edited audio') }}' : (playing ? '{{ __('Pause') }}' : '{{ __('Play') }}')"
+                    :title="dirty ? @js(__('Re-narrate the edited audio')) : (playing ? @js(__('Pause')) : @js(__('Play')))"
                     aria-label="{{ __('Play narration') }}">
                 <svg x-show="regenerating" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>
                 <svg x-show="!regenerating && !playing" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z"/></svg>
@@ -138,7 +138,7 @@
             <div x-ref="waveform" wire:ignore class="h-7 min-w-0 flex-1 cursor-pointer transition-opacity"
                  :class="dirty && 'pointer-events-none opacity-40'"></div>
             <span class="shrink-0 font-mono text-[10px] tabular-nums text-slate-400"
-                  x-text="regenerating ? '{{ __('updating…') }}' : (fmt(t) + ' / ' + fmt(dur))"></span>
+                  x-text="regenerating ? @js(__('updating…')) : (fmt(t) + ' / ' + fmt(dur))"></span>
         </div>
     </div>
 </div>

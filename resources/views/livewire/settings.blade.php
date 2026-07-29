@@ -25,18 +25,14 @@
             <div class="border-t border-slate-800"></div>
 
             {{-- UI-language switcher --}}
-            <label class="form-control w-full max-w-xs">
-                <span class="mb-1 text-sm font-medium text-slate-300">{{ __('Language') }}</span>
-                <select wire:model="locale" class="select select-bordered bg-slate-900">
-                    @foreach ($this->localeOptions() as $value => $label)
-                        <option value="{{ $value }}">{{ $label }}</option>
-                    @endforeach
-                </select>
-                <span class="mt-1 text-xs text-slate-500">{{ __('Changes the language of the interface.') }}</span>
+            <div class="w-full max-w-xs">
+                <p id="language-picker-label" class="mb-1 text-sm font-medium text-slate-300">{{ __('Language') }}</p>
+                <x-ui.language-picker model="locale" :current="$locale" :label="__('Language')" />
+                <p class="mt-1 text-xs text-slate-500">{{ __('Changes the language of the interface.') }}</p>
                 @error('locale')
-                    <span class="mt-1 text-xs text-rose-400">{{ $message }}</span>
+                    <p class="mt-1 text-xs text-rose-400">{{ $message }}</p>
                 @enderror
-            </label>
+            </div>
 
             <div>
                 <button type="button" wire:click="save"

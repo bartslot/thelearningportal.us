@@ -449,6 +449,7 @@
                         preview: true,   // editor: jump straight to the landfall, skip the sail
                         editable: true,  // teacher can edit the gallery title/date/story on the scene
                         mapOptions: p.voyage_map || null,   // hide cities/borders, show place labels
+                        style: vcfg.map_style || p.lesson_map_style || 'soft-atlas',
                         legLabels: p.leg_labels || [],
                         paintedFog: p.voyage_fog || [],     // teacher-painted undiscovered regions
                         {{-- Read currentSceneId (not the mount-time id) so a no-rebuild leg switch still
@@ -463,6 +464,9 @@
                         // Drop a NEW bend by dragging the route line → insert a waypoint after afterWpIndex.
                         onWaypointInsert: (afterWpIndex, lng, lat) =>
                             window.Livewire.dispatch('voyageWaypointInserted', { sceneId: currentSceneId, afterWpIndex, lng, lat }),
+                        // Double-click a bend → drop that waypoint (undoable, like every other route edit).
+                        onWaypointRemove: (wpIndex) =>
+                            window.Livewire.dispatch('voyageWaypointRemoved', { sceneId: currentSceneId, wpIndex }),
                         // Restore the open gallery ONCE when arriving via a preview "Edit scene" deep-link.
                         openGalleryOnArrive: window.__openGalleryOnLoad === true,
                     })
@@ -718,7 +722,7 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @elseif ($sceneModel->kind === 'voyage')
-                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" />
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @else
@@ -1577,7 +1581,7 @@
                     {{-- Adjust — select the object and open its Format inspector. --}}
                     <button type="button" data-nodrag data-obj-adjust @click.stop="edit(obj)"
                             class="btn btn-ghost btn-xs btn-square shrink-0 text-slate-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
-                            aria-label="{{ __('Adjust settings') }}" :title="'{{ __('Adjust settings') }}'">
+                            aria-label="{{ __('Adjust settings') }}" :title="@js(__('Adjust settings'))">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
                         </svg>
@@ -1587,7 +1591,7 @@
                     <button type="button" data-nodrag data-obj-adjust x-show="!obj.bg"
                             @click.stop="deleteObject(obj)"
                             class="btn btn-ghost btn-xs btn-square shrink-0 text-slate-500 opacity-0 transition hover:text-rose-400 group-hover:opacity-100"
-                            aria-label="{{ __('Delete object') }}" :title="'{{ __('Delete') }}'">
+                            aria-label="{{ __('Delete object') }}" :title="@js(__('Delete'))">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"></path>
                         </svg>

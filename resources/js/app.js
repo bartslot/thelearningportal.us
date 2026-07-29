@@ -3,8 +3,14 @@ import { gsap } from 'gsap';
 import Flickity from 'flickity';
 import 'flickity/css/flickity.css';
 import Sortable                from 'sortablejs';
+import { createTour } from './onboarding/tour.js';
 
 window.Sortable = Sortable;
+
+// Alpine factory for the onboarding spotlight: x-data="onboardingTour(@js($config))".
+// Registered as a global (like wavePlayer in the app layout) so the Blade view can call it without
+// waiting on alpine:init ordering.
+window.onboardingTour = createTour;
 
 // The 3D scene system (three.js, ~1.7 MB) is used ONLY by the lesson-creation wizard. Load it on
 // demand via window.loadLessonScene() so the landing page and other app pages never download three.

@@ -1,5 +1,7 @@
+{{-- data-dev-panel lets the help-screenshot capture hide this local-only widget. --}}
 <div x-data="{ open: false }"
      class="fixed bottom-4 right-4 z-100 print:hidden"
+     data-dev-panel
      wire:key="dev-test-panel">
 
     {{-- Toggle button --}}
@@ -74,6 +76,28 @@
                 Open a lesson's Results page to seed data for it.
             </div>
         @endif
+
+        <div class="mt-3 border-t border-slate-800 pt-3">
+            <div class="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">Signed in as</div>
+            <div class="mb-2 text-xs text-slate-400">
+                <span class="text-slate-200">{{ $currentUserName }}</span>
+                <span class="badge badge-xs ml-1 border-slate-700 bg-slate-800 text-slate-300">{{ $currentRole ?: 'no role' }}</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                @foreach ($roles as $role => $label)
+                    <button type="button"
+                            wire:click="switchRole('{{ $role }}')"
+                            wire:loading.attr="disabled" wire:target="switchRole"
+                            @disabled($role === $currentRole)
+                            class="btn btn-xs {{ $role === $currentRole ? 'btn-primary' : 'btn-outline' }}">
+                        {{ $label }}
+                    </button>
+                @endforeach
+            </div>
+            <p class="mt-1.5 text-[0.65rem] leading-snug text-slate-500">
+                Switches account instantly, no logout needed. Switching back returns to the same account.
+            </p>
+        </div>
 
         <div class="mt-3 border-t border-slate-800 pt-3">
             <div class="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">Jump to</div>

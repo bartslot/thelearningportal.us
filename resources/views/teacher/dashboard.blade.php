@@ -63,7 +63,7 @@
                 </div>
             @endif
 
-            <a href="{{ route('teacher.lessons.chat') }}" class="btn btn-primary btn-sm">
+            <a href="{{ route('teacher.lessons.chat') }}" class="btn btn-primary btn-sm" data-tour="new-lesson">
                 <x-icons.sparkles class="h-4 w-4" />
                 {{ __('New lesson') }}
             </a>
@@ -247,5 +247,11 @@
 
 
     @include('teacher.partials.lesson-cards')
+
+    {{-- The welcome tour spotlights parts of this page and the top bar, so it lives here rather
+         than in the layout: it opens where its anchors are, and only for accounts still owed it. --}}
+    @if (auth()->user()?->isTeacher() || auth()->user()?->isAdmin())
+        @livewire('onboarding.welcome-tour')
+    @endif
 </div>
 </x-layouts.app>
