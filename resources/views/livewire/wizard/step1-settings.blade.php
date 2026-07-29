@@ -7,7 +7,10 @@
     @if (! $lesson && count($this->voyageOptions))
         {{-- Selection lives in Alpine (pick) and is handed to the server only on Create, so choosing
              a voyage never round-trips + collapses the panel mid-flow (Livewire re-render gotcha). --}}
-        <div data-flow-group class="wizard-flow-group rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4"
+        {{-- NOT a flow group: this is a collapsed shortcut banner (~53px), and giving it the 75vh
+             flow treatment pushed the Topic field — the first thing anyone actually needs — below
+             the fold behind ~490px of empty space, dimmed to 38%. The flow starts at Topic. --}}
+        <div class="rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4"
              x-data="{ open: false, pick: '' }">
             <button type="button" class="flex w-full items-center gap-3 text-left" x-on:click="open = !open">
                 <x-lesson.icon-voyage class="h-7 w-7 text-indigo-300" />
@@ -53,7 +56,7 @@
                     <span class="text-sm text-emerald-300 font-semibold">{{ __('Story') }}: {{ $chosen['title'] ?? $topic }}</span>
                     <span class="text-xs text-slate-400">
                         {{ collect([$chosen['era'] ?? null, $chosen['region'] ?? null, $chosen['grade_band'] ?? null])->filter()->implode(' · ') }}
-                        · {{ __('curated — objectives & sources included') }}
+                        · {{ __('curated: objectives and sources included') }}
                     </span>
                 </div>
                 <button type="button" wire:click="clearStory" class="btn btn-xs btn-ghost">{{ __('Change') }}</button>
@@ -171,7 +174,7 @@
                      class="absolute z-50 w-full top-full mt-1 rounded-box border border-white/10 bg-base-200 p-3 shadow-xl">
                     <p class="text-xs text-slate-300">
                         {{ __('No catalog matches for') }} “{{ $topic }}”.
-                        {{ __('Pick a broader topic — a place, person or event (e.g. Utrecht) — and put the specifics, like a building or object, under “Anything specific?”.') }}
+                        {{ __('Pick a broader topic: a place, person or event such as Utrecht. Put the specifics, like a building or object, under “Anything specific?”.') }}
                     </p>
                 </div>
             @endif
@@ -230,7 +233,7 @@
                     @endforeach
                 </div>
             @else
-                <span class="text-xs text-slate-500">{{ __('3 of 3 chosen — clear a slot above to swap.') }}</span>
+                <span class="text-xs text-slate-500">{{ __('3 of 3 chosen. Clear a slot above to swap.') }}</span>
             @endif
         </div>
 
@@ -867,18 +870,49 @@
             return {
                 groups: [],
                 _io: null,
+                _ratios: null,
                 init() {
                     this.groups = Array.from(this.$el.querySelectorAll('[data-flow-group]'));
-                    // Whichever group is centred in the viewport is "active"; dim the rest.
+                    this._ratios = new Map();
+                    // Whichever group is MOST visible is "active"; dim the rest.
+                    //
+                    // This deliberately keeps a running ratio per group instead of activating straight
+                    // from an entry. Two bugs came from doing that:
+                    //   - groups are 75vh inside an ~84vh band, so TWO adjacent ones can both exceed
+                    //     any fixed threshold at once and whichever entry landed last in the batch won;
+                    //   - activation only ever fired on the way IN, so when the active group fell below
+                    //     the threshold without another crossing up through it, the highlight got stuck
+                    //     on a group that was scrolled off screen while the teacher typed into a dimmed
+                    //     field. Recomputing the max after every batch cannot get stuck.
                     this._io = new IntersectionObserver((entries) => {
-                        entries.forEach((e) => {
-                            if (e.isIntersecting && e.intersectionRatio >= 0.5) this._activate(e.target);
-                        });
-                    }, { threshold: [0, 0.5, 1], rootMargin: '-8% 0px -8% 0px' });
+                        entries.forEach((e) => this._ratios.set(e.target, e.intersectionRatio));
+                        this._activateMostVisible();
+                    }, { threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '-8% 0px -8% 0px' });
                     this.groups.forEach((g) => this._io.observe(g));
                     if (this.groups[0]) this._activate(this.groups[0]);
+
+                    // Whatever the teacher is actually typing in wins over pure scroll position —
+                    // a focused field must never sit in a dimmed group.
+                    this._onFocus = (e) => {
+                        const g = this.groups.find((x) => x.contains(e.target));
+                        if (g) this._activate(g);
+                    };
+                    this.$el.addEventListener('focusin', this._onFocus);
                 },
-                destroy() { this._io && this._io.disconnect(); },
+                destroy() {
+                    this._io && this._io.disconnect();
+                    this._onFocus && this.$el.removeEventListener('focusin', this._onFocus);
+                },
+                _activateMostVisible() {
+                    let best = null, bestRatio = 0;
+                    this.groups.forEach((g) => {
+                        const r = this._ratios.get(g) ?? 0;
+                        if (r > bestRatio) { bestRatio = r; best = g; }
+                    });
+                    // Nothing meaningfully on screen (mid-fling, or the page is scrolled past the
+                    // form) — keep the current highlight rather than dimming every group at once.
+                    if (best) this._activate(best);
+                },
                 _activate(el) {
                     this.groups.forEach((g) => g.classList.toggle('flow-dim', g !== el));
                 },

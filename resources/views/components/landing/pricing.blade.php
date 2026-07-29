@@ -21,7 +21,7 @@
             </h2>
             <p class="mt-4 text-base leading-relaxed text-slate-400">
                 Cinematic, AI-narrated history lessons your teachers build in minutes.
-                Commit longer and lock a lower rate — most schools choose the 2-year plan.
+                Commit longer and lock a lower rate. Most schools choose the 2-year plan.
             </p>
         </div>
 

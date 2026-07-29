@@ -19,6 +19,7 @@
     // Default image-source tab reflects how the current background was set.
     $bgKind         = $scene->config['background_credit']['kind'] ?? null;
     $srcDefault     = $bgKind === 'painting' ? 'paintings' : ($bgKind === 'url' ? 'url' : 'ai');
+    $backgroundFit  = ($scene->config['background_fit'] ?? 'cover') === 'contain' ? 'contain' : 'cover';
     $backgroundImageUrl = $scene->image_path
         ? asset('storage/' . $scene->image_path) . '?v=' . ($scene->updated_at?->timestamp ?? '')
         : null;
@@ -148,6 +149,32 @@
                 </div>
             </div>
 
+            {{-- Fit — how the image fills the 16:9 stage. Cover crops the overflow (and anchors a
+                 portrait to the top so the face survives); Contain shows the whole work. --}}
+            @if ($backgroundImageUrl)
+                <div x-data="{ fit: @js($backgroundFit) }">
+                    <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{{ __('Fit') }}</span>
+                    <div class="flex rounded-lg overflow-hidden border border-slate-700 text-[11px] font-medium">
+                        @foreach (['cover' => __('Fill frame'), 'contain' => __('Whole image')] as $fitVal => $fitLabel)
+                            <button type="button"
+                                    @click="fit = '{{ $fitVal }}'; $wire.call('setBackgroundFit', '{{ $fitVal }}')"
+                                    :class="fit === '{{ $fitVal }}'
+                                        ? 'bg-amber-500 text-slate-950'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'"
+                                    class="flex-1 py-1.5 transition-colors">
+                                {{ $fitLabel }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <p class="mt-1 text-[10px] leading-tight text-slate-500" x-show="fit === 'cover'" x-cloak>
+                        {{ __('Fills the frame. Portraits are cropped from the top so faces stay in shot.') }}
+                    </p>
+                    <p class="mt-1 text-[10px] leading-tight text-slate-500" x-show="fit === 'contain'" x-cloak>
+                        {{ __('Shows the whole picture, with bars where it does not reach the edges.') }}
+                    </p>
+                </div>
+            @endif
+
             {{-- Reuse an image already in THIS lesson — a single-row carousel (latest first), arrows to
                  scroll. Clicking sets it as this scene's background (local paths reused; external
                  URLs downloaded once). Mirrors the Poster picker's "pick from the lesson" idea. --}}
@@ -217,7 +244,14 @@
 
             {{-- Paintings (curated public-domain / museum works) as the background image --}}
             <div x-show="imgSrc === 'paintings'" x-cloak class="space-y-1.5">
-                <button type="button" wire:click="openPaintingPicker" @disabled($isBusy)
+                {{-- NOT gated on $isBusy. A narration scene only reaches 'ready' with script + image
+                     + audio, so a hand-built scene that has a script and narration but no image sits
+                     at status 'generating' — and gating this button on that status deadlocked the
+                     scene: the one control that could supply the missing image was disabled because
+                     the image was missing. Picking a painting is safe at any time regardless, since
+                     GenerateSceneImage bails on hasManualBackground() before AND after generating.
+                     The AI generate/regenerate buttons below stay gated, to avoid double-dispatch. --}}
+                <button type="button" wire:click="openPaintingPicker"
                         class="btn btn-xs btn-outline border-slate-600 text-slate-300 hover:border-amber-400 hover:text-amber-300 disabled:opacity-50 inline-flex items-center gap-1.5">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
                         <rect x="3" y="4" width="18" height="14" rx="2"/>

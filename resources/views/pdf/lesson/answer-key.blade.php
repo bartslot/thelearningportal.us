@@ -1,7 +1,7 @@
 {{-- Handout final page(s) — teacher-only quiz answer key --}}
 <div class="page-break"></div>
 <h2 class="section-title">{{ __('Quiz answer key') }}</h2>
-<div class="teacher-note">{{ __('Teacher copy — contains the correct answers. Do not hand out to students.') }}</div>
+<div class="teacher-note">{{ __('Teacher copy. This contains the correct answers, so do not hand it out to students.') }}</div>
 
 @foreach ($questions as $question)
     <div class="question">

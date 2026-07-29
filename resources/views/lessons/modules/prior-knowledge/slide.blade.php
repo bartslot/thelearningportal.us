@@ -17,7 +17,7 @@
         </h1>
 
         <p class="text-lg text-base-content/70">
-            {{ __('Share everything that comes to mind — there are no wrong answers.') }}
+            {{ __('Share everything that comes to mind. There are no wrong answers.') }}
         </p>
 
         @if (! empty($seedTerms))

@@ -3,7 +3,7 @@
 <div class="sheet-band">
     <div class="wordmark">History Portal · Spelpakket</div>
     <div class="sheet-title">{{ __('Manschappen-tokens') }}</div>
-    <div class="sheet-note">{{ __('Elk team krijgt tokens; bij verlies lever je er in. Op nul? Eén ronde eruit — en de anderen aanmoedigen.') }}</div>
+    <div class="sheet-note">{{ __('Elk team krijgt tokens; bij verlies lever je er in. Op nul? Eén ronde eruit, en de anderen aanmoedigen.') }}</div>
 </div>
 
 <div class="cut-note">✂ {{ __('Knip de tokens uit langs de lijnen.') }}</div>

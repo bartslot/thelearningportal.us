@@ -75,7 +75,7 @@
                             <span class="text-xs opacity-60">{{ $row['correct'] }}/{{ $row['total'] }}</span>
                         </div>
                     @empty
-                        <p class="text-sm opacity-60">{{ __('No plays yet — share the lesson link or import paper sheets.') }}</p>
+                        <p class="text-sm opacity-60">{{ __('No plays yet. Share the lesson link, or import paper sheets.') }}</p>
                     @endforelse
                 </div>
             </div>
@@ -91,7 +91,7 @@
                             <span class="text-xs {{ $q['correct_pct'] < 35 ? 'text-error' : 'text-warning' }}">{{ $q['correct_pct'] }}% {{ __('correct') }}</span>
                         </div>
                     @empty
-                        <p class="text-sm opacity-60">{{ __('No difficult questions — nice!') }}</p>
+                        <p class="text-sm opacity-60">{{ __('No difficult questions. Nice work.') }}</p>
                     @endforelse
                 </div>
                 @if ($difficult->isNotEmpty())

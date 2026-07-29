@@ -20,7 +20,7 @@
         @endif
 
         @if ($saved)
-            <span class="text-xs text-success">{{ __('Thanks — feedback saved.') }}</span>
+            <span class="text-xs text-success">{{ __('Thanks, your feedback is saved.') }}</span>
         @endif
 
         @error('rating')

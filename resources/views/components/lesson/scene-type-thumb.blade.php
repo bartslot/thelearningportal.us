@@ -1,12 +1,12 @@
 @props(['kind' => 'narration', 'gameType' => null])
 @php
-    // narration | quiz | strategy | debate | story_game | map | voyage | gallery
+    // narration | quiz | strategy | debate | story_game | branch | map | voyage | gallery
     $key = $kind === 'game' ? ($gameType ?? 'quiz') : $kind;
     // Per-type accent colour (the icons inherit currentColor).
     $tint = [
         'narration' => 'text-amber-300', 'quiz' => 'text-amber-300', 'strategy' => 'text-teal-300',
-        'debate' => 'text-teal-300', 'story_game' => 'text-teal-300', 'map' => 'text-sky-300',
-        'voyage' => 'text-indigo-300', 'gallery' => 'text-violet-300',
+        'debate' => 'text-teal-300', 'story_game' => 'text-teal-300', 'branch' => 'text-teal-300',
+        'map' => 'text-sky-300', 'voyage' => 'text-indigo-300', 'gallery' => 'text-violet-300',
     ][$key] ?? 'text-slate-300';
 @endphp
 <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-base-100 ring-1 ring-slate-700/60 {{ $tint }}">
@@ -14,7 +14,8 @@
         @case('narration') <x-lesson.icon-story class="h-8 w-auto opacity-90" /> @break
         @case('strategy') <x-lesson.icon-strategy class="h-9 w-auto opacity-90" /> @break
         @case('debate') <x-lesson.icon-debate class="h-8 w-auto opacity-90" /> @break
-        @case('story_game') <x-lesson.icon-branching-story class="h-9 w-auto opacity-90" /> @break
+        @case('story_game')
+        @case('branch') <x-lesson.icon-branching-story class="h-9 w-auto opacity-90" /> @break
         @case('map') <x-lesson.icon-map class="h-9 w-auto opacity-90" /> @break
         @case('voyage') <x-lesson.icon-voyage class="h-9 w-auto opacity-90" /> @break
         @case('gallery') <x-lesson.icon-slideshow class="h-8 w-auto opacity-90" /> @break

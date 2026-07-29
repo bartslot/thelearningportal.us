@@ -182,7 +182,7 @@
                                          silently change what the question tests). --}}
                                     <input type="text" wire:model.blur="quizDraft.{{ $i }}.options.{{ $oi }}" maxlength="60"
                                            class="input input-xs input-bordered flex-1 bg-emerald-950/60 border-emerald-500/50 text-emerald-200"
-                                           title="{{ __('Correct answer — edit freely; drag to reorder.') }}" />
+                                           title="{{ __('Correct answer. Edit it freely, and drag to reorder.') }}" />
                                     <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-400"
                                           title="{{ __('Correct answer') }}" aria-label="{{ __('Correct answer') }}">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -211,7 +211,7 @@
                     @endif
                 </div>
             @empty
-                <p class="text-xs text-slate-500 md:col-span-2">{{ __('No questions yet — add one below and hit the sparkle to draft it.') }}</p>
+                <p class="text-xs text-slate-500 md:col-span-2">{{ __('No questions yet. Add one below, then hit the sparkle to draft it.') }}</p>
             @endforelse
             </div>
 

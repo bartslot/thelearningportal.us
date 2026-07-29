@@ -51,7 +51,7 @@ if ($lesson->status === LessonStatus::ScenesReady && $lesson->quizQuestions()->e
 // narration or images silently missing. Hold at 95+ with honest copy instead.
 if ($lesson->status === LessonStatus::Configuring && $this->overallProgress < 100) {
     $step = [
-        'label' => __('Almost ready — media is finishing'),
+        'label' => __('Almost ready. Media is finishing'),
         'detail' => __('You can continue and configure now; the remaining narration and images finish in the background.'),
         'pct' => max(95, 20 + (int) round($this->overallProgress * .74)),
     ];
@@ -245,9 +245,9 @@ $machineState = $isFailed ? 'error' : ($isStalled ? 'stalled' : ($isDone ? 'read
                                  "OpenAI API returned 429" tells them nothing about what to do next. --}}
                             @php $rawError = (string) $lesson->error_message; @endphp
                             @if (preg_match('/\b429\b|quota|rate limit|insufficient_quota/i', $rawError))
-                                {{ __('The AI writing service is unavailable right now (it is rate-limited or out of credit). Your settings are saved — retry in a few minutes, or continue and build the lesson yourself.') }}
+                                {{ __('The AI writing service is unavailable right now, either rate-limited or out of credit. Your settings are saved. Retry in a few minutes, or continue and build the lesson yourself.') }}
                             @elseif (preg_match('/\b(401|403)\b|api key|unauthorized/i', $rawError))
-                                {{ __('The AI service rejected our credentials. An administrator needs to check the API key — your lesson settings are saved in the meantime.') }}
+                                {{ __('The AI service rejected our credentials. An administrator needs to check the API key. Your lesson settings are saved in the meantime.') }}
                             @elseif (preg_match('/timeout|timed out|cURL error 28/i', $rawError))
                                 {{ __('The AI service took too long to answer. Retrying usually works.') }}
                             @else

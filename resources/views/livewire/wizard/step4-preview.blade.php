@@ -6,11 +6,20 @@
     $ordered = $this->scenes->values();
     $pos = $ordered->search(fn ($s) => $s->id === $selectedSceneId);
     $startIndex = $pos === false ? 0 : $pos;
+
+    // The same limitation applies to every SHOWN (rather than narrated) scene kind, not just voyage.
+    // SceneTimelinePlayer::_playOne only knows two shapes — a 'game' scene, and "speak this scene's
+    // audio" for everything else — so a gallery/map scene rendered as a black frame that resolved
+    // instantly. Pressing Play on one appeared to do nothing at all: with no audio there was nothing
+    // to await, the timeline ran to its end and reset itself. The real student player implements all
+    // of these kinds already, so hand the preview to it whenever the lesson contains one.
+    $stageKinds = ['voyage', 'gallery', 'map'];
+    $needsRealPlayer = $isVoyage || $ordered->contains(fn ($s) => in_array($s->kind, $stageKinds, true));
 @endphp
 
-<div class="contents" @unless($isVoyage) x-data="step4Preview" @endunless>
+<div class="contents" @unless($needsRealPlayer) x-data="step4Preview" @endunless>
 
-    @if ($isVoyage)
+    @if ($needsRealPlayer)
         {{-- Real player, autoplaying from the selected leg (embed=1 skips the title screen). --}}
         <div class="fixed inset-0 z-0 bg-black" wire:ignore wire:key="voyage-play-{{ $selectedSceneId }}">
             <iframe
@@ -144,10 +153,14 @@
         </x-splash-screen>
     @endif
 
-    @if ($isVoyage)
-        {{-- Voyage autoplays in the embedded player. No back button here — the teacher returns to
-             editing via the top-left dashboard arrow or the player's own "Edit scene" pill (top-left).
-             Navigation lives in the top corners; the bottom stays clean. --}}
+    {{-- Must track the SAME condition as the stage above: these controls drive the x-data="step4Preview"
+         sequencer, which only exists when that scope was rendered. Keying this on $isVoyage while the
+         stage keyed on $needsRealPlayer would put a togglePlay() button on a page with no Alpine scope
+         to handle it, on top of the embedded player's own controls. --}}
+    @if ($needsRealPlayer)
+        {{-- The embedded player autoplays and brings its own controls. No back button here — the
+             teacher returns to editing via the top-left dashboard arrow or the player's own
+             "Edit scene" pill. Navigation lives in the top corners; the bottom stays clean. --}}
     @else
     {{-- Play control — bottom strip (scenes now live in the left rail). No "Configure" button: the
          teacher returns to editing via the top-left navigation, not a redundant bottom link. --}}

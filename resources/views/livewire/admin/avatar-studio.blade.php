@@ -160,7 +160,7 @@
                 {{-- Language filter (edge has real languages; curated lists just get Featured/All) --}}
                 <div class="mb-2 flex flex-wrap items-center gap-3">
                     <select wire:model.live="languageFilter" class="select select-sm select-bordered bg-slate-900 w-56">
-                        <option value="featured">{{ __('Featured — best per language') }}</option>
+                        <option value="featured">{{ __('Featured: best per language') }}</option>
                         <option value="all">{{ __('All languages') }}</option>
                         @foreach($this->voiceLanguages as $code => $label)
                             <option value="{{ $code }}">{{ $label }}</option>

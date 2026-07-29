@@ -115,7 +115,7 @@
                             </svg>
                         </div>
                         <p class="mt-2 text-[10px] text-slate-600">
-                            {{ $childCount }} {{ $hasChildren ? 'nodes' : 'points' }} — tap to expand
+                            {{ $childCount }} {{ $hasChildren ? 'nodes' : 'points' }}, tap to expand
                         </p>
                     </button>
 

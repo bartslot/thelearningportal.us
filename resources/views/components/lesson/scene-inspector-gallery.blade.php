@@ -5,35 +5,38 @@
     $images = array_values($config['images'] ?? []);
 @endphp
 
+{{-- Standalone gallery scene (kind='gallery'). A voyage landfall has its own gallery section inside
+     scene-inspector-voyage, so nothing here may assume a voyage: the copy used to be written for
+     that case only ("this landfall", "e.g. Verversingspost"), which reads as nonsense in a lesson
+     that has no voyage at all. --}}
 <div class="space-y-3 text-sm">
     <h3 class="flex items-center gap-2 font-semibold text-violet-300">
         <x-lesson.icon-slideshow class="h-5 w-5" />
-        Slideshow
+        {{ __('Gallery') }}
     </h3>
 
     <p class="text-xs text-slate-400">
-        An auto-cycling slideshow of the drawings and paintings for this landfall, with a side panel
-        of the story.
+        {{ __('An auto-cycling slideshow of paintings and photographs, with a side panel of the story.') }}
     </p>
 
     <label class="form-control">
         <span class="text-xs uppercase tracking-wider text-slate-400">Title</span>
         <input type="text" wire:model.blur="selectedScene.config.title" wire:change="saveSelected"
-               placeholder="e.g. Verversingspost"
+               placeholder="{{ __('e.g. The three ships') }}"
                class="input input-sm input-bordered bg-slate-900 mt-1" />
     </label>
 
     <label class="form-control">
         <span class="text-xs uppercase tracking-wider text-slate-400">Date label</span>
         <input type="text" wire:model.blur="selectedScene.config.date_label" wire:change="saveSelected"
-               placeholder="e.g. 5 september 1642"
+               placeholder="{{ __('e.g. August 1492') }}"
                class="input input-sm input-bordered bg-slate-900 mt-1" />
     </label>
 
     <label class="form-control">
         <span class="text-xs uppercase tracking-wider text-slate-400">Story</span>
         <textarea wire:model.blur="selectedScene.config.story" wire:change="saveSelected" rows="5"
-                  placeholder="What happened at this stop…"
+                  placeholder="{{ __('What are the students looking at…') }}"
                   class="textarea textarea-bordered bg-slate-900 mt-1 leading-relaxed"></textarea>
     </label>
 
@@ -107,6 +110,6 @@
     </div>
 
     <button type="button" wire:click="deleteScene({{ $scene->id }})"
-            wire:confirm="Delete this gallery?"
-            class="mt-2 text-xs text-rose-300 underline hover:text-rose-200">Delete gallery</button>
+            wire:confirm="{{ __('Delete this gallery?') }}"
+            class="mt-2 text-xs text-rose-300 underline hover:text-rose-200">{{ __('Delete gallery') }}</button>
 </div>

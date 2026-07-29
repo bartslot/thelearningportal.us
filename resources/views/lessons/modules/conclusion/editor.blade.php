@@ -28,6 +28,6 @@
     </label>
 
     <p class="text-xs text-base-content/60">
-        {{ __('Takeaways are prefilled from the lesson objectives when available — edit freely.') }}
+        {{ __('Takeaways are prefilled from the lesson objectives when available. Edit them freely.') }}
     </p>
 </div>

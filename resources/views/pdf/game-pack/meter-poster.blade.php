@@ -3,7 +3,7 @@
 <div class="sheet-band">
     <div class="wordmark">History Portal · Spelpakket</div>
     <div class="sheet-title">{{ __('Meterposter') }}</div>
-    <div class="sheet-note">{{ __('Hang op het bord. Verschuif de markering na elke keuze — een meter op nul betekent: einde run.') }}</div>
+    <div class="sheet-note">{{ __('Hang op het bord. Verschuif de markering na elke keuze. Een meter op nul betekent einde run.') }}</div>
 </div>
 
 @forelse ($meters as $meter)

@@ -4,6 +4,9 @@
     $id = (string) ($text['id'] ?? '');
     $isPanel = ($text['kind'] ?? null) === 'rect';
     $isGlass = ($text['bg'] ?? 'none') === 'glass';
+    // Pinning needs a map under the label — offer it on the two scene kinds that have one.
+    $isMapScene = in_array($scene->kind ?? null, ['map', 'voyage'], true);
+    $isPinned = ($text['anchor'] ?? 'screen') === 'map';
 @endphp
 
 <div class="space-y-3 text-sm" wire:key="text-inspector-{{ $id }}">
@@ -119,7 +122,27 @@
             </label>
         @endif
 
-        @if (($text['anchor'] ?? 'screen') !== 'map')
+        {{-- Pin to map — only meaningful where a map sits under the text. A pinned label stores the
+             lng/lat it is sitting over and tracks that place through pan and zoom; a screen label
+             keeps the percentage placement below. The two are mutually exclusive, so the sliders
+             disappear while pinned. --}}
+        @if ($isMapScene)
+            <div class="space-y-1 border-t border-slate-700/50 pt-3">
+                <label class="flex items-center justify-between gap-3">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Pin to map') }}</span>
+                    <input type="checkbox" @checked($isPinned)
+                           x-on:change="window.__lessonTextLayer?.togglePin?.(@js($id))"
+                           class="toggle toggle-sm toggle-warning shrink-0" />
+                </label>
+                <p class="text-[10px] leading-tight text-slate-500">
+                    {{ $isPinned
+                        ? __('Stays on this place as the map pans and zooms.')
+                        : __('Sits at a fixed spot on the screen. Pin it to stick to the place underneath.') }}
+                </p>
+            </div>
+        @endif
+
+        @if (! $isPinned)
             <div class="space-y-2 border-t border-slate-700/50 pt-3">
                 <span class="block text-[10px] uppercase tracking-widest text-slate-500">{{ __('Placement') }}</span>
                 @foreach ([['x', __('Horizontal'), 0, 100, 1, $text['x'] ?? 40], ['y', __('Vertical'), 0, 100, 1, $text['y'] ?? 40], ['w', __('Width'), 5, 95, 1, $text['w'] ?? 46]] as [$field, $label, $min, $max, $step, $value])

@@ -25,7 +25,7 @@
             </ul>
         @else
             <p class="text-lg text-base-content/70">
-                {{ __('No takeaways yet — add them in the composer.') }}
+                {{ __('No takeaways yet. Add them in the composer.') }}
             </p>
         @endif
 

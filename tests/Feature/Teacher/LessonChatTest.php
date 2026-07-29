@@ -178,7 +178,7 @@ class LessonChatTest extends TestCase
             ->assertSet('canonTheme', 'governance')
             ->assertSet('canonIntent', 'strengthen')
             ->assertSet('state', 'preset_confirmation')
-            ->assertSee('Hoofdlijn 6 · Wie bestuurt er? — strengthen');
+            ->assertSee('Hoofdlijn 6 · Wie bestuurt er?: strengthen');
     }
 
     public function test_dutch_canon_choice_is_saved_on_the_created_lesson(): void

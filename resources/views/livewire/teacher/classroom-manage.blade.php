@@ -5,10 +5,6 @@
         <span class="text-base-content">{{ $classroom->name }}</span>
     </div>
 
-    @if ($notice)
-        <div class="alert alert-success py-2 text-sm">{{ $notice }}</div>
-    @endif
-
     <div class="grid gap-6 lg:grid-cols-3">
         {{-- Details --}}
         <form wire:submit="saveDetails" class="card bg-base-200 p-4 lg:col-span-1">
@@ -46,7 +42,7 @@
 
             <form wire:submit="addMember" class="mb-3 flex gap-2">
                 <input type="text" wire:model="newMember" class="input input-bordered input-sm flex-1"
-                       placeholder="{{ __('Add a child — e.g. Emma V.') }}" />
+                       placeholder="{{ __('Add a child, e.g. Emma V.') }}" />
                 <button type="submit" class="btn btn-primary btn-sm">{{ __('Add') }}</button>
             </form>
             @error('newMember') <span class="-mt-2 mb-2 block text-xs text-error">{{ $message }}</span> @enderror

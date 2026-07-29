@@ -351,7 +351,7 @@
                             </div>
                         @else
                             <p class="text-xs text-base-content/45">
-                                {{ __('3 of 3 chosen — clear a slot above to swap.') }}
+                                {{ __('3 of 3 chosen. Clear a slot above to swap.') }}
                             </p>
                         @endif
                     </div>

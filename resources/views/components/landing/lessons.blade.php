@@ -7,7 +7,7 @@
             <p class="text-[10px] uppercase tracking-[0.5em] text-sky-100/60">Play now</p>
             <h2 class="mt-3 font-history text-3xl tracking-tight text-white md:text-4xl">Lessons ready to play</h2>
             <p class="mt-3 text-sm leading-relaxed text-slate-400">
-                Tap any lesson to watch the story unfold — narrated by an AI historian, no account needed.
+                Tap any lesson to watch the story unfold, narrated by an AI historian. No account needed.
             </p>
         </div>
 

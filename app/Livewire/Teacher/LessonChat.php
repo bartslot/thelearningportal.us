@@ -385,7 +385,7 @@ class LessonChat extends Component
         if ($slug === CanonThemeCatalog::OTHER) {
             $this->canonThemeChoice = __('Other · no reliable Canon match');
         } else {
-            $this->canonThemeChoice = __('Hoofdlijn :number · :theme — :intent', [
+            $this->canonThemeChoice = __('Hoofdlijn :number · :theme: :intent', [
                 'number' => $option['number'],
                 'theme' => $option['label'],
                 'intent' => $this->canonIntent === 'strengthen'
@@ -694,7 +694,7 @@ class LessonChat extends Component
             ->firstWhere('slug', $this->suggestedCanonTheme);
 
         if ($suggested !== null) {
-            $message = __('This goal best fits Hoofdlijn :number — :theme.', [
+            $message = __('This goal best fits Hoofdlijn :number, :theme.', [
                 'number' => $suggested['number'],
                 'theme' => $suggested['label'],
             ]);
@@ -738,7 +738,7 @@ class LessonChat extends Component
         if ($this->canonTheme !== null && $this->canonTheme !== CanonThemeCatalog::OTHER) {
             $theme = app(CanonThemeCatalog::class)->themes()[$this->canonTheme] ?? null;
             if ($theme !== null) {
-                $message .= ' '.__('I’ll connect it to Hoofdlijn :number — :theme.', [
+                $message .= ' '.__('I’ll connect it to Hoofdlijn :number, :theme.', [
                     'number' => $theme['number'],
                     'theme' => $theme['label'],
                 ]);

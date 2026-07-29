@@ -5,7 +5,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Handout — {{ $lesson->title ?? $lesson->topic }}</title>
+    <title>Handout: {{ $lesson->title ?? $lesson->topic }}</title>
     <style>
         @page { margin: 46px 52px 56px 52px; }
         body {

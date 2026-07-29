@@ -4,7 +4,7 @@
 <html lang="nl">
 <head>
     <meta charset="utf-8">
-    <title>Spelpakket — {{ $lesson->title ?? $lesson->topic }}</title>
+    <title>Spelpakket: {{ $lesson->title ?? $lesson->topic }}</title>
     <style>
         @page { margin: 40px 44px 44px 44px; }
         body {

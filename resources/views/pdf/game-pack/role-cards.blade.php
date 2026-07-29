@@ -6,7 +6,7 @@
 </div>
 
 <div class="cut-note">
-    ✂ {{ __('Knip langs de stippellijn. Print één set per team — deel rollen aan groepjes uit, nooit aan losse leerlingen.') }}
+    ✂ {{ __('Knip langs de stippellijn. Print één set per team. Deel rollen aan groepjes uit, nooit aan losse leerlingen.') }}
 </div>
 
 @forelse ($roles as $role)

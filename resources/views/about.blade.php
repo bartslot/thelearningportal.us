@@ -35,7 +35,7 @@
                     </p>
 
                     <p class="mt-4 max-w-lg text-sm leading-relaxed text-slate-400/70">
-                        Our AI-powered platform transforms K-12 history education — turning dry
+                        Our AI-powered platform transforms K-12 history education, turning dry
                         facts into cinematic experiences that students actually remember. Currently
                         in beta and invite-only. Built for teachers who believe learning should feel
                         like an adventure.
@@ -72,7 +72,7 @@
                             <span class="lp-label mb-2 text-amber-400">AI Narration</span>
                             <p class="text-sm leading-relaxed text-slate-300/80">
                                 Historical figures narrate their own lessons. Every voice is generated from
-                                primary sources — not invented.
+                                primary sources, never invented.
                             </p>
                         </div>
                     </div>
@@ -83,7 +83,7 @@
                             <span class="lp-label mb-2 text-sky-400">Teacher-First</span>
                             <p class="text-sm leading-relaxed text-slate-400/80">
                                 Create a complete lesson in under two minutes. Set the topic, grade level,
-                                and tone — the AI handles the rest.
+                                and tone, then the AI handles the rest.
                             </p>
                         </div>
                     </div>

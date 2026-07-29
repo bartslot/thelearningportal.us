@@ -45,7 +45,7 @@
         <textarea rows="2" maxlength="240"
                   wire:model.blur="storyEffectsDraft.historical_note"
                   wire:change="saveStoryEffectsDraft"
-                  placeholder="{{ __('What really happened — shown on game over…') }}"
+                  placeholder="{{ __('What really happened, shown on game over…') }}"
                   class="textarea textarea-sm textarea-bordered mt-1 w-full bg-slate-900"></textarea>
     </label>
 </div>

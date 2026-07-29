@@ -12,7 +12,7 @@
         <select id="lw-strategy-game" name="strategy_game_id"
                 wire:model.live="strategy_game_id"
                 class="select select-bordered w-full bg-slate-900 mt-1">
-            <option value="">— no game —</option>
+            <option value="">No game</option>
             @foreach ($games as $g)
                 <option value="{{ $g->id }}">{{ $g->title }}</option>
             @endforeach

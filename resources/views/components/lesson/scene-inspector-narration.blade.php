@@ -2,6 +2,12 @@
 
 @php
     $isGenerating = $scene->status === 'generating';
+
+    // A scene the teacher added by hand has no script yet, and the Script box lives inside the
+    // collapsed "Scene details" disclosure — so the inspector looked like it had nowhere to write
+    // the story at all, next to a canvas saying "No narration yet for this scene." Start the
+    // disclosure OPEN until there is a script, then let it collapse as designed.
+    $needsScript = trim((string) $scene->script_segment) === '';
 @endphp
 
 <div class="space-y-3 text-sm">
@@ -13,9 +19,14 @@
     {{-- The wizard polls every three seconds. Ignore attributes on this native disclosure so
          Livewire never removes its browser-managed `open` state mid-edit; its fields still
          receive normal Livewire updates, and switching scenes replaces this keyed inspector. --}}
-    <details wire:ignore.self class="border-t border-slate-700/50 pt-2">
+    {{-- Blade has @checked/@selected/@disabled but NO @open directive — it would emit a literal
+         `@open(...)` attribute and the disclosure would stay shut. --}}
+    <details wire:ignore.self @if ($needsScript) open @endif class="border-t border-slate-700/50 pt-2">
         <summary class="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-widest text-slate-500 transition hover:text-slate-300">
             {{ __('Scene details') }}
+            @if ($needsScript)
+                <span class="ml-1 normal-case tracking-normal text-amber-400/80">{{ __('add the story text') }}</span>
+            @endif
         </summary>
         <div class="mt-3 space-y-3">
             <label class="form-control">
@@ -73,7 +84,7 @@
                             @endif
                         </button>
                         @if ($scene->script_segment && $scene->audio_path && ! $isGenerating)
-                            <span class="self-center text-xs text-slate-400">{{ __('script changed — re-narrate to refresh audio') }}</span>
+                            <span class="self-center text-xs text-slate-400">{{ __('script changed, re-narrate to refresh the audio') }}</span>
                         @endif
                     @endif
 

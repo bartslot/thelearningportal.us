@@ -4,7 +4,7 @@
 <div class="sheet-band">
     <div class="wordmark">History Portal · Spelpakket</div>
     <div class="sheet-title">{{ __('Gebeurteniskaarten') }}</div>
-    <div class="sheet-note">{{ __('Eén kaart per keuzemoment — lees hardop voor en laat het team kiezen.') }}</div>
+    <div class="sheet-note">{{ __('Eén kaart per keuzemoment. Lees hardop voor en laat het team kiezen.') }}</div>
 </div>
 
 @forelse ($events as $event)

@@ -84,8 +84,8 @@
             <p class="text-sm text-slate-300 flex items-center gap-2">
                 <i class="ti ti-git-branch text-amber-300"></i>
                 {{ $story_game
-                    ? __('Spel-verhaal: 3 choice points, class meters and a game master — the class survives the story together. History stays true.')
-                    : __('The AI adds one choice point mid-lesson — you can edit both paths in Configure.') }}
+                    ? __('Spel-verhaal: 3 choice points, class meters and a game master. The class survives the story together, and the history stays true.')
+                    : __('The AI adds one choice point mid-lesson. You can edit both paths in Configure.') }}
             </p>
             <label class="label cursor-pointer justify-start gap-3 py-0">
                 <input type="checkbox" wire:model.live="story_game" class="toggle toggle-sm toggle-primary" />

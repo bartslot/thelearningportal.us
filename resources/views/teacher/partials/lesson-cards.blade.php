@@ -37,12 +37,9 @@
                         @foreach($shelf['lessons'] as $lesson)
                             @php
                                 $cardImage = $lesson->cardImageUrl();
-                                $isGenerating = in_array($lesson->status, [
-                                    \App\Enums\LessonStatus::Generating,
-                                    \App\Enums\LessonStatus::ScenesGenerating,
-                                    \App\Enums\LessonStatus::Outlining,
-                                    \App\Enums\LessonStatus::FetchingSources,
-                                ]);
+                                $isGenerating = $lesson->status->isGenerating();
+                                // Open an existing lesson on Preview; see Lesson::cardEntryStep().
+                                $entryStep = $lesson->cardEntryStep();
                                 $statusClass = match($lesson->status) {
                                     \App\Enums\LessonStatus::Failed => 'bg-rose-400',
                                     \App\Enums\LessonStatus::Ready,
@@ -54,8 +51,11 @@
                             @endphp
 
                             {{-- Poster card: full-height image, title-only over a bottom shadow scrim.
-                                 The whole card links to the lesson dashboard (settings + configurator). --}}
-                            <a href="{{ route('teacher.lessons.show', $lesson) }}"
+                                 The whole card opens the lesson on Preview once it has scenes, and
+                                 otherwise resumes the wizard where the teacher left off. --}}
+                            <a href="{{ $entryStep
+                                    ? route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => $entryStep])
+                                    : route('teacher.lessons.show', $lesson) }}"
                                class="group relative aspect-2/3 w-52 shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
                                 @if($cardImage)
                                     <img
