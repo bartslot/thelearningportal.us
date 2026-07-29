@@ -45,7 +45,7 @@ class LessonReport extends Component
 
     public function mount(Lesson $lesson): void
     {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
     }
 
@@ -142,7 +142,7 @@ class LessonReport extends Component
                 ->handle(app(OpenAiLlmService::class));
         } catch (\Throwable $e) {
             $scene->delete();
-            $this->dispatch('toast', message: __('Re-quiz generation failed — try again.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not rebuild the quiz. Try again.'), type: 'error');
 
             return;
         }

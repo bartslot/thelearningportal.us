@@ -29,11 +29,9 @@ class ClassroomManage extends Component
 
     public string $editingMemberName = '';
 
-    public string $notice = '';
-
     public function mount(Classroom $classroom): void
     {
-        abort_unless($classroom->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($classroom), 403);
         $this->classroom = $classroom;
         $this->name = $classroom->name;
         $this->grade = $classroom->grade_level ?? '';
@@ -57,7 +55,7 @@ class ClassroomManage extends Component
     {
         $assigned = $this->classroom->lessons()->pluck('lessons.id');
 
-        return Lesson::where('teacher_id', auth()->id())
+        return Lesson::ownedByCurrentUser()
             ->whereNotIn('id', $assigned)
             ->orderByDesc('created_at')
             ->limit(100)
@@ -72,7 +70,7 @@ class ClassroomManage extends Component
             'grade_level' => trim($this->grade) ?: null,
             'is_active' => $this->isActive,
         ]);
-        $this->notice = __('Class details saved.');
+        $this->dispatch('toast', type: 'success', message: __('Class details saved.'));
     }
 
     public function addMember(): void
@@ -93,7 +91,7 @@ class ClassroomManage extends Component
         $this->classroom->members()->create(['display_name' => $name]);
         $this->reset('newMember');
         unset($this->members);
-        $this->notice = __('Child added.');
+        $this->dispatch('toast', type: 'success', message: __('Child added.'));
     }
 
     public function startEdit(int $memberId): void
@@ -131,7 +129,7 @@ class ClassroomManage extends Component
         $member->update(['display_name' => $name]);
         $this->reset('editingMemberId', 'editingMemberName');
         unset($this->members);
-        $this->notice = __('Name updated.');
+        $this->dispatch('toast', type: 'success', message: __('Name updated.'));
     }
 
     public function removeMember(int $memberId): void
@@ -139,7 +137,7 @@ class ClassroomManage extends Component
         // nullOnDelete keeps this child's past quiz scores (they revert to the anonymous nickname).
         $this->classroom->members()->findOrFail($memberId)->delete();
         unset($this->members);
-        $this->notice = __('Child removed.');
+        $this->dispatch('toast', type: 'success', message: __('Child removed.'));
     }
 
     public function assignLesson(int $lessonId): void
@@ -149,11 +147,11 @@ class ClassroomManage extends Component
         }
 
         // Only the teacher's own lessons may be attached.
-        $lesson = Lesson::where('teacher_id', auth()->id())->findOrFail($lessonId);
+        $lesson = Lesson::ownedByCurrentUser()->findOrFail($lessonId);
         $this->classroom->lessons()->syncWithoutDetaching([$lesson->id => ['assigned_at' => now()]]);
 
         unset($this->assignedLessons, $this->assignableLessons);
-        $this->notice = __('Lesson assigned.');
+        $this->dispatch('toast', type: 'success', message: __('Lesson assigned.'));
     }
 
     public function unassignLesson(int $lessonId): void
@@ -161,7 +159,7 @@ class ClassroomManage extends Component
         $this->classroom->lessons()->detach($lessonId);
 
         unset($this->assignedLessons, $this->assignableLessons);
-        $this->notice = __('Lesson removed from class.');
+        $this->dispatch('toast', type: 'success', message: __('Lesson removed from class.'));
     }
 
     private function nameExists(string $name, ?int $exceptId = null): bool

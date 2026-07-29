@@ -21,7 +21,7 @@ class Step4Preview extends Component
 
     public function mount(Lesson $lesson): void
     {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
 
         if ($this->lesson->status !== LessonStatus::Published) {
@@ -43,6 +43,7 @@ class Step4Preview extends Component
     {
         return $this->lesson->scenes()->ordered()->get();
     }
+
     #[Computed]
     public function allReady(): bool
     {

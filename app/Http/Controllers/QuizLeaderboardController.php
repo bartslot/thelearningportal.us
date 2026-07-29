@@ -142,7 +142,7 @@ class QuizLeaderboardController extends Controller
     private function leaderboardPayload(Lesson $lesson): array
     {
         // Integrity flags are teacher-eyes only: never on the public board, never to students.
-        $isOwningTeacher = auth()->id() !== null && auth()->id() === $lesson->teacher_id;
+        $isOwningTeacher = (bool) auth()->user()?->canManage($lesson);
 
         $top = QuizScore::where('lesson_id', $lesson->id)
             ->orderByDesc('score')

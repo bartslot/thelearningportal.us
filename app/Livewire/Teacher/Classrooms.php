@@ -22,7 +22,7 @@ class Classrooms extends Component
     #[Computed]
     public function classes()
     {
-        return Classroom::where('teacher_id', auth()->id())
+        return Classroom::ownedByCurrentUser()
             ->withCount(['members', 'lessons'])
             ->orderBy('name')
             ->get();
@@ -46,7 +46,7 @@ class Classrooms extends Component
     public function delete(int $id): void
     {
         // Scope by teacher so a forged id can't delete another teacher's class.
-        Classroom::where('teacher_id', auth()->id())->findOrFail($id)->delete();
+        Classroom::ownedByCurrentUser()->findOrFail($id)->delete();
 
         unset($this->classes);
         $this->notice = __('Class deleted.');

@@ -21,9 +21,7 @@ final class LessonIndexController extends Controller
 
     public function __invoke(Request $request, CanonThemeCatalog $catalog): View
     {
-        $teacher = $request->user();
-
-        $lessonQuery = Lesson::query()->where('teacher_id', $teacher->id);
+        $lessonQuery = Lesson::query()->ownedByCurrentUser();
         $lessonCount = (clone $lessonQuery)->count();
         $lessons = (clone $lessonQuery)
             ->with(['source', 'firstScene'])

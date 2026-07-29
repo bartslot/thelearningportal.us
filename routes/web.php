@@ -81,6 +81,10 @@ Route::post('/logout', [LoginController::class, 'logout'])
 // Named `settings.index` so the nav's existing "Account Settings" link activates automatically.
 Route::middleware(['auth'])->get('/settings', \App\Livewire\Settings::class)->name('settings.index');
 
+// Help centre — how the app works, for any signed-in user. Shares its copy with the welcome tour
+// (App\Support\HelpGuide), and holds the button that replays that tour.
+Route::middleware(['auth'])->get('/help', \App\Livewire\Help::class)->name('help.index');
+
 Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function () {
 
     // The dashboard IS the workspace root: /teacher. The old /teacher/dashboard URL
@@ -204,14 +208,14 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     Route::get('/classes/{classroom}', \App\Livewire\Teacher\ClassroomManage::class)->name('classes.manage');
 
     Route::get('/lessons/{lesson}/results/answer-sheet', function (\App\Models\Lesson $lesson) {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
 
         return view('teacher.answer-sheet', compact('lesson', 'questions'));
     })->name('lessons.answer-sheet');
 
     Route::get('/lessons/{lesson}/print/handout', function (\App\Models\Lesson $lesson, \App\Services\LessonPdfService $pdf) {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
 
         return response($pdf->handout($lesson), 200, [
             'Content-Type' => 'application/pdf',
@@ -220,7 +224,7 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
     })->name('lessons.print.handout');
 
     Route::get('/lessons/{lesson}/print/game-pack', function (\App\Models\Lesson $lesson) {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         abort_unless(filled($lesson->game_pack_path)
             && \Illuminate\Support\Facades\Storage::disk('public')->exists($lesson->game_pack_path), 404);
 
@@ -235,7 +239,7 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
     Route::post('/lessons/{lesson}/retry', function (Lesson $lesson) {
         abort_unless(app()->environment(['local', 'testing']), 403);
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         abort_unless($lesson->status === LessonStatusEnum::Failed, 422, 'Lesson is not failed');
 
         $lesson->quizQuestions()->delete();

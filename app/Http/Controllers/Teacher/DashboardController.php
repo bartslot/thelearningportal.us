@@ -26,9 +26,7 @@ final class DashboardController extends Controller
 
     public function __invoke(Request $request, CanonThemeCatalog $catalog): View
     {
-        $teacher = $request->user();
-
-        $lessonQuery = Lesson::query()->where('teacher_id', $teacher->id);
+        $lessonQuery = Lesson::query()->ownedByCurrentUser();
         $lessonCount = (clone $lessonQuery)->count();
         $lessons = (clone $lessonQuery)
             ->with(['source', 'firstScene'])
@@ -37,12 +35,12 @@ final class DashboardController extends Controller
             ->get();
 
         $classCount = Classroom::query()
-            ->where('teacher_id', $teacher->id)
+            ->ownedByCurrentUser()
             ->where('is_active', true)
             ->count();
 
         $classrooms = Classroom::query()
-            ->where('teacher_id', $teacher->id)
+            ->ownedByCurrentUser()
             ->where('is_active', true)
             ->withCount(['members', 'lessons'])
             ->latest('updated_at')
@@ -50,7 +48,7 @@ final class DashboardController extends Controller
             ->get();
 
         $scores = QuizScore::query()
-            ->whereHas('lesson', fn ($query) => $query->where('teacher_id', $teacher->id))
+            ->whereHas('lesson', fn ($query) => $query->ownedByCurrentUser())
             ->where('created_at', '>=', now()->startOfDay()->subDays(self::RESULT_DAYS - 1))
             ->with('lesson:id,title,topic')
             ->get([
@@ -174,7 +172,6 @@ final class DashboardController extends Controller
             'recent_lessons' => $recentLessons,
         ];
     }
-
 
     /** @param  Collection<int, QuizScore>  $scores */
     private function correctRate(Collection $scores): int

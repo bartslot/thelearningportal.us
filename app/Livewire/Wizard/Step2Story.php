@@ -52,7 +52,7 @@ class Step2Story extends Component
 
     public function mount(Lesson $lesson): void
     {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
 
         $this->narrative_framework = ($lesson->narrative_framework instanceof NarrativeFramework)

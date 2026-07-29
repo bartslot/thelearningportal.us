@@ -28,9 +28,11 @@ class LessonFeedbackWidget extends Component
 
     public function mount(Lesson $lesson): void
     {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
 
+        // Deliberately not ownedByCurrentUser(): feedback is personal, so even an
+        // admin edits their own rating rather than the owning teacher's.
         $existing = LessonFeedback::where('lesson_id', $lesson->id)
             ->where('teacher_id', auth()->id())
             ->first();

@@ -22,7 +22,7 @@ class ResultsHub extends Component
     #[Computed]
     public function lessons()
     {
-        return \App\Models\Lesson::where('teacher_id', auth()->id())
+        return \App\Models\Lesson::ownedByCurrentUser()
             ->orderBy('title')->get(['id', 'title', 'topic']);
     }
 
@@ -41,7 +41,7 @@ class ResultsHub extends Component
                 DB::raw("DATE(quiz_scores.created_at AT TIME ZONE 'UTC') as day"),
                 DB::raw('COUNT(*) as players'),
             ])
-            ->whereHas('lesson', fn ($q) => $q->where('teacher_id', auth()->id()))
+            ->whereHas('lesson', fn ($q) => $q->ownedByCurrentUser())
             ->when($this->lessonId, fn ($q) => $q->where('lesson_id', $this->lessonId))
             ->when($this->range !== 'all', fn ($q) => $q->where('quiz_scores.created_at', '>=', now()->subDays((int) $this->range)))
             ->groupBy('lesson_id', DB::raw("DATE(quiz_scores.created_at AT TIME ZONE 'UTC')"))

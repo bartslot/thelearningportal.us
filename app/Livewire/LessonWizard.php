@@ -23,7 +23,7 @@ class LessonWizard extends Component
         $resolvedStep = $urlStep >= 1 && $urlStep <= 5 ? $urlStep : null;
 
         if ($lesson?->exists) {
-            abort_unless($lesson->teacher_id === auth()->id(), 403);
+            abort_unless(auth()->user()?->canManage($lesson), 403);
             $this->lesson = $lesson;
 
             $this->step = $resolvedStep
@@ -39,13 +39,14 @@ class LessonWizard extends Component
             $this->step = $resolvedStep ?? 1;
         }
     }
+
     public function goBackStep()
     {
         // Check if we are currently in Step 4 or 5 before allowing the move back
         if (in_array((int) $this->step, [5])) {
             $this->step = 4; // Programmatically set the step to 3
             // OPTIONAL: If you need to load data specific to Step 3 when going back:
-            // $this->loadStep3Data(); 
+            // $this->loadStep3Data();
         }
     }
 

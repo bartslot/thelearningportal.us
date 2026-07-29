@@ -50,7 +50,7 @@ class LessonPlayerController extends Controller
         // the authenticated user, so it is intentionally never cached.
         if (! $lesson) {
             $lesson = Lesson::where('lesson_code', $code)
-                ->where('teacher_id', auth()->id())
+                ->ownedByCurrentUser()
                 ->with(['strategyGame', 'avatar', 'source', 'scenes'])
                 ->first();
         }

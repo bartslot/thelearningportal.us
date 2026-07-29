@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTeacher;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,7 +15,7 @@ use Illuminate\Support\Str;
 
 class Classroom extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToTeacher, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'teacher_id',
@@ -48,13 +49,13 @@ class Classroom extends Model
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'classroom_student', 'classroom_id', 'student_id')
-                    ->withPivot('joined_at');
+            ->withPivot('joined_at');
     }
 
     public function lessons(): BelongsToMany
     {
         return $this->belongsToMany(Lesson::class, 'classroom_lessons')
-                    ->withPivot('assigned_at', 'due_at');
+            ->withPivot('assigned_at', 'due_at');
     }
 
     /** Account-less roster entries ("Emma V.") — the children in this class. */
