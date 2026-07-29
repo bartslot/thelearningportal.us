@@ -11,9 +11,13 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\StrategyGame;
 use App\Models\User;
+use App\Support\SafeOutboundUrl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class Step3SceneConfiguratorTest extends TestCase
@@ -49,6 +53,130 @@ class Step3SceneConfiguratorTest extends TestCase
             'script_segment' => 'Game intro.', 'image_path' => 'g.png', 'audio_path' => 'g.mp3',
             'status' => 'ready',
         ]);
+    }
+
+    /**
+     * A hand-built story scene with a script and narration but no background image sits at status
+     * 'generating' (MarksSceneReady only promotes when all three assets exist). The painting picker
+     * used to be disabled whenever the status was 'generating', which deadlocked that scene: the
+     * only control able to supply the missing image was disabled because the image was missing.
+     */
+    public function test_painting_picker_stays_reachable_on_a_scene_awaiting_its_image(): void
+    {
+        $stuck = Scene::create([
+            'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'narration',
+            'script_segment' => 'Written by hand.', 'audio_path' => 'n.mp3',
+            'audio_script_hash' => sha1('Written by hand.'),
+            'image_path' => null, 'status' => 'generating',
+        ]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $stuck->id)
+            ->assertDontSeeHtml('wire:click="openPaintingPicker" disabled')
+            ->call('openPaintingPicker')
+            ->assertSet('paintingPickerOpen', true);
+    }
+
+    /** The publish gate must name the missing asset, not report "still generating" forever. */
+    public function test_publish_gate_names_the_asset_a_stalled_story_scene_is_waiting_on(): void
+    {
+        Scene::create([
+            'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'narration',
+            'script_segment' => 'Written by hand.', 'audio_path' => 'n.mp3',
+            'audio_script_hash' => sha1('Written by hand.'),
+            'image_path' => null, 'status' => 'generating',
+        ]);
+
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('publish')
+            ->assertSet('publishOk', false);
+
+        $notice = $component->get('publishNotice');
+        $this->assertStringContainsString('needs a background image', $notice);
+        $this->assertStringNotContainsString('still generating', $notice);
+    }
+
+    /** Several missing assets read as a list, not "X and Y and Z". */
+    public function test_publish_gate_lists_every_asset_a_blank_story_scene_is_missing(): void
+    {
+        Scene::create([
+            'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'narration',
+            'script_segment' => null, 'image_path' => null, 'audio_path' => null,
+            'status' => 'pending',
+        ]);
+
+        $notice = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('publish')
+            ->get('publishNotice');
+
+        $this->assertStringContainsString(
+            'needs a script, a background image and narration audio',
+            $notice,
+        );
+    }
+
+    /**
+     * SSRF: applyImageUrl() makes the SERVER fetch a teacher-supplied URL. The old guard only
+     * range-checked valid dotted-quad IPs, so every alternate encoding of 127.0.0.1 sailed through
+     * and reached loopback. No request may leave for any of them.
+     */
+    #[DataProvider('ssrfPayloads')]
+    public function test_apply_image_url_refuses_to_fetch_internal_addresses(string $url): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('applyImageUrl', $this->s1->id, $url);
+
+        Http::assertNothingSent();
+        $this->assertNull($this->s1->fresh()->config['background_source'] ?? null);
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function ssrfPayloads(): array
+    {
+        return [
+            'loopback' => ['http://127.0.0.1/x.png'],
+            'localhost' => ['http://localhost/x.png'],
+            'decimal encoded loopback' => ['http://2130706433:8000/x.png'],
+            'hex encoded loopback' => ['http://0x7f000001/x.png'],
+            'octal encoded loopback' => ['http://017700000001/x.png'],
+            'short form loopback' => ['http://127.1/x.png'],
+            'cloud metadata' => ['http://169.254.169.254/latest/meta-data/'],
+            'private range' => ['http://10.0.0.5/x.png'],
+            'ipv6 loopback' => ['http://[::1]/x.png'],
+            'non-web port' => ['http://example.com:6379/x.png'],
+            'file scheme' => ['file:///etc/passwd'],
+        ];
+    }
+
+    /**
+     * Positive control for the SSRF test above: without this, "nothing was sent" would pass even if
+     * applyImageUrl were broken for some unrelated reason, and the guard would look effective when
+     * it was really just a dead code path. A public host must still be fetched and applied.
+     */
+    public function test_apply_image_url_still_fetches_a_public_image(): void
+    {
+        // Stub DNS so the guard resolves without touching the network.
+        $this->app->instance(
+            SafeOutboundUrl::class,
+            new SafeOutboundUrl(fn (string $host): array => ['93.184.216.34']),
+        );
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response('PNGDATA', 200, ['Content-Type' => 'image/png'])]);
+        Storage::fake('public');
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('applyImageUrl', $this->s1->id, 'https://cdn.example.com/painting.png');
+
+        Http::assertSentCount(1);
+        $this->assertSame('url', $this->s1->fresh()->config['background_source'] ?? null);
     }
 
     public function test_selects_the_first_scene_on_mount(): void
@@ -229,6 +357,29 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('narration', $newScene->kind);
         $this->assertSame([$this->s1->id, $newScene->id, $this->s2->id], $this->lesson->scenes()->ordered()->pluck('id')->all());
         $component->assertSet('selectedSceneId', $newScene->id);
+    }
+
+    /**
+     * Gallery used to be missing from addScene()'s whitelist, so the picker's Gallery tile fell
+     * through to a plain narration scene — a teacher could not build a gallery by hand at all.
+     */
+    public function test_adds_a_gallery_scene_ready_to_fill_in(): void
+    {
+        $component = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('addScene', 'gallery');
+
+        $scene = $this->lesson->scenes()->where('kind', 'gallery')->sole();
+
+        $this->assertSame('slideshow', $scene->scene_view);
+        // Nothing generates for a gallery, and there is no "generate" button to press — born
+        // 'pending' it would be a publish blocker the teacher could never clear.
+        $this->assertSame('ready', $scene->status);
+        $this->assertSame(
+            ['title' => '', 'date_label' => '', 'story' => '', 'fit' => 'cover', 'images' => []],
+            $scene->config,
+        );
+        $component->assertSet('selectedSceneId', $scene->id);
     }
 
     public function test_adds_game_scene_with_selected_game_type_defaults(): void
@@ -750,5 +901,34 @@ class Step3SceneConfiguratorTest extends TestCase
             ->call('openPaintingPicker')
             ->assertSet('paintingPickerOpen', true)
             ->assertSet('paintingPickerMode', 'background');
+    }
+
+    /** The teacher's Fit choice is persisted on the scene and survives a re-select. */
+    public function test_background_fit_is_stored_on_the_scene(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('setBackgroundFit', 'contain');
+
+        $this->assertSame('contain', $this->s1->fresh()->config['background_fit']);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('setBackgroundFit', 'cover');
+
+        $this->assertSame('cover', $this->s1->fresh()->config['background_fit']);
+    }
+
+    /** Anything outside the two supported fits is ignored rather than written through. */
+    public function test_background_fit_rejects_an_unknown_value(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->s1->id)
+            ->call('setBackgroundFit', 'stretch');
+
+        $this->assertArrayNotHasKey('background_fit', $this->s1->fresh()->config ?? []);
     }
 }

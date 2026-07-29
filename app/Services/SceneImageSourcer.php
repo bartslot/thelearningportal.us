@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Corpus\Artwork;
 use App\Models\Corpus\Topic;
+use App\Support\PortraitFocus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -32,7 +33,7 @@ class SceneImageSourcer
     /**
      * Resolve one image for a scene.
      *
-     * @param  string  $query   subject to search for, e.g. "Rembrandt self portrait"
+     * @param  string  $query  subject to search for, e.g. "Rembrandt self portrait"
      * @param  int|null  $year  target era — pulls corpus results toward contemporaneous artwork
      * @param  'auto'|'art'|'photo'  $prefer  which library to consult first
      * @return array{url:string,credit:string,title:string,source:string}|null
@@ -155,14 +156,9 @@ class SceneImageSourcer
         }
 
         // Portraits must be cropped from near the TOP or a cover-fit decapitates the sitter.
-        // Same tag list the teacher-facing painting picker uses.
         $tags = is_array($artwork->tags)
             ? $artwork->tags
             : array_filter(explode(',', trim((string) $artwork->tags, '{}')));
-        $isPortrait = array_intersect(
-            ['portrait', 'group-portrait', 'equestrian-portrait', 'self-portrait'],
-            $tags,
-        ) !== [];
 
         return [
             // renditionUrl knows the Europeana exception (its CDN ignores ?width=).
@@ -171,7 +167,7 @@ class SceneImageSourcer
                 .($artwork->source === 'europeana' ? 'Europeana' : 'Wikimedia Commons')),
             'title' => (string) ($artwork->title ?: $query),
             'source' => 'corpus',
-            'focus' => $isPortrait ? 'top' : 'center',
+            'focus' => PortraitFocus::forTags($tags),
         ];
     }
 
@@ -255,7 +251,7 @@ class SceneImageSourcer
                         'source' => 'commons',
                         // A taller-than-wide image loses its top to a 16:9 cover crop, and on a
                         // person that top IS the face — so anchor the crop high.
-                        'focus' => ($h > $w * 1.05 || $this->looksLikeAPortrait($query, $title)) ? 'top' : 'center',
+                        'focus' => PortraitFocus::forImage($query.' '.$title, $w, $h),
                     ];
                 }
             }
@@ -264,20 +260,6 @@ class SceneImageSourcer
         } catch (Throwable) {
             return null;
         }
-    }
-
-    /** Does the subject read as a person? Then a cover crop must keep the head in frame. */
-    private function looksLikeAPortrait(string $query, string $title): bool
-    {
-        $haystack = mb_strtolower($query.' '.$title);
-
-        foreach (['portrait', 'portret', 'zelfportret', 'self-portrait', 'selfportrait', 'bust', 'buste'] as $needle) {
-            if (str_contains($haystack, $needle)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -328,7 +310,7 @@ class SceneImageSourcer
                         .' — '.strip_tags((string) ($meta['LicenseShortName']['value'] ?? 'see Commons')),
                     'title' => $title,
                     'source' => 'commons',
-                    'focus' => ($h > $w * 1.05 || $this->looksLikeAPortrait('', $title)) ? 'top' : 'center',
+                    'focus' => PortraitFocus::forImage($title, $w, $h),
                 ];
             }
         } catch (Throwable) {

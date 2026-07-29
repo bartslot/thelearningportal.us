@@ -7,6 +7,19 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* DaisyUI 5 DROPPED `.form-control` (it was a v4 class, replaced by fieldset/legend), so the 59
+   `label.form-control` wrappers across the wizard inspectors, settings, classrooms and the lesson
+   module editors fell back to `display: inline` — their label, input and helper text ran together on
+   one line ("…edit to taste. ERA"). Restoring the v4 behaviour here fixes every one of them at once
+   rather than rewriting sixteen templates; new markup should prefer plain `flex flex-col`.
+
+   MUST stay inside @layer components: unlayered CSS outranks every Tailwind layer, so declaring this
+   at top level made `.form-control` beat the utilities — `class="form-control hidden"` still computed
+   display:flex, and `flex-row` still computed column. In a layer, utilities win as they should. */
+@layer components {
+    .form-control { display: flex; flex-direction: column; }
+}
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../**/*.blade.php';

@@ -49,7 +49,7 @@ trait EditsSceneArtwork
 
     public function attachArtwork(int $assetId): void
     {
-        if (!$this->selectedSceneId) {
+        if (! $this->selectedSceneId) {
             $this->dispatch('toast', message: 'No scene selected.', type: 'warning');
 
             return;
@@ -119,13 +119,14 @@ trait EditsSceneArtwork
                 $existing = collect($shot['layers'] ?? [])->firstWhere('asset_id', $newLayer['asset_id']);
                 if ($existing) {
                     $updatedShots[] = $shot; // Already attached, skip.
+
                     continue;
                 }
 
                 $layers = $shot['layers'] ?? [];
 
                 // If no layers but there's an image_path and no bg_path, prepend a cover layer.
-                if (empty($layers) && !empty($shot['image_path']) && empty($shot['bg_path'])) {
+                if (empty($layers) && ! empty($shot['image_path']) && empty($shot['bg_path'])) {
                     $layers[] = [
                         'path' => $shot['image_path'],
                         'kind' => 'cover',
@@ -268,7 +269,7 @@ trait EditsSceneArtwork
 
     public function detachArtwork(int $assetId): void
     {
-        if (!$this->selectedSceneId) {
+        if (! $this->selectedSceneId) {
             return;
         }
 
@@ -330,11 +331,11 @@ trait EditsSceneArtwork
             'y' => [0, 100],
         ];
 
-        if (!array_key_exists($field, $whitelist)) {
+        if (! array_key_exists($field, $whitelist)) {
             return; // Unknown field, silently reject.
         }
 
-        if (!$this->selectedSceneId) {
+        if (! $this->selectedSceneId) {
             return;
         }
 
@@ -369,7 +370,7 @@ trait EditsSceneArtwork
 
         // Validate enum-like fields.
         if (in_array($field, ['kind', 'blend', 'ink_preset', 'ink_fill'], true)) {
-            if (!in_array($coercedValue, $whitelist[$field], true)) {
+            if (! in_array($coercedValue, $whitelist[$field], true)) {
                 return;
             }
         }
@@ -488,6 +489,34 @@ trait EditsSceneArtwork
      *   'drawing'  — ink line-art draw-on animation (pen engine).
      * Read back in the scene:load payload for the canvas.
      */
+    /**
+     * How the background image fills the stage: 'cover' (fill the frame, crop the overflow) or
+     * 'contain' (show the whole work, letterboxed).
+     *
+     * A cover fit anchors portraits to the top automatically — the renderers measure the image, so
+     * there is no third "focus" control for the teacher to get wrong. See scene/background-fit.js.
+     */
+    public function setBackgroundFit(string $fit): void
+    {
+        if (! in_array($fit, ['cover', 'contain'], true)) {
+            return;
+        }
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $config = $scene->config ?? [];
+        $config['background_fit'] = $fit;
+        $scene->update(['config' => $config]);
+
+        // Keep the snapshot in step, or saveSelected() would write the pre-edit config back.
+        if ($this->selectedScene !== null) {
+            $this->selectedScene['config'] = $config;
+        }
+        $this->selectSceneInternal($scene->id);
+    }
+
     public function setSlideshowMode(string $mode): void
     {
         if (! in_array($mode, ['standard', 'parallax', 'drawing'], true)) {
@@ -551,7 +580,7 @@ trait EditsSceneArtwork
             ->filter(fn ($l) => ($l['asset_id'] ?? null) !== null)
             ->map(function (array $l) use ($assets) {
                 $asset = $assets->get($l['asset_id'] ?? null);
-                if (!$asset) {
+                if (! $asset) {
                     return null;
                 }
 

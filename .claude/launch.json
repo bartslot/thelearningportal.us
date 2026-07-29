@@ -1,6 +1,11 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "serve", "runtimeExecutable": "php", "runtimeArgs": ["artisan", "serve", "--port=8000"], "port": 8000 }
+    {
+      "//": "Attach-only (url, no command): connects to the `composer dev` server already on :8000 instead of racing it for the port. The port is NOT interchangeable, so autoPort must stay off — APP_URL is pinned to http://localhost:8000 and every asset('storage/...') URL the player loads is absolute against it, so a reassigned port would break lesson media and session cookies.",
+      "name": "serve",
+      "url": "http://localhost:8000",
+      "port": 8000
+    }
   ]
 }

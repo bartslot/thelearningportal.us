@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 class Scene extends Model
 {
@@ -48,6 +49,27 @@ class Scene extends Model
             'world_scale' => 'float',
             'world_char_scale' => 'float',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // LessonPlayerController caches the whole eager-loaded player payload — SCENES INCLUDED —
+        // for 30 minutes, and Lesson::booted only busts that key on a *lesson* save. So editing a
+        // scene (its script, its background, a gallery's images, a map's labels) left the player
+        // serving the previous version for up to half an hour: the teacher pressed Play in the
+        // wizard and watched a lesson that no longer existed. Scene writes must bust it too.
+        $forgetPlayerCache = static function (Scene $scene): void {
+            $code = $scene->lesson_id
+                ? Lesson::withTrashed()->whereKey($scene->lesson_id)->value('lesson_code')
+                : null;
+
+            if ($code) {
+                Cache::forget('lesson.player.'.strtoupper((string) $code));
+            }
+        };
+
+        static::saved($forgetPlayerCache);
+        static::deleted($forgetPlayerCache);
     }
 
     public function lesson(): BelongsTo

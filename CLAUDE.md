@@ -15,19 +15,11 @@ historical figures like Julius Caesar). Future verticals: Science, Literature, C
 
 ## Tech Stack
 
-### Backend (this repo)
-- **Laravel 12** — framework
-- **Livewire 3** — reactive UI components (teacher dashboard)
-- **Alpine.js** — lightweight JS interactivity
-- **Tailwind CSS v4** — styling
-- **DaisyUI 5** — component library (active theme: `learningportal`)
-- **SQLite** (local dev) / **MySQL** (production on SiteGround)
-- **Laravel Queues** — async lesson generation pipeline
-- **Laravel Sanctum** — API auth for Flutter app
+Laravel 12 + Livewire 3 + Alpine + Tailwind v4 + DaisyUI 5 — see `composer.json` / `package.json`
+for versions. DaisyUI's active theme is `learningportal`. Postgres locally, MySQL on SiteGround.
 
 ### Frontend (student-facing)
-- **Flutter** — single codebase → iOS + Android + PWA
-- Communicates with Laravel via REST API (Sanctum tokens)
+- **Flutter** — separate codebase → iOS + Android + PWA; talks to Laravel over REST (Sanctum tokens).
 
 ### Local AI Services (development — all free)
 All AI services run locally via `start-local.sh`. In production, swap URLs in `.env`.
@@ -43,34 +35,15 @@ All AI services run locally via `start-local.sh`. In production, swap URLs in `.
 
 ## Architecture
 
-### Lesson Generation Pipeline
-```
-Teacher submits form (topic, grade, tone, historical figure)
-    ↓
-GenerateLesson Job (queued)
-    ↓
-1. WikipediaService::fetchFacts($topic)         → raw facts string
-2. LlmService::generateScript($facts, $params)  → dramatic script
-3. TtsService::generateAudio($script, $voice)   → audio.mp3
-4. AvatarService::generateVideo($audio, $image) → avatar.mp4
-5. Lesson::update(['status' => 'ready', ...])
-    ↓
-Teacher notified → students can access lesson
-```
+**Generation entry point:** `Lesson::startGenerationPipeline()` — it requires a `LessonSource` row
+first, then dispatches `BuildLessonOutline`, which chains the rest. Read `app/Jobs/` for the current
+chain rather than trusting a diagram here; it has changed more than once.
 
-### Key Models
-- `User` — teacher or student (role column)
-- `Lesson` — topic, script, status, grade_level, tone, historical_figure
-- `LessonMedia` — audio_path, video_path, portrait_path
-- `QuizQuestion` — question, options (JSON), correct_answer, lesson_id
-- `StudentProgress` — student_id, lesson_id, score, completed_at
-- `Classroom` — teacher_id, name, join_code
-- `ClassroomStudent` — pivot: classroom_id, student_id
+**Lessons can also be authored as data**, with no AI involved: a spec in `resources/lessons/*.php`
+built by `php artisan lessons:compose`. See `app/Services/LessonComposer.php`.
 
-### File Storage
-- `storage/app/lessons/{lesson_id}/audio.mp3`
-- `storage/app/lessons/{lesson_id}/avatar.mp4`
-- `storage/app/lessons/{lesson_id}/portrait.jpg`
+Models live in `app/Models/`; scene media is stored under
+`storage/app/public/lessons/{lesson_id}/scenes/{scene_id}/`.
 
 ---
 
@@ -128,91 +101,25 @@ Teacher notified → students can access lesson
 
 ---
 
-## Environment Variables (add to .env)
+## Environment Variables
 
-```env
-# Local AI Services
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.1:8b
-KOKORO_TTS_URL=http://localhost:8880
-SADTALKER_URL=http://localhost:7860
-COMFYUI_URL=http://localhost:8188
-
-# Production AI APIs (used when local services are unavailable)
-OPENAI_API_KEY=
-OPENAI_TTS_MODEL=tts-1
-OPENAI_TTS_VOICE=alloy
-FAL_AI_KEY=
-ANTHROPIC_API_KEY=
-
-# App
-LESSON_STORAGE_DISK=local
-MAX_LESSON_GENERATION_ATTEMPTS=3
-```
+See `.env.example` — it is the source of truth. Two that matter and aren't obvious:
+`TTS_PROVIDER_OVERRIDE` forces one narration provider for the whole app (currently `azure`), and
+`APP_USER_ROLE` decides which account `AutoLoginDev` signs in as locally.
 
 ---
 
 ## Local Development Setup
 
+Standard Laravel install (`composer install`, `npm install`, `cp .env.example .env`,
+`key:generate`, `migrate --seed`), then the two project-specific commands:
+
 ```bash
-# 1. Install PHP dependencies
-composer install
-
-# 2. Install JS dependencies
-npm install
-
-# 3. Set up environment
-cp .env.example .env
-php artisan key:generate
-touch database/database.sqlite
-php artisan migrate --seed
-
-# 4. Start everything
-composer dev          # Laravel + queue + vite + log watcher
-./start-local.sh      # Ollama + Kokoro TTS + SadTalker (run in separate terminal)
+composer dev          # Laravel + queue worker + vite + log watcher (the queue worker matters)
+./start-local.sh      # local AI services, in a separate terminal
 ```
 
----
-
-## Key API Endpoints (Flutter)
-
-All routes under `/api/v1/`, authenticated with Sanctum tokens.
-
-```
-POST   /api/v1/auth/login
-POST   /api/v1/auth/logout
-GET    /api/v1/student/lessons          → lessons assigned to student
-GET    /api/v1/student/lessons/{id}     → lesson detail + media URLs
-POST   /api/v1/student/lessons/{id}/progress  → save quiz answers
-GET    /api/v1/student/progress         → overall progress/scores
-```
-
----
-
-## Milestones
-
-### Milestone 1 — Foundation (current)
-- [x] Laravel 12 setup
-- [ ] Livewire + Sanctum installed
-- [ ] Core migrations + models
-- [ ] Lesson generation pipeline (GenerateLesson job)
-- [ ] Basic teacher dashboard (Livewire)
-- [ ] API endpoints for Flutter
-
-### Milestone 2 — Avatar MVP
-- [ ] SadTalker integration (local Ollama → fal.ai in prod)
-- [ ] Julius Caesar as fixed avatar (one portrait, all lessons)
-- [ ] Video player in Flutter app
-- [ ] End-to-end: teacher creates lesson → student watches avatar
-
-### Milestone 3 — Student App
-- [ ] Flutter login + lesson list + video player + quiz
-- [ ] PWA build deployed alongside Laravel
-
-### Milestone 4 — Multiple Avatars + Subjects
-- [ ] Avatar selection by historical figure
-- [ ] Science Portal vertical
-- [ ] School/classroom management
+Student-facing API routes live under `/api/v1/` with Sanctum tokens — see `routes/api.php`.
 
 ---
 

@@ -132,7 +132,7 @@ class LessonFocusTagsTest extends TestCase
             ->call('toggleFocusTag', 'revolution')
             ->call('toggleFocusTag', 'rights')
             ->assertSet('focusTags', ['power', 'war', 'revolution'])
-            ->assertSee('3 of 3 chosen — clear a slot above to swap.');
+            ->assertSee('3 of 3 chosen. Clear a slot above to swap.');
 
         $component
             ->call('toggleFocusTag', 'war')
