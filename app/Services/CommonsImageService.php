@@ -26,6 +26,13 @@ class CommonsImageService
 
     private const TIMEOUT = 8;
 
+    /**
+     * Why the last search came back empty: null when it genuinely found nothing, 'throttled' when
+     * Wikimedia rate-limited us, 'unavailable' for any other failure. Callers use it to tell a
+     * teacher "try again in a moment" instead of the untrue "no paintings found".
+     */
+    public ?string $lastError = null;
+
     /** Files depicting a Wikidata entity (P180 structured-data statement). */
     public function searchDepicting(string $qid, int $limit = 12): array
     {
@@ -35,7 +42,7 @@ class CommonsImageService
 
         // The bare depicts-statement search also returns maps, flags and charts that
         // "depict" the entity — the painting term keeps results art-like.
-        return Cache::remember("commons.depicts.v2.{$qid}.{$limit}", self::CACHE_TTL,
+        return $this->remember("commons.depicts.v2.{$qid}.{$limit}",
             fn () => $this->search("filetype:bitmap haswbstatement:P180={$qid} painting", $limit));
     }
 
@@ -47,16 +54,44 @@ class CommonsImageService
             return [];
         }
 
-        $key = 'commons.text.v2.'.md5($term).".{$limit}";
-
-        return Cache::remember($key, self::CACHE_TTL,
+        return $this->remember('commons.text.v2.'.md5($term).".{$limit}",
             fn () => $this->search('filetype:bitmap '.$term, $limit));
+    }
+
+    /**
+     * Cache a search ONLY when it actually succeeded.
+     *
+     * Cache::remember cannot tell "Wikimedia found nothing" from "Wikimedia said 429", and this
+     * cache lasts a day: one throttled moment used to pin an empty grid on a search term for 24
+     * hours, which is what "No paintings found" was really reporting. A failure is now not
+     * written at all, so the next attempt asks again.
+     *
+     * @param  callable(): ?list<array<string,mixed>>  $fetch
+     * @return list<array<string,mixed>>
+     */
+    private function remember(string $key, callable $fetch): array
+    {
+        $cached = Cache::get($key);
+        if (is_array($cached)) {
+            $this->lastError = null;
+
+            return $cached;
+        }
+
+        $rows = $fetch();
+        if ($rows === null) {
+            return [];   // transport failure — lastError is set, nothing is cached
+        }
+
+        Cache::put($key, $rows, self::CACHE_TTL);
+
+        return $rows;
     }
 
     /**
      * Full metadata for one file (used when a teacher applies it as background).
      *
-     * @return array{file_title:string,title:string,artist:?string,license:string,image_url:string,file_page:string}|null
+     * @return array{file_title:string,title:string,artist:?string,license:string,width:int,height:int,image_url:string,file_page:string}|null
      */
     public function fileMeta(string $fileTitle): ?array
     {
@@ -67,8 +102,8 @@ class CommonsImageService
         return $rows[0] ?? null;
     }
 
-    /** @return list<array{file_title:string,title:string,artist:?string,license:string,image_url:string,thumb_url:string,file_page:string}> */
-    private function search(string $gsrsearch, int $limit): array
+    /** @return list<array{file_title:string,title:string,artist:?string,license:string,width:int,height:int,image_url:string,thumb_url:string,file_page:string}>|null null = the request failed */
+    private function search(string $gsrsearch, int $limit): ?array
     {
         return $this->query([
             'generator' => 'search',
@@ -78,8 +113,10 @@ class CommonsImageService
         ], $limit);
     }
 
-    private function query(array $params, ?int $limit = null): array
+    /** @return list<array<string,mixed>>|null null = the request failed (see $lastError) */
+    private function query(array $params, ?int $limit = null): ?array
     {
+        $this->lastError = null;
         try {
             $response = Http::withHeaders(['User-Agent' => 'LearningPortal/1.0 (thelearningportal.us)'])
                 ->timeout(self::TIMEOUT)
@@ -90,13 +127,23 @@ class CommonsImageService
                     'iiprop' => 'url|extmetadata|size',
                     'iiurlwidth' => 800,
                 ]);
+            // Wikimedia throttles bursts from one address. That is a "come back in a moment",
+            // never a "this painting does not exist" — say which, and do not cache it.
+            if ($response->status() === 429) {
+                $this->lastError = 'throttled';
+
+                return null;
+            }
             if (! $response->successful()) {
-                return [];
+                $this->lastError = 'unavailable';
+
+                return null;
             }
         } catch (\Throwable $e) {
             report($e);
+            $this->lastError = 'unavailable';
 
-            return [];
+            return null;
         }
 
         $out = [];
@@ -120,6 +167,10 @@ class CommonsImageService
                 'title' => $this->cleanText($meta['ObjectName']['value'] ?? pathinfo($fileTitle, PATHINFO_FILENAME)),
                 'artist' => $this->cleanText($meta['Artist']['value'] ?? '') ?: null,
                 'license' => $license,
+                // Pixel dimensions travel with the hit so callers can tell a portrait canvas from a
+                // landscape one without re-fetching (PortraitFocus uses it to anchor the crop).
+                'width' => (int) ($info['width'] ?? 0),
+                'height' => (int) ($info['height'] ?? 0),
                 // Special:FilePath renders any width on demand — same scheme as corpus artworks.
                 'image_url' => 'https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($fileTitle),
                 'thumb_url' => $info['thumburl'] ?? $info['url'],
@@ -147,6 +198,15 @@ class CommonsImageService
 
     private function cleanText(string $html): string
     {
-        return trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5));
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5);
+
+        // Commons renders its {{Title}} / {{Creator}} templates with the Wikidata QuickStatements
+        // markers inline, so ObjectName arrives looking like:
+        //   My Painting title QS:P1476,en:"My Painting"label QS:Len,"My Painting"
+        // The human-readable part always comes FIRST, so cut from the first marker onwards —
+        // otherwise that whole statement ends up in the credit line printed under the image.
+        $text = preg_replace('/\s*\b[a-z]+\s+QS:.*$/is', '', $text) ?? $text;
+
+        return trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
     }
 }
