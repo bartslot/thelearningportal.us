@@ -125,4 +125,8 @@ return [
 
     'auto_login' => filter_var(env('APP_AUTO_LOGIN', false), FILTER_VALIDATE_BOOLEAN),
 
+    // Which seeded account the local auto-login signs in as (teacher|admin|student). Read through
+    // config, never env(), so `php artisan config:cache` on production cannot silently turn it null.
+    'dev_user_role' => env('APP_USER_ROLE', 'admin'),
+
 ];

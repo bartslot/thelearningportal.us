@@ -191,7 +191,7 @@ class CaptureHelpScreenshots extends Command
      */
     private function demoTeacher(): ?User
     {
-        $role = env('APP_USER_ROLE', 'admin');
+        $role = config('app.dev_user_role', 'admin');
 
         $user = match ($role) {
             'teacher' => User::where('email', 'teacher@example.com')->first(),
