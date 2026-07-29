@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="description" content="The Learning Portal is a cinematic history landing page for teachers and students.">
-    <title>{{ $title }} — The Learning Portal</title>
+    <title>{{ $title }} · The Learning Portal</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
@@ -20,6 +20,11 @@
     ></div>
 
     {{ $slot }}
+
+    {{-- Dev role switching stays reachable here: a student has no workspace of its own and lands on the landing page. --}}
+    @if (app()->environment('local') && auth()->check())
+        @livewire('dev.test-panel')
+    @endif
 
     @stack('scripts')
     @livewireScripts
