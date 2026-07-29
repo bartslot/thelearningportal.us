@@ -83,6 +83,23 @@ class VoyageLessonBuilder
             $lesson->scenes()->create($this->galleryScenePayload($pack['intro'], $voyageId, 'intro', $order++));
         }
 
+        // The itinerary: the whole voyage on one screen before anyone sets off, so a class can see
+        // where they are going. It carries no geometry of its own — the renderer derives the route
+        // and every stop from voyage_def — so adding, moving or deleting a leg updates it for free.
+        $lesson->scenes()->create([
+            'order' => $order++,
+            'kind' => 'voyage',
+            'status' => 'ready',
+            'title' => __('The whole voyage'),
+            'config' => [
+                'voyage' => $voyageId,
+                'overview' => true,
+                'leg' => 0,          // a leg is still needed for the map's era/style seed
+                'view' => 'flat',
+                'intro' => false,
+            ],
+        ]);
+
         foreach ($catalog['legs'] as $i => $leg) {
             $stop = $pack['legs'][$i]['stop'] ?? [];
             $images = $this->resolveImages($stop['images'] ?? [], $voyageId, "leg{$i}");

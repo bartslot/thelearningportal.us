@@ -31,9 +31,26 @@
          aria-label="{{ __('Resize the script panel · drag small to hide') }}">
     </div>
 
-    @if ($paragraphs === [])
-        <p class="px-4 py-6 text-center text-xs text-slate-500">{{ __('No narration yet for this scene.') }}</p>
-    @else
+    {{-- EMPTY STATE — a scene with no narration is not a scene that cannot HAVE narration. Every
+         kind can be narrated, voyage legs and map scenes included (the script is saved on the
+         scene and read by the same TTS job), so offer the field instead of a dead sentence.
+         Switched on Alpine's paras.length, not the server's, so the box appears the instant the
+         teacher asks for it rather than after a round trip. --}}
+    <div x-show="!paras.length" x-cloak
+         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-4 py-6 text-center">
+        <p class="max-w-sm text-xs leading-relaxed text-slate-500">
+            {{ __('No narration yet. Write a few lines here and they will be read aloud over this scene.') }}
+        </p>
+        <button type="button" x-on:click="addNarration()"
+                class="flex items-center gap-1.5 rounded-lg border border-slate-600/70 px-3 py-1.5 text-[12px] font-medium text-slate-200 transition hover:border-amber-400 hover:text-amber-200">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"/>
+            </svg>
+            {{ __('Add narration') }}
+        </button>
+    </div>
+
+    <div x-show="paras.length" x-cloak class="flex min-h-0 flex-1 flex-col overflow-hidden">
         {{-- Per-paragraph editable boxes, Alpine-managed (paras[]). wire:ignore so the 3s wire:poll
              morph can't reset the contenteditable text mid-edit; Alpine still updates timecodes /
              active state, and a scene change re-renders the whole component via wire:key.
@@ -123,7 +140,7 @@
             <span class="shrink-0 font-mono text-[10px] tabular-nums text-slate-400"
                   x-text="regenerating ? '{{ __('updating…') }}' : (fmt(t) + ' / ' + fmt(dur))"></span>
         </div>
-    @endif
+    </div>
 </div>
 
 @once
@@ -277,6 +294,16 @@
                     if (this._unwatchSummary) { try { this._unwatchSummary(); } catch (_) {} }
                     document.getElementById('lesson-canvas-root')?.style.setProperty('--work-bottom', '0px');
                     document.documentElement.style.setProperty('--work-bottom', '0px');
+                },
+
+                // Start narrating a scene that has none: open one empty box and put the caret in
+                // it. Nothing is saved until there are words — saveScript refuses an empty script,
+                // so clicking this and walking away leaves the scene exactly as it was.
+                addNarration() {
+                    if (this.paras.length) { this._focusPara(0, 0); return }
+                    this.paras.push({ id: this._pid++, text: '', dirty: false })
+                    this.starts = [0]
+                    this.$nextTick(() => this._focusPara(0, 0))
                 },
 
                 // ── Paragraph editing (single Enter = soft newline, double Enter = new paragraph) ──

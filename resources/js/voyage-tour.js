@@ -1,10 +1,11 @@
 import { renderLessonMap } from './lesson-map.js';
 import { renderGallery } from './gallery-scene.js';
 import { EASE, EASING } from './easing.js';
-import { voyageRoutes, smooth } from './timemap/voyages.js';
+import { voyageRoutes, smooth, SAMPLES_PER_SEGMENT } from './timemap/voyages.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
+import { mapTextProjector } from './map-text-projector.js';
 
 // Voyage tour — the whole voyage is ONE persistent map. Legs play via playLeg(): the map, ships,
 // fog and route trail are built once, and moving between scenes eases the camera to the next leg
@@ -29,6 +30,11 @@ const voyageFollowZoom = (pct) => {
   const p = Math.max(0, Math.min(100, Number.isFinite(+pct) ? +pct : OCEAN_ZOOM_DEFAULT)) / 100;
   return SAIL_TIGHT_ZOOM - (SAIL_TIGHT_ZOOM - SAIL_WIDE_ZOOM) * p;
 };
+
+// Animation strength is stored as a percentage (0–100) like the other voyage sliders; the renderer
+// wants a 0–1 factor. An unset value means "as tuned", not "still".
+const MOTION_DEFAULT = 100;
+const motionAmount = (pct) => Math.max(0, Math.min(100, Number.isFinite(+pct) ? +pct : MOTION_DEFAULT)) / 100;
 
 const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
 const smoothstep = (t) => t * t * (3 - 2 * t);
@@ -155,6 +161,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   let onMapStyle = null;
   let ready = false;         // map + ships + fog + trail built
   let pendingLeg = null;     // a playLeg() that arrived before the map was ready
+  let pendingOverview = null;   // showOverview() arrived before the style finished loading
   let legToken = 0;          // bumped on every leg → cancels the previous leg's sail/timers
   let raf = null;
   let galleryClose = null;
@@ -195,21 +202,26 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     place.style.display = placeText ? 'block' : 'none';
   };
 
-  // ── Route trail: the CUMULATIVE sailed path (voyage start → current), styleable + animated ──
-  const trailFeature = (fCurrent) => {
+  // ── Route trail ───────────────────────────────────────────────────────────
+  // The WHOLE path is built once and then revealed as the ship advances, rather than regrown each
+  // frame. Regrowing is what made the line visibly crawl: the wobble is keyed to a sample's index
+  // along the path, so every time the path got longer each sample landed somewhere new and the
+  // whole line wriggled — most obvious at higher wobble settings. Fixed geometry + a moving
+  // gradient stop gives a line that sits still and simply appears under the ship.
+  const trailFeature = (fEnd = 1) => {
     const pts = [];
     if (RL.curve === 'straight') {
       const startWp = route.legs[0].wp[0];
       for (let w = startWp; w <= L.def.wp[1]; w++) {
         const fw = ships.fractionAtWaypoint(voyage, w);
-        if (fw <= fCurrent + 1e-6) { const q = ships.pointAt(voyage, fw); pts.push([q.lng, q.lat]); } else break;
+        if (fw <= fEnd + 1e-6) { const q = ships.pointAt(voyage, fw); pts.push([q.lng, q.lat]); } else break;
       }
-      const c = ships.pointAt(voyage, fCurrent);
+      const c = ships.pointAt(voyage, fEnd);
       pts.push([c.lng, c.lat]);
     } else {
       const N = 120;
       for (let k = 0; k <= N; k++) {
-        const q = ships.pointAt(voyage, (fCurrent) * (k / N));
+        const q = ships.pointAt(voyage, fEnd * (k / N));
         pts.push([q.lng, q.lat]);
       }
     }
@@ -221,7 +233,12 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         let dx = pts[i + 1][0] - pts[i - 1][0];
         let dy = pts[i + 1][1] - pts[i - 1][1];
         const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-        const off = Math.sin(i * 0.7) * amp * Math.sin((i / (pts.length - 1)) * Math.PI);
+        // Envelope must return to zero AT every waypoint, not just at the two ends of the whole
+        // path. It used to span the entire route, so each intermediate waypoint was pushed up to
+        // ~8km sideways while its drag handle stayed on the true waypoint — the handle ended up
+        // visibly off the line it was supposed to bend.
+        const seg = SAMPLES_PER_SEGMENT;
+        const off = Math.sin(i * 0.7) * amp * Math.sin(((i % seg) / seg) * Math.PI);
         out[i][0] += -dy * off;
         out[i][1] += dx * off;
       }
@@ -229,18 +246,35 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }
     return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
   };
-  // Fade along the sailed path: floor opacity at the oldest point (line-progress 0), full at the
-  // ship (line-progress 1). Uses the current route-line colour.
-  const trailGradient = () => ['interpolate', ['linear'], ['line-progress'],
-    0, hexToRgba(RL.color, TRAIL_FADE_FLOOR),
-    0.7, hexToRgba(RL.color, TRAIL_FADE_FLOOR + (1 - TRAIL_FADE_FLOOR) * 0.5),
-    1, hexToRgba(RL.color, 1)];
-  let lastTrailF = 0;   // remembered so setRouteLine() can recompute the trail geometry live
+  /**
+   * Reveal the trail up to `f`: sailed path fades in behind the ship, nothing drawn ahead of it.
+   *
+   * This is the half that used to be done by regrowing the geometry. Doing it in the gradient
+   * instead means the drawn line never moves — only where it stops being transparent does.
+   * Stops must strictly ascend, so everything is clamped away from 0 and 1.
+   */
+  const CLEAR_RGBA = 'rgba(0,0,0,0)';
+  const trailGradient = (f = 1) => {
+    const cut = Math.min(0.998, Math.max(0.004, Number(f) || 0));
+    const mid = cut * 0.7;
+    return ['interpolate', ['linear'], ['line-progress'],
+      0, hexToRgba(RL.color, TRAIL_FADE_FLOOR),
+      mid, hexToRgba(RL.color, TRAIL_FADE_FLOOR + (1 - TRAIL_FADE_FLOOR) * 0.5),
+      cut, hexToRgba(RL.color, 1),
+      Math.min(0.999, cut + 0.001), CLEAR_RGBA,
+      1, CLEAR_RGBA];
+  };
+  let lastTrailF = 0;   // remembered so setRouteLine() can restyle the trail live
   const updateTrail = (f) => {
     lastTrailF = f;
     if (!RL.enabled) return;
+    // Geometry is static; only the reveal point moves.
+    try { map.setPaintProperty('voyage-trail', 'line-gradient', trailGradient(f)); } catch (_) { /* layer not up yet */ }
+  };
+  /** Lay down (or re-lay) the full path. Only needed when the ROUTE or its wobble/curve changes. */
+  const redrawTrailGeometry = () => {
     const src = map.getSource('voyage-trail');
-    if (src) src.setData(trailFeature(f));
+    if (src) src.setData(trailFeature(1));
   };
 
   // ── Gallery modal (opened by the landfall hotspot / a thumbnail) ───────
@@ -851,8 +885,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }
   };
 
+  let lastPlayed = null;   // so hideOverview() can return the camera to the leg it left
   const playLeg = (leg, opts = {}) => {
     const n = Number(leg) || 0;
+    lastPlayed = { leg: n, opts };
     if (!ready) { pendingLeg = { leg: n, opts }; return; }
     runLeg(n, opts);
   };
@@ -862,7 +898,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     map.once('load', fn);
   };
   whenReady(() => {
-    ships = addVoyageShips(map, { beforeId: undefined, only: voyage, ambient: false, flagshipOnly: true, def: route, shipScale: Number(MO.ship_scale) || 1, shipAnchored: !!MO.ship_anchored });
+    ships = addVoyageShips(map, { beforeId: undefined, only: voyage, ambient: false, flagshipOnly: true, def: route, shipScale: Number(MO.ship_scale) || 1, shipAnchored: MO.ship_anchored !== false, motion: motionAmount(MO.motion) });
     // The ship is a 3D custom layer added last, so it would otherwise sit ON TOP of the place names.
     // Lift every text label above it so a landfall name (e.g. "La Gomera") reads over the ship.
     ['lesson-labels', 'city-labels', 'hcity-label'].forEach((id) => { if (map.getLayer(id)) { try { map.moveLayer(id); } catch (_) { /* noop */ } } });
@@ -895,8 +931,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: RL.enabled ? 'visible' : 'none' },
         // line-gradient fades the sailed path from a low floor (oldest) to full at the ship (newest).
         // line-color is ignored while a gradient is set; line-opacity still scales the whole line.
-        paint: { 'line-gradient': trailGradient(), 'line-opacity': Number(RL.opacity), 'line-width': Number(RL.thickness) },
+        paint: { 'line-gradient': trailGradient(0), 'line-opacity': Number(RL.opacity), 'line-width': Number(RL.thickness) },
       }, trailBefore);
+      redrawTrailGeometry();   // draw the whole route once; updateTrail() only reveals it
     }
     // Editor-only: a transient preview of the CURRENT leg while the teacher drags a bend on it. The
     // real trail is fixed until the drop persists + re-mounts, so during the drag we hide it and draw
@@ -935,11 +972,128 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* noop */ }
     ready = true;
     if (pendingLeg) { runLeg(pendingLeg.leg, pendingLeg.opts); pendingLeg = null; }
+    if (pendingOverview) { renderOverview(pendingOverview); pendingOverview = null; }
   });
+
+  // ── Overview: the whole voyage on one screen ──────────────────────────────
+  // Everything here is DERIVED from the route, never authored, so adding a leg or dragging a
+  // waypoint updates the itinerary automatically.
+  let overviewPins = [];
+  let overviewMove = null;
+
+  /** Every stop in sailing order: the departure point, then each leg's arrival waypoint. */
+  const overviewStops = () => {
+    const nameFor = (legIdx) => {
+      const hit = LL.find((x) => Number(x.leg) === legIdx);
+      return (hit && hit.text) ? String(hit.text) : '';
+    };
+    const stops = [];
+    const first = route.waypoints[route.legs[0].wp[0]];
+    if (first) stops.push({ lng: first[0], lat: first[1], name: nameFor(-1), date: route.legs[0].depart, index: 0 });
+    route.legs.forEach((leg, i) => {
+      const wp = route.waypoints[leg.wp[1]];
+      if (wp) stops.push({ lng: wp[0], lat: wp[1], name: nameFor(i), date: leg.arrive, leg: i, index: stops.length });
+    });
+    return stops;
+  };
+
+  const clearOverview = () => {
+    if (overviewMove) { map.off('move', overviewMove); overviewMove = null; }
+    overviewPins.forEach((p) => { try { p.remove(); } catch (_) { /* gone */ } });
+    overviewPins = [];
+  };
+
+  const renderOverview = ({ animate = true } = {}) => {
+    clearOverview();
+    const stops = overviewStops();
+    if (!stops.length) return;
+
+    // Whole route drawn, nothing hidden ahead of a ship.
+    updateTrail(1);
+
+    stops.forEach((s, i) => {
+      const pin = document.createElement('div');
+      pin.className = 'absolute -translate-x-1/2 -translate-y-full';
+      pin.style.cssText = 'pointer-events:none;z-index:30;';
+      const last = i === stops.length - 1;
+      // Numbered dot + name, so the class can read the itinerary in order.
+      pin.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          ${s.name ? `<span style="white-space:nowrap;font-size:11px;font-weight:600;color:#0f172a;
+              background:rgba(255,255,255,0.88);border-radius:9999px;padding:1px 7px;
+              box-shadow:0 1px 3px rgba(0,0,0,0.25)"></span>` : ''}
+          <span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;
+              border-radius:9999px;font-size:10px;font-weight:700;color:#fff;
+              background:${last ? '#b45309' : '#7c2d12'};box-shadow:0 1px 4px rgba(0,0,0,0.4);
+              border:2px solid rgba(255,255,255,0.9)">${i + 1}</span>
+        </div>`;
+      // Names are teacher-authored: set as text, never interpolated into the markup above.
+      const label = pin.querySelector('span');
+      if (s.name && label) label.textContent = s.name;
+      hud.appendChild(pin);
+      overviewPins.push(pin);
+    });
+
+    overviewMove = () => {
+      stops.forEach((s, i) => {
+        const el = overviewPins[i];
+        if (!el) return;
+        const pt = map.project([s.lng, s.lat]);
+        el.style.left = `${pt.x}px`;
+        el.style.top = `${pt.y}px`;
+      });
+    };
+    map.on('move', overviewMove);
+    overviewMove();
+
+    // Fit the CAMERA to the whole trip: flat on, no pitch — this is an itinerary, not a sail.
+    const lngs = stops.map((s) => s.lng);
+    const lats = stops.map((s) => s.lat);
+    const bounds = [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]];
+    try {
+      map.fitBounds(bounds, {
+        padding: { top: 70, bottom: 70, left: 60, right: 60 },
+        pitch: 0,
+        duration: animate && !skipAnim ? 1200 : 0,
+        essential: true,
+      });
+    } catch (_) { /* degenerate bounds (single stop) */ }
+  };
 
   return {
     playLeg,
     map,   // the live MapLibre instance (used by the text projector; handy for debugging)
+    /**
+     * Frame the WHOLE voyage: full route drawn, every landfall named, camera fitted to the lot.
+     *
+     * Derived entirely from the route, never authored, so adding or dragging a leg updates the
+     * itinerary with it. Used for the opening overview scene and for the zoom-out toggle a teacher
+     * can hit from any leg mid-lesson.
+     *
+     * @param {{ animate?: boolean }} opts
+     */
+    showOverview(opts = {}) {
+      if (!ready) { pendingOverview = opts; return; }
+      renderOverview(opts);
+    },
+    /** Drop the overview furniture and hand the map back to the leg it came from. */
+    hideOverview() {
+      clearOverview();
+      // Replaying the leg restores its camera, pins and the partly-revealed trail in one step.
+      if (lastPlayed) runLeg(lastPlayed.leg, lastPlayed.opts);
+    },
+    /** Names + coordinates of every stop, in sailing order — for an itinerary list beside the map. */
+    itinerary() {
+      return overviewStops();
+    },
+    /**
+     * Projector for map-pinned text labels — the same contract the standalone map scene exposes.
+     *
+     * Without this a voyage scene had a map on screen but no way to turn a screen position into a
+     * place, so "pin to map" was silently unavailable on exactly the scenes most likely to want it
+     * (labelling Venice on a route). The editor wires whichever renderer is on stage.
+     */
+    textProjector: (hostEl) => mapTextProjector(map, hostEl),
     /**
      * Apply map-detail settings LIVE — hide/show cities/borders + refresh place labels — without
      * rebuilding the tour. Lets the editor toggle a map setting while staying on the map (no flash,
@@ -960,6 +1114,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       try { inst.setDetailStyle(MO); } catch (_) { /* idem — MO carries the *_color/_size/_width keys */ }
       try { if (map.getLayer('lesson-labels')) map.moveLayer('lesson-labels'); } catch (_) { /* keep waypoint titles on top */ }
       try { ships && ships.setShipScale(Number(MO.ship_scale) || 1, !!MO.ship_anchored); } catch (_) { /* ships not ready */ }
+      try { ships && ships.setMotion(motionAmount(MO.motion)); } catch (_) { /* idem */ }
       try { fog && fog.setAuto(!!MO.fog_auto, fogKnownBoxes, fogWorldBox); } catch (_) { /* fog not ready */ }
     },
     /**
@@ -1009,11 +1164,13 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       try {
         if (map.getLayer('voyage-trail')) {
           map.setLayoutProperty('voyage-trail', 'visibility', RL.enabled ? 'visible' : 'none');
-          map.setPaintProperty('voyage-trail', 'line-gradient', trailGradient());   // colour → refade
           map.setPaintProperty('voyage-trail', 'line-opacity', Number(RL.opacity));
           map.setPaintProperty('voyage-trail', 'line-width', Number(RL.thickness));
         }
-        updateTrail(lastTrailF);   // curve/wobble changed the sampled path → redraw it
+        // Curve/wobble change the drawn path itself, so re-lay the geometry, then re-reveal it to
+        // wherever the ship currently is (this also re-applies the new colour).
+        redrawTrailGeometry();
+        updateTrail(lastTrailF);
       } catch (_) { /* map not ready */ }
     },
     /** Switch the map projection (flat ↔ globe) LIVE, without tearing down the tour. */
@@ -1103,6 +1260,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       } catch (_) { return null; }
     },
     destroy() {
+      clearOverview();
       legToken++;   // invalidate any in-flight leg
       if (raf) cancelAnimationFrame(raf);
       if (onMapStyle) { try { window.removeEventListener('lessonmap:style', onMapStyle); } catch (_) { /* noop */ } onMapStyle = null; }

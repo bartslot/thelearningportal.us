@@ -20,7 +20,10 @@ use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\StrategyGame;
 use App\Support\PolityCapitals;
+use App\Support\PortraitFocus;
+use App\Support\SafeOutboundUrl;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Computed;
@@ -50,6 +53,20 @@ class Step3SceneConfigurator extends Component
 
     /** Brand deep-navy — the solid backdrop a scene falls back to when its image is removed. */
     public const BRAND_BACKGROUND = '#0f172a';
+
+    /** Mirrors BuildLessonOutline::MAX_BRANCH_GROUPS — hand-authored branches obey the same ceiling. */
+    private const MAX_BRANCH_GROUPS = 3;
+
+    /**
+     * Meters seeded on the first hand-authored branch. The generator invents topic-specific meters;
+     * authoring by hand has no LLM to invent anything, and meter KEYS are immutable once set, so
+     * these are deliberately generic — the teacher renames the labels/icons in the Meters panel.
+     */
+    private const DEFAULT_STORY_METERS = [
+        ['key' => 'support', 'label' => 'Support', 'icon' => '🤝', 'start' => 50],
+        ['key' => 'resources', 'label' => 'Resources', 'icon' => '💰', 'start' => 50],
+        ['key' => 'risk', 'label' => 'Risk', 'icon' => '⚠️', 'start' => 20],
+    ];
 
     public Lesson $lesson;
 
@@ -83,7 +100,7 @@ class Step3SceneConfigurator extends Component
 
     public function mount(Lesson $lesson): void
     {
-        abort_unless($lesson->teacher_id === auth()->id(), 403);
+        abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
         $this->lesson->update(['status' => LessonStatus::Configuring, 'wizard_step' => 4]);
 
@@ -134,6 +151,7 @@ class Step3SceneConfigurator extends Component
     {
         $this->addSceneOpen = true;
     }
+
     /**
      * URL-form shots for the preview JS (scene:load payload AND the inert
      * scenes JSON in the blade — the bridge falls back to the latter when the
@@ -1190,7 +1208,12 @@ class Step3SceneConfigurator extends Component
         if (($this->lesson->game_type ?? null) !== 'voyage') {
             return;
         }
-        $scenes = $this->lesson->scenes()->where('kind', 'voyage')->orderBy('order')->get();
+        // The itinerary sails nothing — its `leg` is only a seed for the map's era and style, so it
+        // is NOT a claim on leg 0. Counting it as one made it collide with the first real leg, and
+        // the repair below dutifully pushed that leg's scene to the end of the voyage.
+        $scenes = $this->lesson->scenes()->where('kind', 'voyage')->orderBy('order')->get()
+            ->reject(fn ($s) => ! empty($s->config['overview']))
+            ->values();
 
         // Cheap scan first — bail (no catalog clone) unless a leg index is genuinely shared.
         $seen = [];
@@ -1304,6 +1327,9 @@ class Step3SceneConfigurator extends Component
         // island, 100 = a continental view (never the whole world). cam_dolly_arrival = extra zoom in
         // as the ship makes landfall. The camera moves play during the sail (Preview / student player).
         'ship_scale' => 1.0, 'ship_anchored' => false,
+        // How far the traveller's idle animation swings, 0–100. The rocking was tuned for an ocean
+        // and can read as too much on a classroom projector, so the amount is the teacher's call.
+        'motion' => 100,
         'ocean_zoom' => 30, 'cam_dolly_arrival' => false,
         // Fog-of-war: when true, ALL land along the route is "undiscovered" (water-coloured) except a
         // known-world set; the ship's range unmasks land as it nears + draws the coastline on landfall.
@@ -1326,7 +1352,7 @@ class Step3SceneConfigurator extends Component
         }
         $coerced = match (true) {
             in_array($key, ['cities', 'borders', 'labels', 'ship_anchored', 'cam_dolly_arrival', 'fog_auto'], true) => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-            $key === 'ocean_zoom' => max(0, min(100, (int) $value)),
+            in_array($key, ['ocean_zoom', 'motion'], true) => max(0, min(100, (int) $value)),
             str_ends_with($key, '_color') => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value) ? (string) $value : self::VOYAGE_MAP_DEFAULTS[$key],
             $key === 'border_opacity' => max(0.0, min(1.0, (float) $value)),
             in_array($key, ['label_size', 'city_size'], true) => max(0.3, min(3.0, (float) $value)),
@@ -1465,6 +1491,77 @@ class Step3SceneConfigurator extends Component
     }
 
     /** Undo the last painted region (CMD-Z / Undo button). Re-fires scene:load so the preview follows. */
+    /**
+     * How many route edits Cmd-Z can walk back. Deep enough to rescue a run of accidental drags,
+     * shallow enough that the history never bloats game_config.
+     */
+    private const VOYAGE_UNDO_DEPTH = 25;
+
+    /**
+     * Snapshot the route before changing it, so an accidental drag can be taken back.
+     *
+     * Fog painting had undo; dragging a waypoint or bending the sailing line did not, so a slip of
+     * the mouse silently rewrote the route with no way back. Every mutator calls this FIRST.
+     * History lives in game_config so it survives the Livewire round trip a drag ends with.
+     */
+    private function pushVoyageUndo(): void
+    {
+        $gc = $this->lesson->game_config ?? [];
+        $def = $gc['voyage_def'] ?? null;
+
+        // A lesson starts with NO edited voyage_def — it rides on the catalogue route until the
+        // first drag materialises one. Record that absence as null rather than skipping the push,
+        // or the very first edit (exactly the one a teacher fat-fingers) would be the one thing
+        // undo could not reach.
+        $stack = array_values($gc['voyage_undo'] ?? []);
+        $stack[] = is_array($def) ? $def : null;
+        if (count($stack) > self::VOYAGE_UNDO_DEPTH) {
+            $stack = array_slice($stack, -self::VOYAGE_UNDO_DEPTH);
+        }
+
+        $gc['voyage_undo'] = $stack;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+    }
+
+    /** True when there is a route edit to take back — drives the Undo button's disabled state. */
+    #[Computed]
+    public function canUndoVoyage(): bool
+    {
+        return ! empty(($this->lesson->game_config ?? [])['voyage_undo'] ?? []);
+    }
+
+    /** Cmd-Z for the route: restore the geometry as it was before the last edit. */
+    public function undoVoyage(): void
+    {
+        $gc = $this->lesson->game_config ?? [];
+        $stack = array_values($gc['voyage_undo'] ?? []);
+        if (empty($stack)) {
+            return;
+        }
+
+        $previous = array_pop($stack);
+        if (is_array($previous)) {
+            $gc['voyage_def'] = $previous;
+        } else {
+            unset($gc['voyage_def']);   // back to before any edit: ride the catalogue route again
+        }
+        if (empty($stack)) {
+            unset($gc['voyage_undo']);
+        } else {
+            $gc['voyage_undo'] = $stack;
+        }
+
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->canUndoVoyage);
+
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → map follows
+        }
+        $this->dispatch('toast', type: 'info', message: __('Route change undone.'));
+    }
+
     public function undoFog(): void
     {
         $fog = $this->voyageFog();
@@ -1591,7 +1688,7 @@ class Step3SceneConfigurator extends Component
         $depart = $gc['voyage_def']['legs'][$leg]['depart'] ?? null;
         $arrive = $gc['voyage_def']['legs'][$leg]['arrive'] ?? null;
         if ($depart && $arrive && strtotime($arrive) <= strtotime($depart)) {
-            $this->dispatch('toast', message: __('Arrival is on or before departure — check the dates.'), type: 'warning');
+            $this->dispatch('toast', message: __('Arrival is on or before departure. Check the dates.'), type: 'warning');
         }
 
         $this->lesson->update(['game_config' => $gc]);
@@ -1624,6 +1721,116 @@ class Step3SceneConfigurator extends Component
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    // ── How this leg was travelled ────────────────────────────────────────────────────────────
+    // Transport is a property of the CROSSING, not of the stop at either end: Marco Polo rode out
+    // of Venice's hinterland, crossed the desert by camel and came home by sea, all between fixed
+    // places. So it is edited per leg, and the marker swaps as the traveller passes each landfall.
+
+    /**
+     * The transport models a teacher can choose from, straight out of the shared catalogue that the
+     * map renderer reads (resources/js/timemap/transports.json) — one list, so a model added there
+     * shows up here without a second copy to keep in step.
+     *
+     * @return array<int,array{id:string,label:string,terrain:string,thumb:string,hint:string}>
+     */
+    #[Computed]
+    public function transports(): array
+    {
+        $json = json_decode(File::get(resource_path('js/timemap/transports.json')), true);
+
+        return collect($json['transports'] ?? [])
+            ->filter(fn ($t) => is_array($t) && ! empty($t['id']))
+            ->map(fn ($t) => [
+                'id' => (string) $t['id'],
+                'label' => (string) ($t['label'] ?? $t['id']),
+                'terrain' => ($t['terrain'] ?? 'water') === 'land' ? 'land' : 'water',
+                'thumb' => (string) ($t['thumb'] ?? ''),
+                'hint' => (string) ($t['hint'] ?? ''),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Set how THIS leg was travelled — a transport id from the catalogue.
+     *
+     * Choosing a model also clears any picture marker on the leg: the two are alternatives, and a
+     * teacher who just picked the camel expects to see the camel, not the photo that quietly wins.
+     */
+    public function setLegTransport(string $transport): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        if (! in_array($transport, array_column($this->transports(), 'id'), true)) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg])) {
+            return;
+        }
+        $gc['voyage_def']['legs'][$leg]['transport'] = $transport;
+        unset($gc['voyage_def']['legs'][$leg]['marker_image']);
+
+        $this->persistVoyageDef($gc);
+    }
+
+    /**
+     * Travel this leg as a PICTURE instead of a model — a painting or photo, drawn on the map as a
+     * round portrait with a ring. For the journeys no model covers (on foot, by sledge, by canoe).
+     */
+    public function setLegMarkerImage(string $url): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        $url = trim($url);
+        // Same gate as every other teacher-supplied URL that ends up in a lesson: http(s) or a path
+        // under this app. A marker is fetched by the student's browser, so it must not become a way
+        // to point one at file:// or a javascript: payload.
+        if ($url === '' || ! (str_starts_with($url, '/') || preg_match('#^https?://#i', $url))) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg])) {
+            return;
+        }
+        $gc['voyage_def']['legs'][$leg]['marker_image'] = $url;
+
+        $this->persistVoyageDef($gc);
+    }
+
+    /** Drop this leg's picture marker and fall back to its transport model. */
+    public function clearLegMarkerImage(): void
+    {
+        if (! $this->selectedScene || ! $this->selectedSceneId) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $gc = $this->ensureVoyageDef();
+        if (! isset($gc['voyage_def']['legs'][$leg])) {
+            return;
+        }
+        unset($gc['voyage_def']['legs'][$leg]['marker_image']);
+
+        $this->persistVoyageDef($gc);
+    }
+
+    /**
+     * Save an edited voyage_def and repaint. The leg lives in the lesson's game_config, not in
+     * scene.config, so saveSelected() (which only diffs scene.config) would never fire — the
+     * scene:load has to be re-fired here for the map to pick the change up.
+     */
+    private function persistVoyageDef(array $gc): void
+    {
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal((int) $this->selectedSceneId);
     }
 
     /**
@@ -1680,6 +1887,7 @@ class Step3SceneConfigurator extends Component
         while ($lng - $ref < -180) {
             $lng += 360;
         }
+
         return $lng;
     }
 
@@ -1690,10 +1898,12 @@ class Step3SceneConfigurator extends Component
      */
     public function resetVoyageRoute(): void
     {
-        $gc = $this->lesson->game_config ?? [];
-        if (! isset($gc['voyage_def'])) {
+        if (! isset(($this->lesson->game_config ?? [])['voyage_def'])) {
             return;
         }
+        $this->pushVoyageUndo();   // a reset throws away every edit, so it must be reversible too
+
+        $gc = $this->lesson->game_config ?? [];
         unset($gc['voyage_def']);
         $this->lesson->update(['game_config' => $gc]);
         $this->lesson->refresh();
@@ -1719,6 +1929,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $this->pushVoyageUndo();
         $gc = $this->ensureVoyageDef();
         $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
         // Only points that belong to THIS leg's span may be moved from here.
@@ -1753,6 +1964,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        $this->pushVoyageUndo();
         $gc = $this->ensureVoyageDef();
         $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
         // The bend must fall between two of THIS leg's own waypoints: start <= afterWpIndex < end.
@@ -2223,6 +2435,9 @@ class Step3SceneConfigurator extends Component
      */
     public bool $paintingCommonsLoaded = false;
 
+    /** Wikimedia rate-limited the last search, so an empty grid means "ask again", not "none exist". */
+    public bool $paintingSearchThrottled = false;
+
     /** Grid filter: '' = everything, 'painting' = paintings, 'city_map' = Braun & Hogenberg-style city plans. */
     public string $paintingKind = '';
 
@@ -2283,12 +2498,52 @@ class Step3SceneConfigurator extends Component
         $this->seedLandfallImageSearch();
     }
 
+    /** Voyage inspector "Use a picture" → pick the art that travels this leg instead of a model. */
+    public function openMarkerImagePicker(): void
+    {
+        $this->paintingPickerMode = 'voyage_marker';
+        $this->openPaintingPickerCommon();
+        $this->seedLandfallImageSearch();
+    }
+
     /** Gallery inspector "+ Add image" → pick art to append to the gallery slideshow. */
     public function openGalleryImagePicker(): void
     {
         $this->paintingPickerMode = 'gallery_image';
         $this->openPaintingPickerCommon();
-        $this->seedLandfallImageSearch();
+        $this->seedGalleryImageSearch();
+    }
+
+    /**
+     * Seed the picker for whichever gallery the teacher opened it from.
+     *
+     * A voyage landfall seeds from its place name. A STANDALONE gallery scene has no place and no
+     * voyage, so seeding it the landfall way produced an empty query — and because that seeder also
+     * force-enables Commons search, the grid opened completely blank with "No paintings found".
+     * Seed from the most specific text the teacher has already written instead.
+     */
+    private function seedGalleryImageSearch(): void
+    {
+        $scene = $this->selectedSceneModel();
+
+        if ($scene?->kind === 'voyage') {
+            $this->seedLandfallImageSearch();
+
+            return;
+        }
+
+        $config = $scene?->config ?? [];
+        $term = collect([
+            $config['title'] ?? null,          // what the teacher called this gallery
+            $scene?->location ?? null,          // the place, if the scene names one
+            $this->lesson->topic ?? null,       // else the lesson's own subject
+        ])->map(fn ($v) => trim((string) $v))->first(fn (string $v) => $v !== '') ?? '';
+
+        $this->paintingQuery = $term;
+        // Only reach past the corpus to Commons once there is something to search for; an empty
+        // term with Commons on is exactly what produced the blank grid.
+        $this->paintingCommonsLoaded = $term !== '';
+        $this->revealSeededSearch();
     }
 
     /**
@@ -2306,6 +2561,20 @@ class Step3SceneConfigurator extends Component
         $voyageName = trim((string) ($this->voyageDef()['name'] ?? ''));
         $this->paintingQuery = trim($place.' '.$voyageName);
         $this->paintingCommonsLoaded = true;   // landfalls are usually too obscure for the corpus alone
+        $this->revealSeededSearch();
+    }
+
+    /**
+     * Show the search bar whenever the picker was opened with a pre-filled query.
+     *
+     * The bar is hidden behind a magnifier by default, which is right for an unfiltered grid — but
+     * a SEEDED grid is already filtered by a term the teacher never typed and cannot see. They are
+     * then left guessing why a gallery called "The three ships" turned up nursery illustrations,
+     * with no obvious way to change it. Reveal the term so it reads as an editable starting point.
+     */
+    private function revealSeededSearch(): void
+    {
+        $this->searchOpen = trim($this->paintingQuery) !== '';
     }
 
     /**
@@ -2323,14 +2592,18 @@ class Step3SceneConfigurator extends Component
         // Landfall/gallery images are referenced by URL in scene config, so host them on Cloudinary
         // (falls back to local storage when Cloudinary isn't configured). The scene BACKGROUND uses a
         // relative image_path rendered via asset('storage/…'), so that one stays local for now.
-        if (in_array($mode, ['voyage_stop', 'gallery_image'], true)) {
+        if (in_array($mode, ['voyage_stop', 'voyage_marker', 'gallery_image'], true)) {
             $cloud = app(\App\Services\CloudinaryService::class);
             $url = $cloud->configured()
                 ? $cloud->uploadBytes($this->uploadImage->get(), "lessons/{$this->lesson->id}")
                 : null;
             $url ??= '/storage/'.$this->uploadImage->store("lessons/{$this->lesson->id}/uploads", 'public');
             $this->reset('uploadImage');
-            $mode === 'voyage_stop' ? $this->addStopImage($url) : $this->addGalleryImage($url, '');
+            match ($mode) {
+                'voyage_stop' => $this->addStopImage($url),
+                'voyage_marker' => $this->setLegMarkerImage($url),
+                default => $this->addGalleryImage($url, ''),
+            };
 
             return;
         }
@@ -2521,6 +2794,7 @@ class Step3SceneConfigurator extends Component
         match ($this->paintingPickerMode) {
             'layer' => $this->applyPaintingAsLayer($source, $key),
             'voyage_stop' => $this->applyPaintingAsStopImage($source, $key),
+            'voyage_marker' => $this->applyPaintingAsMarkerImage($source, $key),
             'gallery_image' => $this->applyPaintingAsGalleryImage($source, $key),
             default => $this->applyPaintingBackground($source, $key),
         };
@@ -2536,6 +2810,19 @@ class Step3SceneConfigurator extends Component
         $stored = $this->storePickedPainting($source, $key, 'stop');
         if ($stored) {
             $this->addStopImage($stored['url']);
+        }
+    }
+
+    /** Download a picked painting to lesson storage and make it this leg's travelling marker. */
+    public function applyPaintingAsMarkerImage(string $source, string $key): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+        $this->paintingPickerOpen = false;
+        $stored = $this->storePickedPainting($source, $key, 'marker');
+        if ($stored) {
+            $this->setLegMarkerImage($stored['url']);
         }
     }
 
@@ -2567,7 +2854,7 @@ class Step3SceneConfigurator extends Component
             default => [null, null, null],
         };
         if (! $imageUrl) {
-            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+            $this->dispatch('toast', message: __('Painting not found. Try another one.'), type: 'warning');
 
             return null;
         }
@@ -2581,7 +2868,7 @@ class Step3SceneConfigurator extends Component
             }
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not download that painting. Try another one.'), type: 'error');
 
             return null;
         }
@@ -2687,66 +2974,75 @@ class Step3SceneConfigurator extends Component
             // Corpus failure (down, or the artworks table absent) must NOT take down the Commons
             // top-up below — obscure landfalls (Mauritius, Tonga) live on Commons, not the corpus.
             $corpus = collect();
+            // The corpus lives on Supabase in us-east-2: a warm round trip is ~350ms and a search
+            // that returns a full grid ~1.1s. Livewire re-evaluates this computed property on
+            // EVERY render, so without a cache the same query is paid again on each keystroke,
+            // each poll tick and each unrelated re-render. Commons has had a cache all along;
+            // this gives the corpus the same treatment, keyed on everything that shapes the query.
+            $corpusKey = 'picker.corpus.v1.'.md5(serialize([
+                $term, $kind, $target, $preferRegions, $topicQid, $location,
+                $this->sceneApproxYear(), self::PAINTING_GRID_LIMIT,
+            ]));
             try {
-            $corpus = \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
-                if ($term !== '') {
-                    // Search: the term filters, but rank by the lesson's subject/region context so
-                    // "Revolution" in a French-Revolution lesson floats French works to the top.
-                    $found = \App\Models\Corpus\Artwork::matchScene(
-                        [],                              // no core gate — the term is the filter
-                        $target['themes'] ?? [],
-                        $target['actor_qids'] ?? [],
-                        $target['era'] ?? null,
-                        self::PAINTING_GRID_LIMIT,
-                        $kind,
-                        $preferRegions,
-                        $term,
-                    )->get();
+                $corpus = Cache::remember($corpusKey, now()->addMinutes(15), fn () => \App\Models\Corpus\Topic::resilient(function () use ($term, $topicQid, $location, $kind, $target, $preferRegions) {
+                    if ($term !== '') {
+                        // Search: the term filters, but rank by the lesson's subject/region context so
+                        // "Revolution" in a French-Revolution lesson floats French works to the top.
+                        $found = \App\Models\Corpus\Artwork::matchScene(
+                            [],                              // no core gate — the term is the filter
+                            $target['themes'] ?? [],
+                            $target['actor_qids'] ?? [],
+                            $target['era'] ?? null,
+                            self::PAINTING_GRID_LIMIT,
+                            $kind,
+                            $preferRegions,
+                            $term,
+                        )->get();
 
-                    // Untagged works aren't in the scored index — fall back to a plain search only
-                    // when the scored search finds nothing.
-                    return $found->isNotEmpty()
-                        ? $found
-                        : \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
-                }
-                // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
-                // correctness (theme + actor + era + quality). This is the source-blind ranker.
-                if (! empty($target['core'])) {
-                    $scored = \App\Models\Corpus\Artwork::matchScene(
-                        $target['core'],
-                        $target['themes'] ?? [],
-                        $target['actor_qids'] ?? [],
-                        $target['era'] ?? null,
-                        self::PAINTING_GRID_LIMIT,
-                        $kind,
-                        $preferRegions,
-                    )->get();
-                    if ($scored->isNotEmpty()) {
-                        return $scored;
+                        // Untagged works aren't in the scored index — fall back to a plain search only
+                        // when the scored search finds nothing.
+                        return $found->isNotEmpty()
+                            ? $found
+                            : \App\Models\Corpus\Artwork::search($term, self::PAINTING_GRID_LIMIT, $kind)->get();
                     }
-                }
-                // Fallback blend (no derived target, or the gate found nothing): depicts-by-topic
-                // + near-era + location cityscapes.
-                $suggested = collect();
-                if ($topicQid) {
-                    $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
-                }
-                $approxYear = $this->sceneApproxYear();
-                if ($approxYear !== null && $suggested->count() < self::PAINTING_GRID_LIMIT) {
-                    $suggested = $suggested
-                        ->concat(\App\Models\Corpus\Artwork::nearYear($approxYear, 60, self::PAINTING_GRID_LIMIT, $kind)->get())
-                        ->unique('qid')
-                        ->values();
-                }
-                if ($location !== '' && $suggested->count() < self::PAINTING_GRID_LIMIT) {
-                    $suggested = $suggested
-                        ->concat(\App\Models\Corpus\Artwork::search($location, self::PAINTING_GRID_LIMIT, $kind)->get())
-                        ->unique('qid')
-                        ->values();
-                }
+                    // Match-scored view: gate on what the scene must SHOW (core tags), then rank by
+                    // correctness (theme + actor + era + quality). This is the source-blind ranker.
+                    if (! empty($target['core'])) {
+                        $scored = \App\Models\Corpus\Artwork::matchScene(
+                            $target['core'],
+                            $target['themes'] ?? [],
+                            $target['actor_qids'] ?? [],
+                            $target['era'] ?? null,
+                            self::PAINTING_GRID_LIMIT,
+                            $kind,
+                            $preferRegions,
+                        )->get();
+                        if ($scored->isNotEmpty()) {
+                            return $scored;
+                        }
+                    }
+                    // Fallback blend (no derived target, or the gate found nothing): depicts-by-topic
+                    // + near-era + location cityscapes.
+                    $suggested = collect();
+                    if ($topicQid) {
+                        $suggested = \App\Models\Corpus\Artwork::depicting($topicQid, self::PAINTING_GRID_LIMIT, $kind)->get();
+                    }
+                    $approxYear = $this->sceneApproxYear();
+                    if ($approxYear !== null && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                        $suggested = $suggested
+                            ->concat(\App\Models\Corpus\Artwork::nearYear($approxYear, 60, self::PAINTING_GRID_LIMIT, $kind)->get())
+                            ->unique('qid')
+                            ->values();
+                    }
+                    if ($location !== '' && $suggested->count() < self::PAINTING_GRID_LIMIT) {
+                        $suggested = $suggested
+                            ->concat(\App\Models\Corpus\Artwork::search($location, self::PAINTING_GRID_LIMIT, $kind)->get())
+                            ->unique('qid')
+                            ->values();
+                    }
 
-                return $suggested;
-            });
+                    return $suggested;
+                }));
             } catch (\Throwable $corpusErr) {
                 report($corpusErr);   // degrade to Commons-only rather than an empty grid
             }
@@ -2782,7 +3078,13 @@ class Step3SceneConfigurator extends Component
             // Top up from Commons live search — finds files the Wikidata harvest can't
             // (most Commons images have no Wikidata item of their own). City-map browsing
             // stays corpus-only: the curated Braun & Hogenberg set IS the map catalog.
-            if ($this->paintingCommonsLoaded && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
+            //
+            // A TYPED term always reaches Commons, without waiting for the teacher to press a
+            // button. The corpus is a sample, not a canon (it holds 94 Rembrandts but not The
+            // Night Watch), so "nothing in the curated collection" was a dead end in front of an
+            // archive that has the painting. Results are cached per term, so the cost lands once.
+            $searchingWide = $term !== '' && mb_strlen($term) >= 3;
+            if (($this->paintingCommonsLoaded || $searchingWide) && $this->paintingKind !== 'city_map' && $tiles->count() < self::PAINTING_GRID_LIMIT) {
                 $commons = app(\App\Services\CommonsImageService::class);
                 $live = collect();
                 // Landfall art is often maps / engravings / views, not "paintings" — appending that
@@ -2798,6 +3100,9 @@ class Step3SceneConfigurator extends Component
                         $live = $live->concat($commons->searchText($location.' painting'));
                     }
                 }
+                // Remember a throttle so the empty grid can say so. "No paintings found" in front
+                // of an archive that HAS the painting is the worst answer we can give.
+                $this->paintingSearchThrottled = $commons->lastError === 'throttled';
                 $tiles = $tiles->concat($live->unique('file_title')->map(fn ($f) => [
                     'source' => 'commons',
                     'key' => $f['file_title'],
@@ -2839,7 +3144,7 @@ class Step3SceneConfigurator extends Component
             default => [null, null, null],
         };
         if (! $imageUrl) {
-            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+            $this->dispatch('toast', message: __('Painting not found. Try another one.'), type: 'warning');
 
             return;
         }
@@ -2855,7 +3160,7 @@ class Step3SceneConfigurator extends Component
             }
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not download that painting. Try another one.'), type: 'error');
 
             return;
         }
@@ -2864,10 +3169,24 @@ class Step3SceneConfigurator extends Component
         $path = "lessons/{$this->lesson->id}/paintings/{$fileStem}.{$ext}";
         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
 
+        // Now the file is local, its SHAPE can be measured — the one signal the corpus cannot give.
+        // Corpus artworks carry tags but no dimensions, so a full-length standing portrait tagged
+        // {battle, soldiers, war} came through as 'center' and rendered cropped to the sitter's
+        // waist. Upgrade to a top crop whenever the pixels say portrait, keeping any 'top' the
+        // tags or title already established.
+        $focus = $credit['focus'] ?? PortraitFocus::CENTER;
+        if ($focus !== PortraitFocus::TOP) {
+            $size = @getimagesize(\Illuminate\Support\Facades\Storage::disk('public')->path($path));
+            if ($size !== false && PortraitFocus::isPortraitShape($size[0] ?? null, $size[1] ?? null)) {
+                $focus = PortraitFocus::TOP;
+            }
+        }
+        $credit['focus'] = $focus;
+
         $config = array_merge($scene->config ?? [], [
             'background_source' => 'painting',
             'background_credit' => $credit,
-            'background_focus' => $credit['focus'] ?? 'center',   // 'top' anchors portraits
+            'background_focus' => $focus,   // 'top' anchors portraits
         ]);
         // City plans double as layout ground truth: the image/3D pipeline reads
         // config.layout_reference to keep generated streets & squares historically placed.
@@ -2918,7 +3237,7 @@ class Step3SceneConfigurator extends Component
             default => [null, null, null],
         };
         if (! $imageUrl) {
-            $this->dispatch('toast', message: __('Painting not found — try another one.'), type: 'warning');
+            $this->dispatch('toast', message: __('Painting not found. Try another one.'), type: 'warning');
 
             return;
         }
@@ -2939,7 +3258,7 @@ class Step3SceneConfigurator extends Component
             }
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not download the painting — try another one.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not download that painting. Try another one.'), type: 'error');
 
             return;
         }
@@ -2982,15 +3301,9 @@ class Step3SceneConfigurator extends Component
             return [null, null, null];
         }
 
-        // Portraits are usually taller than 16:9 with the face near the top — anchor the
-        // background crop to the top so a cover-fit never decapitates the sitter.
         $tagList = is_array($artwork->tags)
             ? $artwork->tags
             : array_filter(explode(',', trim((string) $artwork->tags, '{}')));
-        $isPortrait = array_intersect(
-            ['portrait', 'group-portrait', 'equestrian-portrait', 'self-portrait'],
-            $tagList,
-        ) !== [];
 
         return [$artwork->image_url, [
             'kind' => $artwork->kind,
@@ -3003,7 +3316,8 @@ class Step3SceneConfigurator extends Component
             'license' => 'public domain',
             'source' => 'Wikimedia Commons',
             'source_url' => $artwork->image_url,
-            'focus' => $isPortrait ? 'top' : 'center',
+            // A cover-fit into the 16:9 stage decapitates a centred sitter, so portraits anchor top.
+            'focus' => PortraitFocus::forTags($tagList),
         ], preg_replace('/[^A-Za-z0-9_-]/', '-', $key)];
     }
 
@@ -3023,6 +3337,14 @@ class Step3SceneConfigurator extends Component
             'license' => $meta['license'],
             'source' => 'Wikimedia Commons',
             'source_url' => $meta['file_page'],
+            // Commons files carry no corpus tags, so the portrait test uses the title and the canvas
+            // shape. Omitting this was the bug behind a teacher-picked Columbus portrait rendering
+            // with his face cropped out of frame.
+            'focus' => PortraitFocus::forImage(
+                $meta['title'].' '.$meta['file_title'],
+                $meta['width'] ?? null,
+                $meta['height'] ?? null,
+            ),
         ], 'commons-'.substr(md5($meta['file_title']), 0, 12)];
     }
 
@@ -3033,7 +3355,8 @@ class Step3SceneConfigurator extends Component
     public function applyImageUrl(int $sceneId, string $url): void
     {
         $url = trim($url);
-        if (! preg_match('#^https?://#i', $url) || ! $this->isSafePublicUrl($url)) {
+        $guard = app(SafeOutboundUrl::class);
+        if (! $guard->isAllowed($url)) {
             $this->dispatch('toast', message: __('Enter a valid public image URL (http/https).'), type: 'warning');
 
             return;
@@ -3043,14 +3366,19 @@ class Step3SceneConfigurator extends Component
         try {
             $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'User-Agent' => 'LearningPortal/1.0 (thelearningportal.us; lesson backgrounds)',
-            ])->timeout(30)->get($url);
+            ])
+                // Image URLs redirect constantly (http→https, CDN shuffles), so redirects stay ON —
+                // but every hop is re-checked, because validating only the URL the teacher typed let
+                // a public host 302 the request into internal space after the guard had passed.
+                ->withOptions(['allow_redirects' => $guard->redirectGuard()])
+                ->timeout(30)->get($url);
             $type = (string) $response->header('Content-Type');
             if (! $response->successful() || ! str_starts_with($type, 'image/') || $response->body() === '') {
                 throw new \RuntimeException('not an image ('.$type.')');
             }
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not load that image URL — check the link.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not load that image. Check the link.'), type: 'error');
 
             return;
         }
@@ -3081,25 +3409,6 @@ class Step3SceneConfigurator extends Component
         $this->dispatch('toast', message: __('Image set as the scene background.'), type: 'success');
     }
 
-    /** Reject obvious SSRF targets (loopback / private / link-local / metadata hosts). */
-    private function isSafePublicUrl(string $url): bool
-    {
-        $host = parse_url($url, PHP_URL_HOST);
-        if (! $host) {
-            return false;
-        }
-        $host = strtolower(trim($host, '[]'));
-        if (in_array($host, ['localhost', '0.0.0.0', '::1'], true)) {
-            return false;
-        }
-        if (filter_var($host, FILTER_VALIDATE_IP)
-            && ! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return false;
-        }
-
-        return true;
-    }
-
     /**
      * Summarize the scene's narration into a short bullet list and drop it onto the slide
      * as a frosted-glass text card (auto-blurs the moving image behind it).
@@ -3123,7 +3432,7 @@ class Step3SceneConfigurator extends Component
             );
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not summarize the script — please try again.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not summarise the script. Please try again.'), type: 'error');
 
             return;
         }
@@ -3137,7 +3446,7 @@ class Step3SceneConfigurator extends Component
             ->all();
 
         if ($points === []) {
-            $this->dispatch('toast', message: __('The summary came back empty — please try again.'), type: 'warning');
+            $this->dispatch('toast', message: __('The summary came back empty. Please try again.'), type: 'warning');
 
             return;
         }
@@ -3219,8 +3528,15 @@ class Step3SceneConfigurator extends Component
     {
         $this->addSceneOpen = false;
         $isVoyageLesson = ($this->lesson->game_type ?? null) === 'voyage';
-        $allowed = $isVoyageLesson ? ['game', 'map', 'voyage'] : ['game', 'map'];
+        $allowed = $isVoyageLesson ? ['game', 'map', 'voyage', 'gallery'] : ['game', 'map', 'gallery', 'branch'];
         $kind = in_array($kind, $allowed, true) ? $kind : 'narration';
+
+        // A branch is three scenes, not one, so it has its own builder.
+        if ($kind === 'branch') {
+            $this->addBranchGroup();
+
+            return;
+        }
         $gameType = in_array($gameType, ['quiz', 'strategy', 'debate'], true) ? $gameType : null;
         $insertAfterSceneId = $this->selectedSceneId;
         $next = ((int) $this->lesson->scenes()->max('order')) + 1;
@@ -3230,7 +3546,10 @@ class Step3SceneConfigurator extends Component
             'order' => $next,
             'kind' => $kind,
             'image_style' => $this->lesson->image_style,
-            'status' => in_array($kind, ['map', 'voyage'], true) ? 'ready' : 'pending',
+            // map/voyage/gallery generate nothing — their content is authored by hand — so they are
+            // born ready. Creating them 'pending' would make them permanent publish blockers: the
+            // publish gate demands every scene be ready, and there is no "generate" button to press.
+            'status' => in_array($kind, ['map', 'voyage', 'gallery'], true) ? 'ready' : 'pending',
         ];
 
         if ($kind === 'voyage') {
@@ -3283,6 +3602,18 @@ class Step3SceneConfigurator extends Component
             return;
         }
 
+        if ($kind === 'gallery') {
+            $payload += [
+                'scene_view' => 'slideshow',
+                'config' => ['title' => '', 'date_label' => '', 'story' => '', 'fit' => 'cover', 'images' => []],
+            ];
+            $scene = Scene::create($payload);
+            $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
+            $this->selectSceneInternal($scene->id);
+
+            return;
+        }
+
         if ($kind === 'map') {
             $payload += Scene::mapPayloadForLesson($this->lesson);
             $scene = Scene::create($payload);
@@ -3318,6 +3649,85 @@ class Step3SceneConfigurator extends Component
 
         $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
         $this->selectSceneInternal($scene->id);
+    }
+
+    /**
+     * Add a hand-authored branch: one question scene followed by two option scenes.
+     *
+     * Until now `BuildLessonOutline` was the ONLY code that ever wrote branch_group/branch_role, so
+     * a branching story could not exist without a working LLM — and with the writing service out of
+     * credit there was no way to make one at all. This is the same manual escape hatch map/gallery/
+     * voyage scenes already have.
+     *
+     * The three scenes are plain narration scenes carrying branch metadata, which is exactly what
+     * the generator produces, so the player, the game-pack PDF and the publish gate all read them
+     * without knowing which route built them.
+     */
+    private function addBranchGroup(): void
+    {
+        $used = $this->lesson->scenes()
+            ->whereNotNull('branch_group')
+            ->pluck('branch_group')
+            ->map(fn ($g) => (int) $g);
+
+        $group = ($used->max() ?? 0) + 1;
+        if ($group > self::MAX_BRANCH_GROUPS) {
+            $this->dispatch('toast', type: 'error', message: __('A story can hold at most :n decision points.', ['n' => self::MAX_BRANCH_GROUPS]));
+
+            return;
+        }
+
+        // The effects panel only opens for option scenes of a story_game, and the meters it edits
+        // are lesson-level. Promote the lesson and seed meters here or the teacher would be left
+        // with option scenes whose effects can never be set — and the publish gate demands every
+        // option carry deltas, so the lesson would be permanently unpublishable.
+        $this->lesson->fill([
+            'include_game' => true,
+            'game_type' => 'story_game',
+            'narrative_framework' => 'branching',
+        ]);
+        if (($this->lesson->game_config['meters'] ?? []) === []) {
+            $this->lesson->game_config = array_merge($this->lesson->game_config ?? [], [
+                'meters' => self::DEFAULT_STORY_METERS,
+            ]);
+        }
+        $this->lesson->save();
+        $this->lesson->refresh();
+
+        $insertAfterSceneId = $this->selectedSceneId;
+        $next = ((int) $this->lesson->scenes()->max('order')) + 1;
+
+        $rows = [
+            ['role' => 'question', 'title' => __('Decision :n', ['n' => $group]), 'label' => null],
+            ['role' => 'option_a', 'title' => __('Decision :n — first choice', ['n' => $group]), 'label' => __('First choice')],
+            ['role' => 'option_b', 'title' => __('Decision :n — second choice', ['n' => $group]), 'label' => __('Second choice')],
+        ];
+
+        $created = [];
+        foreach ($rows as $i => $row) {
+            $created[] = Scene::create([
+                'lesson_id' => $this->lesson->id,
+                'order' => $next + $i,
+                'kind' => 'narration',
+                'title' => $row['title'],
+                'image_style' => $this->lesson->image_style,
+                'branch_group' => $group,
+                'branch_role' => $row['role'],
+                'branch_choice_label' => $row['label'],
+                // Same as a hand-added Story scene: the teacher writes the script, then narrates.
+                'status' => 'pending',
+            ]);
+        }
+
+        // Keep the trio together, in order, after whatever was selected.
+        $after = $insertAfterSceneId;
+        foreach ($created as $scene) {
+            $this->placeSceneAfterSelected($scene, $after);
+            $after = $scene->id;
+        }
+
+        $this->selectSceneInternal($created[0]->id);
+        $this->dispatch('toast', message: __('Decision point added. Write the question, then set what each choice changes.'));
     }
 
     private function placeSceneAfterSelected(Scene $scene, ?int $afterSceneId): void
@@ -3499,6 +3909,20 @@ class Step3SceneConfigurator extends Component
         $this->panelView = 'settings';
     }
 
+    /**
+     * Start this lesson with narration subtitles showing (or not).
+     *
+     * The teacher decides the starting state — a class that needs captions should not have to
+     * hunt for the button once the lesson is already playing — and students can still toggle
+     * them mid-lesson.
+     */
+    public function setSubtitles(bool $on): void
+    {
+        $this->lesson->update(['subtitles' => $on]);
+        $this->lesson->refresh();
+        $this->dispatch('toast', message: $on ? __('Subtitles are on for this lesson.') : __('Subtitles are off for this lesson.'), type: 'success');
+    }
+
     #[On('open-lesson-format')]
     public function openFormat(): void
     {
@@ -3573,7 +3997,7 @@ class Step3SceneConfigurator extends Component
             );
         } catch (\Throwable $e) {
             report($e);
-            $this->dispatch('toast', message: __('Could not rewrite the paragraph — please try again.'), type: 'error');
+            $this->dispatch('toast', message: __('We could not rewrite the paragraph. Please try again.'), type: 'error');
             $this->dispatch('scene:paragraph-result', sceneId: $sceneId, text: null);
 
             return;
@@ -3597,6 +4021,46 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
+     * Name the asset a story scene is actually waiting on, or null when the status speaks for itself.
+     *
+     * A narration scene only becomes 'ready' once it has script + image + audio (MarksSceneReady),
+     * so a hand-built scene with a written script and narration but no background image sits at
+     * 'generating' forever. Reporting that as "still generating" tells the teacher to wait for
+     * something that is never coming; naming the missing piece tells them what to click.
+     */
+    private function missingAssetReason(Scene $scene): ?string
+    {
+        if ($scene->kind !== 'narration' || $scene->status === 'failed') {
+            return null;
+        }
+
+        $missing = [];
+        if (trim((string) $scene->script_segment) === '') {
+            $missing[] = __('a script');
+        }
+        if ($scene->image_path === null) {
+            $missing[] = __('a background image');
+        }
+        if ($scene->audio_path === null) {
+            $missing[] = __('narration audio');
+        }
+
+        if ($missing === []) {
+            return null;   // nothing identifiable missing → let the raw status describe it
+        }
+
+        // Comma-separate all but the last ("a script, a background image and narration audio").
+        // A space-padded `__(' and ')` key was both fragile for translators and gave the
+        // three-item case "a script and a background image and narration audio".
+        $last = array_pop($missing);
+        $list = $missing === []
+            ? $last
+            : implode(', ', $missing).' '.__('and').' '.$last;
+
+        return __('needs :list', ['list' => $list]);
+    }
+
+    /**
      * Publish the lesson from the toolbar. Gate: every scene must be "ready".
      * NOTE: public-visibility moderation (abuse/adult-content screening) is a
      * separate gate still to be built — see the lesson-publishing plan.
@@ -3607,7 +4071,7 @@ class Step3SceneConfigurator extends Component
         $notReady = $this->lesson->scenes()
             ->where('status', '!=', 'ready')
             ->orderBy('order')
-            ->get(['id', 'order', 'kind', 'game_type', 'status']);
+            ->get(['id', 'order', 'kind', 'game_type', 'status', 'script_segment', 'image_path', 'audio_path']);
 
         if ($notReady->isNotEmpty()) {
             // Name the offending scenes (and why) so the teacher knows exactly what to fix,
@@ -3616,9 +4080,9 @@ class Step3SceneConfigurator extends Component
                 $kind = $s->kind === 'game'
                     ? ucfirst((string) ($s->game_type ?: 'game'))
                     : ucfirst((string) $s->kind);
-                $why = match ((string) $s->status) {
+                $why = $this->missingAssetReason($s) ?? match ((string) $s->status) {
                     'generating' => __('still generating'),
-                    'failed' => __('failed — regenerate it'),
+                    'failed' => __('failed, regenerate it'),
                     'pending' => __('not generated yet'),
                     default => (string) $s->status,
                 };

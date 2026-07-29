@@ -1,9 +1,13 @@
 @push('head-scripts')
     @vite('resources/js/lesson-map.js')
-    {{-- Voyage lessons also preview the sailing tour + image galleries on the map stage. Only load
-         those renderers (voyage-tour pulls in ships/fog/etch) when the lesson actually needs them. --}}
+    {{-- The gallery renderer is dependency-free and ANY lesson can hold a gallery scene — including
+         one the teacher adds without reloading the page — so it always loads. Gating it behind
+         game_type === 'voyage' left window.renderGallery undefined in a normal lesson, and selecting
+         a gallery scene died with "renderer unavailable". --}}
+    @vite('resources/js/gallery-scene.js')
+    {{-- voyage-tour stays gated: it drags in ships/fog/etch, which only a voyage lesson needs. --}}
     @if (($lesson->game_type ?? null) === 'voyage')
-        @vite(['resources/js/voyage-tour.js', 'resources/js/gallery-scene.js'])
+        @vite('resources/js/voyage-tour.js')
     @endif
 @endpush
 
@@ -202,15 +206,28 @@
         // drop the previous overlay's handler so re-mounts don't stack them.
         if (window.__voyageUndoHandler) document.removeEventListener('keydown', window.__voyageUndoHandler);
         window.__voyageUndoHandler = (e) => {
-            if (!window.__voyagePaint.active) return;
             if ((e.key !== 'z' && e.key !== 'Z') || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
-            const cur = inst.getPaintedFog();
-            if (!cur.length) return;
-            e.preventDefault();
-            cur.pop();
-            try { inst.setPaintedFog(cur); } catch (_) {}   // instant feedback; undoFog re-syncs from server
+            // Never steal the shortcut from a field the teacher is typing in.
+            const t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+
             const w = window.__step3Wire();
-            if (w && typeof w.undoFog === 'function') { try { w.undoFog(); } catch (_) {} }
+
+            // While the fog brush is up, Cmd-Z takes back the last painted region.
+            if (window.__voyagePaint.active) {
+                const cur = inst.getPaintedFog();
+                if (!cur.length) return;
+                e.preventDefault();
+                cur.pop();
+                try { inst.setPaintedFog(cur); } catch (_) {}   // instant feedback; undoFog re-syncs from server
+                if (w && typeof w.undoFog === 'function') { try { w.undoFog(); } catch (_) {} }
+                return;
+            }
+
+            // Otherwise it takes back the last ROUTE edit. Dragging a waypoint or bending the
+            // sailing line used to be unrecoverable: one slip rewrote the route for good.
+            e.preventDefault();
+            if (w && typeof w.undoVoyage === 'function') { try { w.undoVoyage(); } catch (_) {} }
         };
         document.addEventListener('keydown', window.__voyageUndoHandler);
     };
@@ -451,12 +468,19 @@
                     })
                     window.__openGalleryOnLoad = false   // consume — later re-mounts start on the map
                     window.__mountVoyagePaint && window.__mountVoyagePaint(inst, stageInner, p)
-                    inst.playLeg(Number(vcfg.leg) || 0, {
-                        intro: !!vcfg.intro,
-                        stopImages: vcfg.stop_images || [],
-                        gallery: vcfg.gallery || null,
-                        hotspot: vcfg.hotspot || null,
-                    })
+                    if (vcfg.overview) {
+                        // The itinerary scene: whole route, every stop, fitted. No leg is sailed.
+                        inst.showOverview({ animate: false })
+                    } else {
+                        inst.playLeg(Number(vcfg.leg) || 0, {
+                            intro: !!vcfg.intro,
+                            stopImages: vcfg.stop_images || [],
+                            gallery: vcfg.gallery || null,
+                            hotspot: vcfg.hotspot || null,
+                        })
+                    }
+                    // Expose the live tour so the zoom-out toggle can reach it from any voyage scene.
+                    window.__voyageTour = inst
                     lastGalleryId = null
                 } else if (p.kind === 'gallery' && window.renderGallery) {
                     inst = window.renderGallery(stageInner, vcfg)
@@ -694,7 +718,7 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @elseif ($sceneModel->kind === 'voyage')
-                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" />
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @else
@@ -727,6 +751,21 @@
                    class="btn btn-sm btn-outline mt-1 border-slate-600 text-slate-200 hover:border-amber-400 hover:text-amber-300">
                     {{ __('Edit story') }}
                 </a>
+            </div>
+
+            {{-- SUBTITLES — whether the lesson starts with the narration written along the bottom.
+                 A class that needs captions should have them from the first scene, not after
+                 someone finds the button; students can still toggle them while it plays. --}}
+            <div class="mt-6 border-t border-slate-700/50 pt-4">
+                <label class="flex items-center justify-between gap-3">
+                    <span>
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Subtitles') }}</span>
+                        <span class="mt-0.5 block text-xs text-slate-400">{{ __('Show the narration as text while it plays.') }}</span>
+                    </span>
+                    <input type="checkbox" @checked($lesson->subtitles)
+                           wire:change="setSubtitles($event.target.checked)"
+                           class="toggle toggle-sm toggle-warning shrink-0" />
+                </label>
             </div>
 
             {{-- POSTER — the lesson's cover image. Never empty: auto-picks an image already loaded in
@@ -1674,7 +1713,7 @@
             <button type="button" @click="$store.view.hide('notes')" class="text-slate-500 hover:text-slate-200" aria-label="Close">✕</button>
         </div>
         <textarea x-model="note" @input.debounce.400ms="save()" rows="6"
-                  placeholder="{{ __('Private notes for this lesson — only you see these.') }}"
+                  placeholder="{{ __('Private notes for this lesson. Only you can see these.') }}"
                   class="w-full resize-none border-0 bg-transparent p-3 text-sm text-slate-200 focus:outline-none"></textarea>
     </div>
 
@@ -1788,6 +1827,19 @@
                     <x-lesson.scene-type-thumb kind="map" />
                     <span class="text-sm font-medium text-slate-200">Map</span>
                 </button>
+                <button type="button" wire:click="addScene('gallery')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="gallery" />
+                    <span class="text-sm font-medium text-slate-200">Gallery</span>
+                </button>
+                {{-- Branching is meaningless on a voyage lesson, whose spine is the route. --}}
+                @if (($lesson->game_type ?? null) !== 'voyage')
+                    <button type="button" wire:click="addScene('branch')"
+                            class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                        <x-lesson.scene-type-thumb kind="branch" />
+                        <span class="text-sm font-medium text-slate-200">Decision point</span>
+                    </button>
+                @endif
                 @if (($lesson->game_type ?? null) === 'voyage')
                     {{-- Drop the new leg's destination at the current map centre (fallback in PHP if none). --}}
                     <button type="button"
@@ -1922,7 +1974,7 @@
                             @endif
                             @if (! empty($art['correctness']))
                                 <span class="absolute left-1 top-1 rounded bg-emerald-600/90 px-1 text-[8px] font-semibold uppercase tracking-wider text-white"
-                                      title="{{ __('Match correctness — soft criteria met') }}">
+                                      title="{{ __('Match correctness: soft criteria met') }}">
                                     ✓ {{ $art['correctness'] }}
                                 </span>
                             @endif
@@ -1931,9 +1983,25 @@
                             </span>
                         </button>
                     @empty
-                        <p class="col-span-full py-10 text-center text-sm text-slate-400">
-                            {{ __('No paintings found — try a name, place or event (Dutch or English).') }}
-                        </p>
+                        {{-- When the curated corpus comes up empty, "try another word" is dead-end advice:
+                             the thing that actually finds obscure subjects is the Commons search, which
+                             sits in the footer below and went unnoticed. Point at it instead. --}}
+                        <div class="col-span-full py-10 text-center text-sm text-slate-400">
+                            @if ($paintingSearchThrottled)
+                                {{-- Wikimedia throttled us. Saying "not found" here would be a lie about
+                                     an archive that may well hold the painting. --}}
+                                <p>{{ __('Wikimedia is busy right now and asked us to slow down.') }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ __('Give it a few seconds, then search again.') }}</p>
+                            @elseif ($paintingCommonsLoaded)
+                                {{ __('No paintings found. Try a name, place or event, in Dutch or English.') }}
+                            @else
+                                <p>{{ __('Nothing in the curated collection matches that.') }}</p>
+                                <button type="button" wire:click="$set('paintingCommonsLoaded', true)"
+                                        class="btn btn-sm btn-outline mt-3 border-sky-500/60 text-sky-300 hover:border-sky-400 hover:text-sky-200">
+                                    {{ __('Search all of Wikimedia Commons') }}
+                                </button>
+                            @endif
+                        </div>
                     @endforelse
                 </div>
                 </div>
@@ -1965,7 +2033,11 @@
                     <p class="mt-1 text-[11px] text-rose-300">{{ $message }}</p>
                 @enderror
                 <p class="mt-3 text-[11px] text-slate-500">
-                    {{ __('Public-domain works from Wikimedia Commons — saved to this lesson and credited automatically. Or upload your own (JPG, PNG, WebP; max 8 MB).') }}
+                    {{-- Not "public-domain works": the license filter admits CC BY and CC BY-SA too
+                         (it only rejects NC/ND), so the grid genuinely serves openly licensed
+                         photographs alongside public-domain art. Saying "public domain" told
+                         teachers something false about what they were putting in front of a class. --}}
+                    {{ __('Public-domain and openly licensed works from Wikimedia Commons, saved to this lesson and credited automatically. Or upload your own (JPG, PNG, WebP; max 8 MB).') }}
                 </p>
                 @endif
                 </div>

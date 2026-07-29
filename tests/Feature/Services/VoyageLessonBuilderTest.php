@@ -6,9 +6,9 @@ namespace Tests\Feature\Services;
 
 use App\Models\Scene;
 use App\Models\User;
-use Illuminate\Support\Facades\File;
 use App\Services\VoyageLessonBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -75,8 +75,9 @@ class VoyageLessonBuilderTest extends TestCase
 
         $scenes = $lesson->scenes()->orderBy('order')->get();
         // intro (gallery) + 4 voyage legs + outro (gallery).
-        $this->assertCount(6, $scenes);
-        $this->assertSame(['gallery', 'voyage', 'voyage', 'voyage', 'voyage', 'gallery'], $scenes->pluck('kind')->all());
+        // intro story + the itinerary overview + 4 legs + outro story.
+        $this->assertCount(7, $scenes);
+        $this->assertSame(['gallery', 'voyage', 'voyage', 'voyage', 'voyage', 'voyage', 'gallery'], $scenes->pluck('kind')->all());
         $scenes->each(fn (Scene $s) => $this->assertSame('ready', $s->status));
 
         // A "real start": the intro is a standalone story slide (not a voyage map), with its own copy.
@@ -85,8 +86,12 @@ class VoyageLessonBuilderTest extends TestCase
         $this->assertNotEmpty($intro->config['story']);
         $this->assertArrayNotHasKey('leg', $intro->config, 'the intro is not a voyage leg');
 
+        // The itinerary comes before any sailing: whole route, every stop, no leg of its own.
+        $overview = $scenes->get(1);
+        $this->assertTrue((bool) ($overview->config['overview'] ?? false), 'the overview precedes the legs');
+
         // The voyage legs carry their leg index; only the first plays the space fly-in.
-        $legs = $scenes->slice(1, 4)->values();
+        $legs = $scenes->slice(2, 4)->values();
         $legs->each(fn (Scene $s, int $i) => $this->assertSame($i, $s->config['leg']));
         $this->assertTrue($legs[0]->config['intro']);
         $this->assertFalse($legs[1]->config['intro']);
@@ -106,7 +111,7 @@ class VoyageLessonBuilderTest extends TestCase
         $second = $b->build('columbus-1492', $teacher);
 
         $this->assertSame($first->id, $second->id, 'rebuilds the same lesson, not a duplicate');
-        $this->assertSame(6, $second->scenes()->count(), 'scenes rebuilt cleanly (not doubled)');
+        $this->assertSame(7, $second->scenes()->count(), 'scenes rebuilt cleanly (not doubled)');
     }
 
     public function test_build_rejects_an_unknown_voyage(): void

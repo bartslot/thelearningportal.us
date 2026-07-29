@@ -1,0 +1,29 @@
+{
+  "_comment": "How a voyage leg was travelled. One catalogue read by BOTH the map renderer (resources/js/timemap/voyage-ships.js) and the wizard's per-leg picker (App\\Livewire\\Wizard\\Step3SceneConfigurator), so adding a model here puts it in the picker and on the map at once. `terrain` splits the collection the picker offers: a sea leg is shown ships, a land leg is shown mounts. The id 'sea' is the default for any leg that does not say how it travelled. Thumbnails are rendered from the models themselves by tools/render_transport_thumbs.py.",
+  "transports": [
+    {
+      "id": "sea",
+      "label": "Ship",
+      "terrain": "water",
+      "model": "/timemap/assets/ship.fbx",
+      "thumb": "/timemap/assets/thumbs/sea.png",
+      "hint": "Sailed"
+    },
+    {
+      "id": "horse",
+      "label": "Horse",
+      "terrain": "land",
+      "model": "/timemap/assets/horse-walk.glb",
+      "thumb": "/timemap/assets/thumbs/horse.png",
+      "hint": "Rode overland"
+    },
+    {
+      "id": "camel",
+      "label": "Camel",
+      "terrain": "land",
+      "model": "/timemap/assets/camel-walk.glb",
+      "thumb": "/timemap/assets/thumbs/camel.png",
+      "hint": "Crossed desert or steppe"
+    }
+  ]
+}

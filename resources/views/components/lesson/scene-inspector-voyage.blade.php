@@ -1,4 +1,4 @@
-@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat'])
+@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => []])
 
 @php
     $config = $scene->config ?? [];
@@ -16,6 +16,15 @@
     $gallery = $config['gallery'] ?? [];
     $galleryImages = array_values($gallery['images'] ?? []);
     $rl = array_merge(['enabled' => true, 'color' => '#7c2d12', 'opacity' => 0.9, 'thickness' => 3, 'wobble' => 0.3, 'curve' => 'bezier'], $routeLine ?? []);
+
+    // How this leg was travelled. Transport belongs to the CROSSING, so it is edited per leg: the
+    // marker swaps at each landfall as the traveller comes ashore or puts to sea.
+    $legTransport = $legDef['transport'] ?? 'sea';
+    $legMarkerImage = $legDef['marker_image'] ?? '';
+    $transportById = collect($transports)->keyBy('id');
+    // Which collection to show: the leg's own choice decides, so a sea leg opens on ships and a
+    // desert crossing opens on mounts, with the other a click away.
+    $legTerrain = $transportById[$legTransport]['terrain'] ?? 'water';
 @endphp
 
 {{-- The voyage inspector is split into three tabs — Leg (this stop's content), Map (how the whole
@@ -30,9 +39,25 @@
             <x-lesson.icon-voyage class="h-5 w-5" />
             Route
         </h3>
-        @if ($legCount)
-            <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Waypoint {{ $legIndex + 1 }} / {{ $legCount }}</span>
-        @endif
+        <div class="flex items-center gap-1.5">
+            {{-- Zoom out to the whole trip from any leg, and back again. Purely a camera move on the
+                 live map — nothing is saved, so a teacher can check the shape of the voyage
+                 mid-edit without disturbing the scene they are working on. --}}
+            <button type="button"
+                    x-data="{ wide: false }"
+                    x-on:click="wide = !wide; wide ? window.__voyageTour?.showOverview?.() : window.__voyageTour?.hideOverview?.()"
+                    :class="wide ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:text-amber-300'"
+                    class="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition"
+                    :title="wide ? '{{ __('Back to this leg') }}' : '{{ __('See the whole voyage') }}'">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 5.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+                <span x-text="wide ? '{{ __('This leg') }}' : '{{ __('Whole trip') }}'"></span>
+            </button>
+            @if ($legCount)
+                <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Waypoint {{ $legIndex + 1 }} / {{ $legCount }}</span>
+            @endif
+        </div>
     </div>
 
     {{-- TABS --}}
@@ -112,6 +137,82 @@
             @endif
         </section>
 
+
+        {{-- TRAVELLED BY — the model (or picture) that crosses THIS leg. Per leg, not per stop: the
+             journey is what has a means of travel, so the marker swaps at the landfall where the
+             traveller comes ashore. Alpine owns which collection is on show; the choice itself is
+             saved server-side. Keyed per scene so the open collection doesn't leak between legs. --}}
+        @if ($legDef && count($transports))
+            <section class="border-t border-slate-700/50 pt-3"
+                     wire:key="transport-{{ $scene->id }}"
+                     x-data="{ terrain: '{{ $legTerrain }}' }">
+                <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
+                    Travelled by
+                </div>
+                <span class="mt-0.5 block text-[10px] text-slate-500">Just this leg — the marker swaps as the traveller reaches the coast.</span>
+
+                {{-- Water or land splits the collection: a sea crossing is offered ships, an overland
+                     stretch is offered mounts. --}}
+                <div role="tablist" class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-800/60 p-0.5">
+                    @foreach ([['water', 'By sea'], ['land', 'Overland']] as [$terrainKey, $terrainLabel])
+                        <button type="button" role="tab" x-on:click="terrain = '{{ $terrainKey }}'"
+                                :class="terrain === '{{ $terrainKey }}' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'"
+                                class="rounded-md py-1 text-[11px] font-medium transition-colors">{{ $terrainLabel }}</button>
+                    @endforeach
+                </div>
+
+                <div class="mt-2 grid grid-cols-3 gap-1.5">
+                    @foreach ($transports as $t)
+                        <button type="button"
+                                x-show="terrain === '{{ $t['terrain'] }}'" x-cloak
+                                wire:click="setLegTransport('{{ $t['id'] }}')"
+                                title="{{ $t['hint'] }}"
+                                @class([
+                                    'group flex flex-col items-center gap-1 rounded-lg border p-1.5 transition',
+                                    'border-amber-400 bg-amber-400/10 ring-2 ring-amber-400/60' => $legMarkerImage === '' && $legTransport === $t['id'],
+                                    'border-slate-700 bg-slate-900/60 hover:border-slate-500' => $legMarkerImage !== '' || $legTransport !== $t['id'],
+                                ])>
+                            <span class="flex aspect-square w-full items-center justify-center overflow-hidden rounded-md bg-slate-950/60">
+                                <img src="{{ $t['thumb'] }}" alt="" class="h-full w-full object-contain" loading="lazy" />
+                            </span>
+                            <span @class([
+                                'text-[10px] font-medium',
+                                'text-amber-300' => $legMarkerImage === '' && $legTransport === $t['id'],
+                                'text-slate-400' => $legMarkerImage !== '' || $legTransport !== $t['id'],
+                            ])>{{ $t['label'] }}</span>
+                        </button>
+                    @endforeach
+                </div>
+
+                {{-- A picture instead of a model, for the journeys no model covers (on foot, by sledge,
+                     by canoe). Drawn on the map as this same round portrait with its ring. --}}
+                <div class="mt-2.5 flex items-center gap-2 rounded-lg border border-slate-700/50 bg-slate-900/40 p-2">
+                    @if ($legMarkerImage !== '')
+                        <img src="{{ $legMarkerImage }}" alt=""
+                             class="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-amber-400" />
+                        <div class="min-w-0 flex-1">
+                            <p class="text-[11px] text-slate-300">A picture travels this leg.</p>
+                            <div class="mt-1 flex gap-2">
+                                <button type="button" wire:click="openMarkerImagePicker"
+                                        class="text-[11px] text-amber-300 underline hover:text-amber-200">Change</button>
+                                <button type="button" wire:click="clearLegMarkerImage"
+                                        class="text-[11px] text-slate-400 underline hover:text-slate-200">Use a model</button>
+                            </div>
+                        </div>
+                    @else
+                        <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-600 text-slate-600">
+                            <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M18 6.75h.008v.008H18V6.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6a2.25 2.25 0 0 1 2.25-2.25h15A2.25 2.25 0 0 1 21.75 6v12a2.25 2.25 0 0 1-2.25 2.25h-15A2.25 2.25 0 0 1 2.25 18V6Z"/></svg>
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-[11px] text-slate-400">No model for this journey?</p>
+                            <button type="button" wire:click="openMarkerImagePicker"
+                                    class="mt-1 text-[11px] text-amber-300 underline hover:text-amber-200">Use a picture instead</button>
+                        </div>
+                    @endif
+                </div>
+            </section>
+        @endif
 
         {{-- GALLERY / DESCRIPTION — the "just a description" layer. Opens as a modal over the map when
              the landfall hotspot (or a thumbnail) is clicked, so it lives in THIS voyage scene. --}}
@@ -418,6 +519,17 @@
                 <input type="checkbox" @checked($vmr('ship_anchored', false)) wire:change="setVoyageMap('ship_anchored', $event.target.checked)" class="toggle toggle-sm toggle-warning shrink-0" />
             </label>
 
+            {{-- How much the traveller moves on the spot. The rocking was tuned for an ocean and can
+                 read as too much on a big classroom screen, so the swing is adjustable — 0 parks the
+                 ship dead still on the water. --}}
+            <label class="mt-3 block">
+                <span class="flex justify-between text-[11px] text-slate-300">Animation <span class="text-slate-500">{{ (int) $vmr('motion', 100) }}%</span></span>
+                <input type="range" min="0" max="100" step="5" value="{{ (int) $vmr('motion', 100) }}"
+                       wire:change="setVoyageMap('motion', $event.target.value)"
+                       class="range range-xs range-warning mt-1" />
+                <span class="mt-0.5 flex justify-between text-[9px] text-slate-500"><span>Still</span><span>Full rock</span></span>
+            </label>
+
             {{-- Sailing zoom: how closely the camera follows the ship. 0 = tight on the ship + a small
                  island; 100 = a continental view (never the whole world). --}}
             <label class="mt-3 block">
@@ -503,6 +615,17 @@
         </details>
 
         {{-- Recover a route tangled by dragging — revert the geometry to the original catalog route. --}}
+        {{-- Undo the last route edit. Cmd-Z does the same thing; this is here so it is findable,
+             and because an accidental drag is exactly when nobody thinks to try a shortcut. --}}
+        <button type="button" wire:click="undoVoyage"
+                @disabled(! $this->canUndoVoyage)
+                class="mt-3 flex items-center gap-1.5 border-t border-slate-700/50 pt-3 text-[11px] transition
+                       {{ $this->canUndoVoyage ? 'text-slate-300 hover:text-amber-300' : 'cursor-not-allowed text-slate-600' }}">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"/></svg>
+            {{ __('Undo last route change') }}
+            <span class="ml-auto font-mono text-[10px] text-slate-500">⌘Z</span>
+        </button>
+
         <button type="button" wire:click="resetVoyageRoute"
                 wire:confirm="Reset the whole route to its original shape? Your dragged waypoints and bends will be discarded (dates, gallery and map settings stay)."
                 class="mt-2 flex items-center gap-1.5 border-t border-slate-700/50 pt-3 text-[11px] text-slate-400 hover:text-amber-300">
