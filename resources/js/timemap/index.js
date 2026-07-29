@@ -11,6 +11,7 @@ import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 import nationalColors from './national-colors.json';
+import { SATELLITE_SOURCE, DEM_SOURCE } from '../map-imagery.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -59,7 +60,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         land: { type: 'vector', tiles: [`${location.origin}/land-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         graticule: { type: 'geojson', data: `${location.origin}/timemap/graticule.geojson` },
         // Elevation for the subtle relief hillshade (free AWS terrain tiles, terrarium-encoded).
-        dem: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 12 },
+        dem: DEM_SOURCE,
+        // Real satellite ground for the Satellite style (keyless NASA GIBS Blue Marble). Hidden in
+        // every other style, so its tiles are never requested there.
+        satellite: SATELLITE_SOURCE,
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -72,6 +76,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
+        // Satellite ground — bottom of the stack, under the whole atlas. Satellite style only.
+        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time). Beneath the
         // coast/land. Recolored + toggled per style by applyMapStyle (atlas styles only).
         { id: 'graticule', type: 'line', source: 'graticule', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8a9aa0', 'line-width': 0.6, 'line-opacity': 0.5 } },
@@ -344,6 +350,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ],
       text: { color: '#33271a', halo: '#efe2c4' }, voyage: '#2f4e66', paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
     },
+    // Real satellite ground instead of a drawn one. `imagery` turns the raster on and the painted
+    // atlas ground (land fill, sea grid, coast shadow, lakes, ink hills/forests) off — the photo
+    // already shows all of that, relief and ocean depth included, so no hillshade either (over
+    // imagery it only lays a grey haze). Borders keep a light wash so territories still read.
+    'satellite': {
+      palette: NIGHT_PAL, imagery: true, water: '#08131f', land: '#26331d', fillOpacity: 0.22,
+      selected: '#f5c518', hover: '#e8cf94',
+      shore: { color: '#f6efdc', width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
+      line: { color: '#ffd9a0', width: 0.9, blur: 0.2 },
+      text: { color: '#241a10', halo: '#f2e9d4' }, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
+    },
     'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
@@ -406,6 +423,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ...NATIONAL_PAIRS,
         ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
           ...pal.flatMap((c, i) => [i, c]), pal[0]]]];
+    // Satellite: the photographed ground replaces the drawn one, so every layer that paints a
+    // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
+    const photo = !!s.imagery;
+    const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
+    vis('satellite', photo);
+    for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
+    // The bold ink shore would fence off a real coastline; keep it as a faint guide line.
+    if (map.getLayer('coast-bold')) map.setPaintProperty('coast-bold', 'line-opacity', photo ? 0.4 : 1);
     map.setPaintProperty('water', 'background-color', s.water);
     if (map.getLayer('lakes')) map.setPaintProperty('lakes', 'fill-color', s.water);
     // Lake edges track the coast tones: thin ink line all round + a deeper southern drop-shadow.

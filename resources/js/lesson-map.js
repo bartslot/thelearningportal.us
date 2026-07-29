@@ -15,6 +15,8 @@ import { addForestLayer } from './map-forests.js'
 import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
+import { mapTextProjector } from './map-text-projector.js'
+import { SATELLITE_SOURCE } from './map-imagery.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -30,15 +32,23 @@ const PALETTE = {
   coastShadow: '#8a7a5e',
 }
 
-// Map styles — the same four the Time-Map's palette offers (window.__applyMapStyle), reduced to
+// Map styles — the same five the Time-Map's palette offers (window.__applyMapStyle), reduced to
 // the layers the lesson map actually has. `terrain` hides the ink hill/forest glyphs on the dark
 // Night style (they vanish on a dark ground). Applied by applyStyle(); the block's chosen style
 // rides on scene config.map_style and renders identically in the wizard preview and the player.
+//
+// `imagery` swaps the drawn atlas for real satellite imagery: the raster + hillshade layers come on
+// and the painted ground (land fill, sea grid, coast shadow, lakes, ink glyphs) goes off, because
+// the photo already shows all of it. Labels flip to light-on-dark so they stay readable over it.
 const MAP_STYLES = {
   'soft-atlas': { land: '#efe6d0', water: '#c7d4c6', coast: '#2b2013', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true },
   'antique': { land: '#e8d6ac', water: '#dcdcba', coast: '#2a1d0c', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true },
   'pen-ink': { land: '#e6d6ad', water: '#dedec0', coast: '#211809', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true },
   'night': { land: '#1b2230', water: '#0f1420', coast: '#aeb9d4', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false },
+  // Dark label ink on a bright halo, like the atlas styles — over a photo that runs from dark ocean
+  // to bright desert, that pairing is the one that stays readable everywhere (and it survives a
+  // lesson's own dark label colour, which would vanish into a dark halo).
+  'satellite': { imagery: true, land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false },
 }
 const DEFAULT_STYLE = 'soft-atlas'
 
@@ -118,11 +128,16 @@ export function renderLessonMap (el, opts = {}) {
         },
         // True coastline for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
+        // Satellite style only — tiles are requested lazily, so the other styles pay nothing for it.
+        satellite: SATELLITE_SOURCE,
         // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
         'lesson-labels': { type: 'geojson', data: labelsFC(placeLabels) },
       },
       layers: [
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
+        // Real satellite ground (Satellite style only — hidden otherwise, so no tiles are fetched).
+        // Sits directly on the background: everything else in the atlas draws over it.
+        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time), beneath the coast/land.
         { id: 'graticule', type: 'line', source: 'graticule', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b9277', 'line-width': 0.55, 'line-opacity': 0.5 } },
         // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
@@ -377,6 +392,11 @@ export function renderLessonMap (el, opts = {}) {
     })
   }
 
+  // Paint the palette the moment the style is parsed, not at 'load' — 'load' also waits on every
+  // source, and a slow (or failing) tileset would leave the map sitting in the raw default colours
+  // with no satellite ground under a voyage. Idempotent, so the 'load' pass below still runs.
+  map.once('styledata', () => applyStyle(activeStyle))
+
   map.on('load', () => {
     setYear(year)
     applyStyle(activeStyle) // colour the base layers now (avoids a flash of the default palette)
@@ -541,13 +561,24 @@ export function renderLessonMap (el, opts = {}) {
     }
   }
 
-  // Recolour the map to one of the four styles (soft-atlas / antique / pen-ink / night). Idempotent
-  // and layer-guarded, so it is safe to re-run as the async terrain + historical-city layers arrive.
+  // Recolour the map to one of the five styles (soft-atlas / antique / pen-ink / night / satellite).
+  // Idempotent and layer-guarded, so it is safe to re-run as the async terrain + historical-city
+  // layers arrive.
   let activeStyle = MAP_STYLES[style] ? style : DEFAULT_STYLE
   function applyStyle (name) {
     activeStyle = MAP_STYLES[name] ? name : DEFAULT_STYLE
     const s = MAP_STYLES[activeStyle]
     const paint = (layer, prop, val) => { if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, val) } catch (_) {} } }
+    const vis = (layer, on) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none') } catch (_) {} } }
+    // Satellite: show the photographed ground and hide everything that draws a substitute for it.
+    const photo = !!s.imagery
+    vis('satellite', photo)
+    for (const drawn of ['land', 'graticule', 'coast-shadow', 'lakes']) vis(drawn, !photo)
+    // The ink shore would fence off a real coastline; keep it as a faint guide line instead.
+    paint('coast-bold', 'line-opacity', photo ? 0.4 : 1)
+    paint('coast-bold', 'line-width', photo
+      ? ['interpolate', ['linear'], ['zoom'], 1, 0.6, 4, 1.0, 7, 1.6]
+      : ['interpolate', ['linear'], ['zoom'], 1, 1.3, 4, 2.0, 7, 3.2])
     paint('bg', 'background-color', s.water)
     paint('graticule', 'line-color', s.grid)
     paint('coast-shadow', 'line-color', s.coastShadow)
@@ -592,31 +623,7 @@ export function renderLessonMap (el, opts = {}) {
      * Projector for map-pinned text labels: converts lng/lat ⇄ percentages of `hostEl`
      * (the text-overlay host, which may not share the map container's box).
      */
-    textProjector: (hostEl) => ({
-      project: (lng, lat) => {
-        try {
-          const pt = map.project([lng, lat])
-          const mr = map.getContainer().getBoundingClientRect()
-          const hr = hostEl.getBoundingClientRect()
-          if (!hr.width || !hr.height) return null
-          return {
-            x: ((mr.left + pt.x - hr.left) / hr.width) * 100,
-            y: ((mr.top + pt.y - hr.top) / hr.height) * 100,
-          }
-        } catch (_) { return null }
-      },
-      unproject: (xPct, yPct) => {
-        try {
-          const mr = map.getContainer().getBoundingClientRect()
-          const hr = hostEl.getBoundingClientRect()
-          const ll = map.unproject([
-            hr.left + (xPct / 100) * hr.width - mr.left,
-            hr.top + (yPct / 100) * hr.height - mr.top,
-          ])
-          return { lng: ll.lng, lat: ll.lat }
-        } catch (_) { return null }
-      },
-    }),
+    textProjector: (hostEl) => mapTextProjector(map, hostEl),
     setAnnotations: (a) => anno?.update(a),
     setPolity: (id) => setPolity(id),
     setStyle: (name) => applyStyle(name),
