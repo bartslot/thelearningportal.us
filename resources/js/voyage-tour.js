@@ -2,6 +2,7 @@ import { renderLessonMap } from './lesson-map.js';
 import { renderGallery } from './gallery-scene.js';
 import { EASE, EASING } from './easing.js';
 import { voyageRoutes, smooth, SAMPLES_PER_SEGMENT } from './timemap/voyages.js';
+import { midpointAlong, nearestPointOnPolyline, splitByWaypoints } from './timemap/route-edit.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
@@ -74,7 +75,7 @@ const hexToRgba = (hex, a) => {
 
 const ROUTE_LINE_DEFAULTS = { enabled: true, color: '#7c2d12', opacity: 0.9, thickness: 3, wobble: 0.3, curve: 'bezier' };
 
-export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null } = {}) {
+export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, style = null } = {}) {
   // Prefer the lesson's editable copy (game_config.voyage_def); fall back to the shared catalog.
   const route = def || voyageRoutes().find((v) => v.id === voyage);
   const pack = TOUR_PACKS[`./timemap/${voyage}-tour.json`]?.default
@@ -121,6 +122,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     qid: null, year: firstYear, interactive: editable, terrain: false,
     projection: view === 'flat' ? 'mercator' : 'globe',
     showCities: MO.cities, showBorders: MO.borders, labels: resolveLabels(),
+    // The lesson's map palette applies here exactly as it does to a plain map scene — a voyage is
+    // not a special case. Omitted → renderLessonMap's own default.
+    ...(style ? { style } : {}),
   });
   const map = inst.map;
   // Project a lng into the SAME world copy the camera is showing (like the ship in voyage-ships.js),
@@ -169,7 +173,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   let coastDrawOn = null;    // { svg, onMove } — the landfall coastline draw-on (fog-of-war only)
   let arrivalPins = [];      // current landfall polaroid pins (tracked so a live refresh can replace them)
   let arrivalHotspot = null; // current gallery-opener button
-  let arrivalHandles = [];   // editor-only draggable endpoint / bend handles + the hover ghost
+  let arrivalHandles = [];   // editor-only handles anchored to a coordinate (destination, bends, ghost)
+  let layoutInsertHandles = null; // editor-only: re-place the derived midpoint handles after a camera move
   let legHoverMove = null;   // editor-only map 'mousemove' handler that reveals the hover-bend ghost
   let legHoverHide = null;   // editor-only map 'zoom' handler that hides the ghost while zooming
   // The teacher-painted regions as a drawable FeatureCollection (each ring → a polygon).
@@ -208,8 +213,15 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   // along the path, so every time the path got longer each sample landed somewhere new and the
   // whole line wriggled — most obvious at higher wobble settings. Fixed geometry + a moving
   // gradient stop gives a line that sits still and simply appears under the ship.
+  /**
+   * The coordinates last handed to the trail layer — the line the teacher actually sees, wobble and
+   * all. The route editor hit-tests against THIS, never against the raw waypoints, so a handle can
+   * never sit beside the line it is supposed to bend.
+   */
+  let drawnCoords = [];
+
   const trailFeature = (fEnd = 1) => {
-    const pts = [];
+    let pts = [];
     if (RL.curve === 'straight') {
       const startWp = route.legs[0].wp[0];
       for (let w = startWp; w <= L.def.wp[1]; w++) {
@@ -219,11 +231,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       const c = ships.pointAt(voyage, fEnd);
       pts.push([c.lng, c.lat]);
     } else {
-      const N = 120;
-      for (let k = 0; k <= N; k++) {
-        const q = ships.pointAt(voyage, fEnd * (k / N));
-        pts.push([q.lng, q.lat]);
-      }
+      // The SAME spline the ship sails, at its own sampling: waypoint w is sample w * SAMPLES_PER_SEGMENT.
+      // Sampling by even fractions instead (as this used to) put no vertex on any waypoint, so the
+      // wobble envelope below — which is keyed to that stride — never returned to zero at a waypoint
+      // and dragged the drawn line sideways off the very points its handles sit on.
+      pts = smooth(route.waypoints.map((p) => p.slice()));
     }
     const w = Number(RL.wobble) || 0;
     if (w > 0 && pts.length > 2) {
@@ -242,10 +254,17 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         out[i][0] += -dy * off;
         out[i][1] += dx * off;
       }
+      drawnCoords = out;
       return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: out } };
     }
+    drawnCoords = pts;
     return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
   };
+
+  /** Where waypoint `w` sits in drawnCoords. The spline emits SAMPLES_PER_SEGMENT points per pair. */
+  const vertexIndexOfWaypoint = (w) => (RL.curve === 'straight'
+    ? Math.max(0, w - (route.legs[0].wp[0] || 0))
+    : w * SAMPLES_PER_SEGMENT);
   /**
    * Reveal the trail up to `f`: sailed path fades in behind the ship, nothing drawn ahead of it.
    *
@@ -334,7 +353,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
     if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
     Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place) c.remove(); });
-    arrivalPins = []; arrivalHotspot = null; arrivalHandles = [];
+    arrivalPins = []; arrivalHotspot = null; arrivalHandles = []; layoutInsertHandles = null;
   };
 
   // (Re)build the landfall pins + hotspot for the CURRENT leg at the CURRENT camera. No camera move,
@@ -442,6 +461,18 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       hotspot.addEventListener('pointercancel', () => { down = null; dragged = false; hotspot.style.cursor = 'pointer'; });
     }
 
+    // Put every handle back on the line: the coordinate-anchored ones by projecting their point, the
+    // derived midpoints by re-splitting the drawn line. Runs after a camera move and after each drag.
+    const layoutHandles = () => {
+      arrivalHandles.forEach((h) => {
+        if (!h._geo) return;
+        const q = map.project([sameCopyLng(h._geo.lng), h._geo.lat]);
+        h.style.left = `${q.x}px`; h.style.top = `${q.y}px`;
+        h._px = { x: q.x, y: q.y };
+      });
+      if (layoutInsertHandles) layoutInsertHandles();
+    };
+
     // Editor: reshape THIS leg's route by hand. The DESTINATION (amber X) is always shown — drag it to
     // set where the leg ends. To route the ship AROUND land (e.g. through Gibraltar) the teacher hovers
     // the route line: a rounded "bend" handle appears under the cursor, and dragging it bends the line
@@ -483,7 +514,82 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         try { if (RL.enabled) map.setLayoutProperty('voyage-trail', 'visibility', 'visible'); } catch (_) {}
       };
 
-      // ── The always-on amber Destination X (the leg's landfall) — dragging previews + persists. ──
+      // ── One drag implementation, shared by every handle ────────────────────────────────────
+      // Handles differ only in what they describe (move THIS waypoint / insert after THAT one) and
+      // what they persist. The rest — the few pixels that separate a click from a drag, the live
+      // preview, pointer capture so the drag survives leaving the dot, Esc to abandon — is the same
+      // for all of them, and used to exist as two drifting copies.
+      const DRAG_PX = 3;
+      const makeDraggable = (el, { describe, commit }) => {
+        let down = null; let moved = false; let desc = null; let geo = null;
+
+        const onKey = (e) => {
+          if (e.key !== 'Escape' || !down) return;
+          e.preventDefault(); e.stopPropagation();
+          finish(false);
+        };
+        function finish(persist) {
+          if (!down) return;
+          const wasMoved = moved; const d = desc; const g = geo;
+          down = null; moved = false; desc = null; geo = null;
+          el.style.cursor = 'grab';
+          document.removeEventListener('keydown', onKey, true);
+          if (!wasMoved) return;
+          endPreview();
+          layoutHandles();            // Esc (or a committed drag) snaps the dot back onto the line
+          if (persist && d && g) { try { commit(d, g); } catch (_) { /* the host decides */ } }
+        }
+
+        el.addEventListener('pointerdown', (e) => {
+          if (e.button) return;       // left button only; right-click belongs to the map
+          desc = describe();
+          if (!desc) return;
+          down = { x: e.clientX, y: e.clientY }; moved = false; geo = null;
+          try { el.setPointerCapture(e.pointerId); } catch (_) { /* older Safari */ }
+          document.addEventListener('keydown', onKey, true);
+          e.preventDefault(); e.stopPropagation();
+        });
+        el.addEventListener('pointermove', (e) => {
+          if (!down) return;
+          if (!moved && Math.hypot(e.clientX - down.x, e.clientY - down.y) > DRAG_PX) {
+            moved = true; el.style.cursor = 'grabbing'; beginPreview();
+          }
+          if (!moved) return;
+          const cr = map.getContainer().getBoundingClientRect();
+          const x = e.clientX - cr.left; const y = e.clientY - cr.top;
+          const c = map.unproject([x, y]);
+          geo = { lng: c.lng, lat: c.lat };
+          el.style.left = `${x}px`; el.style.top = `${y}px`;
+          updatePreview(desc, geo);
+        });
+        el.addEventListener('pointerup', () => finish(true));
+        el.addEventListener('pointercancel', () => finish(false));
+      };
+
+      // ── Handle chrome: a small dot inside a much larger invisible hit box ───────────────────
+      // The visible dot stays small so it doesn't hide the coastline underneath, while the button
+      // around it is a comfortable target for a mouse and a finger alike.
+      const HIT_PX = 28;
+      const makeDot = (kind) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.voyageEndpoint = kind;   // 'bend' = an existing point · 'insert' = adds a new one
+        b.style.cssText = `position:absolute;width:${HIT_PX}px;height:${HIT_PX}px;transform:translate(-50%,-50%);`
+          + 'display:flex;align-items:center;justify-content:center;background:none;border:none;padding:0;'
+          + 'cursor:grab;pointer-events:auto;touch-action:none;z-index:22;';
+        const solid = kind === 'bend';
+        const dot = document.createElement('span');
+        dot.style.cssText = `width:${solid ? 13 : 11}px;height:${solid ? 13 : 11}px;border-radius:9999px;pointer-events:none;`
+          + `border:${solid ? 3 : 2}px solid #fff;background:${solid ? '#3b82f6' : 'rgba(59,130,246,.55)'};`
+          + 'box-shadow:0 1px 5px rgba(0,0,0,.5);transition:transform 120ms ease-out;';
+        b.appendChild(dot);
+        // Grow on hover so it is obvious which dot the cursor has, the way every vector editor does.
+        b.addEventListener('pointerenter', () => { dot.style.transform = 'scale(1.35)'; });
+        b.addEventListener('pointerleave', () => { dot.style.transform = 'scale(1)'; });
+        return b;
+      };
+
+      // ── The always-on amber Destination X (the leg's landfall) ─────────────────────────────
       const destWp = route.waypoints[endIdx];
       if (Array.isArray(destWp)) {
         const h = document.createElement('button');
@@ -499,119 +605,124 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           + 'color:#fbbf24;font-size:10px;font-weight:600;letter-spacing:.02em;padding:1px 7px;border-radius:9999px;white-space:nowrap;'
           + 'box-shadow:0 1px 4px rgba(0,0,0,.5);line-height:1.5;">Destination</span>';
         h._geo = { lng: destWp[0], lat: destWp[1] };
-        const desc = { mode: 'move', wpIndex: endIdx };
-        let down = null; let moved = false;
-        h.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; moved = false; try { h.setPointerCapture(e.pointerId); } catch (_) {} h.style.cursor = 'grabbing'; e.preventDefault(); e.stopPropagation(); });
-        h.addEventListener('pointermove', (e) => {
-          if (!down) return;
-          if (!moved && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3) { moved = true; beginPreview(); }
-          if (!moved) return;
-          const cr = map.getContainer().getBoundingClientRect();
-          const c = map.unproject([e.clientX - cr.left, e.clientY - cr.top]);
-          h._geo = { lng: c.lng, lat: c.lat };
-          h.style.left = `${e.clientX - cr.left}px`; h.style.top = `${e.clientY - cr.top}px`;
-          updatePreview(desc, h._geo);
+        makeDraggable(h, {
+          describe: () => ({ mode: 'move', wpIndex: endIdx }),
+          commit: (d, g) => onEndpointMove(d.wpIndex, g.lng, g.lat),
         });
-        const end = () => { if (!down) return; const wasMove = moved; down = null; moved = false; h.style.cursor = 'grab'; if (wasMove) { endPreview(); try { onEndpointMove(endIdx, h._geo.lng, h._geo.lat); } catch (_) {} } };
-        h.addEventListener('pointerup', end);
-        h.addEventListener('pointercancel', () => { if (down) { endPreview(); } down = null; moved = false; h.style.cursor = 'grab'; });
         hud.appendChild(h);
         arrivalHandles.push(h);
       }
 
-      // ── Hover-to-bend: one ghost handle that snaps to the route line under the cursor. ──
-      const GRAB_PX = 12;     // cursor must be this close to the drawn line for the ghost to appear
-      const VERTEX_PX = 12;   // …and this close to an existing bend to grab it (move) vs. insert new
-      const ghost = document.createElement('button');
-      ghost.type = 'button';
-      ghost.dataset.voyageEndpoint = 'bend';
+      // ── A permanent dot on every bend this leg already has ─────────────────────────────────
+      // These used to appear only while the cursor was within 12px of the line, so a teacher had no
+      // way to know the route was editable — and the hit test ran against the un-wobbled track, so
+      // hovering the line they could see often revealed nothing at all.
+      for (let w = startIdx + 1; w < endIdx; w++) {
+        const wp = route.waypoints[w];
+        if (!Array.isArray(wp)) continue;
+        const h = makeDot('bend');
+        h.dataset.voyageHandle = 'vertex';
+        h.dataset.wpIndex = String(w);
+        h.title = onWaypointRemove ? 'Drag to reshape · double-click to remove' : 'Drag to reshape the route';
+        h._geo = { lng: wp[0], lat: wp[1] };
+        makeDraggable(h, {
+          describe: () => ({ mode: 'move', wpIndex: w }),
+          commit: (d, g) => onEndpointMove(d.wpIndex, g.lng, g.lat),
+        });
+        if (onWaypointRemove) {
+          h.addEventListener('dblclick', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            try { onWaypointRemove(w); } catch (_) { /* the host decides */ }
+          });
+        }
+        hud.appendChild(h);
+        arrivalHandles.push(h);
+      }
+
+      // ── A faded dot half way along every segment: drag it to add a bend there ───────────────
+      const MIN_RUN_PX = 36;   // below this a midpoint dot would just crowd its neighbours
+      const insertHandles = [];
+      // The leg as it is DRAWN (wobble and all), in screen pixels — the single source of truth for
+      // where a handle belongs and for what the cursor is pointing at.
+      const legScreenPts = () => {
+        const a = Math.max(0, vertexIndexOfWaypoint(startIdx));
+        const b = Math.min(drawnCoords.length - 1, vertexIndexOfWaypoint(endIdx));
+        if (!(b > a)) return [];
+        return drawnCoords.slice(a, b + 1).map(([lng, lat]) => map.project([sameCopyLng(lng), lat]));
+      };
+      const legWaypointPts = () => {
+        const out = [];
+        for (let w = startIdx; w <= endIdx; w++) {
+          const p = route.waypoints[w];
+          if (Array.isArray(p)) out.push(map.project([sameCopyLng(p[0]), p[1]]));
+        }
+        return out;
+      };
+      for (let w = startIdx; w < endIdx; w++) {
+        const h = makeDot('insert');
+        h.dataset.voyageHandle = 'midpoint';
+        h.dataset.afterWpIndex = String(w);
+        h.title = 'Drag to bend the route around land';
+        makeDraggable(h, {
+          describe: () => ({ mode: 'insert', afterWpIndex: w }),
+          commit: (d, g) => onWaypointInsert && onWaypointInsert(d.afterWpIndex, g.lng, g.lat),
+        });
+        hud.appendChild(h);
+        insertHandles.push(h);
+      }
+
+      // ── Grab the line anywhere: a ghost dot rides the route under the cursor ────────────────
+      const GRAB_PX = 14;   // how close the cursor must be to the drawn line
+      const ghost = makeDot('insert');
+      ghost.dataset.voyageHandle = 'ghost';
       ghost.title = 'Drag to bend the route around land';
-      ghost.style.cssText = 'position:absolute;width:15px;height:15px;transform:translate(-50%,-50%);border-radius:9999px;border:3px solid #fff;'
-        + 'background:rgba(59,130,246,.95);box-shadow:0 1px 6px rgba(0,0,0,.55);cursor:grab;pointer-events:auto;touch-action:none;z-index:22;display:none;';
-      ghost._geo = null;
+      ghost.style.display = 'none';
+      let ghostDesc = null;
+      makeDraggable(ghost, {
+        describe: () => ghostDesc,
+        commit: (d, g) => onWaypointInsert && onWaypointInsert(d.afterWpIndex, g.lng, g.lat),
+      });
       hud.appendChild(ghost);
-      arrivalHandles.push(ghost);
 
-      // Nearest point on the drawn leg line (sampled from the same track geometry the trail uses), or
-      // null when the cursor is too far. Also resolves the raw segment → the waypoint to insert after.
-      const SAMPLES = 72;
-      const nearestOnLeg = (px, py) => {
-        let best = null;
-        for (let k = 0; k <= SAMPLES; k++) {
-          const f = f0 + (f1 - f0) * (k / SAMPLES);
-          const g = ships.pointAt(voyage, f);
-          if (!g) continue;
-          const q = map.project([sameCopyLng(g.lng), g.lat]);
-          const d = Math.hypot(q.x - px, q.y - py);
-          if (!best || d < best.d) best = { d, x: q.x, y: q.y, lng: g.lng, lat: g.lat, f };
-        }
-        if (!best || best.d > GRAB_PX) return null;
-        let afterWpIndex = startIdx;
-        for (let w = startIdx; w < endIdx; w++) {
-          if (ships.fractionAtWaypoint(voyage, w) <= best.f + 1e-9) afterWpIndex = w; else break;
-        }
-        return { x: best.x, y: best.y, lng: best.lng, lat: best.lat, afterWpIndex };
+      /** Which waypoint precedes vertex `i` of the leg's drawn polyline. */
+      const waypointBefore = (i) => {
+        const per = RL.curve === 'straight' ? 1 : SAMPLES_PER_SEGMENT;
+        return Math.max(startIdx, Math.min(endIdx - 1, startIdx + Math.floor(i / per)));
       };
-      // Existing bend under the cursor (strictly between the leg's start and its destination)?
-      const nearBend = (px, py) => {
-        for (let w = startIdx + 1; w < endIdx; w++) {
-          const wp = route.waypoints[w];
-          if (!Array.isArray(wp)) continue;
-          const q = map.project([sameCopyLng(wp[0]), wp[1]]);
-          if (Math.hypot(q.x - px, q.y - py) <= VERTEX_PX) return { wpIndex: w, lng: wp[0], lat: wp[1] };
-        }
-        return null;
-      };
+      /** True when (px, py) is already inside a real handle's hit box — that handle wins. */
+      const overHandle = (px, py) => arrivalHandles.concat(insertHandles).some((h) => {
+        if (!h._px || h.style.display === 'none') return false;
+        return Math.abs(h._px.x - px) <= HIT_PX / 2 && Math.abs(h._px.y - py) <= HIT_PX / 2;
+      });
+      const hideGhost = () => { ghost.style.display = 'none'; ghostDesc = null; };
 
-      let ghostDesc = null;   // {mode:'move',wpIndex} | {mode:'insert',afterWpIndex} — set on hover
       legHoverMove = (e) => {
         if (previewing) return;
-        // Never reveal the ghost while a button is held — the teacher is panning the map or dragging
-        // another handle (e.g. the info hotspot); popping a bend handle under the cursor would hijack it.
-        if (e.originalEvent && e.originalEvent.buttons) { ghost.style.display = 'none'; ghostDesc = null; return; }
-        const px = e.point.x; const py = e.point.y;
-        const bend = nearBend(px, py);
-        const hit = bend ? { x: null, y: null, lng: bend.lng, lat: bend.lat } : nearestOnLeg(px, py);
-        if (!hit) { ghost.style.display = 'none'; ghostDesc = null; return; }
-        const q = map.project([sameCopyLng(hit.lng), hit.lat]);
-        ghost.style.left = `${q.x}px`; ghost.style.top = `${q.y}px`; ghost.style.display = '';
-        ghost._geo = { lng: hit.lng, lat: hit.lat };
-        ghostDesc = bend ? { mode: 'move', wpIndex: bend.wpIndex } : { mode: 'insert', afterWpIndex: hit.afterWpIndex };
+        // Never pop the ghost while a button is held — the teacher is panning the map or dragging
+        // another handle, and a dot appearing under the cursor would hijack it.
+        if ((e.originalEvent && e.originalEvent.buttons) || overHandle(e.point.x, e.point.y)) { hideGhost(); return; }
+        const hit = nearestPointOnPolyline(e.point.x, e.point.y, legScreenPts());
+        if (!hit || hit.d > GRAB_PX) { hideGhost(); return; }
+        ghost.style.left = `${hit.x}px`; ghost.style.top = `${hit.y}px`; ghost.style.display = '';
+        ghost._px = { x: hit.x, y: hit.y };
+        ghostDesc = { mode: 'insert', afterWpIndex: waypointBefore(hit.index) };
       };
-      legHoverHide = () => { if (!previewing) { ghost.style.display = 'none'; ghostDesc = null; } };
+      legHoverHide = () => { if (!previewing) hideGhost(); };
       map.on('mousemove', legHoverMove);
       map.on('zoom', legHoverHide);
       map.on('movestart', legHoverHide);
 
-      let gDown = null; let gMoved = false; let gDesc = null;
-      ghost.addEventListener('pointerdown', (e) => {
-        if (!ghostDesc) return;
-        gDown = { x: e.clientX, y: e.clientY }; gMoved = false; gDesc = ghostDesc;
-        try { ghost.setPointerCapture(e.pointerId); } catch (_) {}
-        ghost.style.cursor = 'grabbing'; e.preventDefault(); e.stopPropagation();
-      });
-      ghost.addEventListener('pointermove', (e) => {
-        if (!gDown) return;
-        if (!gMoved && Math.hypot(e.clientX - gDown.x, e.clientY - gDown.y) > 3) { gMoved = true; beginPreview(); }
-        if (!gMoved) return;
-        const cr = map.getContainer().getBoundingClientRect();
-        const c = map.unproject([e.clientX - cr.left, e.clientY - cr.top]);
-        ghost._geo = { lng: c.lng, lat: c.lat };
-        ghost.style.left = `${e.clientX - cr.left}px`; ghost.style.top = `${e.clientY - cr.top}px`;
-        updatePreview(gDesc, ghost._geo);
-      });
-      const endGhost = () => {
-        if (!gDown) return;
-        const wasMove = gMoved; const desc = gDesc; const geo = ghost._geo;
-        gDown = null; gMoved = false; gDesc = null; ghost.style.cursor = 'grab'; ghost.style.display = 'none';
-        if (!wasMove) return;
-        endPreview();
-        if (!geo) return;
-        if (desc.mode === 'move') { try { onEndpointMove(desc.wpIndex, geo.lng, geo.lat); } catch (_) {} }
-        else if (onWaypointInsert) { try { onWaypointInsert(desc.afterWpIndex, geo.lng, geo.lat); } catch (_) {} }
+      // Midpoints are derived from the projected line, so they are re-placed after every camera move.
+      layoutInsertHandles = () => {
+        const runs = splitByWaypoints(legScreenPts(), legWaypointPts());
+        insertHandles.forEach((h, i) => {
+          const run = runs[i];
+          const mid = run ? midpointAlong(run.pts) : null;
+          if (!mid || mid.length < MIN_RUN_PX) { h.style.display = 'none'; h._px = null; return; }
+          h.style.display = ''; h.style.left = `${mid.x}px`; h.style.top = `${mid.y}px`;
+          h._px = { x: mid.x, y: mid.y };
+        });
       };
-      ghost.addEventListener('pointerup', endGhost);
-      ghost.addEventListener('pointercancel', endGhost);
     }
 
     placeMarkers = () => {
@@ -625,7 +736,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           hotspot.style.left = `${p.x + 46}px`; hotspot.style.top = `${p.y + 12}px`;
         }
       }
-      arrivalHandles.forEach((h) => { if (!h._geo) return; const q = map.project([sameCopyLng(h._geo.lng), h._geo.lat]); h.style.left = `${q.x}px`; h.style.top = `${q.y}px`; });
+      layoutHandles();
     };
     placeMarkers();
     map.on('move', placeMarkers);
@@ -910,7 +1021,13 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       unknown: [...PAINTED], beforeId: 'voyage-ships', samplePoint: (t) => ships.pointAt(voyage, t), waterColor: readWater(),
       auto: !!MO.fog_auto, knownBoxes: fogKnownBoxes, worldBox: fogWorldBox,
     });
-    onMapStyle = () => { if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60); };
+    // Repaint the map to the chosen palette IN PLACE (never a re-mount), then follow it with the
+    // fog: undiscovered sea is painted in the style's water colour, so it has to be read after.
+    onMapStyle = (e) => {
+      const name = e && e.detail && e.detail.name;
+      if (name) { try { inst.setStyle(name); } catch (_) { /* map not ready */ } }
+      if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60);
+    };
     window.addEventListener('lessonmap:style', onMapStyle);
     // Route trail line — sits just above the land/coast but BELOW every text label, so place names
     // (and city names) read cleanly on top of the sailed route instead of being struck through.

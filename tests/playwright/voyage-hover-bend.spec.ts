@@ -33,7 +33,7 @@ test('hovering the route line reveals the bend ghost handle', async ({ page }) =
   });
 
   const ghostVisible = () => page.evaluate(() =>
-    [...document.querySelectorAll('#lesson-map-preview [data-voyage-endpoint="bend"]')]
+    [...document.querySelectorAll('#lesson-map-preview [data-voyage-handle="ghost"]')]
       .some((e) => (e as HTMLElement).style.display !== 'none'));
 
   // Sweep a small grid around the destination; the line runs through it, so some cursor point lands
@@ -50,5 +50,16 @@ test('hovering the route line reveals the bend ghost handle', async ({ page }) =
   }
 
   expect(revealed, 'the bend ghost appears while hovering the route line').toBe(true);
+
+  // …and it appears ON the line, not beside it — the whole point of the hit test.
+  const ghostOnLine = await page.evaluate(() => {
+    const g = document.querySelector('#lesson-map-preview [data-voyage-handle="ghost"]') as HTMLElement;
+    const x = parseFloat(g.style.left);
+    const y = parseFloat(g.style.top);
+    return (window as any).__voyageTour.map
+      .queryRenderedFeatures([[x - 6, y - 6], [x + 6, y + 6]], { layers: ['voyage-trail'] }).length > 0;
+  });
+  expect(ghostOnLine, 'the ghost snaps onto the drawn route line').toBe(true);
+
   expect(errors, errors.join('\n')).toHaveLength(0);
 });

@@ -1117,13 +1117,13 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
-     * Lesson-wide map palette (soft-atlas / antique / pen-ink / night) — one setting for every
-     * map block in the lesson, mirroring the front-end Time-Map's four styles. Clears any per-block
-     * override on the selected scene so the lesson choice is what shows.
+     * Lesson-wide map palette (soft-atlas / antique / pen-ink / night / satellite) — one setting for
+     * every map block in the lesson, mirroring the front-end Time-Map's five styles. Clears any
+     * per-block override on the selected scene so the lesson choice is what shows.
      */
     public function setLessonMapStyle(string $name): void
     {
-        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night'];
+        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night', 'satellite'];
         $this->lesson->update(['map_style' => in_array($name, $allowed, true) ? $name : 'soft-atlas']);
 
         if ($this->selectedScene && ($this->selectedScene['config']['map_style'] ?? null) !== null) {
@@ -1983,6 +1983,48 @@ class Step3SceneConfigurator extends Component
             }
             if ((int) $L['wp'][1] >= $insertAt) {
                 $L['wp'][1] = (int) $L['wp'][1] + 1;
+            }
+        }
+        unset($L);
+
+        $gc['voyage_def']['waypoints'] = $wps;
+        $gc['voyage_def']['legs'] = $legs;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+        $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /**
+     * Drop a bend the teacher double-clicked on the map. Only an INTERIOR point of the current leg
+     * may go: its start is the previous landfall and its end is this leg's landfall, and removing
+     * either would re-route a different scene.
+     */
+    #[On('voyageWaypointRemoved')]
+    public function removeVoyageWaypoint(int $sceneId, int $wpIndex): void
+    {
+        if (! $this->selectedScene || (int) ($this->selectedScene['id'] ?? 0) !== $sceneId) {
+            return;
+        }
+        $leg = (int) ($this->selectedScene['config']['leg'] ?? 0);
+        // Push BEFORE materialising, exactly like the drag/insert handlers: ensureVoyageDef() re-reads
+        // game_config, so the undo entry survives instead of being clobbered by a stale copy.
+        $this->pushVoyageUndo();
+        $gc = $this->ensureVoyageDef();
+        $wp = $gc['voyage_def']['legs'][$leg]['wp'] ?? null;
+        if (! is_array($wp) || $wpIndex <= (int) $wp[0] || $wpIndex >= (int) $wp[1] || ! isset($gc['voyage_def']['waypoints'][$wpIndex])) {
+            return;
+        }
+
+        $wps = array_values($gc['voyage_def']['waypoints']);
+        $legs = array_values($gc['voyage_def']['legs']);
+        array_splice($wps, $wpIndex, 1);
+        foreach ($legs as &$L) {
+            if ((int) $L['wp'][0] > $wpIndex) {
+                $L['wp'][0] = (int) $L['wp'][0] - 1;
+            }
+            if ((int) $L['wp'][1] > $wpIndex) {
+                $L['wp'][1] = (int) $L['wp'][1] - 1;
             }
         }
         unset($L);

@@ -1,14 +1,20 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * In the editor each voyage leg shows ONE always-visible draggable destination X (the FROM is always
- * the previous landfall). Bends (to route around land) are added by hovering the route line — a ghost
- * handle appears under the cursor — so no permanent bend dots clutter the map.
+ * The route-editing handles a voyage leg shows, and — the part that actually broke — WHERE they sit.
+ *
+ * Every handle must land on the line drawn on screen. The trail is smoothed and wobbled, so handles
+ * derived from the raw waypoints used to sit beside it: hovering the line a teacher could see
+ * revealed nothing, and the dots that did appear were not on it.
+ *
+ * Layout (the convention map editors share): one destination X, a solid dot on each existing bend, a
+ * faded dot half way along each segment that adds a bend, plus one ghost that rides the line under
+ * the cursor and stays hidden at rest.
  */
 const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
 const SCENE = 39; // a voyage leg
 
-test('voyage legs expose a draggable destination handle', async ({ page }) => {
+test('voyage legs expose route handles that sit on the drawn line', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const errors: string[] = [];
@@ -23,6 +29,7 @@ test('voyage legs expose a draggable destination handle', async ({ page }) => {
   await page.waitForFunction(() =>
     document.querySelectorAll('#lesson-map-preview [data-voyage-endpoint="to"]').length >= 1,
     { timeout: 30_000 });
+  await page.waitForTimeout(1500);   // let the camera settle so projected positions are stable
 
   const dest = await page.evaluate(() =>
     [...document.querySelectorAll('#lesson-map-preview [data-voyage-endpoint="to"]')]
@@ -31,14 +38,34 @@ test('voyage legs expose a draggable destination handle', async ({ page }) => {
   expect(/destination/i.test(dest[0].label || ''), 'labelled Destination').toBe(true);
   expect(dest[0].hasX, 'rendered as an X').toBe(true);
 
-  // The hover-to-bend ghost handle exists for the leg, but stays HIDDEN until the teacher hovers the
-  // route line (so the map isn't cluttered with permanent dots). One ghost per leg, display:none at rest.
-  const ghost = await page.evaluate(() => {
-    const els = [...document.querySelectorAll('#lesson-map-preview [data-voyage-endpoint="bend"]')] as HTMLElement[];
-    return { count: els.length, hidden: els.every((e) => e.style.display === 'none') };
+  const handles = await page.evaluate(() => {
+    const pick = (sel: string) => [...document.querySelectorAll(`#lesson-map-preview ${sel}`)] as HTMLElement[];
+    const visible = (e: HTMLElement) => e.style.display !== 'none' && !!e.style.left;
+    return {
+      midpoints: pick('[data-voyage-handle="midpoint"]').filter(visible).length,
+      ghosts: pick('[data-voyage-handle="ghost"]').length,
+      ghostHidden: pick('[data-voyage-handle="ghost"]').every((e) => e.style.display === 'none'),
+    };
   });
-  expect(ghost.count, 'exactly one hover-bend ghost handle').toBe(1);
-  expect(ghost.hidden, 'ghost is hidden until the line is hovered').toBe(true);
+  expect(handles.midpoints, 'a midpoint handle on every segment of the leg').toBeGreaterThanOrEqual(1);
+  expect(handles.ghosts, 'exactly one hover ghost').toBe(1);
+  expect(handles.ghostHidden, 'the ghost stays hidden until the line is hovered').toBe(true);
+
+  // The regression guard: query the rendered trail under each visible handle. A handle that drifted
+  // off the drawn line — the old bug — finds no feature there.
+  const offLine = await page.evaluate(() => {
+    const map = (window as any).__voyageTour.map;
+    const sel = '#lesson-map-preview [data-voyage-endpoint]';
+    return ([...document.querySelectorAll(sel)] as HTMLElement[])
+      .filter((h) => h.style.display !== 'none' && h.style.left)
+      .filter((h) => {
+        const x = parseFloat(h.style.left);
+        const y = parseFloat(h.style.top);
+        return map.queryRenderedFeatures([[x - 6, y - 6], [x + 6, y + 6]], { layers: ['voyage-trail'] }).length === 0;
+      })
+      .map((h) => `${h.dataset.voyageHandle || h.dataset.voyageEndpoint} @ ${h.style.left},${h.style.top}`);
+  });
+  expect(offLine, `every handle sits on the drawn route line (off: ${offLine.join(' · ')})`).toHaveLength(0);
 
   expect(errors, errors.join('\n')).toHaveLength(0);
 });
