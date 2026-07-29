@@ -11,22 +11,48 @@ import voyagesData from './voyages.json';
 
 // Catmull-Rom spline through the hand-curated waypoints so routes read as drawn curves, not
 // dot-to-dot segments. `per` = interpolated points per waypoint pair.
-export const smooth = (points, per = 10) => {
+/**
+ * Samples emitted per waypoint segment. Waypoint i therefore lands on sample i * SAMPLES_PER_SEGMENT,
+ * which is how the tour maps a track fraction back to a waypoint — import this rather than
+ * hard-coding the number anywhere.
+ */
+export const SAMPLES_PER_SEGMENT = 18;
+
+/**
+ * Centripetal Catmull-Rom through the waypoints.
+ *
+ * The spline passes exactly through every waypoint, so a drag handle sitting on a waypoint sits on
+ * the drawn line. Centripetal knot spacing (alpha = 0.5) rather than uniform is what keeps a sharp
+ * turn — a route rounding a headland — from cusping or looping past itself; uniform Catmull-Rom
+ * visibly kinks at tight corners, which is what made the coastal turns look angular.
+ */
+export const smooth = (points, per = SAMPLES_PER_SEGMENT) => {
   if (points.length < 3) return points;
   const pt = (i) => points[Math.max(0, Math.min(points.length - 1, i))];
+  const ALPHA = 0.5;
+  const knot = (t, a, b) => t + Math.pow(Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6, ALPHA);
+
   const out = [points[0]];
   for (let i = 0; i < points.length - 1; i++) {
     const [p0, p1, p2, p3] = [pt(i - 1), pt(i), pt(i + 1), pt(i + 2)];
+    const t0 = 0;
+    const t1 = knot(t0, p0, p1);
+    const t2 = knot(t1, p1, p2);
+    const t3 = knot(t2, p2, p3);
+
     for (let s = 1; s <= per; s++) {
-      const t = s / per;
-      const t2 = t * t;
-      const t3 = t2 * t;
-      out.push([0, 1].map((axis) => 0.5 * (
-        (2 * p1[axis])
-        + (-p0[axis] + p2[axis]) * t
-        + (2 * p0[axis] - 5 * p1[axis] + 4 * p2[axis] - p3[axis]) * t2
-        + (-p0[axis] + 3 * p1[axis] - 3 * p2[axis] + p3[axis]) * t3
-      )));
+      const t = t1 + ((t2 - t1) * s) / per;
+      // Barry–Goldman pyramid: three lerps down to one point on the segment p1→p2.
+      const lerp = (a, b, ta, tb) => {
+        const d = tb - ta || 1e-6;
+        return [0, 1].map((k) => ((tb - t) / d) * a[k] + ((t - ta) / d) * b[k]);
+      };
+      const a1 = lerp(p0, p1, t0, t1);
+      const a2 = lerp(p1, p2, t1, t2);
+      const a3 = lerp(p2, p3, t2, t3);
+      const b1 = lerp(a1, a2, t0, t2);
+      const b2 = lerp(a2, a3, t1, t3);
+      out.push(lerp(b1, b2, t1, t2));
     }
   }
   return out;
