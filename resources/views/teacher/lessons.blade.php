@@ -2,8 +2,7 @@
 <div class="space-y-10">
     <header class="flex flex-col gap-6 border-b border-slate-800 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-            <p class="text-xs font-medium uppercase tracking-[0.18em] text-amber-400">{{ __('Teacher workspace') }}</p>
-            <h1 class="mt-2 font-history text-4xl font-light tracking-tight text-slate-100 sm:text-5xl">
+            <h1>
                 {{ __('Lessons') }}
             </h1>
             <p class="mt-4 text-sm text-slate-400">

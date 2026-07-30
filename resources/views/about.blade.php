@@ -24,7 +24,7 @@
                 <div class="max-w-2xl">
                     <span class="lp-label mb-6 block">About The Learning Portal</span>
 
-                    <h1 class="font-history text-5xl leading-[1.04] tracking-tight text-white md:text-6xl xl:text-7xl">
+                    <h1 class="font-history text-5xl font-semibold text-slate-100 md:text-6xl xl:text-7xl">
                         Where Storytelling<br>Meets Learning
                     </h1>
 

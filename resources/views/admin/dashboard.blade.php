@@ -3,7 +3,7 @@
 
     <div>
         <p class="text-xs uppercase tracking-widest text-rose-400">Super Admin</p>
-        <h1 class="mt-2 text-3xl font-semibold text-slate-100">Admin dashboard</h1>
+        <h1 class="font-history text-2xl font-semibold text-slate-100 md:text-3xl xl:text-4xl">Admin dashboard</h1>
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

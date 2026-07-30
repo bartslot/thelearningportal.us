@@ -4,7 +4,7 @@
     <div class="flex items-end justify-between gap-4">
         <div>
             <p class="text-xs uppercase tracking-widest text-rose-400">Admin · Avatars</p>
-            <h1 class="mt-2 text-3xl font-semibold text-slate-100">Avatar management</h1>
+            <h1 class="font-history text-5xl font-semibold text-slate-100 md:text-6xl xl:text-7xl">Avatar management</h1>
             <p class="mt-1 text-sm text-slate-500">Configure voice, portrait and behaviour for each avatar character.</p>
         </div>
     </div>

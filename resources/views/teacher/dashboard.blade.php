@@ -3,8 +3,8 @@
     <header class="flex flex-col gap-6 border-b border-slate-800 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <p class="text-xs font-medium uppercase tracking-[0.18em] text-amber-400">{{ __('Teacher workspace') }}</p>
-            <h1 class="mt-2 font-history text-4xl font-light tracking-tight text-slate-100 sm:text-5xl">
-                {{ __('Dashboard') }}
+            <h1>
+                {{ __('Overview') }}
             </h1>
             <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-400">
                 <span>{{ trans_choice(':count active class|:count active classes', $classCount, ['count' => $classCount]) }}</span>

@@ -12,7 +12,7 @@
 </head>
 {{-- min-h-dvh: short pages (settings, empty states) must still paint the gradient down to the
      bottom of the viewport instead of stopping at the content and showing black beneath. --}}
-<body class="min-h-dvh bg-linear-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-100 antialiased">
+<body class="min-h-dvh bg-linear-to-b from-slate-900 to-base-100 text-slate-100 antialiased">
     {{-- Canvas steps (Configure/Preview) are full-screen editors — hide the global menu bar
          so nothing overlaps the composition. The teacher exits via the back arrow (top-left). --}}
     @unless ($hideChrome ?? false)
