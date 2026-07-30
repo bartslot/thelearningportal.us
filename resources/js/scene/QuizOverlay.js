@@ -4,43 +4,45 @@
  * Positive-only scoring: +10 per correct answer (+5 streak bonus from 3 in a row),
  * nothing lost on a wrong answer — it's a lesson, not a test. Correct answers pop,
  * burst particles and float "+10" into the score; wrong answers wobble gently and
- * reveal the right one. The last question leads to a score screen with 1-3 stars.
+ * reveal the right one. Answering IS the navigation: the card moves on by itself once
+ * the student has had a moment with the feedback, and the last one opens the score screen.
+ *
+ * Styling is Tailwind + daisyUI theme tokens (base-200 card on a base-100 scrim, primary
+ * amber, success/error for right and wrong) — no hard-coded hexes, so the quiz follows the
+ * `learningportal` theme like everything else. Only the keyframes live in CSS (app.css);
+ * all animation is transform/opacity only.
  *
  * Shared by the student player, wizard Preview and the Configure canvas.
- * All animation is transform/opacity only.
  */
-const BRAND_NAVY = '#0f172a'
-const AMBER = '#f59e0b'
 const LETTERS = ['A', 'B', 'C', 'D']
-const LETTER_COLORS = ['#e11d48', '#0284c7', '#d97706', '#059669']
+// The four answer letters keep their Kahoot-style colour coding, drawn from the theme's
+// semantic palette rather than raw hexes.
+const LETTER_CLASSES = [
+  'bg-error text-error-content',
+  'bg-info text-info-content',
+  'bg-warning text-warning-content',
+  'bg-success text-success-content',
+]
 const POINTS_CORRECT = 10
 const STREAK_BONUS = 5
 const STREAK_FROM = 3
 const PRAISE = ['Nice!', 'Great!', 'Perfect!', 'Brilliant!', 'On fire!']
 const ENCOURAGE = ['Almost!', 'Good try!', 'Keep going!']
 
-let stylesInjected = false
-function injectStyles() {
-  if (stylesInjected) return
-  stylesInjected = true
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes qz-pop { 0% { transform: scale(1); } 45% { transform: scale(1.08); } 100% { transform: scale(1); } }
-    @keyframes qz-wobble { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-7px); } 55% { transform: translateX(6px); } 80% { transform: translateX(-3px); } }
-    @keyframes qz-float-up { 0% { transform: translateY(0) scale(0.8); opacity: 0; } 15% { opacity: 1; transform: translateY(-8px) scale(1.15); } 100% { transform: translateY(-64px) scale(1); opacity: 0; } }
-    @keyframes qz-burst { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; } }
-    @keyframes qz-score-pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
-    @keyframes qz-star-in { 0% { transform: scale(0) rotate(-30deg); opacity: 0; } 60% { transform: scale(1.25) rotate(8deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
-    @keyframes qz-slide-in { 0% { transform: translateY(14px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-    @keyframes qz-flame { 0%,100% { transform: scale(1) rotate(-2deg); } 50% { transform: scale(1.12) rotate(2deg); } }
-    .qz-card { animation: qz-slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
-    .qz-correct { animation: qz-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .qz-wrong { animation: qz-wobble 0.45s ease-in-out; }
-    .qz-score-bump { animation: qz-score-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .qz-streak { animation: qz-flame 0.9s ease-in-out infinite; display: inline-block; }
-  `
-  document.head.appendChild(style)
-}
+// Shared chrome. `qz-card` carries the entrance animation (app.css).
+const SCRIM = 'absolute inset-0 flex items-center justify-center bg-base-100/80 backdrop-blur-md'
+const CARD = 'qz-card card bg-base-200 border border-base-300 rounded-box shadow-2xl text-base-content'
+
+// How long the answered card holds before it moves on by itself: long enough for the praise,
+// plus reading time for an explanation. Same reasoning as the read-gate, in the other direction.
+const ADVANCE_MS = 1600
+const ADVANCE_MS_PER_CHAR = 45
+const ADVANCE_MS_MAX = 7000
+
+// The end of the quiz hands the class back to the lesson on its own — a "Continue" button there is
+// a dead end nobody has a reason NOT to press. The countdown says what is about to happen instead,
+// and a tap anywhere skips the wait.
+const AUTO_CONTINUE_SECONDS = 5
 
 export class QuizOverlay {
   constructor(hostEl) {
@@ -58,6 +60,8 @@ export class QuizOverlay {
     this._responses = []         // {ms, displayIndex} per answered question
     this._focusDrops = 0
     this._gateTimer = null
+    this._advanceTimer = null   // answering is the navigation: the card moves on by itself
+    this._countdownTimer = null // …and the last screen hands back to the lesson on its own
     this._onVisibility = null
   }
 
@@ -91,7 +95,6 @@ export class QuizOverlay {
   get isVisible() { return this._questions.length > 0 }
 
   show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false, shuffleMode = 'per_player' }) {
-    injectStyles()
     this._questions = Array.isArray(questions) ? questions.filter(q => q?.question) : []
     this._index = 0
     this._answered = new Map()
@@ -129,6 +132,8 @@ export class QuizOverlay {
     this.host.innerHTML = ''
     this.host.style.pointerEvents = 'none'
     if (this._gateTimer) { clearTimeout(this._gateTimer); this._gateTimer = null }
+    if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null }
+    if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null }
     if (this._onVisibility) { document.removeEventListener('visibilitychange', this._onVisibility); this._onVisibility = null }
   }
 
@@ -137,12 +142,11 @@ export class QuizOverlay {
     if (this.host.querySelector('[data-focus-veil]')) return
     const veil = document.createElement('div')
     veil.dataset.focusVeil = '1'
-    veil.style.cssText = `position:absolute; inset:0; z-index:20; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:14px; background:rgba(2,6,23,0.94); color:white; cursor:pointer;`
+    veil.className = 'absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-3.5 bg-base-100/95 text-base-content'
     veil.innerHTML = `
-      <div style="font-size:42px;">&#128064;</div>
-      <div style="font-size:22px; font-weight:800;">Quiz paused</div>
-      <div style="font-size:15px; color:#94a3b8;">Stay with the story — tap to continue.</div>`
+      <div class="text-5xl">&#128064;</div>
+      <div class="text-[22px] font-extrabold">Quiz paused</div>
+      <div class="text-[15px] text-base-content/60">Stay with the story — tap to continue.</div>`
     veil.addEventListener('click', () => veil.remove())
     this.host.firstElementChild?.appendChild(veil) || this.host.appendChild(veil)
   }
@@ -198,27 +202,24 @@ export class QuizOverlay {
 
     const optionsHtml = options.map((opt, i) => {
       const isCorrect = mapping[i] === Number(q.correct_index)
-      let bg = 'rgba(255,255,255,0.06)', border = 'rgba(255,255,255,0.12)', anim = ''
+      // One full class string per state — Tailwind only ships classes it can see written out.
+      let tone = 'bg-base-300/50 border-base-300 hover:border-primary/60 hover:bg-base-300'
+      let anim = ''
       if (answered && isCorrect) {
-        bg = 'rgba(16,185,129,0.28)'; border = '#10b981'
-        if (effects?.kind === 'correct' && i === chosen) anim = 'qz-correct'
-        else if (effects?.kind === 'wrong') anim = 'qz-correct'   // reveal-pop on the right one
+        tone = 'bg-success/25 border-success'
+        // The chosen right answer pops; on a wrong answer the same pop reveals the right one.
+        anim = effects?.kind ? 'qz-correct' : ''
       } else if (answered && i === chosen && !isCorrect) {
-        bg = 'rgba(225,29,72,0.22)'; border = '#e11d48'
+        tone = 'bg-error/20 border-error'
         if (effects?.kind === 'wrong') anim = 'qz-wrong'
       }
+      const cursor = answered ? 'cursor-default' : (gated ? 'cursor-wait opacity-45' : 'cursor-pointer active:scale-[0.985]')
       return `
-        <button data-opt="${i}" ${answered || gated ? 'disabled' : ''} class="${anim}"
-                style="position:relative; display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-                       padding:12px 16px; border-radius:14px; cursor:${answered ? 'default' : (gated ? 'wait' : 'pointer')};
-                       background:${bg}; border:1.5px solid ${border}; color:#f1f5f9; font-size:17px;
-                       opacity:${gated ? 0.45 : 1};
-                       transition:background 0.15s, border-color 0.15s, transform 0.1s, opacity 0.3s;"
-                onpointerdown="if(!this.disabled) this.style.transform='scale(0.985)'"
-                onpointerup="this.style.transform=''" onpointerleave="this.style.transform=''">
-          <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;
-                       border-radius:8px; font-weight:700; font-size:13px; color:white; flex-shrink:0;
-                       background:${LETTER_COLORS[i]};">${LETTERS[i]}</span>
+        <button data-opt="${i}" ${answered || gated ? 'disabled' : ''}
+                class="${anim} ${tone} ${cursor} flex w-full items-center gap-3 rounded-box border px-4 py-3
+                       text-left text-[17px] transition-[background-color,border-color,transform,opacity] duration-150">
+          <span class="${LETTER_CLASSES[i]} inline-flex h-7 w-7 shrink-0 items-center justify-center
+                       rounded-lg text-[13px] font-bold">${LETTERS[i]}</span>
           <span>${this._escape(opt)}</span>
         </button>`
     }).join('')
@@ -230,81 +231,54 @@ export class QuizOverlay {
         ?? (wasCorrect
           ? (q.asks_ahead ? 'You already knew this!' : PRAISE[this._index % PRAISE.length])
           : (q.asks_ahead ? "No worries — you'll hear this later in the story!" : ENCOURAGE[this._index % ENCOURAGE.length]))
-      const color = wasCorrect ? '#34d399' : '#fbbf24'
       feedback = `
-        <div style="margin-top:14px; animation: qz-slide-in 0.25s ease-out;">
-          <span style="font-size:16px; font-weight:800; color:${color};">${word}</span>
-          ${q.explanation ? `<span style="font-size:14px; color:#94a3b8; line-height:1.5; margin-left:8px;">${this._escape(q.explanation)}</span>` : ''}
+        <div class="qz-rise mt-3.5">
+          <span class="text-base font-extrabold ${wasCorrect ? 'text-success' : 'text-warning'}">${word}</span>
+          ${q.explanation ? `<span class="ml-2 text-sm leading-relaxed text-base-content/60">${this._escape(q.explanation)}</span>` : ''}
         </div>`
     }
 
     const streakBadge = this._streak >= STREAK_FROM
-      ? `<span class="qz-streak" title="${this._streak} in a row" style="margin-right:10px; font-weight:800; color:#fb923c; font-size:14px;">▲ ${this._streak} streak</span>`
+      ? `<span class="qz-streak mr-2.5 text-sm font-extrabold text-secondary" title="${this._streak} in a row">▲ ${this._streak} streak</span>`
       : ''
 
-    const isLast = this._index === total - 1
-    const nextLabel = isLast ? 'Finish' : 'Next ›'
-
     this.host.innerHTML = `
-      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-                  background:rgba(2,6,23,0.72); backdrop-filter:blur(6px);">
-        <div class="qz-card" style="position:relative; width:min(680px, calc(100vw - 32px)); background:${BRAND_NAVY};
-                    border:1px solid rgba(245,158,11,0.35); border-radius:24px; padding:32px;
-                    box-shadow:0 24px 60px rgba(0,0,0,0.5); color:white;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
-            <span style="font-size:12px; letter-spacing:0.2em; text-transform:uppercase; color:${AMBER};">Quiz</span>
-            <span style="display:flex; align-items:center; font-size:13px; color:#94a3b8;">
+      <div class="${SCRIM}">
+        <div class="${CARD} relative mx-4 w-full max-w-2xl p-8">
+          <div class="mb-4 flex items-center justify-between">
+            <span class="text-xs uppercase tracking-[0.2em] text-primary">Quiz</span>
+            <span class="flex items-center text-[13px] text-base-content/60">
               ${streakBadge}
-              <span data-score style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:#fbbf24; font-size:15px; margin-right:14px;">
-                <svg viewBox="0 0 24 24" fill="currentColor" style="width:15px;height:15px;"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>
+              <span data-score class="mr-3.5 inline-flex items-center gap-1.5 text-[15px] font-extrabold text-warning">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-[15px] w-[15px]"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>
                 <span data-score-value>${this._score}</span>
               </span>
               <span data-pager>${this._index + 1} / ${total}</span>
             </span>
           </div>
-          ${q.asks_ahead ? `<div style="display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; padding:4px 12px;
-                border-radius:999px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4);
-                color:#fbbf24; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">
-                Sneak peek — this comes later in the story</div>` : ''}
-          <div style="font-size:22px; font-weight:600; line-height:1.35; margin-bottom:20px;">${this._escape(q.question)}</div>
-          ${gated ? `<div data-gate-note style="display:flex; align-items:center; gap:8px; margin-bottom:10px; color:#94a3b8; font-size:13px;">
-              <span class="loading loading-ring loading-xs" style="color:#f59e0b;"></span>
+          <div class="mb-5 text-[22px] font-semibold leading-snug">${this._escape(q.question)}</div>
+          ${gated ? `<div data-gate-note class="mb-2.5 flex items-center gap-2 text-[13px] text-base-content/60">
+              <span class="loading loading-ring loading-xs text-primary"></span>
               Read the question&hellip; answers unlock in <span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s</div>` : ''}
-          <div style="display:flex; flex-direction:column; gap:10px;">${optionsHtml}</div>
+          <div class="flex flex-col gap-2.5">${optionsHtml}</div>
           ${feedback}
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:24px;">
-            <button data-prev ${this._index === 0 ? 'disabled' : ''}
-                    style="background:none; border:none; color:${this._index === 0 ? '#334155' : '#cbd5e1'};
-                           font-size:15px; cursor:${this._index === 0 ? 'default' : 'pointer'}; padding:8px 12px;">‹ Previous</button>
-            <div style="display:flex; gap:6px;">
-              ${this._questions.map((_, i) => {
-                const done = this._answered.has(i)
-                // _answered holds a DISPLAY index — map it through _display[i] before comparing
-                // to the (unshuffled) correct_index, mirroring _correctCount. Without the mapping
-                // a correct answer in a shuffled position colours its dot wrong.
-                const mapping = this._display[i] || []
-                const ok = done && mapping[this._answered.get(i)] === Number(this._questions[i].correct_index)
-                const color = i === this._index ? AMBER : (done ? (ok ? '#10b981' : '#64748b') : 'rgba(255,255,255,0.15)')
-                return `<span style="width:8px; height:8px; border-radius:99px; background:${color};"></span>`
-              }).join('')}
-            </div>
-            <button data-next
-                    style="background:${AMBER}; border:none; color:#0f172a; font-weight:700; font-size:15px;
-                           padding:8px 20px; border-radius:12px; cursor:pointer; transition:transform 0.1s;"
-                    onpointerdown="this.style.transform='scale(0.96)'" onpointerup="this.style.transform=''">${nextLabel}</button>
+          <div class="mt-6 flex items-center justify-center gap-1.5">
+            ${this._questions.map((_, i) => {
+              const done = this._answered.has(i)
+              // _answered holds a DISPLAY index — map it through _display[i] before comparing
+              // to the (unshuffled) correct_index, mirroring _correctCount. Without the mapping
+              // a correct answer in a shuffled position colours its dot wrong.
+              const map = this._display[i] || []
+              const ok = done && map[this._answered.get(i)] === Number(this._questions[i].correct_index)
+              const tone = i === this._index ? 'bg-primary' : (done ? (ok ? 'bg-success' : 'bg-base-content/40') : 'bg-base-content/15')
+              return `<span class="${tone} h-2 w-2 rounded-full transition-colors"></span>`
+            }).join('')}
           </div>
         </div>
       </div>`
 
     this.host.querySelectorAll('[data-opt]').forEach(btn => {
       btn.addEventListener('click', () => this._answer(Number(btn.dataset.opt), btn))
-    })
-    this.host.querySelector('[data-prev]')?.addEventListener('click', () => {
-      if (this._index > 0) { this._index--; this._render() }
-    })
-    this.host.querySelector('[data-next]')?.addEventListener('click', () => {
-      if (this._index < total - 1) { this._index++; this._render() }
-      else this._renderScoreScreen()
     })
 
     if (effects?.kind === 'correct') this._playCorrectEffects(effects)
@@ -330,8 +304,8 @@ export class QuizOverlay {
     note?.remove()
     this.host.querySelectorAll('[data-opt]').forEach(btn => {
       btn.disabled = false
-      btn.style.opacity = '1'
-      btn.style.cursor = 'pointer'
+      btn.classList.remove('cursor-wait', 'opacity-45')
+      btn.classList.add('cursor-pointer', 'active:scale-[0.985]')
     })
   }
 
@@ -369,6 +343,25 @@ export class QuizOverlay {
       if (!q.asks_ahead) this._streak = 0   // guessing ahead is never punished
       this._render({ kind: 'wrong' })
     }
+
+    this._scheduleAdvance(q)
+  }
+
+  /**
+   * Answering IS the navigation — there is no Next button to press. The card holds long enough
+   * to read the feedback (longer when there's an explanation), then moves to the next question,
+   * or to the score screen if that was the last one.
+   */
+  _scheduleAdvance(q) {
+    if (this._advanceTimer) clearTimeout(this._advanceTimer)
+    const explanation = String(q?.explanation || '')
+    const wait = Math.min(ADVANCE_MS_MAX, ADVANCE_MS + explanation.length * ADVANCE_MS_PER_CHAR)
+    this._advanceTimer = setTimeout(() => {
+      this._advanceTimer = null
+      if (!this.isVisible) return
+      if (this._index < this._questions.length - 1) { this._index++; this._render() }
+      else this._renderScoreScreen()
+    }, wait)
   }
 
   _playCorrectEffects({ gained, from, at }) {
@@ -387,23 +380,23 @@ export class QuizOverlay {
       requestAnimationFrame(tick)
     }
 
-    // Floating "+10" from the clicked answer.
+    // Floating "+10" from the clicked answer. These two live on <body>, outside the card, and are
+    // placed at the pixel the answer was clicked — so position stays inline, everything else is a class.
     const float = document.createElement('div')
     float.textContent = `+${gained}`
-    float.style.cssText = `position:fixed; left:${at.x}px; top:${at.y}px; z-index:90; pointer-events:none;
-      transform:translateX(-50%); font-weight:900; font-size:26px; color:#fbbf24;
-      text-shadow:0 2px 10px rgba(0,0,0,0.6); animation: qz-float-up 0.9s ease-out forwards;`
+    float.className = 'pointer-events-none fixed z-90 -translate-x-1/2 text-[26px] font-black text-warning drop-shadow-lg'
+    float.style.cssText = `left:${at.x}px; top:${at.y}px; animation: qz-float-up 0.9s ease-out forwards;`
     document.body.appendChild(float)
     setTimeout(() => float.remove(), 950)
 
-    // Particle burst (10 dots, transform-only).
+    // Particle burst (10 dots, transform-only) in the theme's celebration colours.
+    const sparkTones = ['bg-warning', 'bg-success', 'bg-info', 'bg-primary']
     for (let i = 0; i < 10; i++) {
       const p = document.createElement('div')
       const angle = (Math.PI * 2 * i) / 10 + Math.random() * 0.5
       const dist = 46 + Math.random() * 34
-      const colors = ['#fbbf24', '#34d399', '#38bdf8', '#f472b6']
-      p.style.cssText = `position:fixed; left:${at.x}px; top:${at.y}px; z-index:89; pointer-events:none;
-        width:8px; height:8px; border-radius:99px; background:${colors[i % colors.length]};
+      p.className = `pointer-events-none fixed z-89 h-2 w-2 rounded-full ${sparkTones[i % sparkTones.length]}`
+      p.style.cssText = `left:${at.x}px; top:${at.y}px;
         --dx:${Math.cos(angle) * dist}px; --dy:${Math.sin(angle) * dist - 20}px;
         animation: qz-burst 0.65s ease-out forwards;`
       document.body.appendChild(p)
@@ -417,62 +410,45 @@ export class QuizOverlay {
     const ratio = total ? correct / total : 0
     const stars = ratio >= 0.9 ? 3 : ratio >= 0.6 ? 2 : 1
 
-    // "backwards" fill keeps the 0% frame (hidden) during the stagger delay; once the
-    // animation ends the star simply rests at its natural, fully-visible state — no
-    // dependence on the keyframe's end opacity.
+    // `backwards` fill keeps the 0% frame (hidden) during the stagger delay; once the animation
+    // ends the star simply rests at its natural, fully-visible state — no dependence on the
+    // keyframe's end opacity. The delay is data-driven, so it stays inline.
     const starsHtml = [0, 1, 2].map(i => `
-      <svg viewBox="0 0 24 24" style="width:56px; height:56px;
-           fill:${i < stars ? '#fbbf24' : 'rgba(255,255,255,0.12)'};
-           animation: qz-star-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) ${0.15 + i * 0.22}s backwards;">
+      <svg viewBox="0 0 24 24" class="qz-star h-14 w-14 ${i < stars ? 'fill-warning' : 'fill-base-content/10'}"
+           style="animation-delay:${0.15 + i * 0.22}s;">
         <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/>
       </svg>`).join('')
 
     // Competition block: nickname entry when submission is enabled (student player).
     const savedName = (() => { try { return localStorage.getItem('lp_quiz_nickname') || '' } catch { return '' } })()
     const joinHtml = this._submitUrl ? `
-      <div data-join style="margin-bottom:22px; animation: qz-slide-in 0.3s ease-out 0.6s backwards;">
-        <div style="font-size:13px; letter-spacing:0.12em; text-transform:uppercase; color:#94a3b8; margin-bottom:10px;">
-          Join the leaderboard
-        </div>
+      <div data-join class="qz-rise mb-6" style="animation-delay:0.6s;">
+        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">Join the leaderboard</div>
         ${this._hasClassroom ? `
-        <div style="display:flex; gap:8px; justify-content:center; margin-bottom:8px;">
+        <div class="mb-2 flex justify-center gap-2">
           <input data-class-code type="text" maxlength="8" placeholder="Class code…"
-                 style="width:130px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(255,255,255,0.2);
-                        background:rgba(255,255,255,0.06); color:white; font-size:15px; outline:none; text-transform:uppercase;" />
+                 class="input input-bordered w-32 bg-base-300 text-center uppercase" />
         </div>` : ''}
-        <div style="display:flex; gap:8px; justify-content:center;">
+        <div class="flex justify-center gap-2">
           <input data-nickname type="text" maxlength="24" placeholder="Your name…"
-                 style="width:200px; padding:10px 14px; border-radius:12px; border:1.5px solid rgba(245,158,11,0.4);
-                        background:rgba(255,255,255,0.06); color:white; font-size:15px; outline:none;" />
-          <button data-submit
-                  style="background:${AMBER}; border:none; color:#0f172a; font-weight:800; font-size:15px;
-                         padding:10px 20px; border-radius:12px; cursor:pointer; transition:transform 0.1s;"
-                  onpointerdown="this.style.transform='scale(0.96)'" onpointerup="this.style.transform=''">
-            Submit
-          </button>
+                 class="input input-bordered w-52 bg-base-300" />
+          <button data-submit class="btn btn-primary">Submit</button>
         </div>
-        <div data-join-error style="font-size:12px; color:#fda4af; margin-top:6px; min-height:16px;"></div>
+        <div data-join-error class="mt-1.5 min-h-4 text-xs text-error"></div>
       </div>` : ''
 
     this.host.innerHTML = `
-      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-                  background:rgba(2,6,23,0.72); backdrop-filter:blur(6px);">
-        <div class="qz-card" style="width:min(520px, calc(100vw - 32px)); background:${BRAND_NAVY};
-                    border:1px solid rgba(245,158,11,0.35); border-radius:24px; padding:40px;
-                    box-shadow:0 24px 60px rgba(0,0,0,0.5); color:white; text-align:center;">
-          <div style="display:flex; justify-content:center; gap:10px; margin-bottom:18px;">${starsHtml}</div>
-          <div style="font-size:15px; letter-spacing:0.15em; text-transform:uppercase; color:#94a3b8; margin-bottom:6px;">
+      <div class="${SCRIM}">
+        <div class="${CARD} mx-4 w-full max-w-lg p-10 text-center">
+          <div class="mb-4 flex justify-center gap-2.5">${starsHtml}</div>
+          <div class="mb-1.5 text-[15px] uppercase tracking-[0.15em] text-base-content/60">
             ${correct} / ${total} correct
           </div>
-          <div data-final-score style="font-size:56px; font-weight:900; color:#fbbf24; margin-bottom:22px;">0</div>
+          <div data-final-score class="mb-6 text-6xl font-black text-warning">0</div>
           ${joinHtml}
-          <button data-done
-                  style="background:${this._submitUrl ? 'none' : AMBER}; border:${this._submitUrl ? '1px solid rgba(255,255,255,0.25)' : 'none'};
-                         color:${this._submitUrl ? '#cbd5e1' : '#0f172a'}; font-weight:800; font-size:17px;
-                         padding:12px 40px; border-radius:14px; cursor:pointer; transition:transform 0.1s;"
-                  onpointerdown="this.style.transform='scale(0.96)'" onpointerup="this.style.transform=''">
-            ${this._submitUrl ? 'Skip ›' : 'Continue ›'}
-          </button>
+          ${this._submitUrl
+            ? '<button data-done class="btn btn-ghost btn-lg">Skip ›</button>'
+            : `<div data-countdown class="text-[15px] text-base-content/60">Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span></div>`}
         </div>
       </div>`
 
@@ -494,11 +470,9 @@ export class QuizOverlay {
     }
     requestAnimationFrame(tick)
 
-    this.host.querySelector('[data-done]').addEventListener('click', () => {
-      const done = this._onComplete
-      this.hide()
-      done?.()
-    })
+    this.host.querySelector('[data-done]')?.addEventListener('click', () => this._finish())
+    // Nothing left to decide (no leaderboard to join) → hand back to the lesson by itself.
+    if (!this._submitUrl) this._startAutoContinue()
 
     // Competition: submit score under a nickname → show the leaderboard.
     const submitBtn = this.host.querySelector('[data-submit]')
@@ -543,55 +517,71 @@ export class QuizOverlay {
 
   // Podium for the top 3, list for the rest, own entry highlighted with rank.
   _renderLeaderboard({ top = [], players = 0, rank = null }, ownNickname = '') {
-    const medals = ['#fbbf24', '#cbd5e1', '#d97706']   // gold, silver, bronze
+    // Gold, silver, bronze — from the theme, not a hex list.
+    const medals = ['bg-warning text-warning-content', 'bg-base-content text-base-100', 'bg-secondary text-secondary-content']
     const rows = top.map((entry, i) => {
       const isOwn = rank !== null && i === rank - 1 && entry.nickname === ownNickname
       const medal = i < 3
-        ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
-                        border-radius:99px; background:${medals[i]}; color:#0f172a; font-weight:900; font-size:13px;">${i + 1}</span>`
-        : `<span style="width:26px; text-align:center; color:#64748b; font-weight:700; font-size:13px;">${i + 1}</span>`
+        ? `<span class="${medals[i]} inline-flex h-6.5 w-6.5 items-center justify-center rounded-full text-[13px] font-black">${i + 1}</span>`
+        : `<span class="w-6.5 text-center text-[13px] font-bold text-base-content/50">${i + 1}</span>`
+      const row = isOwn
+        ? 'bg-primary/15 border-primary/50'
+        : (i % 2 ? 'bg-base-content/5 border-transparent' : 'border-transparent')
       return `
-        <div style="display:flex; align-items:center; gap:12px; padding:9px 14px; border-radius:12px;
-                    background:${isOwn ? 'rgba(245,158,11,0.16)' : (i % 2 ? 'rgba(255,255,255,0.03)' : 'transparent')};
-                    border:1px solid ${isOwn ? 'rgba(245,158,11,0.55)' : 'transparent'};
-                    animation: qz-slide-in 0.3s ease-out ${0.08 * i}s backwards;">
+        <div class="qz-rise ${row} flex items-center gap-3 rounded-box border px-3.5 py-2.5"
+             style="animation-delay:${(0.08 * i).toFixed(2)}s;">
           ${medal}
-          <span style="flex:1; text-align:left; font-weight:${i < 3 || isOwn ? 700 : 500}; font-size:15px;
-                       overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          <span class="flex-1 truncate text-left text-[15px] ${i < 3 || isOwn ? 'font-bold' : 'font-medium'}">
             ${this._escape(entry.nickname)}${isOwn ? ' · you' : ''}
           </span>
-          <span style="font-weight:800; color:#fbbf24; font-size:15px;">${entry.score}</span>
+          <span class="text-[15px] font-extrabold text-warning">${entry.score}</span>
         </div>`
     }).join('')
 
     const ownOutsideTop = rank !== null && rank > top.length
-      ? `<div style="margin-top:10px; font-size:14px; color:#fbbf24; font-weight:700;">You're #${rank} of ${players} — keep climbing!</div>`
+      ? `<div class="mt-2.5 text-sm font-bold text-warning">You're #${rank} of ${players} — keep climbing!</div>`
       : ''
 
     this.host.innerHTML = `
-      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-                  background:rgba(2,6,23,0.72); backdrop-filter:blur(6px);">
-        <div class="qz-card" style="width:min(520px, calc(100vw - 32px)); max-height:calc(100vh - 60px); overflow-y:auto;
-                    background:${BRAND_NAVY}; border:1px solid rgba(245,158,11,0.35); border-radius:24px; padding:32px;
-                    box-shadow:0 24px 60px rgba(0,0,0,0.5); color:white; text-align:center;">
-          <div style="font-size:13px; letter-spacing:0.2em; text-transform:uppercase; color:${AMBER}; margin-bottom:4px;">Leaderboard</div>
-          <div style="font-size:13px; color:#64748b; margin-bottom:18px;">${players} player${players === 1 ? '' : 's'}</div>
-          <div style="display:flex; flex-direction:column; gap:4px; text-align:left;">${rows || '<span style="color:#64748b;">No scores yet — you could be first!</span>'}</div>
+      <div class="${SCRIM}">
+        <div class="${CARD} mx-4 max-h-[calc(100vh-60px)] w-full max-w-lg overflow-y-auto p-8 text-center">
+          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">Leaderboard</div>
+          <div class="mb-4 text-[13px] text-base-content/50">${players} player${players === 1 ? '' : 's'}</div>
+          <div class="flex flex-col gap-1 text-left">${rows || '<span class="text-base-content/50">No scores yet — you could be first!</span>'}</div>
           ${ownOutsideTop}
-          <button data-done
-                  style="margin-top:22px; background:${AMBER}; border:none; color:#0f172a; font-weight:800; font-size:17px;
-                         padding:12px 40px; border-radius:14px; cursor:pointer; transition:transform 0.1s;"
-                  onpointerdown="this.style.transform='scale(0.96)'" onpointerup="this.style.transform=''">
-            Continue ›
-          </button>
+          <div data-countdown class="mt-6 text-[15px] text-base-content/60">
+            Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span>
+          </div>
         </div>
       </div>`
 
-    this.host.querySelector('[data-done]').addEventListener('click', () => {
-      const done = this._onComplete
-      this.hide()
-      done?.()
-    })
+    this._startAutoContinue()
+  }
+
+  /** Close the overlay and hand the lesson back. The one exit every end screen uses. */
+  _finish() {
+    const done = this._onComplete
+    this.hide()
+    done?.()
+  }
+
+  /**
+   * Count down out loud, then continue: "Lesson starts in 5 … 4 … 3". A tap anywhere on the card
+   * skips the rest of the wait, so nobody is held up by a number ticking down.
+   */
+  _startAutoContinue(seconds = AUTO_CONTINUE_SECONDS) {
+    const label = this.host.querySelector('[data-countdown] span')
+    if (!label) return
+    let left = seconds
+    this.host.querySelector('.qz-card')?.addEventListener('click', () => this._finish())
+    if (this._countdownTimer) clearInterval(this._countdownTimer)
+    this._countdownTimer = setInterval(() => {
+      left -= 1
+      if (left > 0) { label.textContent = String(left); return }
+      clearInterval(this._countdownTimer)
+      this._countdownTimer = null
+      this._finish()
+    }, 1000)
   }
 
   _escape(text) {

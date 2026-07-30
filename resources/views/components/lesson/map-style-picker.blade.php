@@ -1,4 +1,4 @@
-@props(['effectiveStyle' => 'soft-atlas'])
+@props(['effectiveStyle' => 'soft-atlas', 'relief' => 0])
 
 {{-- MAP STYLE — the front-end Time-Map palettes as Europe preview swatches. This sets the
      LESSON-WIDE default (every map block and every voyage inherits it), so teachers pick once.
@@ -32,5 +32,31 @@
                 </span>
             </button>
         @endforeach
+    </div>
+
+    {{-- 3D TERRAIN — drape the map over the height map so mountains stand up and the traveller
+         climbs them. The slider moves the preview live (lessonmap:relief, no re-mount) and only
+         persists on release, so dragging doesn't fire a Livewire round-trip per pixel.
+         Real height is invisible at continent scale, so the usable range starts well above 1×. --}}
+    <div class="mt-3" x-data="{ relief: {{ (float) $relief }} }">
+        <label class="flex items-center justify-between gap-2">
+            <span class="text-xs uppercase tracking-wider text-slate-400">3D terrain</span>
+            <input type="checkbox" :checked="relief > 0"
+                   x-on:change="relief = $event.target.checked ? 3 : 0;
+                                window.dispatchEvent(new CustomEvent('lessonmap:relief',{detail:{relief}}));
+                                $wire.setLessonMapRelief(relief)"
+                   class="toggle toggle-sm toggle-warning" />
+        </label>
+        <div class="mt-1.5" x-show="relief > 0" x-cloak>
+            <label class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider text-slate-500">Height</span>
+                <input type="range" min="0.5" max="6" step="0.5" x-model.number="relief"
+                       x-on:input="window.dispatchEvent(new CustomEvent('lessonmap:relief',{detail:{relief}}))"
+                       x-on:change="$wire.setLessonMapRelief(relief)"
+                       class="range range-xs range-warning flex-1" />
+                <span class="w-8 text-right text-[10px] text-slate-400" x-text="relief + '×'"></span>
+            </label>
+            <span class="mt-1 block text-[10px] text-slate-500">Tilt the map to see it. Mountains are exaggerated on purpose.</span>
+        </div>
     </div>
 </div>

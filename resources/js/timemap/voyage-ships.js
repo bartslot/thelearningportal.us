@@ -498,9 +498,20 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
       const active = visibleVoyages();
       if (!active.length) return;
       const getModelMatrix = map.transform && typeof map.transform.getMatrixForModel === 'function'
-        ? (lngLat) => map.transform.getMatrixForModel(lngLat, 0)
+        ? (lngLat, altitude) => map.transform.getMatrixForModel(lngLat, altitude || 0)
         : null;
       if (!getModelMatrix) return;
+      // With 3D terrain on, sea level is no longer the ground: a camel placed at altitude 0 walks
+      // INSIDE the mountain it is crossing. Every unit is lifted to the height under its own feet.
+      // Queried with the wrapped longitude (the DEM lookup is not world-copy aware) while the model
+      // matrix keeps the unwrapped one, so an antimeridian crossing still samples the right place.
+      // Returns 0 with terrain off, which is exactly the old behaviour.
+      // Never below sea level: the height map carries ocean depth too, and a ship following it would
+      // sail along the sea FLOOR. Anything at or under the waterline rides at 0, as it did before.
+      const groundAt = (lng, lat) => {
+        if (!map.terrain) return 0;
+        try { return Math.max(0, map.queryTerrainElevation([lng, lat]) || 0); } catch (e) { return 0; }
+      };
       const mainMatrix = args && args.defaultProjectionData ? args.defaultProjectionData.mainMatrix : args;
 
       const zoom = map.getZoom();
@@ -553,7 +564,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
 
           const combined = new THREE.Matrix4()
             .fromArray(mainMatrix)
-            .multiply(new THREE.Matrix4().fromArray(getModelMatrix([lng, p.lat])));
+            .multiply(new THREE.Matrix4().fromArray(getModelMatrix([lng, p.lat], groundAt(p.lng, p.lat))));
 
           // Aim the disc at the camera without ever naming an axis.
           const toCamera = viewerDirection(combined);
@@ -605,7 +616,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
 
           camera.projectionMatrix = new THREE.Matrix4()
             .fromArray(mainMatrix)
-            .multiply(new THREE.Matrix4().fromArray(getModelMatrix([lng, p.lat])));
+            .multiply(new THREE.Matrix4().fromArray(getModelMatrix([lng, p.lat], groundAt(p.lng, p.lat))));
           renderer.resetState();
           renderer.render(scene, camera);
           continue;
@@ -650,7 +661,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
           ship.updateMatrixWorld(true);
           camera.projectionMatrix = new THREE.Matrix4()
             .fromArray(mainMatrix)
-            .multiply(new THREE.Matrix4().fromArray(getModelMatrix(lngLat)));
+            .multiply(new THREE.Matrix4().fromArray(getModelMatrix(lngLat, groundAt(p.lng, p.lat))));
           renderer.resetState();
           renderer.render(scene, camera);
         });

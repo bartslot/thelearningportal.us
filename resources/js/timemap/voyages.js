@@ -72,6 +72,77 @@ export const voyageRoutes = () => voyagesData.voyages.map((v) => ({
 /** Smooth a raw-waypoint slice (used by the tour for per-leg tracks). */
 export const smoothSlice = (waypoints, from, to) => smooth(waypoints.slice(from, to + 1));
 
+// ── Where along a drawn line a traveller is ───────────────────────────────
+//
+// The route trail is revealed by cutting its line-gradient at a fraction of the line's length. That
+// fraction used to be the traveller's progress along its own track — a different ruler (its own
+// resampling, its own total length), so the two drifted and the line ended a visible distance behind
+// the traveller. Small on a ship, glaring on a camel. Measuring from the traveller's POSITION
+// instead makes the line stop exactly where it stands.
+
+/** Cumulative length along `coords`, longitudes corrected for latitude. Built once per redraw. */
+export const arcTable = (coords) => {
+  const cum = new Array(coords.length).fill(0);
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [ax, ay] = coords[i - 1];
+    const [bx, by] = coords[i];
+    const kx = Math.cos((ay + by) * 0.5 * Math.PI / 180);
+    total += Math.hypot((bx - ax) * kx, by - ay);
+    cum[i] = total;
+  }
+  return { cum, total };
+};
+
+/** Where `pos` projects onto segment `i`, clamped to it: 0..1 along that segment. */
+const segT = (coords, i, pos) => {
+  const [ax, ay] = coords[i - 1];
+  const [bx, by] = coords[i];
+  const kx = Math.cos(ay * Math.PI / 180);
+  const dx = (bx - ax) * kx, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0) return 0;
+  return Math.min(1, Math.max(0, (((pos.lng - ax) * kx) * dx + (pos.lat - ay) * dy) / len2));
+};
+
+/** How far `pos` sits from segment `i` (planar degrees). */
+const segDistance = (coords, i, pos) => {
+  const [ax, ay] = coords[i - 1];
+  const [bx, by] = coords[i];
+  const t = segT(coords, i, pos);
+  const kx = Math.cos(ay * Math.PI / 180);
+  return Math.hypot((pos.lng - (ax + (bx - ax) * t)) * kx, pos.lat - (ay + (by - ay) * t));
+};
+
+/**
+ * Fraction along `coords` closest to `pos` — the line-progress to cut the reveal at.
+ *
+ * The whole line is searched rather than a window around `estimate`, because the two rulers can
+ * disagree by more than any sensible window. Where a route doubles back on itself the traveller
+ * genuinely sits on two passes at once, so among segments that come about equally near, the one
+ * nearest `estimate` wins — that is the pass it is actually on. Two allocation-free passes, since
+ * this runs every animation frame.
+ *
+ * @param {Array<[number, number]>} coords  the drawn line
+ * @param {{cum: number[], total: number}} table  from arcTable(coords)
+ * @param {{lng: number, lat: number}} pos  where the traveller is
+ * @param {number} estimate  its progress along its own track — the tie-breaker, and the fallback
+ */
+export const cutAtPoint = (coords, table, pos, estimate) => {
+  const n = coords.length;
+  if (!table || !table.total || n < 2 || !pos) return estimate;
+  let nearest = Infinity;
+  for (let i = 1; i < n; i++) nearest = Math.min(nearest, segDistance(coords, i, pos));
+  let bestCut = estimate, bestGap = Infinity;
+  for (let i = 1; i < n; i++) {
+    if (segDistance(coords, i, pos) > nearest * 1.5) continue;
+    const cut = (table.cum[i - 1] + (table.cum[i] - table.cum[i - 1]) * segT(coords, i, pos)) / table.total;
+    const gap = Math.abs(cut - estimate);
+    if (gap < bestGap) { bestGap = gap; bestCut = cut; }
+  }
+  return bestCut;
+};
+
 const voyageFeatures = () => {
   const lines = [];
   const labels = [];

@@ -16,7 +16,7 @@ import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
 import { mapTextProjector } from './map-text-projector.js'
-import { SATELLITE_SOURCE } from './map-imagery.js'
+import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -71,7 +71,9 @@ const polityFilter = (year) => ['all',
  * @param {{ qid?: string, year?: number, interactive?: boolean }} opts
  */
 export function renderLessonMap (el, opts = {}) {
-  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE, terrain = true } = opts
+  // `terrain` = the drawn ink hill/forest glyphs. `relief` = real 3D ground from the height map
+  // (0 = flat). Two different things that both mean "terrain" in English, hence the two names.
+  const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE, terrain = true, relief = 0 } = opts
   // Voyage maps can hide anachronistic detail (modern city dots/labels + political borders that
   // didn't exist yet) and pin their own period place labels. Defaults keep the normal atlas.
   const { showCities = true, showBorders = true } = opts
@@ -130,6 +132,8 @@ export function renderLessonMap (el, opts = {}) {
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         // Satellite style only — tiles are requested lazily, so the other styles pay nothing for it.
         satellite: SATELLITE_SOURCE,
+        // Height map behind the 3D terrain (`relief`). Only fetched once terrain is switched on.
+        dem: DEM_SOURCE,
         // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
         'lesson-labels': { type: 'geojson', data: labelsFC(placeLabels) },
       },
@@ -395,11 +399,12 @@ export function renderLessonMap (el, opts = {}) {
   // Paint the palette the moment the style is parsed, not at 'load' — 'load' also waits on every
   // source, and a slow (or failing) tileset would leave the map sitting in the raw default colours
   // with no satellite ground under a voyage. Idempotent, so the 'load' pass below still runs.
-  map.once('styledata', () => applyStyle(activeStyle))
+  map.once('styledata', () => { applyStyle(activeStyle); applyRelief(activeRelief) })
 
   map.on('load', () => {
     setYear(year)
     applyStyle(activeStyle) // colour the base layers now (avoids a flash of the default palette)
+    applyRelief(activeRelief)
     requestAfterTiles(fitToPolity)
 
     // Vector terrain decoration (same Tolkien glyph set as the Time-Map): hills, forests, peaks,
@@ -605,6 +610,29 @@ export function renderLessonMap (el, opts = {}) {
     try { el.style.backgroundColor = s.water } catch (_) {}
   }
 
+  /**
+   * 3D terrain: drape the map over the height map so mountains and valleys stand up.
+   *
+   * `v` is the exaggeration — 0 switches terrain off entirely (and stops the DEM tiles being
+   * fetched). MapLibre lifts fills, lines, rasters and labels onto the mesh on its own; the one
+   * thing it cannot do is the voyage's 3D traveller, which is a custom layer and has to be told
+   * the ground height itself (voyage-ships.js reads it back via queryTerrainElevation).
+   */
+  let activeRelief = Math.max(0, Math.min(MAX_RELIEF, Number(relief) || 0))
+  // setTerrain throws while the style is still parsing. Unlike the paint properties there is no
+  // later pass that would set it anyway, so a failed attempt re-arms itself on the next style event
+  // — otherwise a slow style load left the ground permanently flat.
+  const setTerrainNow = () => {
+    try {
+      map.setTerrain(activeRelief > 0 ? { source: 'dem', exaggeration: activeRelief } : null)
+      return true
+    } catch (_) { return false }
+  }
+  function applyRelief (v) {
+    activeRelief = Math.max(0, Math.min(MAX_RELIEF, Number(v) || 0))
+    if (!setTerrainNow()) map.once('styledata', setTerrainNow)
+  }
+
   // Show/hide anachronistic detail. Cities = both the dots and their labels (historical + modern);
   // borders = the political outlines + red fill. Voyages hide these so the map reads as period-blank.
   function applyLayerToggles () {
@@ -627,6 +655,13 @@ export function renderLessonMap (el, opts = {}) {
     setAnnotations: (a) => anno?.update(a),
     setPolity: (id) => setPolity(id),
     setStyle: (name) => applyStyle(name),
+    /** 3D terrain exaggeration; 0 = flat. Applied live, no re-mount. */
+    setRelief: (v) => applyRelief(v),
+    /** Ground height (metres, exaggeration included) under a point — 0 when terrain is off. */
+    groundAt: (lng, lat) => {
+      if (activeRelief <= 0) return 0
+      try { return map.queryTerrainElevation([lng, lat]) || 0 } catch (_) { return 0 }
+    },
     /** Toggle anachronistic detail live, e.g. setLayerToggles({ cities:false, borders:false }). */
     setLayerToggles: (t) => { layerToggles = { ...layerToggles, ...(t || {}) }; applyLayerToggles() },
     /**

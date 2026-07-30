@@ -28,7 +28,15 @@ export const SATELLITE_SOURCE = {
   attribution: 'Imagery: NASA EOSDIS GIBS (Blue Marble)',
 }
 
-/** Elevation behind the atlas styles' relief hillshade. Free AWS Open Data terrain tiles. */
+/**
+ * How far the 3D terrain may be dramatised. At exaggeration 1 the height is true to life, which on
+ * a map spanning a continent is almost invisible — the Alps are 4 km tall against 4,000 km of
+ * width. Schoolbook relief maps have always overstated height for exactly this reason; this is the
+ * ceiling on how far a teacher may push it before mountains turn into spikes.
+ */
+export const MAX_RELIEF = 6
+
+/** Elevation behind the atlas styles' relief hillshade and the 3D terrain. Free AWS Open Data terrain tiles. */
 export const DEM_SOURCE = {
   type: 'raster-dem',
   tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
