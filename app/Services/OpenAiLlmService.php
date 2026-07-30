@@ -10,11 +10,21 @@ use RuntimeException;
 
 class OpenAiLlmService
 {
+    /**
+     * Every argument is optional and falls back to services.openai.* — that keeps the
+     * container's zero-argument resolution working. App\Services\Llm\LlmRouter fills them
+     * in per role so one call can run on OpenAI while another runs on a free Gemma.
+     *
+     * @param  string|null  $jsonFormat  response_format.type for JSON calls. Empty string means
+     *                                   "don't send the parameter" — Ollama, LM Studio and some
+     *                                   Gemma builds reject it.
+     */
     public function __construct(
         private readonly ?string $apiKey  = null,
         private readonly ?string $model   = null,
         private readonly ?string $baseUrl = null,
         private readonly ?int    $timeout = null,
+        private readonly ?string $jsonFormat = null,
     ) {}
 
     /**
@@ -156,7 +166,7 @@ class OpenAiLlmService
             $payload['max_tokens'] = $tokens;
         }
 
-        $jsonFormat = (string) config('services.openai.json_format', 'json_object');
+        $jsonFormat = $this->jsonFormat ?? (string) config('services.openai.json_format', 'json_object');
         if ($jsonMode && $jsonFormat !== '') {
             $payload['response_format'] = ['type' => $jsonFormat];
         }

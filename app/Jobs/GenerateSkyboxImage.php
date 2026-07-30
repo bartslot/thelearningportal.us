@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\Scene;
 use App\Services\HistoricalImageValidationPrompt;
 use App\Services\OpenAiImageService;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\Support\ImageStyleTemplate;
 use Illuminate\Bus\Queueable;
@@ -33,7 +34,7 @@ class GenerateSkyboxImage implements ShouldQueue
         return [15, 60];
     }
 
-    public function handle(OpenAiLlmService $llm, OpenAiImageService $imageService): void
+    public function handle(#[Llm('mechanical')] OpenAiLlmService $llm, OpenAiImageService $imageService): void
     {
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
         if ($scene->hasManualBackground()) {

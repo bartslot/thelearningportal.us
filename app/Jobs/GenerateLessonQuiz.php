@@ -8,6 +8,7 @@ use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\QuizQuestion;
 use App\Models\Scene;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\QuizPrompt;
 use Illuminate\Bus\Queueable;
@@ -51,7 +52,7 @@ class GenerateLessonQuiz implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiLlmService $llm): void
+    public function handle(#[Llm('mechanical')] OpenAiLlmService $llm): void
     {
         $lesson = Lesson::with('scenes')->findOrFail($this->lessonId);
 

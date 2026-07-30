@@ -8,6 +8,7 @@ use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Services\LessonScriptPrompt;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\ScriptCritiquePrompt;
 use Illuminate\Bus\Batch;
@@ -45,7 +46,7 @@ class GenerateLessonScript implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiLlmService $llm): void
+    public function handle(#[Llm('script')] OpenAiLlmService $llm): void
     {
         $lesson = Lesson::with(['source', 'teacher', 'scenes'])->findOrFail($this->lessonId);
 

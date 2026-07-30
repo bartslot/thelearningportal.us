@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\SceneScriptPrompt;
 use Illuminate\Bus\Batchable;
@@ -30,7 +31,7 @@ class GenerateSceneScript implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiLlmService $llm): void
+    public function handle(#[Llm('script')] OpenAiLlmService $llm): void
     {
         $scene = Scene::with('lesson.source')->findOrFail($this->sceneId);
         $scene->update(['status' => 'generating']);

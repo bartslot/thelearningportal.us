@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\Scene;
 use App\Services\OpenAiImageService;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -42,7 +43,7 @@ class GenerateSkyboxCandidates implements ShouldQueue
         return [15, 60];
     }
 
-    public function handle(OpenAiLlmService $llm, OpenAiImageService $imageService): void
+    public function handle(#[Llm('mechanical')] OpenAiLlmService $llm, OpenAiImageService $imageService): void
     {
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
 

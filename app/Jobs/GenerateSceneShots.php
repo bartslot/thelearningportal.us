@@ -9,6 +9,7 @@ use App\Models\Scene;
 use App\Services\FigureAppearanceService;
 use App\Services\HistoricalImageValidationPrompt;
 use App\Services\OpenAiImageService;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\ShotListPrompt;
 use App\Services\Support\GridSlicer;
@@ -46,7 +47,7 @@ class GenerateSceneShots implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiImageService $image, OpenAiLlmService $llm, FigureAppearanceService $appearance): void
+    public function handle(OpenAiImageService $image, #[Llm('mechanical')] OpenAiLlmService $llm, FigureAppearanceService $appearance): void
     {
         $scene = Scene::with('lesson.scenes', 'lesson.source')->findOrFail($this->sceneId);
         if ($scene->hasManualBackground()) {
