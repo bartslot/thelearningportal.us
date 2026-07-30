@@ -22,7 +22,9 @@ final class NarrationVoice
     /** Native "warm, calm" storyteller per teacher locale. */
     private const AZURE_BY_LOCALE = [
         'nl' => 'nl-NL-FennaNeural',
-        'en' => 'en-US-AndrewMultilingualNeural',
+        // British, and Azure's newest generation (Dragon HD). History read in a US accent kept
+        // undercutting the material; a British narrator is what teachers expect of this subject.
+        'en' => 'en-GB-Ollie:DragonHDLatestNeural',
     ];
 
     /** Speaks ~90 languages acceptably — safe for any unmapped locale. */

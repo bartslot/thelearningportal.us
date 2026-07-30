@@ -43,7 +43,27 @@ Route::get('/', function () {
             ->get()
     );
 
-    return view('historyportal', compact('playableLessons'));
+    // The five curated "Trending history topics" cards, keyed by title so the carousel can link
+    // each poster to its real lesson. Separate from $playableLessons because these are pinned
+    // subjects, not simply the most recent twelve. A missing title just renders an unlinked card.
+    $trendingLessons = \Illuminate\Support\Facades\Cache::remember(
+        'home.trending_lessons',
+        now()->addMinutes(10),
+        fn () => Lesson::whereIn('title', \App\Support\TrendingTopics::lessonTitles())
+            ->whereIn('status', [
+                LessonStatusEnum::Published->value,
+                LessonStatusEnum::Previewable->value,
+            ])
+            ->whereNotNull('lesson_code')
+            ->whereHas('scenes', fn ($q) => $q->whereNotNull('audio_path'))
+            // Ascending on purpose: keyBy keeps the LAST row for a duplicate key, so ordering
+            // oldest-first means a rebuilt lesson (same title, higher id) wins.
+            ->orderBy('id')
+            ->get()
+            ->keyBy('title')
+    );
+
+    return view('historyportal', compact('playableLessons', 'trendingLessons'));
 })->name('home');
 
 Route::get('/about', function () {

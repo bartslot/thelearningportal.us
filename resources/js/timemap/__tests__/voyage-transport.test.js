@@ -85,8 +85,18 @@ describe('transportAt', () => {
     expect(used).toContain('sea')
   })
 
-  it('leaves every other catalogue route entirely at sea', () => {
-    for (const v of voyagesDoc.voyages.filter((x) => x.id !== 'marco-polo-1271')) {
+  it('keeps Hannibal entirely overland, so a marching army never renders as a ship', () => {
+    const hannibal = voyagesDoc.voyages.find((v) => v.id === 'hannibal-218')
+    const t = { ...hannibal, track: trackFor(hannibal.waypoints.length) }
+    const kinds = new Set(hannibal.waypoints.map((_, i) => transportAt(t, (i * SAMPLES_PER_SEGMENT) / t.track.total)))
+    expect([...kinds]).toEqual(['horse'])
+  })
+
+  it('leaves every route that is not an overland one entirely at sea', () => {
+    // The land routes are the exception, so they are named rather than assumed: adding another
+    // overland voyage should make someone come and think about this list.
+    const overland = ['marco-polo-1271', 'hannibal-218']
+    for (const v of voyagesDoc.voyages.filter((x) => !overland.includes(x.id))) {
       const t = { ...v, track: trackFor(v.waypoints.length) }
       const kinds = new Set(v.waypoints.map((_, i) => transportAt(t, (i * SAMPLES_PER_SEGMENT) / t.track.total)))
       expect([...kinds]).toEqual(['sea'])

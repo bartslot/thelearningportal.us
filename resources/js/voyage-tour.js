@@ -37,7 +37,22 @@ const voyageFollowZoom = (pct) => {
 const MOTION_DEFAULT = 100;
 const motionAmount = (pct) => Math.max(0, Math.min(100, Number.isFinite(+pct) ? +pct : MOTION_DEFAULT)) / 100;
 
-const nlDate = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+// The date chip follows the PAGE's language — it used to be pinned to nl-NL, which printed Dutch
+// month names into English, German, French and Italian lessons.
+const pageLocale = () => (typeof document !== 'undefined' && document.documentElement.lang) || 'en';
+const dateFmt = (opts) => {
+  const base = { day: 'numeric', month: 'long', year: 'numeric', ...opts };
+  try { return new Intl.DateTimeFormat(pageLocale(), base); } catch (_) { return new Intl.DateTimeFormat('en', base); }
+};
+/**
+ * Format a leg date. BC dates carry their era ("218 BC"); AD dates do not, because tagging every
+ * Tasman or Columbus date "AD" is noise. JS uses astronomical years, where 0 is 1 BC — so anything
+ * at or below year 0 is BC and must say so, or a Roman lesson reads 218 BC as the year 218.
+ */
+const formatLegDate = (ms) => {
+  const d = new Date(ms);
+  return dateFmt(d.getUTCFullYear() <= 0 ? { era: 'short' } : {}).format(d);
+};
 const smoothstep = (t) => t * t * (3 - 2 * t);
 
 // AUTO fog-of-war: old-world coastlines already charted by 17th-c. European voyagers → never fogged.
@@ -202,7 +217,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   place.style.pointerEvents = 'none';
   hud.appendChild(place);
   const setChip = (ms, placeText) => {
-    chip.textContent = nlDate.format(new Date(ms));
+    chip.textContent = formatLegDate(ms);
     place.textContent = placeText || '';
     place.style.display = placeText ? 'block' : 'none';
   };

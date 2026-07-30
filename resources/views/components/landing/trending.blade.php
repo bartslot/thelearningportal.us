@@ -1,36 +1,9 @@
+@props(['lessons' => collect()])
+
 @php
-    $popular = [
-        [
-            'title' => 'The Punic Wars',
-            'category' => 'Ancient History',
-            'image' => asset('history/popular1.webp'),
-            'description' => 'Three devastating wars between Rome and Carthage that shaped the ancient Mediterranean world.',
-        ],
-        [
-            'title' => 'Abraham Lincoln',
-            'category' => 'American History',
-            'image' => asset('history/popular2.webp'),
-            'description' => 'The 16th President who led America through the Civil War and abolished slavery.',
-        ],
-        [
-            'title' => 'Colosseum',
-            'category' => 'Roman Empire',
-            'image' => asset('history/popular3.webp'),
-            'description' => "Rome's iconic amphitheater where gladiators fought before 50,000 spectators.",
-        ],
-        [
-            'title' => 'Gladiators',
-            'category' => 'Roman Culture',
-            'image' => asset('history/popular4.webp'),
-            'description' => 'Professional fighters who battled in arenas for entertainment and honor in ancient Rome.',
-        ],
-        [
-            'title' => 'Silk Road',
-            'category' => 'Trade Routes',
-            'image' => asset('history/popular5.webp'),
-            'description' => 'Ancient network of trade routes connecting East and West for over 1,400 years.',
-        ],
-    ];
+    // Cards come from App\Support\TrendingTopics so the headline and the lesson title are paired
+    // in one place. A card whose lesson is not built or published simply renders without a link.
+    $popular = \App\Support\TrendingTopics::cards();
 
     $features = [
         [
@@ -75,10 +48,18 @@
 
             <div class="js-disney-carousel">
                 @foreach ($popular as $item)
+                @php $lesson = $lessons[$item['lesson']] ?? null; @endphp
                 <article class="carousel-cell group relative mx-2 w-[16rem] shrink-0 sm:w-[17rem] lg:w-[18rem]">
                     <div class="relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10 bg-black/40 shadow-[0_16px_34px_rgba(0,0,0,0.35)] transition duration-300 ease-out hover:-translate-y-1 hover:border-sky-400/25 hover:shadow-[0_24px_52px_rgba(0,0,0,0.5)]">
+                        @if ($lesson)
+                            {{-- Overlay link so the whole card is clickable without rewrapping the
+                                 markup (which would nest the hover-reveal inside an anchor). --}}
+                            <a href="{{ route('lesson.play', $lesson->lesson_code) }}"
+                               class="absolute inset-0 z-10 rounded-[1.35rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+                               aria-label="{{ __('Play the lesson :title', ['title' => $item['title']]) }}"></a>
+                        @endif
                         <img
-                            src="{{ $item['image'] }}"
+                            src="{{ asset($item['image']) }}"
                             alt="{{ $item['title'] }}"
                             class="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]"
                         >
@@ -99,12 +80,19 @@
                                     {{ $item['title'] }}
                                     <p class="truncate text-[14px] pt-2 font-medium text-white/85">{{ $item['category'] }}</p>
                                 </h3>
-                                <div class="max-h-0 overflow-hidden opacity-0 transition-all duration-300 ease-out-ease-[cubic-bezier(0.95,0.05,0.795,0.035)] group-hover:max-h-28 group-hover:opacity-100">
+                                <div class="max-h-0 overflow-hidden opacity-0 transition-all duration-300 ease-out-ease-[cubic-bezier(0.95,0.05,0.795,0.035)] group-hover:max-h-32 group-hover:opacity-100">
                                 <p class="text-[11px] leading-5 text-slate-200/90">
                                         {{ $item['description'] }}
                                     </p>
                                     <div class="min-w-0">
-                                    
+                                        @if ($lesson)
+                                            <span class="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-sky-200">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
+                                                </svg>
+                                                {{ __('Play this lesson') }}
+                                            </span>
+                                        @endif
                                 </div>
                                 </div>
                             </div>

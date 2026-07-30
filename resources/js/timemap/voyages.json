@@ -1663,6 +1663,188 @@
      "note": "Trebizond to Venice"
     }
    ]
+  },
+  {
+   "id": "hannibal-218",
+   "name": "Hannibal's march on Rome",
+   "years": "218–216 BC",
+   "qid": "Q36330",
+   "year_start": -218,
+   "year_end": -216,
+   "show_from": -260,
+   "show_to": -140,
+   "label_at": 12,
+   "waypoints": [
+    [
+     -0.98,
+     37.6
+    ],
+    [
+     -0.27,
+     39.68
+    ],
+    [
+     0.52,
+     40.81
+    ],
+    [
+     2.18,
+     41.38
+    ],
+    [
+     2.86,
+     42.46
+    ],
+    [
+     3.0,
+     43.18
+    ],
+    [
+     4.36,
+     43.83
+    ],
+    [
+     4.72,
+     44.05
+    ],
+    [
+     4.89,
+     44.93
+    ],
+    [
+     5.04,
+     45.13
+    ],
+    [
+     5.72,
+     45.19
+    ],
+    [
+     6.49,
+     44.9
+    ],
+    [
+     7.06,
+     44.7
+    ],
+    [
+     7.36,
+     44.86
+    ],
+    [
+     7.69,
+     45.07
+    ],
+    [
+     9.7,
+     45.05
+    ],
+    [
+     11.34,
+     44.49
+    ],
+    [
+     12.1,
+     43.13
+    ],
+    [
+     14.27,
+     41.46
+    ],
+    [
+     16.13,
+     41.31
+    ]
+   ],
+   "fleet": [
+    {
+     "name": "Hannibal's army",
+     "masts": 2,
+     "flagship": true
+    }
+   ],
+   "legs": [
+    {
+     "depart": "-000217-05-01",
+     "arrive": "-000217-06-05",
+     "wp": [
+      0,
+      2
+     ],
+     "transport": "horse",
+     "note": "New Carthage to the Ebro"
+    },
+    {
+     "depart": "-000217-06-05",
+     "arrive": "-000217-07-25",
+     "wp": [
+      2,
+      5
+     ],
+     "transport": "horse",
+     "note": "Over the Pyrenees into Gaul"
+    },
+    {
+     "depart": "-000217-07-25",
+     "arrive": "-000217-09-05",
+     "wp": [
+      5,
+      7
+     ],
+     "transport": "horse",
+     "note": "The Rhône crossing"
+    },
+    {
+     "depart": "-000217-09-05",
+     "arrive": "-000217-09-28",
+     "wp": [
+      7,
+      10
+     ],
+     "transport": "horse",
+     "note": "Up the Rhône towards the mountains"
+    },
+    {
+     "depart": "-000217-10-01",
+     "arrive": "-000217-11-10",
+     "wp": [
+      10,
+      14
+     ],
+     "transport": "horse",
+     "note": "The Alps"
+    },
+    {
+     "depart": "-000217-11-15",
+     "arrive": "-000217-12-22",
+     "wp": [
+      14,
+      15
+     ],
+     "transport": "horse",
+     "note": "The Trebia"
+    },
+    {
+     "depart": "-000216-04-01",
+     "arrive": "-000216-06-21",
+     "wp": [
+      15,
+      17
+     ],
+     "transport": "horse",
+     "note": "Lake Trasimene"
+    },
+    {
+     "depart": "-000215-05-01",
+     "arrive": "-000215-08-02",
+     "wp": [
+      17,
+      19
+     ],
+     "transport": "horse",
+     "note": "Cannae"
+    }
+   ]
   }
  ]
 }
