@@ -154,7 +154,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // Audio controls
     audioPlaying: false,
     audioMuted: false,
-    _audioMutedVolume: 1.0,  // remember pre-mute volume
+    volumeLevel: 1.0,  // narration volume (0..1) — the deck's slider; survives scene changes
 
     // Subtitles — the narration written along the bottom while it is spoken. The teacher sets
     // the starting state per lesson; a student toggling it (C) is remembered for this browser,
@@ -1628,8 +1628,23 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     // ── Audio Control Methods ──────────────────────────────────────────
+    /**
+     * "Playing" for the overlay is broader than narration: on a voyage the ship sailing
+     * between stops IS playback (showMapContinue only turns true at a landfall). The
+     * player chrome hides while this is true and the pointer is away from the edges.
+     */
+    get isPlaying () {
+      if (this.audioPlaying) return true
+      return lesson.game_type === 'voyage'
+        && (this.phase === 'INTRO' || this.phase === 'GAME_ACTIVE')
+        && !this.showMapContinue
+    },
+
     _attachAudioListeners () {
       if (!this._audio) return
+      // Every scene builds a fresh Audio, so the chosen volume/mute must be re-applied here —
+      // without this, a muted lesson came back at full volume on the next scene.
+      this._audio.volume = this.audioMuted ? 0 : this.volumeLevel
       this._audio.addEventListener('play', () => { this.audioPlaying = true }, { once: false })
       this._audio.addEventListener('pause', () => { this.audioPlaying = false }, { once: false })
       this._audio.addEventListener('ended', () => { this.audioPlaying = false }, { once: false })
@@ -1654,15 +1669,16 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     toggleMute () {
-      if (!this._audio) return
-      if (this.audioMuted) {
-        this._audio.volume = this._audioMutedVolume
-        this.audioMuted = false
-      } else {
-        this._audioMutedVolume = this._audio.volume
-        this._audio.volume = 0
-        this.audioMuted = true
-      }
+      this.audioMuted = !this.audioMuted
+      if (this._audio) this._audio.volume = this.audioMuted ? 0 : this.volumeLevel
+    },
+
+    /** Deck volume slider. Dragging to 0 mutes; dragging up from 0 unmutes. */
+    setVolume (v) {
+      const level = Math.min(1, Math.max(0, Number(v) || 0))
+      this.audioMuted = level === 0
+      if (level > 0) this.volumeLevel = level
+      if (this._audio) this._audio.volume = level
     },
 
     // ── Subtitles ──────────────────────────────────────────────────────

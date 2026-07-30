@@ -580,6 +580,57 @@
     z-index: 1;
 }
 
+/* ─── Player volume slider ──────────────────────────────────────────────
+   A hairline track with a small round handle (the player deck's volume).
+   --lp-vol (0%..100%) paints the filled part of the track white. */
+.lp-volume {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 20px;              /* comfortable hit area; the visible track is 3px */
+    background: transparent;
+    cursor: pointer;
+}
+.lp-volume::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(to right,
+        rgba(255,255,255,0.9) var(--lp-vol, 100%),
+        rgba(255,255,255,0.25) var(--lp-vol, 100%));
+}
+.lp-volume::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -3.5px;        /* centres the 10px thumb on the 3px track */
+    height: 10px;
+    width: 10px;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+.lp-volume::-moz-range-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgba(255,255,255,0.25);
+}
+.lp-volume::-moz-range-progress {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgba(255,255,255,0.9);
+}
+.lp-volume::-moz-range-thumb {
+    height: 10px;
+    width: 10px;
+    border: none;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+.lp-volume:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.7);
+    outline-offset: 2px;
+    border-radius: 9999px;
+}
+
 @layer base {
     .landing-shell {
         overflow-x: hidden;
@@ -610,6 +661,9 @@
     .landing-shell h3,
     .landing-shell h4 {
         @apply font-history;
+    }
+    h1 {
+        @apply font-history text-2xl font-semibold text-slate-100 md:text-3xl xl:text-4xl;
     }
 }
 
