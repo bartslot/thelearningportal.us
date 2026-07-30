@@ -177,11 +177,21 @@ Write the full lesson narration now as one connected story. Return the JSON only
 USR;
     }
 
-    /** Human-readable content language from the lesson owner's locale. */
+    /**
+     * Human-readable content language for the prompt.
+     *
+     * Follows the teacher's TEACHING language, not the language the interface speaks to them in:
+     * a Dutch teacher can write English lessons, and reading `locale` here used to force her
+     * English lesson to be generated in Dutch. teachingLocale() falls back to the interface
+     * locale when no teaching language has been set, so nothing changes for most teachers.
+     */
     public static function contentLanguage(Lesson $lesson): string
     {
-        return match ($lesson->teacher?->locale ?? 'en') {
+        return match ($lesson->teacher?->teachingLocale() ?? 'en') {
             'nl' => 'Dutch',
+            'de' => 'German',
+            'fr' => 'French',
+            'it' => 'Italian',
             default => 'English',
         };
     }

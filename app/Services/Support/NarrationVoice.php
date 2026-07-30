@@ -8,8 +8,8 @@ namespace App\Services\Support;
  * Picks the Azure narration voice for a lesson's content language.
  *
  * The lesson's content language follows the teacher's locale (the same signal
- * LessonScriptPrompt::contentLanguage uses to write Dutch scripts for Dutch
- * teachers) — so narration and script always agree. Native voices are preferred
+ * LessonScriptPrompt::contentLanguage uses to choose the script
+ * language) — so narration and script always agree. Native voices are preferred
  * per language ("warm, calm" storytellers — founder-picked by ear 2026-07-11);
  * anything unmapped falls back to a multilingual voice rather than an
  * English voice mangling the language.
