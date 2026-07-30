@@ -46,7 +46,7 @@
             <!-- <div class="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-slate-950 via-slate-950/75 to-transparent"></div> -->
             <!-- <div class="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-slate-950 via-slate-950/75 to-transparent"></div> -->
 
-            <div class="js-disney-carousel">
+            <x-carousel aria-label="{{ __('Trending history topics') }}">
                 @foreach ($popular as $item)
                 @php $lesson = $lessons[$item['lesson']] ?? null; @endphp
                 <article class="carousel-cell group relative mx-2 w-[16rem] shrink-0 sm:w-[17rem] lg:w-[18rem]">
@@ -100,7 +100,7 @@
                     </div>
                 </article>
                 @endforeach
-            </div>
+            </x-carousel>
         </div>
 
         <div id="features" class="mt-20">
@@ -111,7 +111,7 @@
                 <!-- <div class="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-slate-950 via-slate-950/75 to-transparent"></div> -->
                 <div class="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-slate-950 via-slate-950/75 to-transparent"></div>
 
-                <div class="js-disney-carousel">
+                <x-carousel aria-label="{{ __('Built for better history teaching') }}">
                     @foreach ($features as $feature)
                     <article class="carousel-cell group relative mx-2 w-[15rem] shrink-0 sm:w-[16rem] lg:w-[17rem]">
                         <div class="relative aspect-[5/8] overflow-hidden rounded-[1.35rem] border border-white/10 bg-white/5 shadow-[0_16px_34px_rgba(0,0,0,0.25)] transition duration-300 ease-out hover:-translate-y-1 hover:border-sky-400/20 hover:bg-white/7">
@@ -152,7 +152,7 @@
                         </div>
                     </article>
                     @endforeach
-                </div>
+                </x-carousel>
             </div>
         </div>
 

@@ -18,22 +18,11 @@
             <section aria-label="{{ __($shelf['label']) }}">
                 <h2 class="mb-4 font-history text-xl font-light text-slate-100">{{ __($shelf['label']) }}</h2>
 
-                <div class="group/row relative" x-data>
-                    {{-- Edge arrows — appear on row hover, scroll ~a page. --}}
-                    <button type="button"
-                            @click="$refs.row.scrollBy({ left: -$refs.row.clientWidth * 0.8, behavior: 'smooth' })"
-                            class="absolute -left-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-700 bg-slate-950/90 text-slate-300 opacity-0 shadow-xl transition hover:border-amber-500/50 hover:text-amber-300 group-hover/row:opacity-100 sm:flex"
-                            aria-label="{{ __('Scroll left') }}">
-                        <x-icons.chevron-left class="h-5 w-5" />
-                    </button>
-                    <button type="button"
-                            @click="$refs.row.scrollBy({ left: $refs.row.clientWidth * 0.8, behavior: 'smooth' })"
-                            class="absolute -right-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-700 bg-slate-950/90 text-slate-300 opacity-0 shadow-xl transition hover:border-amber-500/50 hover:text-amber-300 group-hover/row:opacity-100 sm:flex"
-                            aria-label="{{ __('Scroll right') }}">
-                        <x-icons.chevron-right class="h-5 w-5" />
-                    </button>
-
-                    <div x-ref="row" class="flex snap-x gap-4 overflow-x-auto py-2 no-scrollbar">
+                {{-- The shared carousel — same drag/swipe/arrows as the landing shelves. It brings
+                     its own arrow buttons, so the hand-rolled scroll-by-a-page pair that used to
+                     live here is gone. --}}
+                <div class="relative overflow-hidden rounded-[2rem]">
+                    <x-carousel aria-label="{{ __($shelf['label']) }}">
                         @foreach($shelf['lessons'] as $lesson)
                             @php
                                 $cardImage = $lesson->cardImageUrl();
@@ -56,7 +45,7 @@
                             <a href="{{ $entryStep
                                     ? route('teacher.lessons.wizard', ['lesson' => $lesson->id, 'step' => $entryStep])
                                     : route('teacher.lessons.show', $lesson) }}"
-                               class="group relative aspect-2/3 w-52 shrink-0 snap-start overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
+                               class="carousel-cell group relative mx-2 block aspect-2/3 w-52 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_18px_40px_rgba(0,0,0,0.5)] sm:w-[15rem]">
                                 @if($cardImage)
                                     <img
                                         src="{{ $cardImage }}"
@@ -87,7 +76,7 @@
                                 </p>
                             </a>
                         @endforeach
-                    </div>
+                    </x-carousel>
                 </div>
             </section>
         @endforeach

@@ -11,10 +11,9 @@
             </p>
         </div>
 
-        {{-- Single-row Flickity carousel (same engine as Trending) — arrows + drag on desktop, swipe on
-             mobile. Auto-initialised by setupLandingCarousels() for any .js-disney-carousel. --}}
+        {{-- The app's shared card row — see resources/views/components/carousel.blade.php. --}}
         <div class="relative overflow-hidden rounded-[2rem]">
-            <div class="js-disney-carousel">
+            <x-carousel aria-label="{{ __('Lessons ready to play') }}">
                 @foreach ($lessons as $lesson)
                     @php $cover = $lesson->cardImageUrl(); @endphp
                     <a href="{{ route('lesson.play', $lesson->lesson_code) }}"
@@ -56,7 +55,7 @@
                     </div>
                 </a>
                 @endforeach
-            </div>
+            </x-carousel>
         </div>
     </div>
 </section>

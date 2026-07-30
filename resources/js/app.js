@@ -1,11 +1,18 @@
 import './bootstrap';
 import { gsap } from 'gsap';
-import Flickity from 'flickity';
-import 'flickity/css/flickity.css';
 import Sortable                from 'sortablejs';
 import { createTour } from './onboarding/tour.js';
+import { initTooltips } from './tooltip.js';
+import { watchCarousels } from './carousel.js';
 
 window.Sortable = Sortable;
+
+// Hover hints for icon-only controls, app-wide. Opt in per element with data-tooltip
+// (+ data-tooltip-key for the shortcut); see resources/js/tooltip.js.
+initTooltips();
+
+// Card rows, app-wide: any .js-disney-carousel becomes the one shared carousel.
+watchCarousels();
 
 // Alpine factory for the onboarding spotlight: x-data="onboardingTour(@js($config))".
 // Registered as a global (like wavePlayer in the app layout) so the Blade view can call it without
@@ -557,38 +564,16 @@ const setupPortalExitAnimation = () => {
     });
 };
 
-const setupLandingCarousels = () => {
-    document.querySelectorAll('.js-disney-carousel').forEach((element) => {
-        if (Flickity.data(element)) {
-            return;
-        }
-
-        new Flickity(element, {
-            cellAlign: 'left',
-            contain: false,
-            pageDots: false,
-            prevNextButtons: true,
-            wrapAround: false,
-            freeScroll: false,
-            selectedAttraction: 0.12,
-            friction: 0.78,
-            groupCells: false,
-        });
-    });
-};
-
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setupLandingCursor();
         setupWheelMotion();
         setupHeroParallax();
         setupPortalExitAnimation();
-        setupLandingCarousels();
     }, { once: true });
 } else {
     setupLandingCursor();
     setupWheelMotion();
     setupHeroParallax();
     setupPortalExitAnimation();
-    setupLandingCarousels();
 }
