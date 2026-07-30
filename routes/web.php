@@ -50,6 +50,40 @@ Route::get('/about', function () {
     return view('about');
 })->name('about');
 
+// ── Public, indexable marketing pages ────────────────────────────────────────
+//
+// Registered twice on purpose: English at the root (/history-lessons) and every other language
+// under its code (/de/history-lessons). Search engines need one URL per language, which is what
+// makes the
+// hreflang and sitemap alternates in App\Support\Seo meaningful. The locale segment is constrained
+// to the shipped languages, so it cannot swallow /about, /login or /teacher/*.
+Route::get('/sitemap.xml', \App\Http\Controllers\Public\SitemapController::class)->name('sitemap');
+
+// English, unprefixed. `/` and `/about` above already serve it, so only the new pages are added
+// here; App\Support\Seo maps the English "home"/"about" pages onto those existing route names.
+// /history-lessons, not /lessons: a public/lessons directory (lesson media) shadows that path —
+// the web server serves the directory before Laravel ever sees the request. It is also the better
+// keyword for what the page is.
+Route::get('/history-lessons', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'index'])
+    ->name('public.lessons');
+Route::get('/history-lessons/{slug}', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'show'])
+    ->name('public.lesson');
+
+// The other languages, prefixed and locale-aware.
+Route::prefix('{locale}')
+    ->whereIn('locale', ['nl', 'de', 'fr', 'it'])
+    ->middleware(\App\Http\Middleware\SetLocaleFromUrl::class)
+    ->group(function () {
+        Route::get('/', fn () => view('historyportal', [
+            'playableLessons' => \App\Support\Seo::publicLessons()->with(['firstScene', 'source'])->latest()->take(12)->get(),
+        ]))->name('public.home.localized');
+        Route::get('/about', fn () => view('about'))->name('public.about.localized');
+        Route::get('/history-lessons', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'index'])
+            ->name('public.lessons.localized');
+        Route::get('/history-lessons/{slug}', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'show'])
+            ->name('public.lesson.localized');
+    });
+
 // Student lesson player — public, no auth required
 Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
 

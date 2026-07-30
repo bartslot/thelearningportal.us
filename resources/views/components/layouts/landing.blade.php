@@ -1,12 +1,25 @@
 @props(['title' => config('app.name')])
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full scroll-smooth" data-theme="learningportal">
+<html lang="{{ str_replace('_', '-', \App\Support\Locales::region(app()->getLocale())) }}" class="h-full scroll-smooth" data-theme="learningportal">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="description" content="The Learning Portal is a cinematic history landing page for teachers and students.">
-    <title>{{ $title }} · The Learning Portal</title>
+
+    {{-- Pages that care about being found pass <x-slot:head><x-seo .../></x-slot:head>, which owns
+         the title, description, canonical, hreflang, social cards and structured data. Anything
+         without it falls back to the plain title below. --}}
+    @isset($head)
+        {{ $head }}
+    @else
+        <title>{{ $title }} · The Learning Portal</title>
+        <meta name="description" content="{{ __('Narrated, story-driven history lessons that a teacher can build in minutes and a class can play on any device.') }}">
+    @endisset
+
+    {{-- The narration audio and museum imagery come from the same origin, but fonts and tiles do
+         not: warming those connections early shaves a round trip off first paint. --}}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles

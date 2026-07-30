@@ -1,2 +1,10 @@
 User-agent: *
-Disallow:
+Allow: /
+
+# The app itself is not content: keep crawlers on the readable pages.
+Disallow: /teacher/
+Disallow: /settings
+Disallow: /help
+Disallow: /login
+
+Sitemap: https://history.thelearningportal.us/sitemap.xml
