@@ -277,6 +277,10 @@ class Step3SceneConfigurator extends Component
             'shots' => $this->serializeShots($scene),
             'hasSkyboxImage' => ! empty($scene->skybox_image_path),
             'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
+            // The Script panel spins while narration is being made; without these it had no way to
+            // learn the job had failed and kept spinning for good.
+            'status' => (string) $scene->status,
+            'errorMessage' => $scene->error_message,
             'animationClipId' => $scene->animation_clip_id,
             'animationClipUrl' => $this->animationGlbUrlFor($scene),
             'year' => $scene->year,

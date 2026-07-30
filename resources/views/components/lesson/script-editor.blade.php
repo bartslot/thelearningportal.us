@@ -208,6 +208,7 @@
                 dirty: false,
                 dirtyLines: [],
                 regenerating: false,
+                _narrateTimer: null,
                 _ro: null,
                 _waveRo: null,
                 _lastSaved: '',
@@ -227,9 +228,11 @@
                     // asked for it (regenerating) and it's this scene.
                     this._unwatchAudio = window.Livewire.on('scene:load', (e) => {
                         const p = Array.isArray(e) ? e[0]?.payload : e?.payload;
-                        if (p && this.regenerating && p.sceneId === this.sceneId && p.audioUrl) {
-                            this.reloadAudio(p.audioUrl);
-                        }
+                        if (!p || !this.regenerating || p.sceneId !== this.sceneId) return;
+                        if (p.audioUrl) { this.reloadAudio(p.audioUrl); return; }
+                        // The narrator could not record it (no TTS service, a bad voice, a refusal).
+                        // Say so and give the button back — this used to spin for ever.
+                        if (p.status === 'failed') this.narrationFailed(p.errorMessage);
                     });
                     // Regenerate-paragraph result: the server rewrites one paragraph and hands it back.
                     this._unwatchPara = window.Livewire.on('scene:paragraph-result', (e) => {
@@ -254,14 +257,17 @@
                     if (this.ws || !src) return;
                     try {
                         const WS = await window.ensureWaveSurfer();
+                        // Built WITHOUT url, then load() separately: switching scenes destroys this
+                        // component mid-download, and WaveSurfer aborts the fetch. Loading through a
+                        // promise we can catch keeps that from surfacing as an uncaught AbortError.
                         this.ws = WS.create({
                             container: this.$refs.waveform,
-                            url: src,
                             waveColor: '#475569',      // slate-600
                             progressColor: '#f59e0b',  // amber-500
                             cursorColor: '#fbbf24',    // amber-400 playhead
                             barWidth: 2, barGap: 1, barRadius: 2, height: 32, normalize: true,
                         });
+                        this._load(src);
                         this.ws.on('ready', (d) => {
                             this.dur = d || 0;
                             this.ready = true;
@@ -317,6 +323,7 @@
                     else requestAnimationFrame(() => this.refreshWave());
                 },
                 destroy() {
+                    clearTimeout(this._narrateTimer);
                     try { this.ws?.destroy(); } catch (_) {}
                     if (this._ro) this._ro.disconnect();
                     if (this._waveRo) this._waveRo.disconnect();
@@ -589,9 +596,26 @@
                     this.saveScript();               // persist the edited text first
                     if (this.sceneId == null) { this._clearDirty(); return; }
                     this.regenerating = true;
+                    // Last resort. Narration is a queued job: if the worker never runs, or dies
+                    // without writing a status, nothing would ever come back to switch this off.
+                    clearTimeout(this._narrateTimer);
+                    this._narrateTimer = setTimeout(() => this.narrationFailed(null), 180_000);
                     try { window.Livewire.dispatch('scene:renarrate', { sceneId: this.sceneId }); } catch (_) {}
                 },
+                narrationFailed(reason) {
+                    clearTimeout(this._narrateTimer);
+                    if (!this.regenerating) return;
+                    this.regenerating = false;
+                    const detail = {
+                        type: 'error',
+                        message: reason
+                            ? @js(__('The narrator could not record this scene:')) + ' ' + reason
+                            : @js(__('The narrator could not record this scene. Try again.')),
+                    };
+                    try { window.dispatchEvent(new CustomEvent('toast', { detail })); } catch (_) {}
+                },
                 reloadAudio(newUrl) {
+                    clearTimeout(this._narrateTimer);
                     this.regenerating = false;
                     this._clearDirty();
                     if (!newUrl) return;
@@ -600,7 +624,12 @@
                     const bust = newUrl + (newUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
                     // First narration for this scene: there is no waveform yet, so build one.
                     if (!this.ws) { this.$nextTick(() => this.mountWave(bust)); return; }
-                    try { this.ws.load(bust); } catch (_) {}
+                    this._load(bust);
+                },
+
+                /** load() rejects with AbortError when the component is torn down mid-download. */
+                _load(src) {
+                    try { Promise.resolve(this.ws?.load(src)).catch(() => {}); } catch (_) {}
                 },
 
                 reserveSpace() {
