@@ -231,6 +231,23 @@ final class ImageStyleTemplate
         return array_keys(self::STYLES);
     }
 
+    /** Translated human label for a style key. The keys themselves stay English in the DB. */
+    public static function label(string $style): string
+    {
+        return match ($style) {
+            'realistic' => __('Realistic'),
+            'sketched' => __('Sketched'),
+            'painted' => __('Painted'),
+            'cinematic' => __('Cinematic'),
+            'comic' => __('Comic'),
+            'ink' => __('Ink'),
+            'etching' => __('Etching'),
+            'engraved' => __('Engraved'),
+            'animation' => __('Animation'),
+            default => ucfirst($style),
+        };
+    }
+
     /** Bare style clause for callers that compose their own prompt (e.g. hero cut-outs). */
     public static function styleClause(string $style): string
     {

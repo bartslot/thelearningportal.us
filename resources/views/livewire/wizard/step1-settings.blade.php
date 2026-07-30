@@ -722,7 +722,7 @@
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
             <span class="font-medium text-white text-sm">{{ __('Visual style') }}</span>
-            <span class="text-slate-400 text-xs capitalize">{{ $image_style }}</span>
+            <span class="text-slate-400 text-xs">{{ \App\Services\Support\ImageStyleTemplate::label($image_style) }}</span>
         </div>
         <div class="collapse-content pt-2">
             <x-wizard.style-picker :styles="$this->styleOptions"

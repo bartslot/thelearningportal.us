@@ -12,35 +12,35 @@
         </a>
 
         <nav class="flex items-center gap-8">
-            <a href="{{ route('about') }}" class="text-sm text-white/80 transition hover:text-white">About</a>
-            <a href="/#pricing" class="text-sm text-white/80 transition hover:text-white">Pricing</a>
+            <a href="{{ route('about') }}" class="text-sm text-white/80 transition hover:text-white">{{ __('About') }}</a>
+            <a href="/#pricing" class="text-sm text-white/80 transition hover:text-white">{{ __('Pricing') }}</a>
             @if($isTeacher)
                 <a
                     href="{{ route('teacher.dashboard') }}"
                     class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
                 >
-                    Dashboard
+                    {{ __('Dashboard') }}
                 </a>
             @elseif($isAdmin)
                 <a
                     href="{{ route('admin.dashboard') }}"
                     class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
                 >
-                    Dashboard
+                    {{ __('Dashboard') }}
                 </a>
             @elseif($isAuthenticated)
                 <a
                     href="{{ route('home') }}"
                     class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
                 >
-                    Home
+                    {{ __('Home') }}
                 </a>
             @else
                 <a
                     href="/login"
                     class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
                 >
-                    Login
+                    {{ __('Login') }}
                 </a>
             @endif
         </nav>
