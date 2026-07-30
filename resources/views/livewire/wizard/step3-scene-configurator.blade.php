@@ -464,6 +464,7 @@
                         editable: true,  // teacher can edit the gallery title/date/story on the scene
                         mapOptions: p.voyage_map || null,   // hide cities/borders, show place labels
                         style: vcfg.map_style || p.lesson_map_style || 'soft-atlas',
+                        relief: Number(p.lesson_map_relief) || 0,
                         legLabels: p.leg_labels || [],
                         paintedFog: p.voyage_fog || [],     // teacher-painted undiscovered regions
                         {{-- Read currentSceneId (not the mount-time id) so a no-rebuild leg switch still
@@ -522,11 +523,14 @@
             //  which keeps the camera; re-mounting for it would reset the view)
             // Effective palette: a per-block override wins, else the lesson-wide default, else app default.
             const style = cfg.map_style || p.lesson_map_style || 'soft-atlas'
+            const relief = Number(p.lesson_map_relief) || 0
             const key = [p.sceneId, cfg.qid || '', year].join('|')
             if (inst && key === lastKey) {
                 // Style isn't in the key (it repaints in place), so apply it here too — this is
-                // the path a saved style change lands on after its Livewire round-trip.
+                // the path a saved style change lands on after its Livewire round-trip. Same for
+                // the 3D terrain.
                 try { inst.setStyle(style) } catch (_) {}
+                try { inst.setRelief(relief) } catch (_) {}
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }
@@ -538,6 +542,7 @@
             if (inst && prev && prev[0] === String(p.sceneId)) {
                 lastKey = key
                 try { inst.setStyle(style) } catch (_) {}
+                try { inst.setRelief(relief) } catch (_) {}
                 if (prev[2] !== String(year)) { try { inst.setYear(year) } catch (_) {} }
                 if (prev[1] !== String(cfg.qid || '')) { try { inst.setPolity(cfg.qid || null) } catch (_) {} }
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
@@ -558,6 +563,7 @@
                     year,
                     projection: cfg.projection || 'mercator',
                     style,
+                    relief,
                     interactive: true,
                     annotations: cfg.annotations || [],
                     editable: true,
@@ -580,7 +586,12 @@
         window.addEventListener('lessonmap:projection', (e) => inst && inst.setProjection(e.detail.type))
 
         // Inspector MAP STYLE select → repaint the live preview to the chosen palette immediately.
-        window.addEventListener('lessonmap:style', (e) => inst && inst.setStyle(e.detail.name))
+        // A voyage scene's `inst` is the tour, which listens for these itself — hence the method
+        // check rather than a bare call (the tour has no setStyle/setRelief of its own).
+        window.addEventListener('lessonmap:style', (e) => inst && inst.setStyle && inst.setStyle(e.detail.name))
+
+        // Inspector 3D TERRAIN slider → raise/flatten the live preview's ground immediately.
+        window.addEventListener('lessonmap:relief', (e) => inst && inst.setRelief && inst.setRelief(e.detail.relief))
 
         // Focus-city rename/remove saved server-side → push fresh annotations so marker labels update live.
         window.Livewire.on('focusAnnotationsRefresh', (e) => {
@@ -725,7 +736,7 @@
                 <div wire:key="scene-inspector-{{ $sceneModel->id }}">
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
-                                                 :lesson-map-style="$this->lesson->map_style"
+                                                 :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style"
                                                  :territory-results="$this->territoryResults"
                                                  :territory-query="$territoryQuery"
                                                  :city-results="$this->cityResults"
@@ -736,7 +747,7 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @elseif ($sceneModel->kind === 'voyage')
-                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" />
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @else
@@ -1264,7 +1275,9 @@
                     <span>{{ __('Clipart') }}</span>
                 </button>
                 {{-- 3D model / video AS A LAYER (an iframe layer on top of the scene, like clipart). --}}
-                <button type="button" @click="const l = window.prompt(@js(__('Paste a Sketchfab 3D model link'))); if (l) $wire.addEmbedLayer(l, '3d'); addOpen = false"
+                {{-- Opens OUR picker (the paintings modal, searching Sketchfab) rather than a browser
+                     prompt that asked the teacher to go and find a link somewhere else. --}}
+                <button type="button" @click="$wire.openModelPicker(); addOpen = false"
                         class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
                     <span>{{ __('3D model') }}</span>
@@ -1892,6 +1905,7 @@
                         @case('layer') {{ __('Add an image on the slide') }} @break
                         @case('voyage_stop') {{ __('Add a landfall image') }} @break
                         @case('gallery_image') {{ __('Add a gallery image') }} @break
+                        @case('model3d') {{ __('Add a 3D model') }} @break
                         @default {{ __('Set the scene background') }}
                     @endswitch
                 </h2>
@@ -2005,7 +2019,13 @@
                              the thing that actually finds obscure subjects is the Commons search, which
                              sits in the footer below and went unnoticed. Point at it instead. --}}
                         <div class="col-span-full py-10 text-center text-sm text-slate-400">
-                            @if ($paintingSearchThrottled)
+                            @if ($paintingPickerMode === 'model3d')
+                                {{-- Sketchfab, not the corpus: the advice that helps here is a
+                                     different search term, never "try Wikimedia". --}}
+                                <p>{{ trim($paintingQuery) === ''
+                                    ? __('Search Sketchfab for a 3D model, for example a ship, a temple or a coin.')
+                                    : __('No 3D models match that. Try a simpler word, in English.') }}</p>
+                            @elseif ($paintingSearchThrottled)
                                 {{-- Wikimedia throttled us. Saying "not found" here would be a lie about
                                      an archive that may well hold the painting. --}}
                                 <p>{{ __('Wikimedia is busy right now and asked us to slow down.') }}</p>
@@ -2023,7 +2043,9 @@
                     @endforelse
                 </div>
                 </div>
-                <div class="mt-4 flex flex-wrap items-center gap-2">
+                {{-- Wikimedia and image upload belong to the picture modes; a Sketchfab search has
+                     nothing to top up and nothing to upload into. --}}
+                <div @class(['mt-4 flex-wrap items-center gap-2', 'hidden' => $paintingPickerMode === 'model3d', 'flex' => $paintingPickerMode !== 'model3d'])>
                     @unless ($paintingCommonsLoaded)
                         <button type="button"
                                 wire:click="$set('paintingCommonsLoaded', true)"

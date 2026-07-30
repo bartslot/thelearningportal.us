@@ -19,6 +19,55 @@
         {{ __('Scene') }}
     </button>
 
+    {{-- 3D MODEL — how the object behaves once it is on the slide. Only a Sketchfab layer has
+         these; a clipart image drops straight through to the controls below. --}}
+    @php
+        $embed = $layer['embed'] ?? null;
+        $is3d = ($embed['type'] ?? null) === 'sketchfab';
+        $eo = array_merge(['interact' => true, 'autospin' => true, 'bg' => 'none'], $embed['opts'] ?? []);
+    @endphp
+    @if ($is3d)
+        <section class="rounded-lg border border-slate-700/60 bg-slate-900/40 p-2.5">
+            <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
+                {{ __('3D model') }}
+            </div>
+
+            <label class="mt-2 flex items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-300">{{ __('Interact') }}
+                    <span class="block text-[10px] text-slate-500">{{ __('The class can grab the model and turn it.') }}</span>
+                </span>
+                <input type="checkbox" @checked($eo['interact'])
+                       wire:change="setEmbedOption({{ $aid }}, 'interact', $event.target.checked)"
+                       class="toggle toggle-sm toggle-warning shrink-0" />
+            </label>
+
+            <label class="mt-2 flex items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-300">{{ __('Turn by itself') }}
+                    <span class="block text-[10px] text-slate-500">{{ __('Slowly rotates while the scene plays.') }}</span>
+                </span>
+                <input type="checkbox" @checked($eo['autospin'])
+                       wire:change="setEmbedOption({{ $aid }}, 'autospin', $event.target.checked)"
+                       class="toggle toggle-sm toggle-warning shrink-0" />
+            </label>
+
+            <div class="mt-2.5">
+                <span class="text-[11px] text-slate-300">{{ __('Behind the model') }}</span>
+                <div class="mt-1 grid grid-cols-3 gap-1">
+                    @foreach ([['none', __('None')], ['glass', __('Glass')], ['#0f172a', __('Solid')]] as [$val, $label])
+                        <button type="button" wire:click="setEmbedOption({{ $aid }}, 'bg', '{{ $val }}')"
+                                @class([
+                                    'rounded-md border px-2 py-1 text-[11px] transition',
+                                    'border-amber-400 bg-amber-400/10 text-amber-300' => $eo['bg'] === $val,
+                                    'border-slate-700 text-slate-400 hover:border-slate-500' => $eo['bg'] !== $val,
+                                ])>{{ $label }}</button>
+                    @endforeach
+                </div>
+                <p class="mt-1 text-[10px] text-slate-500">{{ __('None cuts the model out of its studio backdrop.') }}</p>
+            </div>
+        </section>
+    @endif
+
     {{-- Name + thumbnail + remove --}}
     <div class="flex items-center gap-2">
         <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] ?? '' }}"

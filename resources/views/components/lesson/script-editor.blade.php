@@ -99,7 +99,9 @@
                         title="{{ __('Rewrite this paragraph from a prompt') }}">
                     <svg x-show="!regenPara" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
                     <svg x-show="regenPara" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>
-                    <span x-text="regenPara ? @js(__('rewriting…')) : @js(__('Regenerate'))"></span>
+                    {{-- "Regenerate" read as "make the audio again" and teachers avoided it for fear
+                         of losing the words they had just written. It rewrites TEXT; it says so. --}}
+                    <span x-text="regenPara ? @js(__('rewriting…')) : @js(__('Rewrite text'))"></span>
                 </button>
             </div>
             <div class="flex min-w-0 flex-1 items-center gap-1" x-show="promptOpen" x-cloak>
@@ -123,22 +125,38 @@
             </button>
         </div>
 
-        {{-- Play bar — the real WaveSurfer waveform, compact. When the text was edited the
-             audio is stale: the waveform greys out and Play re-narrates before playing. --}}
+        {{-- Play bar — the real WaveSurfer waveform, compact.
+             Three states, and the control SAYS which one it is:
+               · no audio yet     → a labelled "Narrate" button, because a dead play button left
+                                    teachers with no way at all to get narration made;
+               · text edited      → "Re-narrate" (the audio no longer matches the words);
+               · audio up to date → the round Play/Pause. --}}
         <div class="flex shrink-0 items-center gap-2.5 border-t border-slate-700/60 bg-base-200/60 px-3 py-1.5">
-            <button type="button" x-on:click="onPlay()" :disabled="!ready && !dirty"
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-slate-950 transition hover:bg-amber-400 disabled:opacity-40"
-                    :title="dirty ? @js(__('Re-narrate the edited audio')) : (playing ? @js(__('Pause')) : @js(__('Play')))"
-                    aria-label="{{ __('Play narration') }}">
+            <button type="button" x-show="!hasAudio || dirty" x-on:click="renarrate()" :disabled="regenerating"
+                    class="flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-40"
+                    :title="hasAudio ? @js(__('Re-narrate the edited audio')) : @js(__('Record the narration for this scene'))">
                 <svg x-show="regenerating" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>
-                <svg x-show="!regenerating && !playing" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z"/></svg>
-                <svg x-show="!regenerating && playing" x-cloak viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M6.75 5.25h3v13.5h-3zM14.25 5.25h3v13.5h-3z"/></svg>
+                {{-- Microphone: this makes a recording, it does not touch the words. --}}
+                <svg x-show="!regenerating" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"/></svg>
+                <span x-text="regenerating ? @js(__('Narrating…')) : (hasAudio ? @js(__('Re-narrate')) : @js(__('Narrate')))"></span>
             </button>
+
+            <button type="button" x-show="hasAudio && !dirty" x-on:click="toggle()" :disabled="!ready"
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-slate-950 transition hover:bg-amber-400 disabled:opacity-40"
+                    :title="playing ? @js(__('Pause')) : @js(__('Play'))"
+                    aria-label="{{ __('Play narration') }}">
+                <svg x-show="!playing" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z"/></svg>
+                <svg x-show="playing" x-cloak viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M6.75 5.25h3v13.5h-3zM14.25 5.25h3v13.5h-3z"/></svg>
+            </button>
+
             {{-- wire:ignore so Livewire morphs never wipe WaveSurfer's rendered canvas. --}}
-            <div x-ref="waveform" wire:ignore class="h-7 min-w-0 flex-1 cursor-pointer transition-opacity"
+            <div x-ref="waveform" wire:ignore x-show="hasAudio" class="h-7 min-w-0 flex-1 cursor-pointer transition-opacity"
                  :class="dirty && 'pointer-events-none opacity-40'"></div>
+            <span x-show="!hasAudio && !regenerating" class="min-w-0 flex-1 truncate text-[11px] text-slate-500">
+                {{ __('No narration yet') }}
+            </span>
             <span class="shrink-0 font-mono text-[10px] tabular-nums text-slate-400"
-                  x-text="regenerating ? @js(__('updating…')) : (fmt(t) + ' / ' + fmt(dur))"></span>
+                  x-text="regenerating ? @js(__('recording…')) : (hasAudio ? (fmt(t) + ' / ' + fmt(dur)) : '–:––')"></span>
         </div>
     </div>
 </div>
@@ -183,7 +201,10 @@
                 dragging: false,
                 _startY: 0,
                 _startH: 0,
-                // Edited-since-narration state: the audio is stale until re-narrated on Play.
+                // Does this scene have a recording at all? Drives Narrate vs Play — a scene that has
+                // never been narrated used to show a disabled play button and nothing else.
+                hasAudio: !!url,
+                // Edited-since-narration state: the audio is stale until re-narrated.
                 dirty: false,
                 dirtyLines: [],
                 regenerating: false,
@@ -221,12 +242,21 @@
                         if (p && p.sceneId === this.sceneId) this.summarizing = false;
                     });
 
-                    if (!url) return;
+                    if (url) await this.mountWave(url);
+                },
+
+                /**
+                 * Build the waveform for `src`. Called on load when the scene already has audio, and
+                 * again after a first narration finishes — a scene that started without a recording
+                 * has no WaveSurfer to reload, and used to stay silent until a full page refresh.
+                 */
+                async mountWave(src) {
+                    if (this.ws || !src) return;
                     try {
                         const WS = await window.ensureWaveSurfer();
                         this.ws = WS.create({
                             container: this.$refs.waveform,
-                            url,
+                            url: src,
                             waveColor: '#475569',      // slate-600
                             progressColor: '#f59e0b',  // amber-500
                             cursorColor: '#fbbf24',    // amber-400 playhead
@@ -235,6 +265,7 @@
                         this.ws.on('ready', (d) => {
                             this.dur = d || 0;
                             this.ready = true;
+                            this.hasAudio = true;
                             this.recomputeStarts();   // spread paragraph timecodes over the REAL length
                             this.refreshWave();
                         });
@@ -563,9 +594,12 @@
                 reloadAudio(newUrl) {
                     this.regenerating = false;
                     this._clearDirty();
-                    if (!this.ws || !newUrl) return;
+                    if (!newUrl) return;
+                    this.hasAudio = true;
                     // Bust the HTTP cache — the re-narrated file often reuses the same path.
                     const bust = newUrl + (newUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+                    // First narration for this scene: there is no waveform yet, so build one.
+                    if (!this.ws) { this.$nextTick(() => this.mountWave(bust)); return; }
                     try { this.ws.load(bust); } catch (_) {}
                 },
 

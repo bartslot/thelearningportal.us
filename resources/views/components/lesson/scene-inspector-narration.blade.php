@@ -75,12 +75,14 @@
                                 wire:loading.attr="disabled" wire:target="regenerate"
                                 @disabled($isGenerating)
                                 class="btn btn-xs border-0 bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50 inline-flex items-center gap-1.5">
+                            {{-- A scene with no recording yet is NARRATED, not re-narrated. Same
+                                 wording as the Script panel's button, so one action reads one way. --}}
                             @if ($isGenerating)
                                 <x-icons.spinner class="h-3 w-3 animate-spin" />
-                                <span>{{ __('Re-narrating…') }}</span>
+                                <span>{{ $scene->audio_path ? __('Re-narrating…') : __('Narrating…') }}</span>
                             @else
                                 <x-icons.regenerate class="h-3 w-3" />
-                                <span>{{ __('Re-narrate') }}</span>
+                                <span>{{ $scene->audio_path ? __('Re-narrate') : __('Narrate') }}</span>
                             @endif
                         </button>
                         @if ($scene->script_segment && $scene->audio_path && ! $isGenerating)

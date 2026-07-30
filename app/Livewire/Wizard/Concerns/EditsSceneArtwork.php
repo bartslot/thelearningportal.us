@@ -171,16 +171,15 @@ trait EditsSceneArtwork
 
                 return;
             }
-            // Clean, autospinning, no-chrome — a decoration, not an interactive widget.
+            // Arrives as the teacher would want it: the studio backdrop gone, turning gently, and
+            // able to be grabbed and spun. Every one of those is a switch in the layer inspector.
+            $opts = ['interact' => true, 'autospin' => true, 'bg' => 'none'];
             $embed = [
                 'type' => 'sketchfab',
                 'title' => __('3D model'),
-                'src' => $p['src'].'?'.http_build_query([
-                    'autostart' => 1, 'autospin' => 0.2, 'ui_controls' => 0, 'ui_infos' => 0,
-                    'ui_watermark' => 0, 'ui_watermark_link' => 0, 'ui_hint' => 0, 'ui_ar' => 0,
-                    'ui_help' => 0, 'ui_settings' => 0, 'ui_vr' => 0, 'ui_fullscreen' => 0,
-                    'ui_annotations' => 0, 'ui_stop' => 0, 'scrollwheel' => 0, 'dnt' => 1,
-                ]),
+                'model_id' => $p['id'],   // kept so the src can be rebuilt when an option changes
+                'opts' => $opts,
+                'src' => $parser->sketchfabSrc($p['id'], $opts),
             ];
         } else {
             $p = $parser->video($input);
@@ -381,6 +380,58 @@ trait EditsSceneArtwork
                 if (($l['asset_id'] ?? null) === $assetId) {
                     $l[$field] = $coercedValue;
                 }
+
+                return $l;
+            })->all();
+
+            return array_merge($shot, ['layers' => $layers]);
+        })->all();
+
+        $scene->update(['shots' => $shots]);
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /**
+     * How a placed 3D model behaves: can the class grab and spin it, does it turn by itself, and
+     * what sits behind it.
+     *
+     * The viewer URL is rebuilt from the stored model id rather than string-patched, so the
+     * parameters can never drift out of step with each other.
+     *
+     * @param  string  $option  interact | autospin | bg
+     * @param  mixed  $value  bool for the switches; 'none' | 'glass' | '#rrggbb' for bg
+     */
+    public function setEmbedOption(int $assetId, string $option, mixed $value): void
+    {
+        if (! in_array($option, ['interact', 'autospin', 'bg'], true) || ! $this->selectedSceneId) {
+            return;
+        }
+        $coerced = $option === 'bg'
+            ? (in_array($value, ['none', 'glass'], true) || preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value)
+                ? (string) $value
+                : 'none')
+            : filter_var($value, FILTER_VALIDATE_BOOLEAN);
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $parser = app(\App\Services\EmbedParser::class);
+
+        $shots = collect($scene->shots ?? [])->map(function (array $shot) use ($assetId, $option, $coerced, $parser): array {
+            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $option, $coerced, $parser): array {
+                if (($l['asset_id'] ?? null) !== $assetId || ($l['embed']['type'] ?? null) !== 'sketchfab') {
+                    return $l;
+                }
+                $opts = array_merge(['interact' => true, 'autospin' => true, 'bg' => 'none'], $l['embed']['opts'] ?? []);
+                $opts[$option] = $coerced;
+                // Older layers were stored before the model id was kept; recover it from the src.
+                $id = $l['embed']['model_id'] ?? (preg_match('/([0-9a-f]{32})/i', (string) ($l['embed']['src'] ?? ''), $m) ? strtolower($m[1]) : null);
+                if ($id === null) {
+                    return $l;
+                }
+                $l['embed'] = array_merge($l['embed'], [
+                    'model_id' => $id,
+                    'opts' => $opts,
+                    'src' => $parser->sketchfabSrc($id, $opts),
+                ]);
 
                 return $l;
             })->all();

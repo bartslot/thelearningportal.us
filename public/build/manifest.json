@@ -1,9 +1,15 @@
 {
+  "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js": {
+    "file": "assets/three.module-CpB-wl7P.js",
+    "name": "three.module",
+    "src": "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js",
+    "isDynamicEntry": true
+  },
   "_FBXLoader-DYOGQobv.js": {
     "file": "assets/FBXLoader-DYOGQobv.js",
     "name": "FBXLoader",
     "imports": [
-      "node_modules/three/build/three.module.js"
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js"
     ]
   },
   "__commonjsHelpers-CqkleIqs.js": {
@@ -36,18 +42,12 @@
     "file": "assets/preload-helper-DIdkKO6w.js",
     "name": "preload-helper"
   },
-  "_voyages-BXsupRLD.js": {
-    "file": "assets/voyages-BXsupRLD.js",
+  "_voyages-BSTk6WH1.js": {
+    "file": "assets/voyages-BSTk6WH1.js",
     "name": "voyages"
   },
-  "node_modules/three/build/three.module.js": {
-    "file": "assets/three.module-CpB-wl7P.js",
-    "name": "three.module",
-    "src": "node_modules/three/build/three.module.js",
-    "isDynamicEntry": true
-  },
   "resources/css/app.css": {
-    "file": "assets/app-CTCkBG21.css",
+    "file": "assets/app-GKe4A7lb.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -67,7 +67,7 @@
     ],
     "dynamicImports": [
       "resources/js/scene/index.js",
-      "node_modules/three/build/three.module.js"
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js"
     ],
     "css": [
       "assets/app-AEfMPvIN.css"
@@ -89,7 +89,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js"
     ]
   },
@@ -111,7 +111,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-3O5bxuhe.js",
+    "file": "assets/lesson-player-CH9Dx38e.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -174,7 +174,7 @@
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js",
       "resources/js/scene/QuizOverlay.js",
       "resources/js/scene/TextOverlayLayer.js",
       "resources/js/scene/ArtworkOverlay.js",
@@ -190,14 +190,14 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-L2nPLNXD.js",
+    "file": "assets/index-DWMd7zKJ.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
     "imports": [
       "_preload-helper-DIdkKO6w.js",
       "_map-imagery-C665WXTm.js",
-      "_voyages-BXsupRLD.js",
+      "_voyages-BSTk6WH1.js",
       "__commonjsHelpers-CqkleIqs.js"
     ],
     "dynamicImports": [
@@ -205,18 +205,18 @@
     ]
   },
   "resources/js/timemap/voyage-ships.js": {
-    "file": "assets/voyage-ships-CVe07r5N.js",
+    "file": "assets/voyage-ships-islw7uN6.js",
     "name": "voyage-ships",
     "src": "resources/js/timemap/voyage-ships.js",
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js",
-      "_voyages-BXsupRLD.js"
+      "_voyages-BSTk6WH1.js"
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-C7K7Ubl1.js",
+    "file": "assets/voyage-tour-D45ha84o.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,
@@ -224,11 +224,11 @@
     "imports": [
       "resources/js/lesson-map.js",
       "resources/js/gallery-scene.js",
-      "_voyages-BXsupRLD.js",
+      "_voyages-BSTk6WH1.js",
       "resources/js/timemap/voyage-ships.js",
       "__commonjsHelpers-CqkleIqs.js",
       "_map-imagery-C665WXTm.js",
-      "node_modules/three/build/three.module.js",
+      "../../../../../../../Users/bartslot/BartsAutomation/BartsDev/apps/thelearningportal.us/node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js"
     ]
   }
