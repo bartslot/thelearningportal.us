@@ -52,15 +52,16 @@ class GenerateSceneAudio implements ShouldQueue
             // when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
-            // Language precedence, most authoritative first:
-            //   1. the teacher's explicit TEACHING language (profile setting, separate from the
-            //      language the interface speaks to them in),
-            //   2. the language the script is actually written in, as a safety net for content that
-            //      disagrees with that setting,
-            //   3. their interface locale, if there is nothing else to go on.
+            // For NARRATION the script itself is the authority: these are the actual words being
+            // read aloud, and an English sentence read by a Dutch voice is wrong no matter what the
+            // teacher's settings say. The teaching language (and then the interface locale) is only
+            // the fallback for text too short or ambiguous to call.
+            //
+            // Note this is the opposite priority to LessonScriptPrompt::contentLanguage, which asks
+            // a different question: what language should we WRITE the next lesson in. That one
+            // rightly follows the teacher's teaching language.
             $teacher  = $scene->lesson->teacher;
-            $locale   = $teacher?->teaching_locale
-                ?: ScriptLanguage::detect($text, (string) ($teacher?->locale ?: 'en'));
+            $locale   = ScriptLanguage::detect($text, $teacher?->teachingLocale() ?? 'en');
             $voiceId  = match (true) {
                 // Self-hosted Piper: pick the voice by language (Dutch pim, English ryan) so an
                 // English lesson isn't narrated in a Dutch accent.

@@ -42,8 +42,9 @@ class RenarrateMismatchedLessons extends Command
         $toFix = [];
 
         foreach ($lessons as $lesson) {
-            // What the voice WOULD be chosen as now, for this teacher.
-            $expected = $lesson->teacher?->teachingLocale() ?? 'en';
+            // What the voice used to be chosen from, before narration followed the script.
+            $usedBefore = $lesson->teacher?->locale ?: 'en';
+            $fallback = $lesson->teacher?->teachingLocale() ?? 'en';
 
             foreach ($lesson->scenes as $scene) {
                 if (! $scene->audio_path || ! $scene->script_segment) {
@@ -51,8 +52,10 @@ class RenarrateMismatchedLessons extends Command
                 }
                 // The language the script is actually in. Where the detector is confident and
                 // disagrees with what the lesson is meant to be taught in, the audio is suspect.
-                $detected = ScriptLanguage::detect($scene->script_segment, $expected);
-                if ($detected === $expected) {
+                $detected = ScriptLanguage::detect($scene->script_segment, $fallback);
+                // Suspect when the script's real language differs from the locale whose voice was
+                // used at generation time. Re-narrating now picks the script's language.
+                if ($detected === $usedBefore) {
                     continue;
                 }
 
@@ -61,7 +64,7 @@ class RenarrateMismatchedLessons extends Command
                     $lesson->lesson_code,
                     mb_substr((string) $lesson->title, 0, 30),
                     $scene->order,
-                    $expected,
+                    $usedBefore,
                     $detected,
                 ];
             }
@@ -73,7 +76,7 @@ class RenarrateMismatchedLessons extends Command
             return self::SUCCESS;
         }
 
-        $this->table(['Lesson', 'Title', 'Scene', 'Teaching', 'Script is'], $rows);
+        $this->table(['Lesson', 'Title', 'Scene', 'Narrated as', 'Script is'], $rows);
         $this->warn(count($rows).' scene(s) were narrated in a language that does not match the script.');
 
         if (! $apply) {
