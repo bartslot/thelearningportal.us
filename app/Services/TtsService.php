@@ -156,7 +156,11 @@ SSML;
                 'X-Microsoft-OutputFormat'  => 'audio-24khz-48kbitrate-mono-mp3',
                 'User-Agent'                => 'TheLearningPortal',
             ])
-            ->timeout(25)
+            // A full scene of narration is a minute or more of speech, and Azure streams it back as
+            // it synthesises. From SiteGround that regularly ran past 25s with ~280 KB already
+            // received, so every long scene failed with cURL 28 and silently lost its audio. The
+            // connect timeout stays short — an unreachable endpoint should still fail fast.
+            ->timeout(180)
             ->connectTimeout(5)
             ->withBody($ssml, 'application/ssml+xml')
             ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
