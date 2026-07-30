@@ -453,7 +453,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     if (placeMarkers) { map.off('move', placeMarkers); placeMarkers = null; }
     if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
     if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
-    Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place) c.remove(); });
+    Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place && c !== info) c.remove(); });
     arrivalPins = []; arrivalHotspot = null; arrivalHandles = []; layoutInsertHandles = null;
   };
 
