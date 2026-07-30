@@ -2553,6 +2553,16 @@ class Step3SceneConfigurator extends Component
 
     private const PAINTING_GRID_LIMIT = 30;
 
+    /**
+     * Width to request for a picker grid card, in pixels.
+     *
+     * The cards are ~230 CSS px wide, so 400 still has pixels to spare on a 2× display. The grid
+     * used to ask for 800: on one measured painting that is 186 KB per card against 47 KB, so a
+     * full grid pulled megabytes before the teacher had picked anything. The full-size image is
+     * fetched only once, when a painting is actually chosen.
+     */
+    private const PAINTING_THUMB_WIDTH = 400;
+
     /** 'background' — the chosen painting replaces the scene background; 'layer' — it's added as an
      *  editable image layer on top (the "Image" header button). Routed in applyPaintingChoice(). */
     public string $paintingPickerMode = 'background';
@@ -3177,7 +3187,7 @@ class Step3SceneConfigurator extends Component
             $tiles = $corpus->map(fn ($art) => [
                 'source' => 'corpus',
                 'key' => $art->qid,
-                'thumb' => $art->renditionUrl(800),
+                'thumb' => $art->renditionUrl(self::PAINTING_THUMB_WIDTH),
                 'title' => $art->title ?? __('Untitled'),
                 'caption' => $art->caption(),
                 'kind' => $art->kind,

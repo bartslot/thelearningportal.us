@@ -55,6 +55,49 @@ class CommonsImageServiceTest extends TestCase
      *
      * @return list<array<string,mixed>>
      */
+    /**
+     * The picker grid shows cards a few hundred pixels wide. Asking Commons for 800px cost roughly
+     * four times the bytes per card (186 KB vs 47 KB on one measured painting), which is most of
+     * why the modal felt slow — a full grid pulled megabytes before the teacher chose anything.
+     */
+    public function test_the_grid_asks_commons_for_card_sized_thumbnails(): void
+    {
+        $this->searchReturning('A View of Palos', 'Emanuel Leutze');
+
+        Http::assertSent(function ($request) {
+            $width = (int) ($request['iiurlwidth'] ?? 0);
+
+            return $width > 0 && $width <= 500;
+        });
+    }
+
+    /**
+     * When Commons declines to render a thumb it still returns `url` — the untouched original,
+     * which for a scanned painting can be tens of megabytes. Loading a grid of those is far worse
+     * than the oversized-thumb problem it looks like.
+     */
+    public function test_a_missing_thumbnail_never_falls_back_to_the_full_size_original(): void
+    {
+        Http::fake([
+            '*' => Http::response([
+                'query' => ['pages' => [[
+                    'title' => 'File:Huge scan.jpg',
+                    'imageinfo' => [[
+                        'width' => 9000, 'height' => 7000,
+                        'url' => 'https://upload.wikimedia.org/Huge_scan.jpg',   // no thumburl
+                        'descriptionurl' => 'https://commons.wikimedia.org/wiki/File:Huge_scan.jpg',
+                        'extmetadata' => ['LicenseShortName' => ['value' => 'Public domain']],
+                    ]],
+                ]]],
+            ]),
+        ]);
+
+        $thumb = app(CommonsImageService::class)->searchText('anything')[0]['thumb_url'];
+
+        $this->assertStringNotContainsString('upload.wikimedia.org/Huge_scan.jpg', $thumb);
+        $this->assertStringContainsString('width=', $thumb, 'it must still ask for a bounded width');
+    }
+
     private function searchReturning(string $objectName, string $artist): array
     {
         Http::fake([
@@ -104,7 +147,7 @@ class CommonsImageServiceTest extends TestCase
         $this->assertSame('throttled', $service->lastError, 'the caller must be able to say "try again"');
 
         // Nothing was written, so a later attempt asks Wikimedia again rather than replaying the failure.
-        $this->assertNull(Cache::get('commons.text.v2.'.md5('nachtwacht').'.12'));
+        $this->assertNull(Cache::get('commons.text.v3.'.md5('nachtwacht').'.12'));
     }
 
     public function test_a_successful_search_is_cached_and_reports_no_error(): void
@@ -126,7 +169,7 @@ class CommonsImageServiceTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertNull($service->lastError);
-        $this->assertIsArray(Cache::get('commons.text.v2.'.md5('nachtwacht').'.12'));
+        $this->assertIsArray(Cache::get('commons.text.v3.'.md5('nachtwacht').'.12'));
     }
 
     /** A genuine zero-result search IS cached — that answer is stable and worth keeping. */
@@ -137,6 +180,6 @@ class CommonsImageServiceTest extends TestCase
         $service = new CommonsImageService;
         $this->assertSame([], $service->searchText('qqqzzz nothing'));
         $this->assertNull($service->lastError);
-        $this->assertSame([], Cache::get('commons.text.v2.'.md5('qqqzzz nothing').'.12'));
+        $this->assertSame([], Cache::get('commons.text.v3.'.md5('qqqzzz nothing').'.12'));
     }
 }

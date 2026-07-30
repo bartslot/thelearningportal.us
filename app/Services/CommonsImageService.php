@@ -26,6 +26,9 @@ class CommonsImageService
 
     private const TIMEOUT = 8;
 
+    /** Width requested for picker grid cards. Full-size comes from image_url when one is chosen. */
+    private const THUMB_WIDTH = 400;
+
     /**
      * Why the last search came back empty: null when it genuinely found nothing, 'throttled' when
      * Wikimedia rate-limited us, 'unavailable' for any other failure. Callers use it to tell a
@@ -42,7 +45,7 @@ class CommonsImageService
 
         // The bare depicts-statement search also returns maps, flags and charts that
         // "depict" the entity — the painting term keeps results art-like.
-        return $this->remember("commons.depicts.v2.{$qid}.{$limit}",
+        return $this->remember("commons.depicts.v3.{$qid}.{$limit}",
             fn () => $this->search("filetype:bitmap haswbstatement:P180={$qid} painting", $limit));
     }
 
@@ -54,7 +57,7 @@ class CommonsImageService
             return [];
         }
 
-        return $this->remember('commons.text.v2.'.md5($term).".{$limit}",
+        return $this->remember('commons.text.v3.'.md5($term).".{$limit}",
             fn () => $this->search('filetype:bitmap '.$term, $limit));
     }
 
@@ -125,7 +128,10 @@ class CommonsImageService
                     'format' => 'json',
                     'prop' => 'imageinfo',
                     'iiprop' => 'url|extmetadata|size',
-                    'iiurlwidth' => 800,
+                    // Grid-card width, not full size. Commons renders whatever width we ask for, and
+                    // asking for 800 to fill a ~230px card cost ~4× the bytes on every result; the
+                    // chosen painting is downloaded at full size separately. See thumb_url below.
+                    'iiurlwidth' => self::THUMB_WIDTH,
                 ]);
             // Wikimedia throttles bursts from one address. That is a "come back in a moment",
             // never a "this painting does not exist" — say which, and do not cache it.
@@ -173,7 +179,11 @@ class CommonsImageService
                 'height' => (int) ($info['height'] ?? 0),
                 // Special:FilePath renders any width on demand — same scheme as corpus artworks.
                 'image_url' => 'https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($fileTitle),
-                'thumb_url' => $info['thumburl'] ?? $info['url'],
+                // Never fall back to $info['url'] — that is the untouched original, and a grid of
+                // them pulls tens of megabytes to fill cards a few hundred pixels wide. When
+                // Commons declines to render a thumb, ask Special:FilePath for the width instead.
+                'thumb_url' => $info['thumburl']
+                    ?? 'https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($fileTitle).'?width='.self::THUMB_WIDTH,
                 'file_page' => $info['descriptionurl'] ?? ('https://commons.wikimedia.org/wiki/File:'.rawurlencode($fileTitle)),
             ];
             if ($limit !== null && count($out) >= $limit) {
