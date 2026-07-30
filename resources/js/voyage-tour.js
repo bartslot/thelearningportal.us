@@ -366,6 +366,18 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     arrivalPins.forEach((p) => { try { p.remove(); } catch (_) { /* gone */ } });
     if (arrivalHotspot) { try { arrivalHotspot.remove(); } catch (_) { /* gone */ } arrivalHotspot = null; }
     arrivalHandles.forEach((h) => { try { h.remove(); } catch (_) { /* gone */ } }); arrivalHandles = [];
+    // Clear editor handles by QUERY, not from the arrays that happen to track them.
+    //
+    // arrivalHandles holds the destination X and the bend dots; the midpoint dots and the hover
+    // ghost were only ever in a local array inside the editor block, so nothing removed them here.
+    // This function runs on EVERY live route edit (setVoyageDef), and each run replaced
+    // layoutInsertHandles with the new build's closure — so the previous generation of dots stayed
+    // in the HUD with nothing left to re-project them on 'move'. They froze in screen space while
+    // the map panned underneath, and the route slowly filled up with handles that ignored it.
+    //
+    // A query also survives a build that throws half way through, which an array cannot.
+    hud.querySelectorAll('[data-voyage-handle],[data-voyage-endpoint]').forEach((el) => { try { el.remove(); } catch (_) { /* gone */ } });
+    layoutInsertHandles = null;
 
     const gal = galleryData();
     // Map pins ARE the gallery's own images (first few) — so an image added to the gallery shows on
@@ -528,12 +540,23 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           e.preventDefault(); e.stopPropagation();
           finish(false);
         };
+        // beginPreview() HIDES the real trail and draws a temporary line in its place, so a drag
+        // that never reaches finish() leaves the map with no route on it. Pointer capture usually
+        // keeps the events coming to the handle, but it can fail (older Safari) or be lost when the
+        // pointer leaves the window — so while a drag is live, window has the last word. Bound on
+        // pointerdown and released in finish(), so nothing accumulates across the many rebuilds
+        // this editor performs.
+        const onWindowUp = () => finish(true);
+        const onWindowCancel = () => finish(false);
+
         function finish(persist) {
           if (!down) return;
           const wasMoved = moved; const d = desc; const g = geo;
           down = null; moved = false; desc = null; geo = null;
           el.style.cursor = 'grab';
           document.removeEventListener('keydown', onKey, true);
+          window.removeEventListener('pointerup', onWindowUp);
+          window.removeEventListener('pointercancel', onWindowCancel);
           if (!wasMoved) return;
           endPreview();
           layoutHandles();            // Esc (or a committed drag) snaps the dot back onto the line
@@ -547,6 +570,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           down = { x: e.clientX, y: e.clientY }; moved = false; geo = null;
           try { el.setPointerCapture(e.pointerId); } catch (_) { /* older Safari */ }
           document.addEventListener('keydown', onKey, true);
+          window.addEventListener('pointerup', onWindowUp);
+          window.addEventListener('pointercancel', onWindowCancel);
           e.preventDefault(); e.stopPropagation();
         });
         el.addEventListener('pointermove', (e) => {
