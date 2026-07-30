@@ -42,8 +42,6 @@ class RenarrateMismatchedLessons extends Command
         $toFix = [];
 
         foreach ($lessons as $lesson) {
-            // What the voice used to be chosen from, before narration followed the script.
-            $usedBefore = $lesson->teacher?->locale ?: 'en';
             $fallback = $lesson->teacher?->teachingLocale() ?? 'en';
 
             foreach ($lesson->scenes as $scene) {
@@ -53,9 +51,15 @@ class RenarrateMismatchedLessons extends Command
                 // The language the script is actually in. Where the detector is confident and
                 // disagrees with what the lesson is meant to be taught in, the audio is suspect.
                 $detected = ScriptLanguage::detect($scene->script_segment, $fallback);
-                // Suspect when the script's real language differs from the locale whose voice was
-                // used at generation time. Re-narrating now picks the script's language.
-                if ($detected === $usedBefore) {
+
+                // Prefer the RECORDED language over any inference. Scenes narrated before
+                // audio_locale existed have none; for those fall back to the old guess (the
+                // teacher's interface locale, which is what the voice used to follow) and mark
+                // the row so it is clear the verdict is not based on recorded fact.
+                $recorded = $scene->audio_locale;
+                $usedFor = $recorded ?: ($lesson->teacher?->locale ?: 'en');
+
+                if ($detected === $usedFor) {
                     continue;
                 }
 
@@ -64,7 +68,7 @@ class RenarrateMismatchedLessons extends Command
                     $lesson->lesson_code,
                     mb_substr((string) $lesson->title, 0, 30),
                     $scene->order,
-                    $usedBefore,
+                    $recorded ?: $usedFor.' (guess)',
                     $detected,
                 ];
             }

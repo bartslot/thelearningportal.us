@@ -21,7 +21,7 @@ class Scene extends Model
         'image_prompt', 'image_path', 'shots', 'skybox_image_path', 'skybox_candidates', 'image_style',
         'skybox_blur', 'skybox_opacity', 'background_color', 'kb_animated', 'kb_direction', 'scene_view',
         'animation_clip_id',
-        'audio_path', 'audio_alignment', 'audio_script_hash',
+        'audio_path', 'audio_alignment', 'audio_script_hash', 'audio_locale',
         'duration_seconds', 'game_segment_index',
         'branch_group', 'branch_role', 'branch_choice_label',
         'status', 'upscale_status', 'error_message',

@@ -112,6 +112,8 @@ class GenerateSceneAudio implements ShouldQueue
                 'audio_path'        => $path,
                 'audio_alignment'   => $alignment,
                 'audio_script_hash' => sha1($script),
+                // The language this audio is actually IN, so nothing downstream has to infer it.
+                'audio_locale'      => $locale,
                 'duration_seconds'  => (int) ceil($duration),
             ]);
 

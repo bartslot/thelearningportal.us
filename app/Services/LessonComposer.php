@@ -150,6 +150,11 @@ class LessonComposer
             $scene->update([
                 'audio_path' => $path,
                 'audio_script_hash' => $hash,
+                // Reusing cached audio bypasses GenerateSceneAudio, so record the language here
+                // too or the sweep sees a null and falls back to guessing.
+                'audio_locale' => \App\Services\Support\ScriptLanguage::detect(
+                    $script, $scene->lesson->teacher?->teachingLocale() ?? 'en'
+                ),
                 'duration_seconds' => $this->estimateDuration($script),
             ]);
             $this->say('     ↳ narration reused from cache');
