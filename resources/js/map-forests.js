@@ -13,6 +13,8 @@
  *   await addForestLayer(map, { beforeId: 'mountains' })
  */
 
+import { mapGone } from './map-alive.js'
+
 const ASSET_BASE = '/timemap/assets/forests/'
 const POINTS_URL = '/timemap/forest-points.geojson'
 const RASTER_SCALE = 4 // render the SVG at 4× for crisp icons
@@ -62,7 +64,7 @@ export async function addForestLayer (map, opts = {}) {
   try {
     manifest = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null))
   } catch (_) { /* ignore */ }
-  if (!manifest || typeof manifest !== 'object') return
+  if (!manifest || typeof manifest !== 'object' || mapGone(map)) return
   const ids = [...new Set(Object.values(manifest).flat())]
 
   // 2. register every grove variant.
@@ -74,6 +76,8 @@ export async function addForestLayer (map, opts = {}) {
     data = await fetch(POINTS_URL).then((r) => r.json())
   } catch (_) { return }
 
+  // The map can be torn down while the fetches above were in flight — touching it then throws.
+  if (mapGone(map)) return
   if (map.getSource('forests')) map.getSource('forests').setData(data)
   else map.addSource('forests', { type: 'geojson', data })
 

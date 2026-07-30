@@ -5,6 +5,8 @@
  *
  *   await addVolcanoLayer(map, { beforeId: 'boundaries-label' })
  */
+import { mapGone } from './map-alive.js'
+
 const ASSET_BASE = '/timemap/assets/volcanoes/'
 const POINTS_URL = '/timemap/volcanoes.geojson'
 const RASTER_SCALE = 4
@@ -30,11 +32,13 @@ export async function addVolcanoLayer (map, opts = {}) {
   if (map.getLayer('volcanoes')) return
   let manifest
   try { manifest = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null)) } catch (_) {}
-  if (!manifest?.ids) return
+  if (!manifest?.ids || mapGone(map)) return
   await Promise.all(manifest.ids.map((id) => loadIcon(map, id)))
 
   let data
   try { data = await fetch(POINTS_URL).then((r) => r.json()) } catch (_) { return }
+  // The map can be torn down while the fetches above were in flight — touching it then throws.
+  if (mapGone(map)) return
   if (map.getSource('volcanoes')) map.getSource('volcanoes').setData(data)
   else map.addSource('volcanoes', { type: 'geojson', data })
 

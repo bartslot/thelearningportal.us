@@ -6,6 +6,8 @@
  *
  *   await addScatterLayer(map, { beforeId: 'forests' })
  */
+import { mapGone } from './map-alive.js'
+
 const ASSET_BASE = '/timemap/assets/scatter/'
 const POINTS_URL = '/timemap/land-scatter.geojson'
 const RASTER_SCALE = 4
@@ -42,12 +44,14 @@ export async function addScatterLayer (map, opts = {}) {
 
   let manifest
   try { manifest = await fetch(ASSET_BASE + 'manifest.json').then((r) => (r.ok ? r.json() : null)) } catch (_) {}
-  if (!manifest || typeof manifest !== 'object') return
+  if (!manifest || typeof manifest !== 'object' || mapGone(map)) return
   const ids = [...new Set(Object.values(manifest).flat())]
   await Promise.all(ids.map((id) => loadIcon(map, id)))
 
   let data
   try { data = await fetch(POINTS_URL).then((r) => r.json()) } catch (_) { return }
+  // The map can be torn down while the fetches above were in flight — touching it then throws.
+  if (mapGone(map)) return
   if (map.getSource('land-scatter')) map.getSource('land-scatter').setData(data)
   else map.addSource('land-scatter', { type: 'geojson', data })
 
