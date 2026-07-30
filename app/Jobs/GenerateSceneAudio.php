@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
 use App\Services\Support\NarrationVoice;
+use App\Services\Support\ScriptLanguage;
 use App\Services\Support\PronunciationLexicon;
 use App\Services\TtsService;
 use Illuminate\Bus\Batchable;
@@ -51,7 +52,11 @@ class GenerateSceneAudio implements ShouldQueue
             // fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE, when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
-            $locale   = $scene->lesson->teacher?->locale;
+            // The voice follows the language the SCRIPT is actually written in, not the teacher's
+            // UI locale. A Dutch teacher writing an English lesson had the whole thing narrated by a
+            // Dutch voice; the teacher's locale is only the fallback when the text is too short or
+            // ambiguous to call.
+            $locale   = ScriptLanguage::detect($text, (string) ($scene->lesson->teacher?->locale ?: 'en'));
             $voiceId  = match (true) {
                 // Self-hosted Piper: pick the voice by language (Dutch pim, English ryan) so an
                 // English lesson isn't narrated in a Dutch accent.
