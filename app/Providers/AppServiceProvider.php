@@ -14,6 +14,16 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(\App\Services\ElevenLabsService::class);
+
+        // SiteGround's PHP ships serialize_precision=100, which makes json_encode() write the full
+        // binary expansion of every float: a narration timing of 0.081 goes out as
+        // 0.08100000000000000255351295663786004297435283660888671875. On the lesson player that is
+        // ~445 KB of the payload (60% of the page) and it hits every JSON API response the Flutter
+        // app reads too. -1 is PHP's own default: the shortest string that round-trips to the same
+        // double, so nothing is lost.
+        if (ini_get('serialize_precision') !== '-1') {
+            ini_set('serialize_precision', '-1');
+        }
     }
 
     /**
