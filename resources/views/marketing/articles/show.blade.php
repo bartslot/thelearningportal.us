@@ -16,7 +16,9 @@
         />
     </x-slot:head>
 
-    <main class="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+    <x-landing.header />
+
+    <main class="mx-auto max-w-3xl px-4 pb-16 pt-32 sm:px-6">
         <nav class="text-xs text-slate-500" aria-label="{{ __('Breadcrumb') }}">
             <a href="{{ Seo::url('articles') }}" class="hover:text-amber-300">{{ __('Articles') }}</a>
             <span class="mx-2">/</span>

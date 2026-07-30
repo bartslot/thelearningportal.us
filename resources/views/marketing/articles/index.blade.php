@@ -11,7 +11,9 @@
         <x-seo page="articles" :title="$title" :description="$description" :noindex="$noindex" />
     </x-slot:head>
 
-    <main class="mx-auto max-w-4xl px-4 py-16 sm:px-6">
+    <x-landing.header />
+
+    <main class="mx-auto max-w-4xl px-4 pb-16 pt-32 sm:px-6">
         <header class="max-w-2xl">
             <p class="text-xs font-medium uppercase tracking-[0.18em] text-amber-400">{{ __('Articles') }}</p>
             <h1 class="mt-3 font-history text-4xl font-light tracking-tight text-white sm:text-5xl">{{ $title }}</h1>
