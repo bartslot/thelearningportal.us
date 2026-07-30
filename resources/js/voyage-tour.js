@@ -1,12 +1,13 @@
 import { renderLessonMap } from './lesson-map.js';
 import { renderGallery } from './gallery-scene.js';
 import { EASE, EASING } from './easing.js';
-import { voyageRoutes, smooth, SAMPLES_PER_SEGMENT } from './timemap/voyages.js';
+import { voyageRoutes, smooth, SAMPLES_PER_SEGMENT, arcTable, cutAtPoint } from './timemap/voyages.js';
 import { midpointAlong, nearestPointOnPolyline, splitByWaypoints } from './timemap/route-edit.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
 import { mapTextProjector } from './map-text-projector.js';
+import { createPausableClock } from './pausable-clock.js';
 
 // Voyage tour — the whole voyage is ONE persistent map. Legs play via playLeg(): the map, ships,
 // fog and route trail are built once, and moving between scenes eases the camera to the next leg
@@ -41,8 +42,9 @@ const motionAmount = (pct) => Math.max(0, Math.min(100, Number.isFinite(+pct) ? 
 // month names into English, German, French and Italian lessons.
 const pageLocale = () => (typeof document !== 'undefined' && document.documentElement.lang) || 'en';
 const dateFmt = (opts) => {
-  const base = { day: 'numeric', month: 'long', year: 'numeric', ...opts };
-  try { return new Intl.DateTimeFormat(pageLocale(), base); } catch (_) { return new Intl.DateTimeFormat('en', base); }
+  try { return new Intl.DateTimeFormat(pageLocale(), { day: 'numeric', month: 'long', year: 'numeric', ...opts }); } catch (_) {
+    return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric', ...opts });
+  }
 };
 /**
  * Format a leg date. BC dates carry their era ("218 BC"); AD dates do not, because tagging every
@@ -90,7 +92,20 @@ const hexToRgba = (hex, a) => {
 
 const ROUTE_LINE_DEFAULTS = { enabled: true, color: '#7c2d12', opacity: 0.9, thickness: 3, wobble: 0.3, curve: 'bezier' };
 
-export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, style = null } = {}) {
+/**
+ * A landfall gallery is a reading surface that takes over the screen, so it has to be announced,
+ * not just flagged: the player pulls ALL of its own chrome (play glyph, deck, chapter line) while
+ * one is open. A pause button hovering over the text you are reading is noise — the overlay's own
+ * ✕ is the only control that belongs there. The window flag stays for non-reactive checks.
+ */
+const setReadingOverlayOpen = (open) => {
+  window.__voyageGalleryOpen = open;
+  try {
+    window.dispatchEvent(new CustomEvent('lesson:reading-overlay', { detail: { open } }));
+  } catch (_) { /* no CustomEvent (never in a browser we support) */ }
+};
+
+export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, style = null, relief = 0 } = {}) {
   // Prefer the lesson's editable copy (game_config.voyage_def); fall back to the shared catalog.
   const route = def || voyageRoutes().find((v) => v.id === voyage);
   const pack = TOUR_PACKS[`./timemap/${voyage}-tour.json`]?.default
@@ -125,7 +140,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     if (!MO.labels) return [];
     return LL.map((l) => {
       const leg = route.legs[Number(l.leg)];
-      const wp = leg && route.waypoints[leg.wp[1]];
+      // A waypoint scene names where the leg ENDS — that is its landfall. The opening overview
+      // scene names where the whole trip STARTS, so it pins to the leg's departure instead
+      // (`at: 'depart'`). Without that distinction both sat on the same coordinate and the start
+      // city's name was drawn on top of the first landfall — "Venice" written across Israel.
+      const wp = leg && route.waypoints[l.at === 'depart' ? leg.wp[0] : leg.wp[1]];
       return (wp && l.text) ? { text: l.text, lng: wp[0], lat: wp[1] } : null;
     }).filter(Boolean);
   };
@@ -140,6 +159,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     // The lesson's map palette applies here exactly as it does to a plain map scene — a voyage is
     // not a special case. Omitted → renderLessonMap's own default.
     ...(style ? { style } : {}),
+    // 3D ground from the height map (0 = flat). The route line, the place names and the fog are
+    // draped onto it by MapLibre; the traveller is lifted onto it by voyage-ships.
+    relief,
   });
   const map = inst.map;
   // Project a lng into the SAME world copy the camera is showing (like the ship in voyage-ships.js),
@@ -178,6 +200,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   const fogKnownBoxes = [...KNOWN_WORLD_BOXES];
   if (Array.isArray(fogHome)) fogKnownBoxes.push([fogHome[0] - 7, fogHome[1] - 7, fogHome[0] + 7, fogHome[1] + 7]);
   let onMapStyle = null;
+  let onMapRelief = null;
   let ready = false;         // map + ships + fog + trail built
   let pendingLeg = null;     // a playLeg() that arrived before the map was ready
   let pendingOverview = null;   // showOverview() arrived before the style finished loading
@@ -207,7 +230,22 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   let L = { def: null, stop: null, departMs: 0, arriveMs: 0, f0: 0, f1: 1, start: null, end: null, followZoom: 3.8, stopImages: [], gallery: null };
   let sailing = false;   // true only while a leg's sail animation is running (drives the live zoom)
 
-  // ── HUD chip (persistent) ─────────────────────────────────────────────
+  // ── Pause ────────────────────────────────────────────────────────────
+  // Pausing a sail is two things: park the frame loop, and stop the clock the leg is timed
+  // against (createPausableClock) so the ship resumes from where it stopped rather than
+  // jumping forward by the length of the pause.
+  const sailClock = createPausableClock();
+  let sailStep = null;   // the running leg's frame callback, so resume can re-arm it
+  let paused = false;    // the student's intent — outlives any one leg, unlike the clock
+
+  // ── Where are we, and when? (persistent) ──────────────────────────────
+  // Two ways to say the same thing, and only ever ONE of them on screen:
+  //
+  //   'bottom' — the design's single line, low and quiet: 📍 Lisbon · 8 july 1497
+  //   'top'    — the older centred chips, a date pill with the place beneath it
+  //
+  // Showing both put the place name on the map twice (and the date twice over), which is what a
+  // teacher noticed straight away. The setting picks one; nothing renders the pair.
   const chip = document.createElement('div');
   chip.className = 'absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-base-100/90 px-5 py-2 text-base font-semibold shadow-lg';
   chip.style.pointerEvents = 'none';
@@ -216,10 +254,37 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   place.className = 'absolute left-1/2 top-16 -translate-x-1/2 rounded-full bg-base-100/75 px-4 py-1 text-sm shadow';
   place.style.pointerEvents = 'none';
   hud.appendChild(place);
+
+  // The bottom-left line (pin, place, dot, date) is NOT drawn here. The player already owns that
+  // line for every scene kind, and its copy is the one that hides with the rest of the chrome when
+  // the lesson plays or a gallery takes the screen. Two renderers meant two overlapping lines on a
+  // voyage, so this one reports the leg's place and date and lets the player draw them once.
+  let lastInfo = '';
+  const publishInfo = (placeText, dateText) => {
+    const atTop = (MO.info_position || 'bottom') === 'top';
+    const key = `${placeText}|${dateText}|${atTop}`;
+    if (key === lastInfo) return;   // setChip runs every frame of a sail; the text rarely changes
+    lastInfo = key;
+    try {
+      window.dispatchEvent(new CustomEvent('lesson:chapter-info', {
+        detail: { place: placeText, date: dateText, atTop },
+      }));
+    } catch (_) { /* no CustomEvent (never in a browser we support) */ }
+  };
+
+  /** Whichever presentation the lesson chose; the other is hidden, never merely stacked. */
+  const applyInfoPosition = () => {
+    const atTop = (MO.info_position || 'bottom') === 'top';
+    chip.style.display = atTop ? 'block' : 'none';
+    place.style.display = atTop && place.textContent ? 'block' : 'none';
+  };
+
   const setChip = (ms, placeText) => {
-    chip.textContent = formatLegDate(ms);
+    const dateText = formatLegDate(ms);
+    chip.textContent = dateText;
     place.textContent = placeText || '';
-    place.style.display = placeText ? 'block' : 'none';
+    applyInfoPosition();
+    publishInfo(placeText || '', dateText);
   };
 
   // ── Route trail ───────────────────────────────────────────────────────────
@@ -270,9 +335,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         out[i][1] += dx * off;
       }
       drawnCoords = out;
+      buildTrailArcTable();
       return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: out } };
     }
     drawnCoords = pts;
+    buildTrailArcTable();
     return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
   };
 
@@ -298,12 +365,31 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       Math.min(0.999, cut + 0.001), CLEAR_RGBA,
       1, CLEAR_RGBA];
   };
+  // ── Where the drawn line has to stop: at the traveller, not near it ────
+  //
+  // The reveal used the traveller's fraction of its own TRACK as the line-progress cut. Those are two
+  // different rulers: the drawn line is a wobbled spline sampled per waypoint pair, the track is the
+  // ship's own resampling, and line-progress normalises by the drawn line's length. The two drift
+  // apart mid-leg, which is why the line ended a visible distance behind the traveller — obvious on a
+  // camel or horse, which are far smaller than the ship the gap was first judged against.
+  //
+  // The cut is measured from the traveller's POSITION instead (cutAtPoint, in voyages.js with the
+  // rest of the route geometry). The arc table is rebuilt whenever the line is re-laid.
+  let trailArc = null;
+  const buildTrailArcTable = () => { trailArc = arcTable(drawnCoords); };
+
   let lastTrailF = 0;   // remembered so setRouteLine() can restyle the trail live
-  const updateTrail = (f) => {
+  /**
+   * Reveal the trail up to the traveller. `f` is its progress along the track; `pos` is where it
+   * actually is — when given, the line is cut there exactly, so its end sits under the ship's hull
+   * or the camel's feet rather than trailing behind them.
+   */
+  const updateTrail = (f, pos = null) => {
     lastTrailF = f;
     if (!RL.enabled) return;
+    const cut = pos ? cutAtPoint(drawnCoords, trailArc, pos, f) : f;
     // Geometry is static; only the reveal point moves.
-    try { map.setPaintProperty('voyage-trail', 'line-gradient', trailGradient(f)); } catch (_) { /* layer not up yet */ }
+    try { map.setPaintProperty('voyage-trail', 'line-gradient', trailGradient(cut)); } catch (_) { /* layer not up yet */ }
   };
   /** Lay down (or re-lay) the full path. Only needed when the ROUTE or its wobble/curve changes. */
   const redrawTrailGeometry = () => {
@@ -343,10 +429,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     close.textContent = '✕';
     close.style.cssText = 'position:absolute;top:calc(4% + 10px);right:calc(4% + 14px);z-index:50;width:36px;height:36px;border-radius:9999px;border:none;background:rgba(15,23,42,.92);color:#e2e8f0;font-size:18px;line-height:1;cursor:pointer;';
     overlay.appendChild(close);
-    window.__voyageGalleryOpen = true;
+    setReadingOverlayOpen(true);
     // Esc closes the modal (matches DaisyUI's native <dialog>); backdrop click closes it too.
     const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); galleryClose && galleryClose(); } };
-    galleryClose = () => { try { gInst.destroy(); } catch (_) { /* gone */ } overlay.remove(); document.removeEventListener('keydown', onKey); galleryClose = null; window.__voyageGalleryOpen = false; };
+    galleryClose = () => { try { gInst.destroy(); } catch (_) { /* gone */ } overlay.remove(); document.removeEventListener('keydown', onKey); galleryClose = null; setReadingOverlayOpen(false); };
     close.onclick = galleryClose;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) galleryClose(); });
     document.addEventListener('keydown', onKey);
@@ -438,11 +524,12 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       hotspot.type = 'button';
       hotspot.className = 'absolute rounded-full bg-base-100/95 px-4 py-2 text-sm font-semibold shadow-xl';
       hotspot.style.cssText += 'pointer-events:auto;cursor:pointer;border:2px solid rgba(251,191,36,.9);touch-action:none;';
-      // Label the landfall hotspot with the GALLERY title the teacher typed (it's the gallery this
-      // button opens). Fall back to the catalog stop name, then a neutral label. Built via text nodes
-      // so a teacher-typed title can never inject markup.
-      const hotspotLabel = (gal && typeof gal.title === 'string' && gal.title.trim())
-        || (L.stop && (L.stop.title || L.stop.place)) || 'Beelden';
+      // The button is labelled with the GALLERY title the teacher typed — it is that gallery this
+      // opens. With no title it used to fall back to the landfall NAME, which put the place on the
+      // map a second time right next to the line that already says it. A neutral word instead:
+      // duplication reads as a mistake, and an unnamed gallery should look unnamed.
+      // Text nodes only, so a teacher-typed title can never inject markup.
+      const hotspotLabel = (gal && typeof gal.title === 'string' && gal.title.trim()) || 'Beelden';
       const lblSpan = document.createElement('span');
       lblSpan.textContent = hotspotLabel;
       const arrowSpan = document.createElement('span');
@@ -965,24 +1052,29 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
   const sail = (token) => {
     const durationMs = Math.min(26_000, Math.max(6_000, ((L.arriveMs - L.departMs) / MONTH_MS) * MS_PER_MONTH));
-    const t0 = performance.now();
+    sailClock.reset();
+    if (paused) sailClock.pause();   // a leg that starts while paused waits at its departure point
     sailing = true;
-    const step = (now) => {
-      if (token !== legToken) { sailing = false; return; }
-      const p = Math.min(1, (now - t0) / durationMs);
+    const step = () => {
+      if (token !== legToken) { sailing = false; sailStep = null; return; }
+      const p = Math.min(1, sailClock.elapsed() / durationMs);
       const eased = smoothstep(p);
       const f = L.f0 + eased * (L.f1 - L.f0);
       ships.setTourProgress(voyage, f);
-      updateTrail(f);
-      if (fog) fog.revealTo(f);
       const pos = ships.pointAt(voyage, f);
+      updateTrail(f, pos);   // line ends AT the traveller, not somewhere behind it
+      if (fog) fog.revealTo(f);
       // Follow the ship at the slider-controlled zoom (L.followZoom). "Dolly in on arrival" adds a
       // little extra zoom over the last 40% of the crossing as the ship makes landfall.
       const arrivalIn = MO.cam_dolly_arrival ? ARRIVAL_ZOOM_DELTA * smoothstep(Math.max(0, (eased - 0.6) / 0.4)) : 0;
       map.jumpTo({ center: [pos.lng, pos.lat], zoom: L.followZoom + arrivalIn, pitch: VOYAGE_PITCH });
       setChip(L.departMs + eased * (L.arriveMs - L.departMs), null);
-      if (p < 1) { raf = requestAnimationFrame(step); } else { sailing = false; showArrival(token); }
+      if (p < 1) { raf = requestAnimationFrame(step); } else { sailing = false; sailStep = null; showArrival(token); }
     };
+    sailStep = step;
+    // Paused before this leg even got going (the student hit pause during the camera glide):
+    // hold the ship at the departure point until resume re-arms the loop.
+    if (paused) return;
     raf = requestAnimationFrame(step);
   };
 
@@ -992,7 +1084,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     setChip(L.departMs, 'Vertrek');
     if (skipAnim) {
       ships.setTourProgress(voyage, L.f1);
-      updateTrail(L.f1);
+      updateTrail(L.f1, ships.pointAt(voyage, L.f1));
       // Reveal the fog corridor for the WHOLE sailed leg too — otherwise the route trail past the
       // leg's start stays buried under intact fog (the editor preview jumps to arrival without
       // sailing, so nothing else advances the reveal). Matches what the animated sail() does.
@@ -1008,6 +1100,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   const runLeg = (leg, { intro = false, stopImages = [], gallery = null, hotspot = null } = {}) => {
     const token = ++legToken;      // cancels any in-flight sail/timer from the previous leg
     if (raf) { cancelAnimationFrame(raf); raf = null; }
+    sailStep = null;               // the previous leg's frame callback must never be resumed
     clearLegHud();
 
     const legDef = route.legs[leg];
@@ -1031,7 +1124,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
     ships.setTourProgress(voyage, f0);
     if (fog) fog.revealTo(f0, { force: true });   // cumulative: reveals everything sailed up to here
-    updateTrail(f0);
+    updateTrail(f0, ships.pointAt(voyage, f0));
 
     if (intro && !skipAnim) {
       // Only the very first leg gets the "from space" dive-in.
@@ -1084,6 +1177,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60);
     };
     window.addEventListener('lessonmap:style', onMapStyle);
+    // Same contract for the 3D terrain slider: raise or flatten the ground live, never a re-mount.
+    onMapRelief = (e) => { try { inst.setRelief(e && e.detail ? e.detail.relief : 0); } catch (_) { /* map not ready */ } };
+    window.addEventListener('lessonmap:relief', onMapRelief);
     // Route trail line — sits just above the land/coast but BELOW every text label, so place names
     // (and city names) read cleanly on top of the sailed route instead of being struck through.
     // Anchor before the first label layer that exists; fall back to below the fleet.
@@ -1236,6 +1332,25 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     playLeg,
     map,   // the live MapLibre instance (used by the text projector; handy for debugging)
     /**
+     * Freeze / unfreeze the sailing ship. A voyage leg is playback just like narration is, so the
+     * player's play/pause has to reach it — without this the only "pause" a student had on a
+     * sailing leg was to look away.
+     */
+    setPaused (v) {
+      const next = !!v;
+      if (next === paused) return;
+      paused = next;
+      if (paused) {
+        sailClock.pause();
+        if (raf) { cancelAnimationFrame(raf); raf = null; }
+      } else {
+        sailClock.resume();
+        if (sailStep) raf = requestAnimationFrame(sailStep);
+      }
+    },
+    /** True while a leg is actually under way (not arrived, not paused). */
+    isSailing () { return sailing && !paused; },
+    /**
      * Frame the WHOLE voyage: full route drawn, every landfall named, camera fitted to the lot.
      *
      * Derived entirely from the route, never authored, so adding or dragging a leg updates the
@@ -1281,6 +1396,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         L.followZoom = voyageFollowZoom(MO.ocean_zoom);
         if (!sailing) { try { map.easeTo({ center: map.getCenter(), zoom: L.followZoom, duration: 400, essential: true }); } catch (_) {} }
       }
+      applyInfoPosition();   // date + place move between the corner line and the centred chips live
       try { inst.setLayerToggles({ cities: MO.cities, borders: MO.borders }); } catch (_) { /* map not ready */ }
       try { inst.setLabels(resolveLabels()); } catch (_) { /* idem */ }
       try { inst.setDetailStyle(MO); } catch (_) { /* idem — MO carries the *_color/_size/_width keys */ }
@@ -1319,7 +1435,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       // the dot went where you dropped it, the ship sailed the new course, and the route the teacher
       // was trying to bend never changed shape. setRouteLine() already knew to redraw first.
       redrawTrailGeometry();
-      updateTrail(f1);
+      updateTrail(f1, ships.pointAt(voyage, f1));
       if (fog) { try { fog.revealTo(f1, { force: true }); } catch (_) {} }
       try { setChip(L.arriveMs, L.stop ? L.stop.place : ''); } catch (_) { /* chip not ready */ }
       try { buildArrivalHud(); } catch (_) { /* HUD not ready */ }
@@ -1347,7 +1463,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         // Curve/wobble change the drawn path itself, so re-lay the geometry, then re-reveal it to
         // wherever the ship currently is (this also re-applies the new colour).
         redrawTrailGeometry();
-        updateTrail(lastTrailF);
+        updateTrail(lastTrailF, ships.pointAt(voyage, lastTrailF));
       } catch (_) { /* map not ready */ }
     },
     /** Switch the map projection (flat ↔ globe) LIVE, without tearing down the tour. */
@@ -1441,6 +1557,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       legToken++;   // invalidate any in-flight leg
       if (raf) cancelAnimationFrame(raf);
       if (onMapStyle) { try { window.removeEventListener('lessonmap:style', onMapStyle); } catch (_) { /* noop */ } onMapStyle = null; }
+      if (onMapRelief) { try { window.removeEventListener('lessonmap:relief', onMapRelief); } catch (_) { /* noop */ } onMapRelief = null; }
       try { galleryClose && galleryClose(); } catch (_) { /* clears the gallery interval */ }
       try { if (map.getLayer('voyage-trail')) map.removeLayer('voyage-trail'); if (map.getSource('voyage-trail')) map.removeSource('voyage-trail'); } catch (_) { /* map gone */ }
       try { if (map.getLayer('voyage-edit-line')) map.removeLayer('voyage-edit-line'); if (map.getSource('voyage-edit-line')) map.removeSource('voyage-edit-line'); } catch (_) { /* map gone */ }
