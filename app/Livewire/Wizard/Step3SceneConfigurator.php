@@ -292,6 +292,7 @@ class Step3SceneConfigurator extends Component
                 ? array_merge($scene->config ?? [], ['view' => $this->voyageView()])
                 : $scene->config,
             'lesson_map_style' => $this->lesson->map_style, // lesson-wide default a map block inherits
+            'lesson_map_relief' => $this->lesson->map_relief, // 3D terrain exaggeration; 0 = flat
             // Voyage scenes preview against the lesson's editable route copy (falls back to the
             // shared catalog until the first edit clones it) — the wizard overlay passes this to
             // renderVoyageTour as `def`.
@@ -1143,6 +1144,19 @@ class Step3SceneConfigurator extends Component
         }
     }
 
+    /**
+     * Lesson-wide 3D terrain: how far the height map is exaggerated under every map in the lesson.
+     * 0 = flat. Above ~6 the mountains turn to spikes, so that is the ceiling.
+     *
+     * The preview has already raised its ground live (lessonmap:relief) by the time this lands —
+     * this call is only about persistence, so it deliberately does NOT re-select the scene: that
+     * would re-fire scene:load and yank the camera the teacher just set.
+     */
+    public function setLessonMapRelief(float $relief): void
+    {
+        $this->lesson->update(['map_relief' => max(0.0, min(6.0, $relief))]);
+    }
+
     // ── Voyage lesson: per-lesson editable route/fleet copy + scene editors ──────────────
     // Route geometry, legs (from/to) and fleet live in the shared, git-committed catalog
     // (resources/js/timemap/voyages.json) that the student player AND the standalone history
@@ -1617,7 +1631,14 @@ class Step3SceneConfigurator extends Component
     public function voyageLegLabels(): array
     {
         return $this->lesson->scenes()->where('kind', 'voyage')->whereNotNull('location')->ordered()->get()
-            ->map(fn ($s) => ['text' => (string) $s->location, 'leg' => (int) ($s->config['leg'] ?? 0)])
+            ->map(fn ($s) => [
+                'text' => (string) $s->location,
+                'leg' => (int) ($s->config['leg'] ?? 0),
+                // The overview scene names the port the voyage LEAVES from; every other scene names
+                // the landfall its leg arrives at. Both sit on leg 0 to begin with, so without this
+                // the start city's name was drawn on the first landfall instead of on itself.
+                'at' => ($s->config['overview'] ?? false) ? 'depart' : 'arrive',
+            ])
             ->all();
     }
 
@@ -2549,6 +2570,23 @@ class Step3SceneConfigurator extends Component
         $this->seedLandfallImageSearch();
     }
 
+    /**
+     * "3D model" → search Sketchfab in OUR modal.
+     *
+     * This used to be a window.prompt asking for a pasted link, which sent the teacher off to
+     * another site to hunt for a URL and copy it back. Same modal as the paintings, same grid,
+     * same search box; only the source behind it differs.
+     */
+    public function openModelPicker(): void
+    {
+        $this->paintingPickerMode = 'model3d';
+        $this->openPaintingPickerCommon();
+        // Seed from what the scene is about, so the grid opens on something relevant.
+        $scene = $this->selectedSceneModel();
+        $this->paintingQuery = trim((string) ($scene?->location ?: $this->lesson->topic ?: ''));
+        $this->revealSeededSearch();
+    }
+
     /** Voyage inspector "Use a picture" → pick the art that travels this leg instead of a model. */
     public function openMarkerImagePicker(): void
     {
@@ -2846,6 +2884,8 @@ class Step3SceneConfigurator extends Component
             'layer' => $this->applyPaintingAsLayer($source, $key),
             'voyage_stop' => $this->applyPaintingAsStopImage($source, $key),
             'voyage_marker' => $this->applyPaintingAsMarkerImage($source, $key),
+            // A Sketchfab uid is all addEmbedLayer needs — EmbedParser reads the 32-hex id.
+            'model3d' => $this->applyModelChoice($key),
             'gallery_image' => $this->applyPaintingAsGalleryImage($source, $key),
             default => $this->applyPaintingBackground($source, $key),
         };
@@ -2862,6 +2902,13 @@ class Step3SceneConfigurator extends Component
         if ($stored) {
             $this->addStopImage($stored['url']);
         }
+    }
+
+    /** Drop the chosen Sketchfab model onto the scene as a free-positioned 3D layer. */
+    public function applyModelChoice(string $uid): void
+    {
+        $this->paintingPickerOpen = false;
+        $this->addEmbedLayer($uid, '3d');
     }
 
     /** Download a picked painting to lesson storage and make it this leg's travelling marker. */
@@ -3011,6 +3058,11 @@ class Step3SceneConfigurator extends Component
         // opening the picker instant (the skeleton shows meanwhile).
         if (! $this->paintingPickerOpen || ! $this->paintingReady) {
             return collect();
+        }
+
+        // 3D models come from Sketchfab, not the artwork corpus — same modal, different shelf.
+        if ($this->paintingPickerMode === 'model3d') {
+            return $this->modelResults();
         }
 
         try {
@@ -3177,6 +3229,35 @@ class Step3SceneConfigurator extends Component
 
             return collect();
         }
+    }
+
+    /**
+     * Sketchfab search results shaped like painting tiles, so the existing grid renders them
+     * unchanged. The author's name rides in the caption — attribution travels with the model.
+     *
+     * @return \Illuminate\Support\Collection<int,array<string,mixed>>
+     */
+    private function modelResults(): Collection
+    {
+        $term = trim($this->paintingQuery);
+        if ($term === '') {
+            return collect();
+        }
+
+        $sketchfab = app(\App\Services\SketchfabService::class);
+        $models = $sketchfab->search($term, self::PAINTING_GRID_LIMIT);
+        $this->paintingSearchThrottled = $sketchfab->lastError === 'throttled';
+
+        return collect($models)->map(fn (array $m) => [
+            'source' => 'sketchfab',
+            'key' => $m['uid'],
+            'thumb' => $m['thumb'],
+            'title' => $m['name'],
+            'caption' => trim($m['author'].($m['license'] !== '' ? ' · '.$m['license'] : ''), ' ·'),
+            'kind' => '3d',
+            'provenance' => 'Sketchfab',
+            'correctness' => null,
+        ])->values();
     }
 
     public function applyPaintingBackground(string $source, string $key): void

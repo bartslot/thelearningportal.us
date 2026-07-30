@@ -39,6 +39,45 @@ class EmbedParser
     }
 
     /**
+     * The viewer URL for a Sketchfab model, built from the teacher's choices.
+     *
+     * Defaults matter here: a model dropped on a slide should arrive with its studio backdrop
+     * GONE (transparent=1), because the point is the object, not the scene someone else lit it in.
+     *
+     * @param  array{interact?:bool,autospin?:bool,bg?:string}  $opts  bg: 'none' | 'glass' | '#rrggbb'
+     */
+    public function sketchfabSrc(string $id, array $opts = []): string
+    {
+        $interact = (bool) ($opts['interact'] ?? true);
+        $autospin = (bool) ($opts['autospin'] ?? true);
+        $bg = (string) ($opts['bg'] ?? 'none');
+        $solid = preg_match('/^#[0-9a-fA-F]{6}$/', $bg) === 1;
+
+        $params = [
+            'autostart' => 1,
+            // Sketchfab reads a fraction of a turn per second; 0 stops it dead.
+            'autospin' => $autospin ? 0.2 : 0,
+            // Interaction is the orbit controls plus the scroll wheel. With it off the model is a
+            // moving picture, which is what you want behind narration.
+            'ui_controls' => $interact ? 1 : 0,
+            'scrollwheel' => $interact ? 1 : 0,
+            'ui_infos' => 0, 'ui_hint' => 0, 'ui_ar' => 0, 'ui_help' => 0,
+            'ui_settings' => 0, 'ui_vr' => 0, 'ui_fullscreen' => 0,
+            'ui_annotations' => 0, 'ui_stop' => 0, 'ui_watermark' => 0, 'ui_watermark_link' => 0,
+            'dnt' => 1,
+        ];
+        // 'none' and 'glass' both want the model cut out; glass adds its frosting on OUR side of
+        // the iframe, where we can blur what is behind it.
+        if (! $solid) {
+            $params['transparent'] = 1;
+        } else {
+            $params['ui_color'] = ltrim($bg, '#');
+        }
+
+        return "https://sketchfab.com/models/{$id}/embed?".http_build_query($params);
+    }
+
+    /**
      * Video → ['kind' => 'video', 'provider' => youtube|vimeo|other, 'id' => ?, 'src' => embed base url]
      * or null. `src` is the bare embed URL; per-scene settings (autoplay/start/end/controls) are
      * layered on at render time by embedVideoSrc().

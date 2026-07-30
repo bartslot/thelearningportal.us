@@ -163,9 +163,26 @@ export class ArtworkOverlay {
       // Editor: the iframe must NOT eat pointer events or the layer can't be dragged — a transparent
       // shield over it is the drag surface. Playback: a Sketchfab model stays interactive (rotate),
       // a video stays inert (it just plays); both never block a map pan because the host is pe:none.
-      const live = this.readonly && item.embed.type === 'sketchfab'
+      // A 3D model's own settings: can it be grabbed, and what sits behind it. `interact` off
+      // makes it a moving picture — the right thing behind narration — and matters here as well as
+      // in the viewer URL, because pointer-events is what actually stops a grab.
+      const opts = item.embed.opts || {}
+      const canGrab = opts.interact !== false
+      const live = this.readonly && item.embed.type === 'sketchfab' && canGrab
+      // 'none' means the model was cut out of its studio backdrop, so anything but transparent here
+      // would put the black box straight back. Glass frosts what is behind it; a hex is painted flat.
+      const bg = item.embed.type === 'sketchfab' ? (opts.bg ?? 'none') : '#000'
+      const solid = typeof bg === 'string' && /^#[0-9a-f]{6}$/i.test(bg)
       frame.style.cssText = `position:absolute; inset:0; width:100%; height:100%; display:block; border:0;
-        pointer-events:${live ? 'auto' : 'none'}; border-radius:6px; overflow:hidden; background:#000;`
+        pointer-events:${live ? 'auto' : 'none'}; border-radius:6px; overflow:hidden;
+        background:${solid ? bg : 'transparent'};`
+      if (bg === 'glass') {
+        // The frosting has to sit BEHIND the iframe, which is transparent, so it goes on the node.
+        node.style.background = 'rgba(148,163,184,0.14)'
+        node.style.backdropFilter = 'blur(10px) saturate(120%)'
+        node.style.borderRadius = '10px'
+        node.style.boxShadow = 'inset 0 0 0 1px rgba(255,255,255,0.16)'
+      }
       if (item.opacity < 1) frame.style.opacity = String(Math.max(0.05, item.opacity))
       node.appendChild(frame)
 
