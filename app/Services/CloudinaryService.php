@@ -24,6 +24,14 @@ class CloudinaryService
      */
     private const DELIVERY_TRANSFORM = 'f_auto,q_auto,c_limit,w_2400';
 
+    /**
+     * Delivery transformation for lesson card posters. A card is drawn at 240x360 CSS px, so 480
+     * wide covers it on a retina screen and anything beyond that is bytes nobody sees. WebP at 60
+     * rather than the q_auto used elsewhere: these are small, heavily scaled-down thumbnails where
+     * the extra compression is invisible, and it is what the poster shelves asked for.
+     */
+    private const COVER_TRANSFORM = 'f_webp,q_60,c_limit,w_480';
+
     private ?string $cloud;
 
     private ?string $key;
@@ -48,7 +56,7 @@ class CloudinaryService
      * Passing $publicId makes the upload deterministic (overwrite=true) so re-runs replace the same
      * asset instead of piling up duplicates — used by content builders that rebuild on every run.
      */
-    public function uploadBytes(string $bytes, string $folder = 'lessons', ?string $publicId = null): ?string
+    public function uploadBytes(string $bytes, string $folder = 'lessons', ?string $publicId = null, string $transform = self::DELIVERY_TRANSFORM): ?string
     {
         if (! $this->configured() || $bytes === '') {
             return null;
@@ -78,7 +86,7 @@ class CloudinaryService
 
             $url = $response->json('secure_url');
             if ($response->successful() && $url) {
-                return $this->optimize($url);
+                return $this->optimize($url, $transform);
             }
             report(new \RuntimeException('Cloudinary upload failed: HTTP '.$response->status().' '.$response->body()));
         } catch (\Throwable $e) {
@@ -123,20 +131,30 @@ class CloudinaryService
     }
 
     /**
-     * Insert the delivery transformation (f_auto,q_auto,c_limit,w_2400) into a Cloudinary URL so it
-     * serves AVIF/WebP at auto-quality. Idempotent — a URL that already carries the transform, or a
-     * non-Cloudinary URL, is returned untouched.
+     * Upload a lesson's card poster and return a CDN URL that delivers it as a small WebP.
+     * The public id is deterministic, so regenerating a cover replaces the same asset (and busts
+     * the CDN cache) instead of leaving an orphan behind.
      */
-    public function optimize(string $url): string
+    public function uploadCover(string $bytes, int $lessonId): ?string
+    {
+        return $this->uploadBytes($bytes, 'lessons', "lessons/{$lessonId}/cover", self::COVER_TRANSFORM);
+    }
+
+    /**
+     * Insert a delivery transformation into a Cloudinary URL so it serves AVIF/WebP at the right
+     * size. Idempotent — a URL that already carries a transform, or a non-Cloudinary URL, is
+     * returned untouched.
+     */
+    public function optimize(string $url, string $transform = self::DELIVERY_TRANSFORM): string
     {
         if (! str_contains($url, 'res.cloudinary.com') || ! str_contains($url, '/image/upload/')) {
             return $url;
         }
-        if (str_contains($url, '/upload/'.self::DELIVERY_TRANSFORM.'/') || str_contains($url, 'f_auto')) {
+        if (str_contains($url, '/upload/'.$transform.'/') || str_contains($url, 'f_auto') || str_contains($url, 'f_webp')) {
             return $url;
         }
 
-        return str_replace('/image/upload/', '/image/upload/'.self::DELIVERY_TRANSFORM.'/', $url);
+        return str_replace('/image/upload/', '/image/upload/'.$transform.'/', $url);
     }
 
     /** @return array{cloud:?string,key:?string,secret:?string} */

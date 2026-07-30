@@ -33,6 +33,7 @@ class Lesson extends Model
         'quiz_question_count',
         'quiz_timing',
         'map_style',
+        'map_relief',
         'strategy_game',
         'strategy_game_id',
         'title',
@@ -117,6 +118,19 @@ class Lesson extends Model
         };
         static::saved($forgetCaches);
         static::deleted($forgetCaches);
+
+        // A cover is rendered FROM the poster override, so changing the poster makes the existing
+        // cover a picture of the wrong thing — and because the cover outranks the override on the
+        // card, the teacher would see their change ignored. Drop it and let the card fall back to
+        // the new poster until app:generate-lesson-covers renders the replacement.
+        static::updating(function (Lesson $lesson): void {
+            if (! $lesson->isDirty('poster_image')) {
+                return;
+            }
+
+            $lesson->cover_url = null;
+            Storage::disk('public')->delete("lessons/{$lesson->id}/cover.webp");
+        });
     }
 
     protected function casts(): array
@@ -134,6 +148,7 @@ class Lesson extends Model
             'game_config' => 'array',
             'include_game' => 'boolean',
             'quiz_question_count' => 'integer',
+            'map_relief' => 'float',
             'team_count' => 'integer',
             'game_split_count' => 'integer',
             'wizard_step' => 'integer',
@@ -507,6 +522,13 @@ class Lesson extends Model
      */
     public function coverImageUrl(): ?string
     {
+        // The CDN copy wins: same picture, served as a small WebP from Cloudinary instead of
+        // off our own box. Written by app:generate-lesson-covers; null until it has run with
+        // Cloudinary configured, and the local file below carries the page until then.
+        if ($cdn = trim((string) ($this->cover_url ?? ''))) {
+            return $cdn;
+        }
+
         $path = "lessons/{$this->id}/cover.webp";
 
         if (! Storage::disk('public')->exists($path)) {
@@ -533,15 +555,31 @@ class Lesson extends Model
      */
     public function cardImageUrl(): ?string
     {
-        // A teacher-chosen poster always wins — it's the explicit override.
-        if ($url = $this->posterOverrideUrl()) {
+        // The pre-rendered WebP cover (small, cropped, CDN-hosted) wins outright — including over
+        // a teacher's poster override, because the cover is RENDERED FROM whatever the chain below
+        // picked. The override decides WHICH picture the card shows; the cover decides how it is
+        // delivered. Choosing the override here instead meant an overridden poster shipped as a
+        // multi-megabyte original for ever, which is most of them.
+        if ($url = $this->coverImageUrl()) {
             return $url;
         }
 
-        // 0. Pre-rendered local WebP cover (small, cropped) — by far the lightest option, so it
-        //    wins outright. The chain below remains the SOURCE for generation and the fallback
-        //    shown until app:generate-lesson-covers has run for this lesson.
-        if ($url = $this->coverImageUrl()) {
+        return $this->cardImageSourceUrl();
+    }
+
+    /**
+     * The card image chain WITHOUT the pre-rendered cover — i.e. the original artwork a cover is
+     * rendered from, and what a card shows until one exists.
+     *
+     * Public because app:generate-lesson-covers needs exactly this: it used to keep its own copy
+     * of the chain, which silently drifted (it was missing the slideshow art and avatar portrait
+     * steps), so lessons whose only image came from those reported "no source image available"
+     * and their cards went on serving multi-megabyte originals for ever.
+     */
+    public function cardImageSourceUrl(): ?string
+    {
+        // 0. A teacher-chosen poster always wins — it's the explicit override.
+        if ($url = $this->posterOverrideUrl()) {
             return $url;
         }
 

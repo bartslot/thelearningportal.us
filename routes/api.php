@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CatalogManifestController;
 use App\Http\Controllers\Api\LessonTeamController;
 use App\Http\Controllers\Api\StudentLessonController;
 use Illuminate\Http\Request;
@@ -13,6 +14,13 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->name('api.v1.')->group(function () {
 
     Route::post('/auth/login', [AuthController::class, 'login'])->name('auth.login');
+
+    // ── Catalogue manifest (Flutter sync + environment migration) ─────────
+    // Public, like the lessons it lists. Throttled and ETagged: a client that polls for changes
+    // and finds none pays for a 304, not the catalogue.
+    Route::get('/catalog/manifest', CatalogManifestController::class)
+        ->middleware('throttle:60,1')
+        ->name('catalog.manifest');
 
     Route::middleware('auth:sanctum')->group(function () {
 
