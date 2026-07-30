@@ -161,7 +161,7 @@ class Step2Generate extends Component
     public function retryOutline(LessonGenerationRecovery $recovery): void
     {
         $recovery->purgeQueuedJobs($this->lesson);
-        $this->lesson->scenes()->delete();
+        $this->lesson->scenes()->forceDelete();   // hard: a soft-deleted row would still hold its (lesson_id, order) slot
         $this->lesson->update([
             'status' => LessonStatus::SourceReady,
             'error_message' => null,

@@ -85,6 +85,15 @@ class Step3SceneConfigurator extends Component
 
     public bool $addSceneOpen = false;
 
+    /**
+     * The scene the teacher just deleted, as [id, order], so Cmd-Z (or the Undo in the toast) can put
+     * it back where it was. One deep: the rail's delete is a single click, and a teacher who wants a
+     * whole batch back reaches for the browser's back button, not a history stack.
+     *
+     * @var array{id: int, order: int}|null
+     */
+    public ?array $deletedScene = null;
+
     /** Right-panel view: 'scene' (per-scene editor) or 'settings' (lesson-global Story + Music). */
     public string $panelView = 'scene';
 
@@ -3812,7 +3821,13 @@ class Step3SceneConfigurator extends Component
     {
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
         $wasGame = $scene->kind === 'game';
+        $wasOrder = (int) $scene->order;
+
+        // Park the row's order out of the way before soft-deleting it: (lesson_id, order) is unique,
+        // and the renumbering below would otherwise collide with the scene we just took out.
+        $scene->update(['order' => $this->parkingOrder()]);
         $scene->delete();
+        $this->deletedScene = ['id' => $sceneId, 'order' => $wasOrder];
 
         $remaining = $this->lesson->scenes()->ordered()->get();
         DB::transaction(function () use ($remaining) {
@@ -3837,6 +3852,77 @@ class Step3SceneConfigurator extends Component
                 $this->selectedScene = null;
             }
         }
+
+        // No confirm dialog on the way in — the way back out is the message itself, so it stays up
+        // longer than a plain notification: the teacher has to read it and decide.
+        $this->dispatch('toast', type: 'info', message: __('Scene deleted.'), duration: 9000, action: [
+            'label' => __('Undo'),
+            'event' => 'scene:undo-delete',
+        ]);
+    }
+
+    /** An order no live scene holds, so a soft-deleted row cannot collide with the renumbering. */
+    private function parkingOrder(): int
+    {
+        return (int) $this->lesson->scenes()->withTrashed()->max('order') + 1000;
+    }
+
+    /**
+     * Cmd-Z / Ctrl-Z. The SERVER picks what to take back, newest kind of edit first, because the
+     * browser cannot know: a delete and its undo can be a keystroke apart, and asking the page
+     * "is a delete pending?" raced the response that would have told it.
+     */
+    public function undoLastEdit(): void
+    {
+        if ($this->deletedScene) {
+            $this->undoSceneDelete();
+
+            return;
+        }
+
+        $this->undoVoyage();
+    }
+
+    /**
+     * Put the last deleted scene back where it was. Reached by Cmd-Z or the Undo in the toast — the
+     * same path, so the shortcut and the link can never disagree.
+     */
+    public function undoSceneDelete(): void
+    {
+        $pending = $this->deletedScene;
+        $this->deletedScene = null;
+        if (! $pending) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->withTrashed()->find($pending['id']);
+        if (! $scene || ! $scene->trashed()) {
+            return;
+        }
+
+        $target = max(1, (int) $pending['order']);
+
+        // Make room at `target` by pushing everything from there down, working from the END so each
+        // move lands on a free slot — (lesson_id, order) is unique, so order matters.
+        DB::transaction(function () use ($scene, $target) {
+            $shift = $this->lesson->scenes()->ordered()->get()
+                ->filter(fn (Scene $s) => (int) $s->order >= $target)
+                ->reverse();
+
+            foreach ($shift as $s) {
+                $s->update(['order' => (int) $s->order + 1]);
+            }
+
+            $scene->restore();
+            $scene->update(['order' => $target]);
+        });
+
+        if ($scene->kind === 'game') {
+            $this->syncGameSceneIndexes();
+        }
+
+        $this->selectSceneInternal($scene->id);
+        $this->dispatch('toast', type: 'success', message: __('Scene restored.'));
     }
 
     public function setSceneGameType(int $sceneId, string $gameType): void

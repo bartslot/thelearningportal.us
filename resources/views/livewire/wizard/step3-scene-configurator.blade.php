@@ -118,6 +118,46 @@
     window.__step3Wire = () => {
         try { const c = window.Livewire.all().find((x) => x.name === 'wizard.step3-scene-configurator'); return c ? (c.$wire || window.Livewire.find(c.id).$wire) : null; } catch (_) { return null; }
     };
+
+    {{-- THE undo. One listener for the whole editor, bound once: a deleted scene, a dragged
+         waypoint and a painted fog region all come back through Cmd-Z / Ctrl-Z, and the Undo in the
+         "Scene deleted." toast calls the same thing. Which edit to take back is the SERVER's
+         decision (undoLastEdit) — a delete and its undo can be a keystroke apart, and asking the
+         page "is a delete pending?" raced the very response that would have told it.
+
+         Fog is the one case handled here first: its brush keeps the regions client-side, so the
+         page pops one for instant feedback and lets undoFog re-sync from the server. --}}
+    window.__undoLastEdit = () => {
+        const w = window.__step3Wire();
+        if (!w) return;
+
+        const inst = window.__voyageTour;
+        if (window.__voyagePaint && window.__voyagePaint.active && inst && typeof inst.getPaintedFog === 'function') {
+            const cur = inst.getPaintedFog();
+            if (!cur.length) return;
+            cur.pop();
+            try { inst.setPaintedFog(cur); } catch (_) {}
+            if (typeof w.undoFog === 'function') { try { w.undoFog(); } catch (_) {} }
+            return;
+        }
+
+        if (typeof w.undoLastEdit === 'function') { try { w.undoLastEdit(); } catch (_) {} }
+    };
+    if (!window.__editorUndoBound) {
+        window.__editorUndoBound = true;
+        window.addEventListener('scene:undo-delete', () => {
+            const w = window.__step3Wire();
+            if (w && typeof w.undoSceneDelete === 'function') { try { w.undoSceneDelete(); } catch (_) {} }
+        });
+        document.addEventListener('keydown', (e) => {
+            if ((e.key !== 'z' && e.key !== 'Z') || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+            // Never steal the shortcut from a field the teacher is typing in.
+            const t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+            e.preventDefault();
+            window.__undoLastEdit();
+        });
+    }
     window.__mountVoyagePaint = (inst, stageInner, payload) => {
         if (!inst || typeof inst.strokeToRing !== 'function') return;
         // The painted regions live on the tour instance (inst.getPaintedFog) — the single source of
@@ -201,35 +241,9 @@
         overlay.addEventListener('pointerup', finish);
         overlay.addEventListener('pointercancel', finish);
 
-        // CMD-Z / Ctrl-Z → undo the last painted region. Pop locally for instant feedback, then let
-        // the server (undoFog) re-fire scene:load as the source of truth. One listener at a time:
-        // drop the previous overlay's handler so re-mounts don't stack them.
-        if (window.__voyageUndoHandler) document.removeEventListener('keydown', window.__voyageUndoHandler);
-        window.__voyageUndoHandler = (e) => {
-            if ((e.key !== 'z' && e.key !== 'Z') || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
-            // Never steal the shortcut from a field the teacher is typing in.
-            const t = e.target;
-            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-
-            const w = window.__step3Wire();
-
-            // While the fog brush is up, Cmd-Z takes back the last painted region.
-            if (window.__voyagePaint.active) {
-                const cur = inst.getPaintedFog();
-                if (!cur.length) return;
-                e.preventDefault();
-                cur.pop();
-                try { inst.setPaintedFog(cur); } catch (_) {}   // instant feedback; undoFog re-syncs from server
-                if (w && typeof w.undoFog === 'function') { try { w.undoFog(); } catch (_) {} }
-                return;
-            }
-
-            // Otherwise it takes back the last ROUTE edit. Dragging a waypoint or bending the
-            // sailing line used to be unrecoverable: one slip rewrote the route for good.
-            e.preventDefault();
-            if (w && typeof w.undoVoyage === 'function') { try { w.undoVoyage(); } catch (_) {} }
-        };
-        document.addEventListener('keydown', window.__voyageUndoHandler);
+        // Cmd-Z is not wired up here: one editor-wide listener (window.__undoLastEdit, above) owns
+        // the shortcut for fog, routes and deleted scenes alike. Two handlers on the same keystroke
+        // meant whichever registered first won, and a painted region could undo a route edit.
     };
     </script>
     @endpush

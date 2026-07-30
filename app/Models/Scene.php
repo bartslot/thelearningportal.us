@@ -6,10 +6,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Cache;
 
 class Scene extends Model
 {
+    /** Deleting a scene is undoable, so the row (and its quiz questions) has to outlive the delete. */
+    use SoftDeletes;
+
     protected $fillable = [
         'lesson_id', 'order', 'kind', 'config',
         'game_type', 'quiz_question_count', 'quiz_timing', 'strategy_game_id', 'team_count',

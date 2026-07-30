@@ -48,7 +48,18 @@
             </svg>
 
             {{-- Message is untrusted (teacher text, API errors) — x-text, never x-html. --}}
-            <p class="min-w-0 flex-1 text-sm leading-snug text-slate-100" x-text="t.message"></p>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm leading-snug text-slate-100" x-text="t.message"></p>
+
+                {{-- Optional one-tap follow-up ("Scene deleted." → Undo). The toast stays dumb: it
+                     fires the named window event and whoever owns the action listens for it. --}}
+                <template x-if="t.action">
+                    <button type="button"
+                            x-on:click="run(t)"
+                            class="mt-1 rounded text-sm font-semibold text-sky-400 underline decoration-sky-400/40 underline-offset-2 transition hover:text-sky-300 hover:decoration-sky-300"
+                            x-text="t.action.label"></button>
+                </template>
+            </div>
 
             <button type="button" x-on:click="dismiss(t)"
                     class="-mr-1 shrink-0 rounded p-1 text-slate-500 transition hover:bg-slate-800 hover:text-slate-200"
@@ -97,7 +108,12 @@
                         // An error usually asks something of the reader, so it lingers.
                         const life = Number(d.duration) > 0 ? Number(d.duration) : (type === 'error' ? 8000 : 4500)
 
-                        this.toasts.push({ id: ++this._seq, message, type, life, timer: null })
+                        // An action needs a label and the window event to fire; anything else is ignored.
+                        const action = d.action && d.action.label && d.action.event
+                            ? { label: String(d.action.label), event: String(d.action.event) }
+                            : null
+
+                        this.toasts.push({ id: ++this._seq, message, type, life, action, timer: null })
                         // Work through the REACTIVE proxy Alpine hands back, never the object
                         // literal above — writes to the raw target do not trigger effects.
                         const t = this.toasts[this.toasts.length - 1]
@@ -114,6 +130,13 @@
                     arm(t) {
                         clearTimeout(t.timer)
                         t.timer = setTimeout(() => this.dismiss(t), t.life)
+                    },
+
+                    // Fire the action's event and get out of the way — the result usually arrives as
+                    // its own toast ("Scene restored."), so leaving this one up would stack them.
+                    run(t) {
+                        window.dispatchEvent(new CustomEvent(t.action.event, { detail: {} }))
+                        this.dismiss(t)
                     },
                     // Pausing on hover is the standard courtesy — a reader must not lose a message
                     // mid-sentence just because it timed out.

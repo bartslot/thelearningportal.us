@@ -181,7 +181,7 @@ class BuildLessonOutline implements ShouldQueue
             // Defensive: previous attempts (manual retry, queue retry, user clicked Generate twice)
             // may have left Scene rows around. The (lesson_id, order) unique index would then trip
             // on re-insert. Wipe and rebuild from scratch.
-            $lesson->scenes()->delete();
+            $lesson->scenes()->forceDelete();   // hard: a soft-deleted row would still hold its (lesson_id, order) slot
 
             $lesson->refresh();
             $sourceText = (string) ($lesson->source?->extracted_text ?? '');

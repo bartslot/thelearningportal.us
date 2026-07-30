@@ -72,7 +72,7 @@ class VoyageLessonBuilder
         ]);
 
         // The builder owns this lesson's structure — rebuild scenes from scratch on every run.
-        $lesson->scenes()->delete();
+        $lesson->scenes()->forceDelete();   // hard: a soft-deleted row would still hold its (lesson_id, order) slot
 
         $order = 1;
 

@@ -108,13 +108,15 @@
         track._sortableMounted = true
         new window.Sortable(track, {
             animation: 150,
-            draggable: '[data-scene-id]',  // only scene thumbs drag — never the "Add" button
+            {{-- Each scene is a wrapper carrying data-scene-block (the thumb button plus its delete
+                 X), so THAT is the direct child Sortable moves — never the "Add" button. --}}
+            draggable: '[data-scene-block]',
             filter: '[data-no-drag]',
             // Default preventOnFilter:true calls preventDefault() on [data-no-drag], which swallows
             // the click on the "Add scene" button. Keep native clicks alive on filtered elements.
             preventOnFilter: false,
             onEnd: () => {
-                const ids = [...track.querySelectorAll('[data-scene-id]')].map(el => Number(el.dataset.sceneId))
+                const ids = [...track.querySelectorAll('[data-scene-block]')].map(el => Number(el.dataset.sceneBlock))
                 window.Livewire.dispatch('timeline:reordered', { ids })
             },
         })

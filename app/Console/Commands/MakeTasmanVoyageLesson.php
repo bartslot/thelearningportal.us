@@ -69,7 +69,7 @@ class MakeTasmanVoyageLesson extends Command
         ]);
 
         // Rebuild scenes from scratch — the command owns this lesson's structure.
-        $lesson->scenes()->delete();
+        $lesson->scenes()->forceDelete();   // hard: a soft-deleted row would still hold its (lesson_id, order) slot
 
         $img = fn (string $file): string => "/lessons/tasman/{$file}";
         $creditLine = fn (string $file): string => (string) ($credits[$file]['title'] ?? '');

@@ -3,6 +3,7 @@
     'selected' => false,
     'wide'     => false,   // vertical rail: fill the rail width instead of fixed w-32
     'number'   => null,    // slide number badge (vertical rail)
+    'editable' => false,   // Configure step: show the hover X that deletes the scene
     // Play step only: switch the stage in the browser from a pre-built payload instead of asking
     // the server what it already told us. Configure keeps the Livewire round trip, because
     // selecting a scene there really does change server-side editing state.
@@ -17,7 +18,14 @@
     $sceneAriaLabel = trim(__('Scene').' '.($number ?? $scene->order)
         .($scene->year ? ', '.$scene->year : '')
         .($scene->location ? ' · '.$scene->location : ''));
+    // The delete X is a SIBLING of the thumb, never a child: a button inside a button is invalid
+    // markup and the inner one stops firing. data-scene-block is what the rail drags and reads the
+    // running order from, so the wrapper takes over that job from the button.
+    $canDelete = $editable && ! $clientSwitch;
 @endphp
+@if ($canDelete)
+<div class="group/thumb relative" data-scene-block="{{ $scene->id }}" wire:key="scene-block-{{ $scene->id }}">
+@endif
 <button type="button"
         wire:key="scene-thumb-{{ $scene->id }}"
         @if ($clientSwitch)
@@ -115,3 +123,24 @@
         {{ $number ?? $scene->order }}
     </span>
 </button>
+
+@if ($canDelete)
+    {{-- Hover (or keyboard focus) reveals it. data-no-drag so grabbing the X doesn't start a reorder.
+         No wire:confirm: the toast it fires offers Undo, which is the gentler version of asking. --}}
+    <button type="button"
+            data-no-drag
+            data-scene-delete="{{ $scene->id }}"
+            wire:click.stop="deleteScene({{ $scene->id }})"
+            wire:loading.attr="disabled"
+            title="{{ __('Delete scene') }}"
+            aria-label="{{ __('Delete scene') }}"
+            class="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full
+                   border border-slate-600 bg-slate-900 text-slate-300 opacity-0 shadow-lg transition
+                   hover:border-rose-500 hover:bg-rose-600 hover:text-white
+                   focus-visible:opacity-100 group-hover/thumb:opacity-100">
+        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+    </button>
+</div>
+@endif
