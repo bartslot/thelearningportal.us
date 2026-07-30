@@ -15,17 +15,17 @@
             <button type="button" class="flex w-full items-center gap-3 text-left" x-on:click="open = !open">
                 <x-lesson.icon-voyage class="h-7 w-7 text-indigo-300" />
                 <span class="flex-1">
-                    <span class="block text-sm font-semibold text-indigo-200">Start from a historical voyage</span>
-                    <span class="block text-xs text-slate-400">Sail a real expedition on the map — no topic or generation needed. Ready to edit in seconds.</span>
+                    <span class="block text-sm font-semibold text-indigo-200">{{ __('Start from a historical voyage') }}</span>
+                    <span class="block text-xs text-slate-400">{{ __('Sail a real expedition on the map. No topic or generation needed, ready to edit in seconds.') }}</span>
                 </span>
                 <svg class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-90'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></svg>
             </button>
 
             <div x-show="open" x-collapse class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label class="form-control flex-1">
-                    <span class="text-[10px] uppercase tracking-wider text-slate-400">Voyage</span>
+                    <span class="text-[10px] uppercase tracking-wider text-slate-400">{{ __('Voyage') }}</span>
                     <select x-model="pick" class="select select-sm select-bordered bg-slate-900 mt-1">
-                        <option value="">Choose a voyage…</option>
+                        <option value="">{{ __('Choose a voyage…') }}</option>
                         @foreach ($this->voyageOptions as $id => $name)
                             <option value="{{ $id }}">{{ $name }}</option>
                         @endforeach
@@ -35,8 +35,8 @@
                 <button type="button" x-on:click="$wire.createVoyageLesson(pick)"
                         wire:loading.attr="disabled" wire:target="createVoyageLesson"
                         class="btn btn-sm btn-primary">
-                    <span wire:loading.remove wire:target="createVoyageLesson">Create voyage lesson</span>
-                    <span wire:loading wire:target="createVoyageLesson">Building…</span>
+                    <span wire:loading.remove wire:target="createVoyageLesson">{{ __('Create voyage lesson') }}</span>
+                    <span wire:loading wire:target="createVoyageLesson">{{ __('Building…') }}</span>
                 </button>
             </div>
         </div>
@@ -90,7 +90,7 @@
         {{-- Topic — locked to the curated, Wikipedia-grounded catalog (A1) --}}
         <div x-data="{ open: false }" class="relative form-control" @if($storyId) style="display:none" @endif>
             <span class="label-text text-xs uppercase tracking-wider text-slate-400">
-                Topic <span class="text-amber-400/70 normal-case tracking-normal">· pick from the catalog</span>
+                {{ __('Topic') }} <span class="text-amber-400/70 normal-case tracking-normal">· {{ __('pick from the catalog') }}</span>
             </span>
             <div class="relative">
                 <input id="lw-topic" name="topic" type="text"
@@ -98,7 +98,7 @@
                        x-on:focus="open = true"
                        x-on:blur="setTimeout(() => open = false, 150)"
                        x-on:keydown.escape="open = false; $el.blur()"
-                       placeholder="Search topics, events, people… e.g. Black Death, French Revolution"
+                       placeholder="{{ __('Search topics, events, people… e.g. Black Death, French Revolution') }}"
                        autocomplete="off"
                        class="input input-bordered bg-slate-900 mt-1 text-base w-full
                               @if($topicId) border-emerald-500/60 pr-10 @endif" />
@@ -111,10 +111,10 @@
 
             @if ($topicId && $topicWikipediaUrl)
                 <span class="text-xs text-emerald-400/80 mt-1">
-                    Grounded in <a href="{{ $topicWikipediaUrl }}" target="_blank" rel="noopener" class="underline">this Wikipedia article</a>.
+                    {!! __('Grounded in :link.', ['link' => '<a href="'.e($topicWikipediaUrl).'" target="_blank" rel="noopener" class="underline">'.e(__('this Wikipedia article')).'</a>']) !!}
                 </span>
             @elseif (strlen(trim($topic)) >= 2 && !$topicId)
-                <span class="text-xs text-amber-400/70 mt-1">Select an entry from the list to continue.</span>
+                <span class="text-xs text-amber-400/70 mt-1">{{ __('Select an entry from the list to continue.') }}</span>
             @endif
 
             {{-- Catalog dropdown --}}
@@ -144,7 +144,7 @@
                                     class="flex flex-row items-center gap-2 py-2">
                                 @if ($s['type'] === 'figure')
                                     <span class="badge badge-sm badge-outline border-sky-500/40 text-sky-300 shrink-0">
-                                        {{ $s['figure_kind'] === 'ruler' ? 'Ruler' : 'Person' }}
+                                        {{ $s['figure_kind'] === 'ruler' ? __('Ruler') : __('Person') }}
                                     </span>
                                 @elseif ($s['type'] === 'place')
                                     <span class="badge badge-sm badge-outline border-emerald-500/40 text-emerald-300 shrink-0">
@@ -260,7 +260,7 @@
                    x-on:focus="open = true"
                    x-on:blur="setTimeout(() => open = false, 150)"
                    x-on:keydown.escape="open = false; $el.blur()"
-                   placeholder="e.g. daily life of a soldier, the road to revolution…"
+                   placeholder="{{ __('e.g. daily life of a soldier, the road to revolution…') }}"
                    maxlength="200"
                    autocomplete="off"
                    class="input input-bordered bg-slate-900 mt-1 text-sm w-full" />
@@ -294,32 +294,32 @@
                         wire:click="$set('show_region_era', true)"
                         class="btn btn-ghost btn-xs text-slate-400 hover:text-white pl-0 gap-1.5">
                     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    Add region &amp; era
+                    {{ __('Add region & era') }}
                 </button>
             @else
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                     <div class="form-control">
-                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Region</span>
+                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">{{ __('Region') }}</span>
                         <x-ui.combobox
                             :options="$this->regionOptions"
                             wire-model="region"
                             :initial-value="$region ?? ''"
-                            placeholder="e.g. France, US South, Ottoman Empire…"
+                            :placeholder="__('e.g. France, US South, Ottoman Empire…')"
                         />
                     </div>
 
                     <div class="form-control">
-                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">Era</span>
+                        <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-1">{{ __('Era') }}</span>
                         @if ($region)
                             <x-ui.combobox
                                 :options="$this->eraOptions"
                                 wire-model="era"
                                 :initial-value="$era ?? ''"
-                                placeholder="Select or type an era…"
+                                :placeholder="__('Select or type an era…')"
                             />
                         @else
                             <input type="text" disabled
-                                   placeholder="Pick a region first"
+                                   placeholder="{{ __('Pick a region first') }}"
                                    class="input input-bordered bg-slate-900 w-full opacity-40 cursor-not-allowed" />
                         @endif
                     </div>
@@ -327,7 +327,7 @@
                     <button type="button"
                             wire:click="$set('show_region_era', false)"
                             class="btn btn-ghost btn-xs text-slate-500 hover:text-slate-300 col-span-full w-fit pl-0">
-                        ✕ Hide
+                        ✕ {{ __('Hide') }}
                     </button>
                 </div>
             @endif
@@ -340,7 +340,7 @@
     <div data-flow-group class="wizard-flow-group bg-base-300 rounded-2xl p-6">
         <div class="form-control">
             <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2">
-                Target audience
+                {{ __('Target audience') }}
             </span>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 content-start">
                 {{-- Top-level toggle: Age vs local system --}}
@@ -356,7 +356,7 @@
                         <button type="button"
                                 wire:click="setAudienceSystem('age')"
                                 @class(['btn btn-sm join-item', 'btn-primary' => $audience_system === 'age', 'btn-outline' => $audience_system !== 'age'])>
-                            Age
+                            {{ __('Age') }}
                         </button>
                     </div>
                     
@@ -369,11 +369,11 @@
                                 min="{{ \App\Livewire\Wizard\Step1Settings::AGE_MIN }}"
                                 max="{{ \App\Livewire\Wizard\Step1Settings::AGE_MAX }}"
                                 class="input input-bordered bg-slate-900 w-20 text-center" />
-                            <span class="text-slate-400 text-sm">years old</span>
+                            <span class="text-slate-400 text-sm">{{ __('years old') }}</span>
                         </div>
                         @else
                         <p class="text-xs text-slate-500 mt-2">
-                            Not your system? Switch to <button type="button" wire:click="setAudienceSystem('age')" class="underline hover:text-slate-300">Age</button> instead.
+                            {!! __('Not your system? Switch to :age instead.', ['age' => '<button type="button" wire:click="setAudienceSystem(\'age\')" class="underline hover:text-slate-300">'.e(__('Age')).'</button>']) !!}
                         </p>
                     @endif
                 </div>
@@ -520,11 +520,13 @@
                                                 </button>
                                             @endforeach
                                         </div>
+                                        {{-- Display only — the SAVED value keeps the literal ' Jaar ' format
+                                             (built in get value(), parsed back in init()), so never localize that. --}}
                                         <div x-show="track" class="flex items-center gap-3">
-                                            <span class="text-xs uppercase tracking-wider text-slate-400">Jaar</span>
+                                            <span class="text-xs uppercase tracking-wider text-slate-400">{{ __('Year') }}</span>
                                             <select x-model="jaar" class="select select-bordered select-sm bg-slate-900">
                                                 <template x-for="j in jaarOptions" :key="j">
-                                                    <option :value="j" x-text="'Jaar ' + j"></option>
+                                                    <option :value="j" x-text="@js(__('Year')) + ' ' + j"></option>
                                                 </template>
                                             </select>
                                         </div>
@@ -553,7 +555,7 @@
                         {{-- ── Simple dropdown (UK Year, FR Classe, etc.) ── --}}
                         <select wire:model.live="local_grade"
                                 class="select select-bordered bg-slate-900 w-full max-w-xs">
-                            <option value="">— select —</option>
+                            <option value="">{{ __('Select…') }}</option>
                             @foreach ($this->gradeSystem['options'] as $opt)
                                 <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
                             @endforeach
@@ -574,12 +576,12 @@
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
-            <span class="font-medium text-white text-sm">Tone &amp; details</span>
+            <span class="font-medium text-white text-sm">{{ __('Tone & details') }}</span>
             <span class="text-slate-400 text-xs">
                 @php
                     $toneLabel = $tone && isset($this->tones[$tone])
                         ? $this->tones[$tone]['label']
-                        : ($details ? 'Details added' : 'Optional');
+                        : ($details ? __('Details added') : __('Optional'));
                 @endphp
                 {{ $toneLabel }}
             </span>
@@ -588,7 +590,7 @@
 
             {{-- Tone pill picker --}}
             <div>
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2 block">Tone</span>
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400 mb-2 block">{{ __('Tone') }}</span>
                 <div class="flex flex-wrap gap-2">
                     @foreach ($this->tones as $key => $t)
                         @php $isRec = in_array($key, $this->recommendedTones); @endphp
@@ -634,14 +636,14 @@
                                 'bg-slate-800 border border-slate-600 text-slate-400'            => $tone !== '',
                             ])
                         >
-                            <span>— No preference</span>
+                            <span>{{ __('No preference') }}</span>
                         </button>
                         <div class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2
                                     hidden group-hover:block z-50 w-52
                                     bg-slate-800 border border-slate-600 rounded-lg shadow-xl
                                     px-3 py-2 text-xs text-slate-300 leading-relaxed">
-                            <span class="font-semibold text-white block mb-0.5">No preference</span>
-                            Let the AI pick the best tone for the topic and age group automatically.
+                            <span class="font-semibold text-white block mb-0.5">{{ __('No preference') }}</span>
+                            {{ __('Let the AI pick the best tone for the topic and age group automatically.') }}
                             <span class="absolute top-full left-1/2 -translate-x-1/2
                                          border-4 border-transparent border-t-slate-600"></span>
                         </div>
@@ -649,15 +651,15 @@
                 </div>
                 <p class="text-xs text-amber-500 mt-2 flex items-center gap-1">
                     <x-icons.star class="w-3 h-3 inline-block text-amber-400" />
-                    <span>Recommended for Age {{ $audience_age }}</span>
+                    <span>{{ __('Recommended for age :age', ['age' => $audience_age]) }}</span>
                 </p>
             </div>
 
             {{-- Teacher details --}}
             <label class="form-control flex flex-col gap-2" for="lw-details">
-                <span class="label-text text-xs uppercase tracking-wider text-slate-400">Teacher details (optional)</span>
+                <span class="label-text text-xs uppercase tracking-wider text-slate-400">{{ __('Teacher details (optional)') }}</span>
                 <textarea id="lw-details" wire:model="details" rows="3"
-                          placeholder="Extra context, learning goals, things to emphasise…"
+                          placeholder="{{ __('Extra context, learning goals, things to emphasise…') }}"
                           class="textarea textarea-bordered bg-slate-900 mt-1 w-full"></textarea>
             </label>
         </div>
@@ -667,12 +669,12 @@
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl overflow-visible">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
-            <span class="font-medium text-white text-sm">Source</span>
+            <span class="font-medium text-white text-sm">{{ __('Source') }}</span>
             <span class="text-slate-400 text-xs">
                 @if ($source_mode === 'internet')
-                    Internet <span class="text-slate-600">(worldhistory.org / wikipedia)</span>
+                    {{ __('Internet') }} <span class="text-slate-600">(worldhistory.org / wikipedia)</span>
                 @else
-                    Local source
+                    {{ __('Local source') }}
                 @endif
             </span>
         </div>
@@ -685,7 +687,7 @@
                             'border-amber-400 bg-amber-500/10 text-white' => $source_mode === 'internet',
                             'border-slate-600 text-slate-300 hover:border-slate-400' => $source_mode !== 'internet',
                         ])>
-                    Internet
+                    {{ __('Internet') }}
                     <span class="text-xs opacity-60 ml-1">worldhistory.org / wikipedia</span>
                 </button>
                 <button type="button"
@@ -695,17 +697,17 @@
                             'border-amber-400 bg-amber-500/10 text-white' => $source_mode === 'local',
                             'border-slate-600 text-slate-300 hover:border-slate-400' => $source_mode !== 'local',
                         ])>
-                    Local source
-                    <span class="text-xs opacity-60 ml-1">link or PDF</span>
+                    {{ __('Local source') }}
+                    <span class="text-xs opacity-60 ml-1">{{ __('link or PDF') }}</span>
                 </button>
             </div>
 
             @if ($source_mode === 'local')
                 <div class="space-y-2">
                     <input type="url" wire:model.live="source_url"
-                           placeholder="https://drive.google.com/… (optional)"
+                           placeholder="{{ __('https://drive.google.com/… (optional)') }}"
                            class="input input-bordered bg-slate-900 w-full text-sm" />
-                    <p class="text-xs text-slate-500">Or upload a document:</p>
+                    <p class="text-xs text-slate-500">{{ __('Or upload a document:') }}</p>
                     <input id="lw-source-upload" type="file"
                            wire:model="sourceUpload" accept=".pdf,.docx"
                            class="file-input file-input-bordered w-full bg-slate-900" />
@@ -719,7 +721,7 @@
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
-            <span class="font-medium text-white text-sm">Visual style</span>
+            <span class="font-medium text-white text-sm">{{ __('Visual style') }}</span>
             <span class="text-slate-400 text-xs capitalize">{{ $image_style }}</span>
         </div>
         <div class="collapse-content pt-2">
@@ -733,9 +735,9 @@
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
-            <span class="font-medium text-white text-sm">Avatar</span>
+            <span class="font-medium text-white text-sm">{{ __('Avatar') }}</span>
             <span class="text-slate-400 text-xs">
-                {{ $this->avatars->firstWhere('id', $avatar_id)?->name ?? 'None selected' }}
+                {{ $this->avatars->firstWhere('id', $avatar_id)?->name ?? __('None selected') }}
             </span>
         </div>
         <div class="collapse-content pt-2">
@@ -836,14 +838,14 @@
     ════════════════════════════════════════════════ --}}
     <div class="relative flex items-center justify-center pt-2">
         <button type="button" wire:click="saveDraft"
-                class="btn btn-outline absolute left-0">Save as draft</button>
+                class="btn btn-outline absolute left-0">{{ __('Save as draft') }}</button>
         <button type="button" wire:click="generate"
                 wire:loading.attr="disabled" wire:target="generate"
                 class="btn bg-amber-500 text-slate-950 hover:bg-amber-400 border-0">
-            <span wire:loading.remove wire:target="generate">Next: Story →</span>
+            <span wire:loading.remove wire:target="generate">{{ __('Next: Story') }} →</span>
             <span wire:loading wire:target="generate" class="flex items-center gap-2">
                 <span class="w-4 h-4 border-2 border-slate-950/40 border-t-slate-950 rounded-full animate-spin"></span>
-                Saving…
+                {{ __('Saving…') }}
             </span>
         </button>
     </div>
@@ -852,7 +854,7 @@
 
     @if ($errors->any())
         <div class="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4 text-sm text-rose-200 space-y-1">
-            <p class="font-semibold">Cannot continue yet — fix these:</p>
+            <p class="font-semibold">{{ __('Cannot continue yet. Fix these first:') }}</p>
             <ul class="list-disc ml-5">
                 @foreach ($errors->all() as $err)
                     <li>{{ $err }}</li>

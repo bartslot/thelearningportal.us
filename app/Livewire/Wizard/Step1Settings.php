@@ -332,7 +332,7 @@ class Step1Settings extends Component
     {
         $story = \App\Models\Story::published()->find($id);
         if (! $story) {
-            $this->addError('topic', 'That story is no longer available.');
+            $this->addError('topic', __('That story is no longer available.'));
 
             return;
         }
@@ -382,7 +382,7 @@ class Step1Settings extends Component
 
         $topic = \App\Models\Corpus\Topic::resilient(fn () => \App\Models\Corpus\Topic::find($id));
         if (! $topic) {
-            $this->addError('topic', 'That topic is not in the catalog. Pick one from the list.');
+            $this->addError('topic', __('That topic is not in the catalog. Pick one from the list.'));
 
             return;
         }
@@ -507,9 +507,9 @@ class Step1Settings extends Component
                 fn () => \App\Models\Corpus\Topic::whereKey($this->topicId)->exists()
             );
         if (! $exists) {
-            $this->addError('topic', 'Choose a topic from the list — this grounds the lesson in a real source.');
+            $this->addError('topic', __('Choose a topic from the list. It grounds the lesson in a real source.'));
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'topic' => 'Choose a topic from the list.',
+                'topic' => __('Choose a topic from the list.'),
             ]);
         }
     }
@@ -557,7 +557,7 @@ class Step1Settings extends Component
     public function createVoyageLesson(string $voyageId = ''): void
     {
         if ($voyageId === '' || ! array_key_exists($voyageId, $this->voyageOptions)) {
-            $this->addError('voyagePick', 'Choose a voyage from the list.');
+            $this->addError('voyagePick', __('Choose a voyage from the list.'));
 
             return;
         }

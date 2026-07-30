@@ -16,38 +16,38 @@ final class ToneRecommender
         return [
             'storytelling' => [
                 'icon'        => 'book-open',
-                'label'       => 'Storytelling',
-                'description' => 'Narrative-driven with characters and plot. Makes history feel like a film.',
+                'label'       => __('Storytelling'),
+                'description' => __('Narrative-driven with characters and plot. Makes history feel like a film.'),
             ],
             'dramatic' => [
                 'icon'        => 'megaphone',
-                'label'       => 'Dramatic',
-                'description' => 'Epic, vivid, high-stakes delivery. Brings battles and turning points to life.',
+                'label'       => __('Dramatic'),
+                'description' => __('Epic, vivid, high-stakes delivery. Brings battles and turning points to life.'),
             ],
             'humorous' => [
                 'icon'        => 'face-smile',
-                'label'       => 'Humorous',
-                'description' => 'Light and fun. Uses wit and playful comparisons to make facts stick.',
+                'label'       => __('Humorous'),
+                'description' => __('Light and fun. Uses wit and playful comparisons to make facts stick.'),
             ],
             'socratic' => [
                 'icon'        => 'magnifying-glass',
-                'label'       => 'Socratic',
-                'description' => 'Question-led inquiry. The avatar poses questions to spark critical thinking.',
+                'label'       => __('Socratic'),
+                'description' => __('Question-led inquiry. The avatar poses questions to spark critical thinking.'),
             ],
             'inspiring' => [
                 'icon'        => 'sparkles',
-                'label'       => 'Inspiring',
-                'description' => 'Motivational and uplifting. Focuses on legacy, courage, and lessons for today.',
+                'label'       => __('Inspiring'),
+                'description' => __('Motivational and uplifting. Focuses on legacy, courage, and lessons for today.'),
             ],
             'academic' => [
                 'icon'        => 'academic-cap',
-                'label'       => 'Academic',
-                'description' => 'Formal and precise. Best for older students or exam prep contexts.',
+                'label'       => __('Academic'),
+                'description' => __('Formal and precise. Best for older students or exam prep contexts.'),
             ],
             'casual' => [
                 'icon'        => 'chat-bubble-left-right',
-                'label'       => 'Casual',
-                'description' => 'Friendly and conversational. Feels like a knowledgeable friend explaining history.',
+                'label'       => __('Casual'),
+                'description' => __('Friendly and conversational. Feels like a knowledgeable friend explaining history.'),
             ],
         ];
     }
