@@ -3384,7 +3384,11 @@ class Step3SceneConfigurator extends Component
         }
 
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
-        if (! $scene->image_path) {
+        // A map, voyage or panorama scene has a backdrop without carrying an image_path, and a
+        // picture is just as valid on top of a map as on top of a generated background. Checked
+        // here as well as in attachArtwork so the teacher hears about it before the download, not
+        // after — the two must agree, hence one shared rule on the model.
+        if (! $scene->hasBackdrop()) {
             $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
 
             return;

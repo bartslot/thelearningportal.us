@@ -201,6 +201,76 @@ class SceneArtworkTest extends TestCase
         $this->assertArrayNotHasKey('image_path', $shots[0]);
     }
 
+    /**
+     * A map block is a backdrop just as much as a voyage waypoint is. Only 'voyage' was
+     * whitelisted, so putting a picture on a map answered "generate a scene background first" —
+     * on a scene the teacher was looking at a full-screen map of.
+     */
+    public function test_attach_on_a_map_scene_creates_a_layer_only_shot(): void
+    {
+        $this->scene->update(['kind' => 'map', 'image_path' => null]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id);
+
+        $layers = $this->scene->refresh()->shots[0]['layers'] ?? [];
+
+        $this->assertCount(1, $layers, 'Only the asset layer — the map is the backdrop');
+        $this->assertSame($this->asset1->id, $layers[0]['asset_id']);
+    }
+
+    /** A narration scene with nothing behind it still has to be told to make a background first. */
+    public function test_attach_on_a_truly_empty_scene_is_still_refused(): void
+    {
+        $this->scene->update(['kind' => 'narration', 'image_path' => null]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id)
+            ->assertDispatched('toast');
+
+        $this->assertNull($this->scene->refresh()->shots);
+    }
+
+    /** The same rule has to hold for the Image tool, which downloads before it attaches. */
+    public function test_a_painting_can_be_dropped_on_a_map_scene_as_a_layer(): void
+    {
+        Storage::fake('public');
+        Http::fake(['https://paintings.example/*' => Http::response('painting-bytes', 200, ['Content-Type' => 'image/jpeg'])]);
+        $this->app->instance(CommonsImageService::class, new class extends CommonsImageService
+        {
+            public function fileMeta(string $fileTitle): ?array
+            {
+                return [
+                    'file_title' => 'Map painting.jpg',
+                    'title' => 'Map Painting',
+                    'artist' => 'Test Artist',
+                    'license' => 'Public domain',
+                    'image_url' => 'https://paintings.example/map.jpg',
+                    'file_page' => 'https://commons.wikimedia.org/wiki/File:Map_painting.jpg',
+                ];
+            }
+        });
+
+        $this->scene->update(['kind' => 'map', 'image_path' => null]);
+
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('openImageLibrary')
+            ->call('applyPaintingAsLayer', 'commons', 'Map painting.jpg');
+
+        $scene = $this->scene->refresh();
+        $layers = $scene->shots[0]['layers'] ?? [];
+
+        $this->assertCount(1, $layers, 'the painting lands as an editable layer, not a background');
+        $this->assertNull($scene->image_path, 'the map stays the backdrop');
+        $this->assertNotNull($layers[0]['asset_id'] ?? null, 'it needs an asset id to move / scale / delete');
+    }
+
     public function test_detaching_the_last_clipart_from_a_voyage_scene_collapses_shots_to_null(): void
     {
         // A layer-only voyage shot carries nothing once its clipart is removed — it must not

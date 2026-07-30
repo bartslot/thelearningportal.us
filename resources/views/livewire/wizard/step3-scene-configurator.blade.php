@@ -260,11 +260,13 @@
         if (!host) return
         let inst = null
 
-        // ── Editable clipart layers on a voyage map ───────────────────────────────
+        // ── Editable image / clipart layers on a map ──────────────────────────────
         // A single reusable ArtworkOverlay lives in #lesson-voyage-art (a canvas-root child, so it
-        // survives map re-mounts). It's shown only on voyage scenes; its %-coordinates match the
-        // student player because both use the same letterboxed box. Same object-list / selection /
-        // delete plumbing as slideshow clipart, via window.__lessonArtworkLayer.
+        // survives map re-mounts). Shown on BOTH map and voyage scenes — the player has always
+        // drawn layers for either, so the editor refusing them on a plain map was the odd one out.
+        // Its %-coordinates match the student player because both use the same letterboxed box.
+        // Same object-list / selection / delete plumbing as slideshow clipart, via
+        // window.__lessonArtworkLayer.
         let artOverlay = null
         let artSig = null
         const voyageArtHost = () => document.getElementById('lesson-voyage-art')
@@ -279,7 +281,7 @@
             })
             return artOverlay
         }
-        const showVoyageArt = (p) => {
+        const showMapArt = (p) => {
             const overlay = ensureArtOverlay()
             const h = voyageArtHost()
             if (!overlay || !h) return
@@ -296,7 +298,7 @@
             window.__voyageArtworkLayer = overlay
             window.__lessonArtworkLayer = overlay
         }
-        const hideVoyageArt = () => {
+        const hideMapArt = () => {
             const h = voyageArtHost()
             if (h) h.style.display = 'none'
             artSig = null
@@ -323,7 +325,7 @@
             if (inst) { inst.destroy(); inst = null }
             host.innerHTML = ''
             host.style.display = 'none'
-            hideVoyageArt()
+            hideMapArt()
             lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null; lastGalleryId = null
         }
 
@@ -429,7 +431,7 @@
                         } catch (_) {}
                     }
                     lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr
-                    showVoyageArt(p)   // keep the clipart layers in sync (a poll/leg switch may add/move one)
+                    showMapArt(p)   // keep the clipart layers in sync (a poll/leg switch may add/move one)
                     return
                 }
                 // Gallery scene: SAME scene → refresh content in place (title/date/story/fit/images)
@@ -440,7 +442,7 @@
                         try { inst.setContent(p.config || {}) } catch (_) {}
                     }
                     lastKey = key
-                    hideVoyageArt()   // gallery scenes don't carry map clipart
+                    hideMapArt()   // gallery scenes don't carry map clipart
                     return
                 }
                 destroy(); wireTextProjector()
@@ -508,11 +510,16 @@
                     console.error('[wizard] voyage/gallery renderer unavailable — is the module loaded?')
                 }
                 // Clipart layers ride ABOVE the voyage map (never on a standalone gallery scene).
-                if (p.kind === 'voyage') showVoyageArt(p); else hideVoyageArt()
+                if (p.kind === 'voyage') showMapArt(p); else hideMapArt()
                 return
             }
 
             if (p.kind !== 'map') { destroy(); wireTextProjector(); return }
+            // Layers ride above the map here exactly as they do on a voyage — and as the player
+            // already draws them. Called before the in-place early-returns below so a poll or a
+            // year/style tweak keeps them on screen; the re-mount path calls it again after
+            // destroy(), which clears the overlay.
+            showMapArt(p)
             const cfg = p.config || {}
             const year = cfg.year ?? p.year ?? 1600
             // Only the scene-defining bits decide a re-mount. scene:load re-fires constantly (status
@@ -550,6 +557,7 @@
             }
             destroy()                 // clears lastKey…
             lastKey = key             // …so set it after
+            showMapArt(p)             // …and re-mounts the layers destroy() just cleared
             host.style.display = 'block'
             // MapLibre stamps `position:relative` on its container, which would override the host's
             // fixed positioning and collapse it — so mount into a full-size inner child instead.

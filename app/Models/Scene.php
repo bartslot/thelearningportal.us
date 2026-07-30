@@ -172,6 +172,28 @@ class Scene extends Model
             && $this->audio_script_hash === sha1((string) $this->script_segment);
     }
 
+    /**
+     * Does this scene paint its own backdrop rather than a flat `image_path`?
+     *
+     * A map or voyage scene draws a live map; a panorama scene draws its own sphere. They look
+     * finished to the teacher but carry no image_path, so "no image_path" must never be read as
+     * "this scene has no background yet" — that is what used to refuse a picture on a map.
+     */
+    public function drawsOwnBackdrop(): bool
+    {
+        return in_array($this->kind, ['map', 'voyage'], true)
+            || filled($this->skybox_image_path)
+            || filled($this->world_pano_path);
+    }
+
+    /** Anything a layer can sit on: a generated image, a map, a panorama, a chosen colour. */
+    public function hasBackdrop(): bool
+    {
+        return filled($this->image_path)
+            || $this->drawsOwnBackdrop()
+            || filled($this->background_color);
+    }
+
     /** A teacher-picked painting or pasted image must not be overwritten by queued image generation. */
     public function hasManualBackground(): bool
     {

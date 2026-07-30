@@ -78,11 +78,12 @@ trait EditsSceneArtwork
 
         // Immutable transformation: build new arrays, never mutate in place
         if (empty($shots)) {
-            // Map-backed scenes (voyage / map) have no flat background image — the MAP itself is
-            // the backdrop. Still allow clipart on top: create a shot carrying ONLY the asset layer
-            // (no cover). The editor renders these over the map; serializeShots keeps layer-only shots.
+            // Scenes that draw their own backdrop (map, voyage, panorama) have no flat background
+            // image — the MAP or the sphere IS the backdrop. Still allow a layer on top: create a
+            // shot carrying ONLY the asset layer (no cover). Editor and player both render these
+            // over the map; serializeShots keeps layer-only shots.
             if (! $scene->image_path) {
-                if ($scene->kind === 'voyage') {
+                if ($scene->drawsOwnBackdrop()) {
                     $shots = [[
                         'order' => 0,
                         'layers' => [$newLayer],
@@ -94,7 +95,7 @@ trait EditsSceneArtwork
                     return;
                 }
 
-                $this->dispatch('toast', message: 'Generate a scene image first.', type: 'warning');
+                $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
 
                 return;
             }
