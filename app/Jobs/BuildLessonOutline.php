@@ -7,7 +7,9 @@ namespace App\Jobs;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\Scene;
+use App\Services\Corpus\TopicGrounding;
 use App\Services\LessonOutlinePrompt;
+use App\Services\Llm\Llm;
 use App\Services\OpenAiLlmService;
 use App\Services\WikipediaService;
 use App\Services\WorldHistoryService;
@@ -56,7 +58,7 @@ class BuildLessonOutline implements ShouldQueue
         return [10, 30, 90];
     }
 
-    public function handle(OpenAiLlmService $llm): void
+    public function handle(#[Llm('script')] OpenAiLlmService $llm): void
     {
         $lesson = Lesson::with('source', 'strategyGame')->findOrFail($this->lessonId);
 
@@ -77,6 +79,22 @@ class BuildLessonOutline implements ShouldQueue
                 && (string) $source->extracted_text === '') {
 
                 $lesson->update(['status' => LessonStatus::FetchingSources]);
+
+                // Catalog first, and no model involved: a teacher who typed their topic rather
+                // than picking it leaves wikipedia_source empty, and the fuzzy search further
+                // down is where wrong-article lessons come from. Our own catalog already knows
+                // this subject's exact article, dates and region.
+                $grounded = null;
+                if (! filled($lesson->wikipedia_source)) {
+                    $grounded = app(TopicGrounding::class)->forLesson($lesson);
+                    if ($grounded?->wikipediaUrl) {
+                        $lesson->update(['wikipedia_source' => $grounded->wikipediaUrl]);
+                        Log::info(sprintf(
+                            'BuildLessonOutline #%d: grounded "%s" in catalog entry %s (%s, confidence %.2f)',
+                            $lesson->id, $lesson->topic, $grounded->name, $grounded->qid ?? $grounded->id, $grounded->confidence,
+                        ));
+                    }
+                }
 
                 // A1: if the lesson came from the curated catalog it carries the EXACT Wikipedia
                 // article URL — fetch that page directly (no slug-guessing, no disambiguation drift).
@@ -144,6 +162,13 @@ class BuildLessonOutline implements ShouldQueue
                         $text = trim($text)."\n\n== Teacher's focus: {$focus} ==\n".mb_substr($focusText, 0, 6000);
                         Log::info("BuildLessonOutline #{$lesson->id}: appended focus source for \"{$focus}\"");
                     }
+                }
+
+                // Lead with the catalog's own summary. It is short, curated and carries the
+                // dates — so even when every fetch above came back empty, the outline has real
+                // facts to work from instead of whatever the model remembers.
+                if ($grounded !== null) {
+                    $text = trim($grounded->sourceBlock()."\n\n".trim($text));
                 }
 
                 // For 'both' mode the document text was already extracted and stored

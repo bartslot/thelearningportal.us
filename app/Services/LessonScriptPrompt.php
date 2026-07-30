@@ -151,7 +151,16 @@ SYS;
             $focusLine = "Keep the narrative lens on: {$labels}";
         }
 
+        // Source first, then the brief, then the revision notes. This prompt is sent twice
+        // whenever the critique pass rejects a draft; leading with the article means the
+        // rewrite reuses the cached prefix instead of re-reading the whole source. The
+        // rejection notes must stay last — they are the only thing that changed.
         return <<<USR
+Source text (authoritative — only use facts from here):
+"""
+{$sourceText}
+"""
+
 Topic: {$lesson->topic}
 Grade level: {$lesson->grade_level}
 Tone: {$lesson->tone}
@@ -164,11 +173,6 @@ Scenes to write (in order):
 
 {$sceneLines}
 {$revisionBlock}
-Source text (authoritative — only use facts from here):
-"""
-{$sourceText}
-"""
-
 Write the full lesson narration now as one connected story. Return the JSON only.
 USR;
     }

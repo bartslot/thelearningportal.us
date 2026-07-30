@@ -44,6 +44,19 @@ final class CorpusCatalogSchema
     }
 
     /**
+     * Alt-labels on the entity branches, so a Dutch topic finds an English-named entry
+     * ("Romeinse Rijk" → Roman Empire, "Willem van Oranje" → William the Silent). Events
+     * have carried these since they shipped; polities and figures got them later, which is
+     * why this is a separate ALTER rather than part of a CREATE.
+     */
+    public static function ensureAliasColumns(Connection $corpus): void
+    {
+        foreach (['polities', 'figures'] as $table) {
+            $corpus->statement("ALTER TABLE public.{$table} ADD COLUMN IF NOT EXISTS aliases text");
+        }
+    }
+
+    /**
      * The full topics view: polities UNION figures UNION places UNION events. Every branch
      * exposes the same column list so the picker (App\Models\Corpus\Topic) reads one shape.
      */
@@ -64,7 +77,7 @@ final class CorpusCatalogSchema
                 region_lat, region_lng, region_label,
                 summary, sitelinks,
                 'Borders: Cliopatria (CC-BY 4.0) · Wikipedia (CC-BY-SA)' AS source_attribution,
-                NULL::text                     AS aliases
+                aliases
               FROM public.polities
               WHERE wikipedia_url IS NOT NULL
                 AND osm_id LIKE 'Q%'
@@ -82,7 +95,7 @@ final class CorpusCatalogSchema
                 region_lat, region_lng, region_label,
                 summary, sitelinks,
                 'Wikidata (CC0) · Wikipedia (CC-BY-SA)' AS source_attribution,
-                NULL::text                     AS aliases
+                aliases
               FROM public.figures
               WHERE COALESCE(is_publishable, true)
             UNION ALL

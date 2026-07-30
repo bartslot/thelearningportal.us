@@ -67,7 +67,7 @@ class WikidataEventsService
     {
         $events = $this->fetchEvents($minSitelinks, $limit);
 
-        $aliases = $this->fetchAliases(array_column($events, 'qid'));
+        $aliases = app(\App\Services\Corpus\WikidataAliases::class)->forQids(array_column($events, 'qid'));
         foreach ($events as &$e) {
             $e['aliases'] = $aliases[$e['qid']] ?? null;
         }
@@ -175,49 +175,6 @@ class WikidataEventsService
         }
 
         return array_values($byQid);
-    }
-
-    /**
-     * Batch-fetch alt-labels for a set of event QIDs via wbgetentities (max 50 ids/call),
-     * returning qid → pipe-joined synonyms. Used for synonym search so "Black Plague"
-     * resolves to Black Death, "The Great War" to WWI. Includes the DUTCH label + aliases —
-     * the catalog names are English, but Dutch teachers search "Watersnood(ramp)", never
-     * "North Sea flood of 1953". Best-effort: a failed batch just yields no aliases.
-     *
-     * @param  string[]  $qids
-     * @return array<string,string>
-     */
-    private function fetchAliases(array $qids): array
-    {
-        $out = [];
-        foreach (array_chunk(array_values(array_unique($qids)), 50) as $chunk) {
-            try {
-                $entities = $this->client(45)->get('https://www.wikidata.org/w/api.php', [
-                    'action' => 'wbgetentities',
-                    'ids' => implode('|', $chunk),
-                    'props' => 'aliases|labels',
-                    'languages' => 'en|nl',
-                    'format' => 'json',
-                ])->json('entities', []);
-            } catch (\Throwable $e) {
-                continue;
-            }
-
-            foreach ($entities as $qid => $entity) {
-                $labels = [
-                    ...array_column($entity['aliases']['en'] ?? [], 'value'),
-                    // Dutch label first among the NL variants — it's the name teachers type.
-                    ...array_filter([$entity['labels']['nl']['value'] ?? null]),
-                    ...array_column($entity['aliases']['nl'] ?? [], 'value'),
-                ];
-                $labels = array_values(array_unique(array_filter($labels)));
-                if ($labels !== []) {
-                    $out[$qid] = implode('|', array_slice($labels, 0, 18));
-                }
-            }
-        }
-
-        return $out;
     }
 
     private function qidFromUri(string $uri): ?string

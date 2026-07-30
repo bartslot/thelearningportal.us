@@ -62,7 +62,16 @@ final class SceneScriptPrompt
         $purposeBlock = $purpose ? "Learning goal: {$purpose}" : '';
         $openingHint = self::openingHintFor($scene->order);
 
+        // Source first, scene detail after. Every scene in a lesson sends the same article,
+        // and providers cache on a shared prefix — so the article is billed and processed
+        // once for the lesson instead of once per scene. Anything that changes between
+        // scenes has to come after it, or the prefix diverges before the article is reached.
         return <<<USR
+Source text (authoritative — only use facts from here):
+"""
+{$sourceText}
+"""
+
 Scene {$scene->order} — {$year}, {$location}
 Beat: {$beat}
 {$purposeBlock}
@@ -77,11 +86,6 @@ Opening style for this scene: {$openingHint}
 {$visualBlock}
 
 {$avoidBlock}
-
-Source text (authoritative — only use facts from here):
-"""
-{$sourceText}
-"""
 
 Write the narration for THIS scene only. 80-150 words. Plain prose, second person. Do NOT begin with "you are standing". No headings, no scene number.
 USR;
