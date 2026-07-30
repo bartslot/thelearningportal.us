@@ -2,6 +2,9 @@
     'scenes'          => collect(),
     'selectedSceneId' => null,
     'editable'        => true,
+    'clientSwitch'    => false,
+    // Play step only: [sceneId => stage payload], so a click can swap the stage with no round trip.
+    'payloads'        => [],
 ])
 
 {{-- Vertical scene rail (LessonUp/Keynote-style): numbered thumbnails down the left edge.
@@ -41,14 +44,42 @@
 
         {{-- p-3 (not just pb-3): the selected thumb's ring-offset-2 overspill would be clipped
              by overflow-y-auto without top/side breathing room. See overflow-clips-rings memory. --}}
+        {{-- With clientSwitch the rail owns its own Alpine scope rather than relying on the stage's:
+             the Play step only mounts x-data="step4Preview" for the canvas variant, and the rail has
+             to work in both. switchScene swaps the stage from the pre-built payload immediately, then
+             tells the server which scene is selected without anyone waiting for it. --}}
+        {{-- wire:ignore with clientSwitch: selectScene still runs on the server so Play and the
+             "Edit scene" pill know where the teacher is, but its re-render would morph this rail and
+             wipe the highlight we just moved. The Play-step rail is read-only, so there is nothing
+             for the server to tell it. Selection therefore lives in Alpine state and each thumb
+             binds its own ring — no DOM surgery, which also survives the ignored subtree. --}}
         <div id="timeline-track"
              class="flex-1 space-y-2 overflow-y-auto p-3"
+             @if ($clientSwitch)
+                 wire:ignore
+                 x-data="{
+                     selected: @js($selectedSceneId),
+                     payloads: @js($payloads),
+                     switchScene(id) {
+                         const payload = this.payloads[id]
+                         if (! payload) return
+
+                         this.selected = id
+                         window.dispatchEvent(new CustomEvent('scene:load-local', { detail: payload }))
+
+                         // Fire and forget: the stage has already changed and nothing on screen is
+                         // waiting for the server to agree.
+                         this.$wire?.selectScene(id)
+                     },
+                 }"
+             @endif
              @if ($editable) data-sortable="timeline" @endif>
             @foreach ($scenes as $scene)
                 <x-lesson.scene-thumb :scene="$scene"
                                       :selected="$scene->id === $selectedSceneId"
                                       :number="$loop->iteration"
                                       :editable="$editable"
+                                      :client-switch="$clientSwitch"
                                       wide />
             @endforeach
 

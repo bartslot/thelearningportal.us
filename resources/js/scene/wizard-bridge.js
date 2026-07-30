@@ -1002,10 +1002,17 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         }
     }
 
-    window.Livewire?.on('scene:load', ({ payload }) => {
+    const loadScene = (payload) => {
         pendingScene = payload
         if (playerReady) applyScene(payload)
-    })
+    }
+
+    window.Livewire?.on('scene:load', ({ payload }) => loadScene(payload))
+
+    // Same handler, reachable without a server round trip. The Play step already holds a payload
+    // for every scene (see Step4Preview::scenePayloads), so clicking a thumbnail can swap the
+    // stage immediately instead of waiting ~1s for Livewire to tell us what we already know.
+    window.addEventListener('scene:load-local', (event) => loadScene(event.detail))
 
     // Fired every poll tick while scene_view === 'world'.
     // When the job completes, mount the full WorldLabs scene (SPZ + GLB + pano).

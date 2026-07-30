@@ -51,9 +51,40 @@ class Step4Preview extends Component
             && $this->scenes->every(fn ($s) => $s->status === 'ready');
     }
 
+    /** Memoised default idle clip path: identical for every scene, so look it up once. */
+    private string|false|null $idleGlbPath = null;
+
     public function selectScene(int $id): void
     {
         $this->selectSceneInternal($id);
+    }
+
+    /**
+     * Every scene's payload, keyed by id, built once for the page.
+     *
+     * The Play step used to fetch this one scene at a time: clicking a thumbnail fired
+     * wire:click="selectScene", waited for a round trip, and got back a payload derived entirely
+     * from rows the page had already loaded — about a second of pure latency per click on
+     * production. Handing the whole map to the browser up front lets the rail switch instantly;
+     * see switchScene() in step4-preview.blade.php.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    #[Computed]
+    public function scenePayloads(): array
+    {
+        // Warm what the payload builder reaches for, so this is a handful of queries and not one
+        // per scene: quiz questions are a single relation load, animation clips one whereIn.
+        $this->lesson->loadMissing('quizQuestions');
+
+        $clipIds = $this->scenes->pluck('animation_clip_id')->filter()->unique();
+        $clips = $clipIds->isEmpty()
+            ? collect()
+            : AnimationClip::whereKey($clipIds)->get()->keyBy('id');
+
+        return $this->scenes
+            ->mapWithKeys(fn (Scene $scene) => [$scene->id => $this->scenePayload($scene, $clips)])
+            ->all();
     }
 
     private function selectSceneInternal(int $id): void
@@ -63,11 +94,23 @@ class Step4Preview extends Component
             return;
         }
         $this->selectedSceneId = $id;
-        $this->dispatch('scene:load', payload: [
+        $this->dispatch('scene:load', payload: $this->scenePayload($scene));
+    }
+
+    /**
+     * One scene's stage payload. Shared by the server dispatch and the pre-built client map, so the
+     * two can never describe a scene differently.
+     *
+     * @param  \Illuminate\Support\Collection<int,AnimationClip>|null  $clips  preloaded clips, when batching
+     * @return array<string,mixed>
+     */
+    private function scenePayload(Scene $scene, ?\Illuminate\Support\Collection $clips = null): array
+    {
+        return [
             'sceneId' => $scene->id,
             'imageUrl' => $scene->image_path ? asset('storage/'.$scene->image_path) : null,
             'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
-            'animationClipUrl' => $this->animationGlbUrlFor($scene),
+            'animationClipUrl' => $this->animationGlbUrlFor($scene, $clips),
             'year' => $scene->year,
             'location' => $scene->location,
             'kind' => $scene->kind,
@@ -85,23 +128,32 @@ class Step4Preview extends Component
             'quizQuestions' => $scene->kind === 'game' && ($scene->game_type ?? null) === 'quiz'
                 ? $this->lesson->quizQuestions->map->only(['question', 'options', 'correct_index', 'explanation'])->values()->all()
                 : [],
-        ]);
+        ];
     }
 
-    private function animationGlbUrlFor(Scene $scene): ?string
+    /**
+     * @param  \Illuminate\Support\Collection<int,AnimationClip>|null  $clips
+     *   Preloaded clips, so building payloads for every scene is not one query per scene.
+     */
+    private function animationGlbUrlFor(Scene $scene, ?\Illuminate\Support\Collection $clips = null): ?string
     {
         if ($scene->animation_clip_id) {
-            $clip = AnimationClip::find($scene->animation_clip_id);
+            $clip = $clips
+                ? $clips->get($scene->animation_clip_id)
+                : AnimationClip::find($scene->animation_clip_id);
+
             if ($clip?->glb_path) {
                 return $clip->glbUrl();
             }
         }
-        $idlePath = AnimationClip::where('category', 'idle')
+
+        // The default idle clip is the same for every scene; resolve it once per request.
+        $this->idleGlbPath ??= AnimationClip::where('category', 'idle')
             ->whereNotNull('glb_path')
             ->orderBy('sort_order')
-            ->value('glb_path');
+            ->value('glb_path') ?? false;
 
-        return $idlePath ? asset($idlePath) : null;
+        return $this->idleGlbPath ? asset($this->idleGlbPath) : null;
     }
 
     /** Shown right after a successful publish: the "your lesson is live" moment. */

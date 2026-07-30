@@ -3,6 +3,10 @@
     'selected' => false,
     'wide'     => false,   // vertical rail: fill the rail width instead of fixed w-32
     'number'   => null,    // slide number badge (vertical rail)
+    // Play step only: switch the stage in the browser from a pre-built payload instead of asking
+    // the server what it already told us. Configure keeps the Livewire round trip, because
+    // selecting a scene there really does change server-side editing state.
+    'clientSwitch' => false,
 ])
 
 {{-- data-thumb / data-thumb-selected let the rail's @container "compact" rules (timeline.blade)
@@ -16,18 +20,31 @@
 @endphp
 <button type="button"
         wire:key="scene-thumb-{{ $scene->id }}"
-        wire:click="selectScene({{ $scene->id }})"
+        @if ($clientSwitch)
+            x-on:click="switchScene({{ $scene->id }})"
+        @else
+            wire:click="selectScene({{ $scene->id }})"
+        @endif
         data-scene-id="{{ $scene->id }}"
         data-thumb
         aria-label="{{ $sceneAriaLabel }}"
-        @if ($selected) data-thumb-selected aria-current="true" @endif
+        @if ($selected && ! $clientSwitch) data-thumb-selected aria-current="true" @endif
+        @if ($clientSwitch)
+            {{-- Alpine owns the highlight here, so the static ring classes are left off to avoid
+                 fighting the binding. data-thumb-selected drives the compact-rail CSS above. --}}
+            x-bind:data-thumb-selected="selected === {{ $scene->id }} ? '' : null"
+            x-bind:aria-current="selected === {{ $scene->id }} ? 'true' : null"
+            x-bind:class="selected === {{ $scene->id }}
+                ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'
+                : '{{ $scene->status === 'failed' ? 'ring-1 ring-rose-500/50' : 'ring-1 ring-slate-700/50 hover:ring-slate-500' }}'"
+        @endif
         @class([
             'group relative shrink-0 aspect-video rounded-xl overflow-hidden transition-all',
             'w-full' => $wide,
             'w-32' => ! $wide,
-            'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'        => $selected,
-            'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $selected && $scene->status !== 'failed',
-            'ring-1 ring-rose-500/50'                                          => $scene->status === 'failed',
+            'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900'        => $selected && ! $clientSwitch,
+            'ring-1 ring-slate-700/50 hover:ring-slate-500'                    => ! $clientSwitch && ! $selected && $scene->status !== 'failed',
+            'ring-1 ring-rose-500/50'                                          => ! $clientSwitch && $scene->status === 'failed',
         ])>
     {{-- Full thumbnail (image / year / place / badges). Hidden by the compact @container rule. --}}
     <span data-thumb-full class="contents">

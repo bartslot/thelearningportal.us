@@ -174,7 +174,8 @@
     </div>
 
     {{-- Read-only timeline — clickable to seek, highlights the playing scene --}}
-    <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" :editable="false" />
+    <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" :editable="false"
+                       client-switch :payloads="$this->scenePayloads" />
 
     {{-- Scenes payload as inert JSON. Quiz scenes carry the lesson's questions so the
          preview sequencer can actually step through them. --}}
