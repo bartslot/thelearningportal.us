@@ -68,6 +68,10 @@ Route::get('/history-lessons', [\App\Http\Controllers\Public\LessonCatalogueCont
     ->name('public.lessons');
 Route::get('/history-lessons/{slug}', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'show'])
     ->name('public.lesson');
+Route::get('/articles', [\App\Http\Controllers\Public\ArticleController::class, 'index'])
+    ->name('public.articles');
+Route::get('/articles/{slug}', [\App\Http\Controllers\Public\ArticleController::class, 'show'])
+    ->name('public.article');
 
 // The other languages, prefixed and locale-aware.
 Route::prefix('{locale}')
@@ -82,6 +86,10 @@ Route::prefix('{locale}')
             ->name('public.lessons.localized');
         Route::get('/history-lessons/{slug}', [\App\Http\Controllers\Public\LessonCatalogueController::class, 'show'])
             ->name('public.lesson.localized');
+        Route::get('/articles', [\App\Http\Controllers\Public\ArticleController::class, 'index'])
+            ->name('public.articles.localized');
+        Route::get('/articles/{slug}', [\App\Http\Controllers\Public\ArticleController::class, 'show'])
+            ->name('public.article.localized');
     });
 
 // Student lesson player — public, no auth required

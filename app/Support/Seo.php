@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 final class Seo
 {
     /** Public routes, by the suffix used for both the plain and the locale-prefixed name. */
-    public const PAGES = ['home', 'about', 'lessons', 'lesson'];
+    public const PAGES = ['home', 'about', 'lessons', 'lesson', 'articles', 'article'];
 
     /**
      * English route names. The landing page and /about existed before the localised group, so they
@@ -29,6 +29,8 @@ final class Seo
         'about' => 'about',
         'lessons' => 'public.lessons',
         'lesson' => 'public.lesson',
+        'articles' => 'public.articles',
+        'article' => 'public.article',
     ];
 
     /**

@@ -39,6 +39,24 @@ class SitemapController extends Controller
                 );
             }
 
+            // Articles come from WordPress. The index only earns a place once something is published
+            // there, so an empty feed keeps it out of the sitemap entirely.
+            $articles = app(\App\Services\WordPressContent::class)->posts(50);
+
+            if ($articles->isNotEmpty()) {
+                $entries[] = $this->entry('articles', [], '0.7', 'weekly');
+
+                foreach ($articles as $article) {
+                    $entries[] = $this->entry(
+                        'article',
+                        ['slug' => $article['slug']],
+                        '0.6',
+                        'monthly',
+                        $article['updated_at']?->toAtomString(),
+                    );
+                }
+            }
+
             return '<?xml version="1.0" encoding="UTF-8"?>'."\n"
                 .'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
                 .'xmlns:xhtml="http://www.w3.org/1999/xhtml">'."\n"

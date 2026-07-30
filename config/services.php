@@ -223,4 +223,12 @@ return [
         'url' => env('CLOUDINARY_URL'),
     ],
 
+    // ── WordPress, read as a headless CMS ─────────────────────────────────────
+    // The marketing site at thelearningportal.us runs WordPress with the public REST API open, so
+    // published posts appear on this subdomain with no credentials and nothing to write back.
+    // Point WORDPRESS_URL somewhere else (or blank it) to change or disable the feed.
+    'wordpress' => [
+        'url' => env('WORDPRESS_URL', 'https://thelearningportal.us'),
+    ],
+
 ];
