@@ -71,6 +71,12 @@ class Artwork extends Model
             ->where(fn ($q) => $q
                 ->where('title', 'ILIKE', $like)
                 ->orWhere('creator_name', 'ILIKE', $like)
+                // Every row carries ONE title, in whichever language the harvest happened to store
+                // (8.5k Dutch, 4.2k English), so a Dutch teacher searching "nachtwacht" missed the
+                // English-titled row and an English search missed the Dutch one. Where a harvest
+                // recorded the other language too, it lives in extra and is searched as well.
+                ->orWhereRaw("extra->>'title_nl' ILIKE ?", [$like])
+                ->orWhereRaw("extra->>'title_en' ILIKE ?", [$like])
                 ->orWhereIn('qid', fn ($s) => $s
                     ->select('artwork_qid')->from('artwork_links')->where('target_label', 'ILIKE', $like)))
             ->orderByRaw('quality desc nulls last, inception_year desc nulls last')

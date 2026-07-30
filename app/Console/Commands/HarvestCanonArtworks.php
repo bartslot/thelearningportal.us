@@ -73,6 +73,13 @@ class HarvestCanonArtworks extends Command
             return self::SUCCESS;
         }
 
+        // Dutch titles, in a SEPARATE pass. Asking the main query for a second language (two extra
+        // OPTIONAL rdfs:label patterns over ~1,500 items, under an ORDER BY) reliably timed the
+        // public endpoint out with a 504. Bounded by VALUES, in chunks, it answers in well under a
+        // second — and the same method can later backfill the 8.5k rows the bulk harvest left with
+        // only one language.
+        $rows = $this->withDutchTitles($rows);
+
         $existing = DB::connection('pgsql_corpus')->table('artworks')
             ->whereIn('qid', $rows->pluck('qid'))->pluck('qid')->flip();
         $new = $rows->reject(fn ($r) => $existing->has($r['qid']));
@@ -93,7 +100,7 @@ class HarvestCanonArtworks extends Command
                 ['qid'],
                 ['title', 'title_lang', 'creator_qid', 'creator_name', 'creator_death_year',
                     'inception_year', 'image_url', 'source', 'license_note', 'pd_likely', 'kind',
-                    'collection', 'creator_sitelinks', 'quality', 'source_uri', 'rights_uri'],
+                    'collection', 'creator_sitelinks', 'quality', 'source_uri', 'rights_uri', 'extra'],
             );
             $this->output->write('.');
         }
@@ -128,6 +135,57 @@ class HarvestCanonArtworks extends Command
         ORDER BY DESC(?sitelinks)
         LIMIT {$limit}
         SPARQL;
+    }
+
+    /**
+     * Merge each painting's Dutch label into its `extra`, so a Dutch search finds an
+     * English-titled work and the other way round.
+     *
+     * @param  \Illuminate\Support\Collection<int,array<string,mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int,array<string,mixed>>
+     */
+    private function withDutchTitles($rows)
+    {
+        $found = 0;
+        $dutch = [];
+        foreach ($rows->pluck('qid')->chunk(400) as $chunk) {
+            $values = $chunk->map(fn ($q) => "wd:{$q}")->implode(' ');
+            $sparql = <<<SPARQL
+            SELECT ?item ?label WHERE {
+              VALUES ?item { {$values} }
+              ?item rdfs:label ?label .
+              FILTER(LANG(?label) = "nl")
+            }
+            SPARQL;
+            try {
+                foreach ($this->query($sparql) as $b) {
+                    $qid = basename((string) ($b['item']['value'] ?? ''));
+                    $label = trim((string) ($b['label']['value'] ?? ''));
+                    if ($qid !== '' && $label !== '') {
+                        $dutch[$qid] = $label;
+                        $found++;
+                    }
+                }
+            } catch (Throwable $e) {
+                // A missing Dutch title costs a Dutch teacher one search term, not the harvest.
+                $this->warn('  Dutch labels unavailable for one chunk: '.$e->getMessage());
+            }
+            $this->output->write('.');
+        }
+        $this->newLine();
+        $this->line("  {$found} Dutch titles alongside the English ones");
+
+        return $rows->map(function (array $r) use ($dutch) {
+            $nl = $dutch[$r['qid']] ?? null;
+            if ($nl === null || $nl === $r['title']) {
+                return $r;
+            }
+            $extra = json_decode((string) $r['extra'], true) ?: [];
+            $extra['title_nl'] = $nl;
+            $r['extra'] = json_encode($extra, JSON_UNESCAPED_UNICODE);
+
+            return $r;
+        });
     }
 
     /**
@@ -192,10 +250,14 @@ class HarvestCanonArtworks extends Command
 
         $sitelinks = (int) ($b['sitelinks']['value'] ?? 0);
 
+        $title = trim((string) ($b['itemLabel']['value'] ?? '')) ?: $qid;
+
         return [
             'qid' => $qid,
-            'title' => (string) ($b['itemLabel']['value'] ?? $qid),
+            'title' => $title,
             'title_lang' => 'en',
+            // Filled in by the Dutch label pass below; the picker promises "Dutch or English".
+            'extra' => json_encode(['title_en' => $title], JSON_UNESCAPED_UNICODE),
             'creator_qid' => isset($b['creator']['value']) ? basename((string) $b['creator']['value']) : null,
             'creator_name' => $b['creatorLabel']['value'] ?? null,
             'creator_death_year' => $death,
