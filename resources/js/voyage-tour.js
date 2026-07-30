@@ -532,8 +532,14 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       // preview, pointer capture so the drag survives leaving the dot, Esc to abandon — is the same
       // for all of them, and used to exist as two drifting copies.
       const DRAG_PX = 3;
-      const makeDraggable = (el, { describe, commit }) => {
-        let down = null; let moved = false; let desc = null; let geo = null;
+      // Two taps this close together are a double-click. Detected from the POINTER stream, because
+      // the real dblclick event can never reach a handle: pointerdown below must call
+      // preventDefault() (otherwise the map pans while you drag a dot), and cancelling pointerdown
+      // suppresses the compatibility mouse events — no mousedown, so no click, so no dblclick. The
+      // bend handles advertised "double-click to remove" in their tooltip and did nothing at all.
+      const DOUBLE_TAP_MS = 350;
+      const makeDraggable = (el, { describe, commit, onDoubleTap = null }) => {
+        let down = null; let moved = false; let desc = null; let geo = null; let lastTap = 0;
 
         const onKey = (e) => {
           if (e.key !== 'Escape' || !down) return;
@@ -557,7 +563,16 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           document.removeEventListener('keydown', onKey, true);
           window.removeEventListener('pointerup', onWindowUp);
           window.removeEventListener('pointercancel', onWindowCancel);
-          if (!wasMoved) return;
+          if (!wasMoved) {
+            // A tap that never became a drag: the second one within DOUBLE_TAP_MS deletes.
+            if (persist && onDoubleTap) {
+              const now = performance.now();
+              if (now - lastTap <= DOUBLE_TAP_MS) { lastTap = 0; try { onDoubleTap(); } catch (_) { /* the host decides */ } return; }
+              lastTap = now;
+            }
+
+            return;
+          }
           endPreview();
           layoutHandles();            // Esc (or a committed drag) snaps the dot back onto the line
           if (persist && d && g) { try { commit(d, g); } catch (_) { /* the host decides */ } }
@@ -648,7 +663,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         const h = makeDot('bend');
         h.dataset.voyageHandle = 'vertex';
         h.dataset.wpIndex = String(w);
-        h.title = onWaypointRemove ? 'Drag to reshape · double-click to remove' : 'Drag to reshape the route';
+        h.title = onWaypointRemove ? 'Drag to move · double-click to delete' : 'Drag to move this bend';
         h._geo = { lng: wp[0], lat: wp[1] };
         makeDraggable(h, {
           describe: () => ({ mode: 'move', wpIndex: w }),
@@ -1284,6 +1299,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       const legStop = legTitle ? Object.assign({}, packStop, { place: legTitle, title: legTitle }) : (L.stop || packStop);
       L = Object.assign({}, L, { def: legDef, stop: legStop, f0, f1, start: ships.pointAt(voyage, f0), end: ships.pointAt(voyage, f1) });
       try { ships.setTourProgress(voyage, f1); } catch (_) {}
+      // Re-lay the PATH, not just the reveal point. updateTrail() only moves the line-gradient stop
+      // ("geometry is static"), so on its own it left the old line on screen after a waypoint moved:
+      // the dot went where you dropped it, the ship sailed the new course, and the route the teacher
+      // was trying to bend never changed shape. setRouteLine() already knew to redraw first.
+      redrawTrailGeometry();
       updateTrail(f1);
       if (fog) { try { fog.revealTo(f1, { force: true }); } catch (_) {} }
       try { setChip(L.arriveMs, L.stop ? L.stop.place : ''); } catch (_) { /* chip not ready */ }
