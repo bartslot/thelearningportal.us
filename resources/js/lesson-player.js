@@ -902,6 +902,10 @@ Alpine.data('lessonGame', (lesson) => ({
         .filter(c => c.kind !== 'game')
       this.currentChapterName = this.chapters[0]?.name || ''
 
+      // Warm every narrated scene up front, BEFORE the early return below — a lesson can open with
+      // a quiz or map scene that has no audio of its own, and those lessons need warming most.
+      this._warmNarration()
+
       // A map block can be first in the queue — only preload audio when the first scene has it.
       if (!_sceneQueue[0].audio_url) return
 
@@ -914,9 +918,11 @@ Alpine.data('lessonGame', (lesson) => ({
         } catch (e) { /* optional */ }
       }
 
-      // Pre-load metadata of first scene so duration is known
+      // Pre-load the first scene so duration is known. 'auto', not 'metadata': narration is around
+      // 750 KB per scene, and with metadata-only the audio data is not fetched until playback starts,
+      // which stalled the opening of every scene.
       this._audio = new Audio(_sceneQueue[0].audio_url)
-      this._audio.preload = 'metadata'
+      this._audio.preload = 'auto'
       this._audio.load() // must call load() explicitly to start fetching
       await new Promise(resolve => {
         if (this._audio.readyState >= 1) { resolve(); return } // already loaded
@@ -925,6 +931,55 @@ Alpine.data('lessonGame', (lesson) => ({
         setTimeout(resolve, 3000) // safety timeout — never block indefinitely
       })
       this._scriptEvents = parseScriptTags(_sceneQueue[0].script, this._audio.duration)
+    },
+
+    /**
+     * Warm every scene's narration into the HTTP cache, in order, one at a time.
+     *
+     * A lesson is roughly 750 KB of audio per scene. Fetched on demand, jumping to a chapter meant
+     * waiting for that download — one to two seconds on classroom wifi, on a click that should feel
+     * instant. Warming them while the first scene plays makes every later jump a cache hit.
+     *
+     * Deliberately sequential and started after the first scene is ready, so it never competes with
+     * the audio the class is listening to right now. Failures are ignored: this is an optimisation,
+     * and the player still fetches on demand if a warm never happened.
+     */
+    _warmNarration () {
+      if (this._warmingNarration) return
+      this._warmingNarration = true
+
+      const urls = _sceneQueue
+        .map(s => s.audio_url)
+        .filter((url, i) => url && i > 0)
+
+      const warmNext = () => {
+        const url = urls.shift()
+        if (!url) { this._warmingNarration = false; return }
+
+        const probe = new Audio()
+        probe.preload = 'auto'
+        probe.src = url
+
+        let settled = false
+        const done = () => {
+          if (settled) return
+          settled = true
+          probe.removeEventListener('canplaythrough', done)
+          probe.removeEventListener('error', done)
+          // Hold the reference until the fetch settles, then let it go; the bytes stay in the
+          // browser's HTTP cache, which is what the next play reads from.
+          setTimeout(warmNext, 150)
+        }
+
+        probe.addEventListener('canplaythrough', done, { once: true })
+        probe.addEventListener('error', done, { once: true })
+        // A stalled fetch must never halt the chain — move on and let that scene load on demand.
+        setTimeout(done, 20000)
+        probe.load()
+      }
+
+      // Give the first scene a moment of clear air before competing for bandwidth.
+      setTimeout(warmNext, 1200)
     },
 
     // ── Script event processing ────────────────────────────────────────
