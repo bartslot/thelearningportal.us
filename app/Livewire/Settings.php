@@ -22,18 +22,28 @@ class Settings extends Component
 {
     public string $locale = 'en';
 
+    /** The language this teacher's lessons are written and narrated in. */
+    public string $teaching_locale = 'en';
+
     public function mount(): void
     {
         $this->locale = auth()->user()->locale ?? 'en';
+        $this->teaching_locale = auth()->user()->teachingLocale();
     }
 
     public function save(): void
     {
         // Rule derived from Locales rather than a #[Validate] literal, so adding a language cannot
         // leave the switcher accepting a value the app has no translations for.
-        $this->validate(['locale' => ['required', Locales::validationRule()]]);
+        $this->validate([
+            'locale' => ['required', Locales::validationRule()],
+            'teaching_locale' => ['required', Locales::validationRule()],
+        ]);
 
-        auth()->user()->update(['locale' => $this->locale]);
+        auth()->user()->update([
+            'locale' => $this->locale,
+            'teaching_locale' => $this->teaching_locale,
+        ]);
         App::setLocale($this->locale);
 
         session()->flash('saved', true);

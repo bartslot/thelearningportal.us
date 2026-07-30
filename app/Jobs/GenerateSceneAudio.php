@@ -47,16 +47,20 @@ class GenerateSceneAudio implements ShouldQueue
 
             // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
             // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so the
-            // voice follows the LESSON'S CONTENT LANGUAGE (teacher locale — the same signal that
-            // makes the script prompt write Dutch): native narrator per language, multilingual
-            // fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE, when set, pins one voice globally.
+            // voice follows the lesson's CONTENT language (see the precedence below): native
+            // narrator per language, multilingual fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE,
+            // when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
-            // The voice follows the language the SCRIPT is actually written in, not the teacher's
-            // UI locale. A Dutch teacher writing an English lesson had the whole thing narrated by a
-            // Dutch voice; the teacher's locale is only the fallback when the text is too short or
-            // ambiguous to call.
-            $locale   = ScriptLanguage::detect($text, (string) ($scene->lesson->teacher?->locale ?: 'en'));
+            // Language precedence, most authoritative first:
+            //   1. the teacher's explicit TEACHING language (profile setting, separate from the
+            //      language the interface speaks to them in),
+            //   2. the language the script is actually written in, as a safety net for content that
+            //      disagrees with that setting,
+            //   3. their interface locale, if there is nothing else to go on.
+            $teacher  = $scene->lesson->teacher;
+            $locale   = $teacher?->teaching_locale
+                ?: ScriptLanguage::detect($text, (string) ($teacher?->locale ?: 'en'));
             $voiceId  = match (true) {
                 // Self-hosted Piper: pick the voice by language (Dutch pim, English ryan) so an
                 // English lesson isn't narrated in a Dutch accent.

@@ -25,6 +25,7 @@ class User extends Authenticatable
         'password',
         'role',
         'locale',
+        'teaching_locale',
         'tag',
         'onboarded_at',
         'onboarding_status',
@@ -50,6 +51,17 @@ class User extends Authenticatable
     // ── Helpers ────────────────────────────────────────────────────────────
 
     /** Has this account finished (or skipped) the welcome tour? */
+    /**
+     * The language this teacher's LESSONS are in (script + narration voice), as opposed to `locale`,
+     * which is the language the interface speaks to them in. A Dutch teacher can write English
+     * lessons; before these were separated, her English lesson was narrated by a Dutch voice.
+     * Null means "same as my interface language", which is true for almost everyone.
+     */
+    public function teachingLocale(): string
+    {
+        return $this->teaching_locale ?: ($this->locale ?: 'en');
+    }
+
     public function hasOnboarded(): bool
     {
         return $this->onboardingStatus()->isFinished();

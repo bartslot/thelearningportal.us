@@ -34,6 +34,17 @@
                 @enderror
             </div>
 
+            {{-- Teaching language: a separate question from the interface language. A teacher can
+                 work in Dutch and teach in English, and this is what picks the narration voice. --}}
+            <div class="w-full max-w-xs">
+                <p id="teaching-language-picker-label" class="mb-1 text-sm font-medium text-slate-300">{{ __('Teaching language') }}</p>
+                <x-ui.language-picker model="teaching_locale" :current="$teaching_locale" :label="__('Teaching language')" />
+                <p class="mt-1 text-xs text-slate-500">{{ __('The language your lessons are written and read aloud in. This can differ from the language of the interface.') }}</p>
+                @error('teaching_locale')
+                    <p class="mt-1 text-xs text-rose-400">{{ $message }}</p>
+                @enderror
+            </div>
+
             <div>
                 <button type="button" wire:click="save"
                         class="btn border-0 bg-amber-500 text-slate-950 hover:bg-amber-400">
