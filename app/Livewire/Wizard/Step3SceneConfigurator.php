@@ -1353,6 +1353,10 @@ class Step3SceneConfigurator extends Component
         // How far the traveller's idle animation swings, 0–100. The rocking was tuned for an ocean
         // and can read as too much on a classroom projector, so the amount is the teacher's call.
         'motion' => 100,
+        // Where the date and place are written: 'bottom' is the design's single quiet line in the
+        // corner, 'top' the older centred date pill with the place beneath it. ONE of them, never
+        // both — showing the pair said the same thing twice on one map.
+        'info_position' => 'bottom',
         'ocean_zoom' => 30, 'cam_dolly_arrival' => false,
         // Fog-of-war: when true, ALL land along the route is "undiscovered" (water-coloured) except a
         // known-world set; the ship's range unmasks land as it nears + draws the coastline on landfall.
@@ -1376,6 +1380,7 @@ class Step3SceneConfigurator extends Component
         $coerced = match (true) {
             in_array($key, ['cities', 'borders', 'labels', 'ship_anchored', 'cam_dolly_arrival', 'fog_auto'], true) => filter_var($value, FILTER_VALIDATE_BOOLEAN),
             in_array($key, ['ocean_zoom', 'motion'], true) => max(0, min(100, (int) $value)),
+            $key === 'info_position' => in_array($value, ['bottom', 'top'], true) ? $value : 'bottom',
             str_ends_with($key, '_color') => preg_match('/^#[0-9a-fA-F]{6}$/', (string) $value) ? (string) $value : self::VOYAGE_MAP_DEFAULTS[$key],
             $key === 'border_opacity' => max(0.0, min(1.0, (float) $value)),
             in_array($key, ['label_size', 'city_size'], true) => max(0.3, min(3.0, (float) $value)),

@@ -1,4 +1,4 @@
-@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas'])
+@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas', 'lessonMapRelief' => 0])
 
 @php
     $config = $scene->config ?? [];
@@ -32,7 +32,7 @@
      that state across the component's 3s wire:poll, and every panel stays in the DOM (x-show) so the
      wire:model bindings never detach. --}}
 <div class="text-sm" x-data="{ tab: 'leg' }"
-     x-on:voyage-obj-focus.window="tab = 'leg'; if ($event.detail?.which === 'gallery') $nextTick(() => $refs.gallerySection?.scrollIntoView({ block: 'start', behavior: 'smooth' }))">
+     x-on:voyage-obj-focus.window="tab = 'leg'; if ($event.detail?.which === 'gallery') $nextTick(() => { if ($refs.gallerySection) $refs.gallerySection.open = true; $refs.gallerySection?.scrollIntoView({ block: 'start', behavior: 'smooth' }) })">
     {{-- Header --}}
     <div class="flex items-center justify-between gap-2">
         <h3 class="flex items-center gap-2 font-semibold text-indigo-300">
@@ -216,11 +216,22 @@
 
         {{-- GALLERY / DESCRIPTION — the "just a description" layer. Opens as a modal over the map when
              the landfall hotspot (or a thumbnail) is clicked, so it lives in THIS voyage scene. --}}
-        <section x-ref="gallerySection" class="border-t border-slate-700/50 pt-3">
-            <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/></svg>
-                Gallery / description
-            </div>
+        {{-- Folded away by default: a landfall's title, date line, story and images are a lot of
+             panel for something most stops never set, and it pushed the controls above it out of
+             reach. wire:ignore.self keeps it open through the component's 3s poll once expanded,
+             and voyage-obj-focus (clicking the hotspot on the map) opens it. --}}
+        <details x-ref="gallerySection" wire:ignore.self class="group border-t border-slate-700/50 pt-3"
+                 x-on:voyage-obj-focus.window="if ($event.detail?.which === 'gallery') $el.open = true">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-2">
+                <span class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
+                    <svg class="h-3 w-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></svg>
+                    Gallery / description
+                </span>
+                {{-- What is in there, without opening it. --}}
+                <span class="text-[10px] text-slate-500">
+                    {{ trim((string) ($gallery['title'] ?? '')) !== '' ? $gallery['title'] : __('unnamed') }}@if (count($galleryImages)) · {{ count($galleryImages) }} @endif
+                </span>
+            </summary>
             <span class="mt-0.5 block text-[10px] text-slate-500">Opens as a modal from the landfall hotspot.</span>
 
             <label class="form-control mt-2">
@@ -294,7 +305,7 @@
                             @click="if (url.trim()) { $wire.addGalleryImage(url); url='' }">Add</button>
                 </div>
             </div>
-        </section>
+        </details>
     </div>
 
     {{-- ══════════════════ TAB: MAP — projection, visible detail, fog of war ══════════════════ --}}
@@ -333,7 +344,7 @@
         {{-- MAP STYLE — the same lesson-wide palette a map block uses, voyages included (a voyage is
              not a special case: pick the look once and every map in the lesson follows). --}}
         <section class="border-t border-slate-700/50 pt-3">
-            <x-lesson.map-style-picker :effective-style="$lessonMapStyle" />
+            <x-lesson.map-style-picker :effective-style="$lessonMapStyle" :relief="$lessonMapRelief" />
         </section>
 
         {{-- MAP DETAIL — hide anachronistic modern cities/borders (they didn't exist yet) and pin the
@@ -511,7 +522,24 @@
                 Ship &amp; camera
             </div>
 
-            <label class="mt-2 block">
+            {{-- WHERE THE DATE AND PLACE ARE WRITTEN. One or the other: the map used to carry both,
+                 so the landfall name appeared twice within a few centimetres of itself. --}}
+            <div class="mt-2">
+                <span class="text-[11px] text-slate-300">{{ __('Date and place') }}</span>
+                <div class="mt-1 grid grid-cols-2 gap-1">
+                    @foreach ([['bottom', __('Bottom left')], ['top', __('Top centre')]] as [$pos, $label])
+                        <button type="button" wire:click="setVoyageMap('info_position', '{{ $pos }}')"
+                                @class([
+                                    'rounded-md border px-2 py-1 text-[11px] transition',
+                                    'border-amber-400 bg-amber-400/10 text-amber-300' => $vmr('info_position', 'bottom') === $pos,
+                                    'border-slate-700 text-slate-400 hover:border-slate-500' => $vmr('info_position', 'bottom') !== $pos,
+                                ])>{{ $label }}</button>
+                    @endforeach
+                </div>
+                <p class="mt-1 text-[10px] text-slate-500">{{ __('One line in the corner, or the date chip above the map.') }}</p>
+            </div>
+
+            <label class="mt-3 block">
                 <span class="flex justify-between text-[11px] text-slate-300">Ship size <span class="text-slate-500">{{ number_format((float) $vmr('ship_scale', 1.0), 1) }}×</span></span>
                 <input type="range" min="0.4" max="2.5" step="0.1" value="{{ $vmr('ship_scale', 1.0) }}"
                        wire:change="setVoyageMap('ship_scale', $event.target.value)"
