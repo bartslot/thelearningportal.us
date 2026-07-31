@@ -125,10 +125,11 @@ class GenerateSceneImage implements ShouldQueue
             }
             $config = $scene->config ?? [];
             $config['image_credit'] = $hit['credit'];
+            // Remember where it came from so `lessons:enhance-images` can re-fetch a bigger original.
             $config['image_source_url'] = $hit['url'];
-            if (! empty($hit['focus'])) {
-                $config['image_focus'] = $hit['focus'];
-            }
+            // Crop anchor — the key the PLAYER reads. A portrait cropped to 16:9 from the centre
+            // loses the face, which is the whole reason the sourcer works out a focus at all.
+            $config['background_focus'] = (string) ($hit['focus'] ?? 'center');
             $scene->update(['image_path' => $path, 'config' => $config, 'upscale_status' => null]);
             $this->maybeMarkReady($scene->fresh());
 

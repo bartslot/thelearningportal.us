@@ -951,6 +951,7 @@ Alpine.data('lessonGame', (lesson) => ({
             branch_group: s.branch_group ?? null, branch_role: s.branch_role ?? null,
             branch_choice_label: s.branch_choice_label ?? null,
             audio_url: s.audio_url, script: s.script, image_url: s.image_url,
+            image_credit: s.image_credit ?? null,   // shown under the deck — CC BY obliges us to
             chapter_name: s.chapter_name ?? null, year: s.year ?? null,
             duration_seconds: s.duration_seconds ?? null,
             // shots entries carry image_url + anchor_sentence, plus optional bg_url/hero_url
@@ -1092,6 +1093,18 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     _sceneIndex: 0,
+
+    // The small grey line under the deck: where the words came from, and who made the picture.
+    //
+    // The image half is not decoration. Almost everything the sourcer finds on Wikimedia Commons is
+    // CC BY or CC BY-SA, and both licences require naming the author wherever the work is shown —
+    // so this has to follow the scene, not sit on a credits page nobody opens. Reads _sceneIndex
+    // (reactive) so it changes with the picture.
+    get attributionLine () {
+      const scenes = (_sceneQueue && _sceneQueue.length) ? _sceneQueue : (this.lesson?.scenes || [])
+      const credit = scenes[this._sceneIndex]?.image_credit
+      return [this.lesson?.source_attribution, credit].filter(Boolean).join('  ·  ')
+    },
 
     // Owner-preview "Edit scene": deep-link to the wizard scene editor (step 4) for the EXACT scene
     // being viewed, carrying whether the gallery/landfall modal is currently open so it can reopen.

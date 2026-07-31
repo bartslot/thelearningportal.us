@@ -19,6 +19,17 @@ class GenerateSceneImageTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * These tests are about the IMAGE-MODEL branch of the job, so they have to switch it on: real
+     * scenes source a painting from the corpus or Commons instead, and generation only runs when a
+     * deployment opts into paying per image. See ImageryPolicyTest for the default.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['services.imagery.ai_generation' => true]);
+    }
+
     public function test_generates_an_image_and_stores_path_on_scene(): void
     {
         Storage::fake('public');

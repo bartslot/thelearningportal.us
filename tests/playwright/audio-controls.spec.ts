@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Audio Controls (H1)', () => {
   test('Audio controls are visible during playback', async ({ page }) => {
-    // FRREV9 is the seeded demo lesson that always exists in dev ("DEMO" never existed —
-    // the spec 404'd and found no controls).
-    await page.goto('http://localhost:8000/lesson/FRREV9', { waitUntil: 'networkidle' });
+    // Any published lesson renders the transport deck; this one is stable in dev.
+    const LESSON_CODE = process.env.PLAYER_LESSON_CODE || 'EWQ7RV';
+    await page.goto(`/lesson/${LESSON_CODE}`, { waitUntil: 'domcontentloaded' });
 
     // Wait for the lesson stage to be ready
     await page.waitForSelector('#lesson-stage', { timeout: 5000 }).catch(() => {});
@@ -12,12 +12,12 @@ test.describe('Audio Controls (H1)', () => {
     // Note: The audio controls only appear during INTRO or GAME_ACTIVE phases
     // In a full test, we'd click "Start lesson" and then verify the controls appear
     // For now, check the controls exist in the DOM (they're hidden if phase isn't right)
-    const playButton = page.locator('button:has-text("Play")').first();
-    const stopButton = page.locator('button[title*="Stop"]').first();
-    const muteButton = page.locator('button[title*="Mute"]').first();
-
-    // These should exist in the DOM even if hidden
-    expect(await page.locator('button[title*="Mute"]').count()).toBeGreaterThan(0);
+    //
+    // Matched by aria-label, not by `title`. The mute button carries its label in `data-tooltip`
+    // now (the app-wide tooltip standard replaced native `title`), so the old `title*="Mute"`
+    // selector matched nothing and this test failed while the button was working perfectly.
+    expect(await page.locator('button[aria-label="Mute"], button[aria-label="Unmute"]').count())
+      .toBeGreaterThan(0);
   });
 
   test('Stop button resets audio to beginning', async ({ page }) => {

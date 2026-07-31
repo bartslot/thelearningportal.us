@@ -52,6 +52,9 @@
         'quiz_questions'        => $lesson->quizQuestions->whereNull('scene_id')->map->only(['question', 'options', 'correct_index', 'asks_ahead', 'explanation'])->values(),
         'quiz_timing'           => $lesson->quiz_timing,
         'cover_image_url'       => $lesson->titleBgUrl() ?? $lesson->cardImageUrl(),
+        // Where the lesson TEXT came from. The per-scene image credit rides on each scene below and
+        // joins this on the same line, because a CC BY image has to say who made it.
+        'source_attribution'    => $lesson->sourceAttribution(),
         'title_bg_url'          => $lesson->titleBgUrl(),
         'intro_text'            => $lesson->outline['scene_briefs'][0]['scenePurpose']
                                     ?? $lesson->details
@@ -76,6 +79,9 @@
                 'audio_url'   => $s->audio_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->audio_path) : null,
                 'script'      => $s->script_segment,
                 'image_url'   => $s->image_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->image_path) : null,
+                // Attribution for a sourced painting or photograph. Commons images are mostly CC BY
+                // or CC BY-SA, which oblige us to name the author wherever the image is shown.
+                'image_credit' => $s->config['image_credit'] ?? null,
                 'shots'       => collect($s->shots ?? [])->map(fn($shot) => [
                     'image_url'       => !empty($shot['image_path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($shot['image_path']) : null,
                     // bg_url/hero_url (E3b story-pack shots): the player renders these as
@@ -265,11 +271,12 @@
         {{-- Top chrome (logo / editor escape hatch) lives in the player overlay wrapper below,
              so it appears and hides with the rest of the controls. --}}
 
-        {{-- Source attribution (A4) — centred under the deck, unobtrusive, always visible. --}}
-        @if ($attribution = $lesson->sourceAttribution())
-            <p class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-white/35 pointer-events-none whitespace-nowrap"
-               style="z-index:40">{{ $attribution }}</p>
-        @endif
+        {{-- Source attribution (A4) — centred under the deck, unobtrusive, always visible.
+             Reactive rather than server-rendered because it now also names the artist of the scene
+             on screen, and that changes as the lesson plays. --}}
+        <p x-show="attributionLine" x-text="attributionLine" x-cloak
+           class="absolute bottom-1 left-1/2 -translate-x-1/2 max-w-[92vw] truncate text-[10px] text-white/35 pointer-events-none"
+           style="z-index:40"></p>
 
         {{-- ── Subtitles — the narration written along the bottom while it is spoken ─────────── --}}
         {{-- Sits above the chapter bar, never over it. x-text (never x-html): a script is teacher

@@ -67,7 +67,7 @@ class SceneImageSourcer
         // matches plenty — this is what a teacher does when a search comes back empty.
         foreach ($this->broadenings($query) as $attempt) {
             foreach ($order as $source) {
-                $hit = $source === 'corpus' ? $this->fromCorpus($attempt, $year) : $this->fromCommons($attempt);
+                $hit = $source === 'corpus' ? $this->fromCorpus($attempt, $year) : $this->fromCommons($attempt, $year);
                 if ($hit !== null) {
                     return $hit;
                 }
@@ -176,7 +176,25 @@ class SceneImageSourcer
      *
      * @return array{url:string,credit:string,title:string,source:string}|null
      */
-    public function fromCommons(string $query): ?array
+    /**
+     * Files that are never a lesson backdrop, however well the name matches the subject.
+     *
+     * Commons ranks these highly precisely because their titles are literal: searching
+     * "The Roman Republic" returns "Roman republic, tribes 241 BC.png" — a tribal MAP — ahead of any
+     * painting of Rome. The standard for scene imagery is beautiful paintings, "not flags or so
+     * on", so these are rejected outright rather than merely ranked down.
+     */
+    private const NOT_A_BACKDROP = '/\b(maps?|flags?|coats? of arms|blason|seal|logos?|emblem|banner|diagram|chart|graph|timeline|locator|floor ?plan|postage|infographic)\b/i';
+
+    /**
+     * Title and credit fragments that mark a hit as fine art rather than a photograph.
+     *
+     * Used only to BREAK TIES for pre-photography scenes: a photo of the Forum's ruins today and a
+     * painting of the Forum in use are both "relevant", but only one puts a class in the year.
+     */
+    private const LOOKS_LIKE_ART = '/\b(painting|portrait|oil on canvas|fresco|engraving|etching|lithograph|watercolou?r|tapestry|manuscript|illumination|lacma|rijksmuseum|louvre|hermitage|prado|uffizi|google art project|national gallery|metropolitan museum)\b/i';
+
+    public function fromCommons(string $query, ?int $year = null): ?array
     {
         try {
             $res = Http::withHeaders(['User-Agent' => self::UA])
@@ -224,7 +242,15 @@ class SceneImageSourcer
                 $rawTitle = (string) ($page['title'] ?? '');
                 // Commons "files" include scanned books, maps as PDFs, and vector diagrams. Those
                 // render as a first page or a flat graphic — never as a lesson backdrop.
-                if (preg_match('/\.(pdf|djvu|svg|tif|tiff|ogv|webm|gif)$/i', $rawTitle)) {
+                //
+                // PNG is in this list for the same reason, and it does the heavy lifting: on Commons
+                // a PNG is nearly always a map, chart, logo or other flat graphic, because
+                // photographs and scanned artwork are uploaded as JPEG. Scoring it down was not
+                // enough — "Roman republic, tribes 241 BC.png" is a MAP whose title happens to match
+                // a Roman Republic lesson word for word, so it outranked every painting of Rome. The
+                // rare PNG painting we lose here is still reachable through the corpus, which is
+                // searched first for anything pre-photography anyway.
+                if (preg_match('/\.(pdf|djvu|svg|png|tif|tiff|ogv|webm|gif)$/i', $rawTitle)) {
                     continue;
                 }
 
@@ -235,18 +261,29 @@ class SceneImageSourcer
                     continue;
                 }
 
+                // A map or a flag is not a place a child can stand in, whatever its title says.
+                if (preg_match(self::NOT_A_BACKDROP, $title)) {
+                    continue;
+                }
+
+                $meta = $info['extmetadata'] ?? [];
+                $credit = trim(strip_tags((string) ($meta['Artist']['value'] ?? 'Wikimedia Commons')));
+
                 // Prefer big, roughly landscape files — they fill a 16:9 stage without heavy cropping.
                 $ratio = $h > 0 ? $w / $h : 1.0;
+                // Before photography existed, a painting IS the primary source; a modern photo of
+                // the ruins is a different subject wearing the same name.
+                $wantsArt = $year !== null && $year < 1880;
+                $isArt = preg_match(self::LOOKS_LIKE_ART, $title.' '.$credit) === 1;
                 $score = ($matched * 5000)                                   // relevance dominates
                     + min($w, 4000)                                          // then resolution
-                    + ($ratio >= 1.2 && $ratio <= 2.2 ? 1500 : 0);           // then a usable shape
+                    + ($ratio >= 1.2 && $ratio <= 2.2 ? 1500 : 0)            // then a usable shape
+                    + ($wantsArt && $isArt ? 3000 : 0);                      // era-appropriate medium
                 if ($score > $bestScore) {
                     $bestScore = $score;
-                    $meta = $info['extmetadata'] ?? [];
                     $best = [
                         'url' => $url,
-                        'credit' => trim(strip_tags((string) ($meta['Artist']['value'] ?? 'Wikimedia Commons')))
-                            .' — '.strip_tags((string) ($meta['LicenseShortName']['value'] ?? 'see Commons')),
+                        'credit' => $credit.' — '.strip_tags((string) ($meta['LicenseShortName']['value'] ?? 'see Commons')),
                         'title' => str_replace(['File:', '_'], ['', ' '], (string) ($page['title'] ?? $query)),
                         'source' => 'commons',
                         // A taller-than-wide image loses its top to a 16:9 cover crop, and on a
