@@ -5,12 +5,14 @@
     @if (in_array((int) $step, [4, 5], true))
         <style>body { overflow: hidden; }</style>
 
-        {{-- Exit the full-screen editor → dashboard. A plain wire:navigate link (no $wire method call,
-             so it can never 500 with a MethodNotFound); the teacher edits from Preview via the player's
-             "Edit scene" pill and moves between steps with the indicator. --}}
-        <a href="{{ route('teacher.dashboard') }}" wire:navigate
+        {{-- Exit the full-screen editor → the lesson list, which is where a teacher came from and
+             expects to land. This is the ONLY back control on this screen: the embedded player used
+             to draw a second one right beside it, which read as two stacked arrows. Getting into the
+             wizard's editing view is the "Edit scene" pill's job, not a back arrow's.
+             A plain wire:navigate link (no $wire method call, so it can never 500). --}}
+        <a href="{{ route('teacher.lessons.index') }}" wire:navigate
            class="fixed left-3 top-3 z-60 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-base-300 text-slate-300 shadow-lg transition hover:border-amber-400 hover:text-amber-300"
-           title="{{ __('Back to dashboard') }}" aria-label="{{ __('Back to dashboard') }}">
+           title="{{ __('Back to lessons') }}" aria-label="{{ __('Back to lessons') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>

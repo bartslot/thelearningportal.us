@@ -19,15 +19,25 @@ namespace App\Services\Support;
  */
 final class NarrationVoice
 {
-    /** Native "warm, calm" storyteller per teacher locale. */
+    /**
+     * Native storyteller per language. EVERY shipped language must appear here: an unmapped one
+     * falls through to the multilingual fallback below, which is an AMERICAN voice — that is how a
+     * German-locale teacher's English lesson ended up read in a US accent instead of the British
+     * one. Dragon HD is Azure's newest generation and is used wherever it exists for a language.
+     */
     private const AZURE_BY_LOCALE = [
         'nl' => 'nl-NL-FennaNeural',
-        // British, and Azure's newest generation (Dragon HD). History read in a US accent kept
-        // undercutting the material; a British narrator is what teachers expect of this subject.
+        // British on purpose. History read in a US accent kept undercutting the material.
         'en' => 'en-GB-Ollie:DragonHDLatestNeural',
+        'de' => 'de-DE-Florian:DragonHDLatestNeural',
+        'fr' => 'fr-FR-Remy:DragonHDLatestNeural',
+        'it' => 'it-IT-Alessio:DragonHDLatestNeural',
     ];
 
-    /** Speaks ~90 languages acceptably — safe for any unmapped locale. */
+    /**
+     * Last resort for a locale we do not ship. Speaks ~90 languages acceptably, but it is American
+     * English, so anything reaching it sounds wrong — keep AZURE_BY_LOCALE complete.
+     */
     private const AZURE_MULTILINGUAL_FALLBACK = 'en-US-AndrewMultilingualNeural';
 
     public static function azure(?string $locale, string $explicitOverride = ''): string

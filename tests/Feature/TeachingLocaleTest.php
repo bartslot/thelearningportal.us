@@ -65,4 +65,18 @@ class TeachingLocaleTest extends TestCase
         $this->assertSame('nl', $u->locale);
         $this->assertSame('en', $u->teaching_locale);
     }
+
+    public function test_every_shipped_language_has_a_native_voice(): void
+    {
+        // An unmapped language silently falls back to an AMERICAN voice, which is how a British
+        // narration turned into a US accent. Every language we ship must be mapped explicitly.
+        foreach (\App\Support\Locales::codes() as $code) {
+            $voice = NarrationVoice::azure($code);
+            $this->assertStringStartsWith(
+                $code === 'en' ? 'en-GB-' : substr($code, 0, 2).'-',
+                $voice,
+                "Locale '{$code}' falls back to '{$voice}' instead of a native voice.",
+            );
+        }
+    }
 }

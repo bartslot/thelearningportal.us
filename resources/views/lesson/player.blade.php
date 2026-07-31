@@ -323,13 +323,9 @@
                 <div class="pointer-events-none absolute inset-x-0 top-0 h-36 bg-linear-to-b from-black/70 to-transparent"></div>
                 <div class="relative flex items-center gap-2.5 p-4 sm:px-12">
                     @if ($canEdit)
-                        <a href="{{ route('teacher.lessons.wizard', $lesson) }}" target="_top"
-                           data-tooltip="{{ __('Back to editor') }}" aria-label="{{ __('Back to editor') }}"
-                           class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-slate-900/70 text-white/80 backdrop-blur transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
-                            <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/>
-                            </svg>
-                        </a>
+                        {{-- No back arrow here on purpose. The wizard already draws one in this exact
+                             corner, so the two stacked into a confusing double control. "Edit scene"
+                             below is the way into the editing view. --}}
                         <button type="button"
                                 @click="window.location.href = editSceneHref('{{ route('teacher.lessons.wizard', $lesson) }}')"
                                 class="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/70 py-1.5 pl-3 pr-4 text-sm font-medium text-slate-300 backdrop-blur transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">

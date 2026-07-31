@@ -1359,6 +1359,22 @@ Alpine.data('lessonGame', (lesson) => ({
         }
       }
 
+      // Narrate the map as a VOICE-OVER, exactly as a voyage leg does. A map scene is paced by the
+      // map itself (interactive Continue, or the timed hold below), never by the length of the
+      // audio, so this must not be wired to _afterSceneAudio or it would advance the queue twice.
+      // Without this the script authored for a map scene was generated and stored but never heard.
+      if (scene.audio_url) {
+        const a = this._audio = new Audio(scene.audio_url)
+        this._attachAudioListeners()
+        this._lastEventIndex = 0
+        a.addEventListener('loadedmetadata', () => {
+          if (this._audio !== a) return
+          this._scriptEvents = parseScriptTags(scene.script, a.duration)
+        })
+        a.addEventListener('timeupdate', () => { if (this._audio === a) this._processScriptEvents() })
+        a.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      }
+
       this.showMapContinue = (mode === 'interactive')
       if (mode === 'timed') {
         const hold = Math.max(2, Number(cfg.hold_seconds) || 7) * 1000
