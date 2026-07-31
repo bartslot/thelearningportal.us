@@ -37,6 +37,7 @@
         'era'                   => $lesson->era,
         'region'                => $lesson->region,
         'map_style'             => $lesson->map_style, // lesson-wide default palette for map blocks
+        'map_relief'            => $lesson->map_relief, // 3D terrain exaggeration; 0 = flat
 
         // Does this lesson start with the narration written along the bottom? The teacher sets the
         // starting state; the student can still toggle it (C) while it plays.
@@ -300,7 +301,6 @@
                  zoneHover: false,
                  zoneFlash: false,
                  _zoneFlashT: null,
-                 subsOpen: false,
                  probeZones(e) {
                      const z = e.clientY <= 88 || e.clientY >= window.innerHeight - 176
                      if (z !== this.zoneHover) this.zoneHover = z
@@ -318,13 +318,13 @@
             {{-- Top edge: scrim + the only text chrome that exists (teacher escape hatch or logo).
                  No phase gate — on the title screen nothing is playing, so it is simply visible. --}}
             <div class="absolute inset-x-0 top-0 transition-opacity duration-300"
-                 :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) ? 'opacity-0 pointer-events-none' : 'opacity-100'"
+                 :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'opacity-0 pointer-events-none' : 'opacity-100'"
                  style="z-index:48">
                 <div class="pointer-events-none absolute inset-x-0 top-0 h-36 bg-linear-to-b from-black/70 to-transparent"></div>
-                <div class="relative flex items-center gap-2.5 p-4 sm:px-6">
+                <div class="relative flex items-center gap-2.5 p-4 sm:px-12">
                     @if ($canEdit)
                         <a href="{{ route('teacher.lessons.wizard', $lesson) }}" target="_top"
-                           title="{{ __('Back to editor') }}" aria-label="{{ __('Back to editor') }}"
+                           data-tooltip="{{ __('Back to editor') }}" aria-label="{{ __('Back to editor') }}"
                            class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-slate-900/70 text-white/80 backdrop-blur transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
                             <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/>
@@ -337,65 +337,49 @@
                             {{ __('Edit scene') }}
                         </button>
                     @else
-                        <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-10 w-auto"
-                             style="filter: drop-shadow(0 0 10px rgba(0,0,0,0.85)) drop-shadow(0 2px 4px rgba(0,0,0,0.65));">
+                        <img src="{{ asset('assets/logo.svg') }}" alt="The Learning Portal" class="h-24 w-auto shadow-sm">
                     @endif
                 </div>
             </div>
 
             {{-- Center play/pause — a bare solid white glyph, exactly as in the design (no disc,
                  no chrome). The button box is bigger than the glyph for a comfortable hit target.
-                 Hidden on quiz scenes (the centre belongs to the quiz card) and on scenes with no
-                 narration at all — a sailing voyage leg has nothing this button could pause. --}}
-            <div x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF') && !currentIsGame && _audio"
+                 Hidden on quiz scenes, where the centre belongs to the quiz card. Every other scene
+                 has something to pause: narration, or a voyage's sailing ship. --}}
+            <div x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF') && !currentIsGame"
                  x-cloak
                  class="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300"
-                 :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) ? 'opacity-0' : 'opacity-100'"
+                 :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'opacity-0' : 'opacity-100'"
                  style="z-index:45">
-                <button type="button" @click="toggleAudio()"
-                        :title="audioPlaying ? @js(__('Pause').' (Space)') : @js(__('Play').' (Space)')"
-                        :aria-label="audioPlaying ? @js(__('Pause')) : @js(__('Play'))"
+                <button type="button" @click="togglePlayback()"
+                        :data-tooltip="playbackPaused ? @js(__('Play')) : @js(__('Pause'))" data-tooltip-key="K"
+                        :aria-label="playbackPaused ? @js(__('Play')) : @js(__('Pause'))"
                         class="group flex h-24 w-24 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                        :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) ? 'pointer-events-none' : 'pointer-events-auto'">
-                    <svg x-show="!audioPlaying" class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
-                         viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z"/>
+                        :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'pointer-events-none' : 'pointer-events-auto'">
+
+                    <svg x-show="playbackPaused" class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95" viewBox="0 0 21 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M0 2.52873C0 0.608107 2.05916 -0.609418 3.74205 0.316169L19.2842 8.86436C21.0285 9.82373 21.0285 12.3301 19.2842 13.2895L3.74205 21.8377C2.05916 22.7633 0 21.5457 0 19.6251V2.52873Z" fill="white"/>
                     </svg>
-                    <svg x-show="audioPlaying" x-cloak class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+
+                    <svg x-show="!playbackPaused" x-cloak class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
                          viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z"/>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M3.40759 3.79631C3.40759 1.87569 5.46676 0.65816 7.14964 1.58375L22.6918 10.1319C24.4361 11.0913 24.4361 13.5977 22.6918 14.5571L7.14964 23.1053C5.46675 24.0308 3.40759 22.8133 3.40759 20.8927V3.79631Z"/>
                     </svg>
                 </button>
-            </div>
-
-            {{-- Chapter line, bottom-left (Figma: "Bottom Info Chapter title") — one quiet line:
-                 pin, name in white, a dot, the year in muted slate. No labels, no big type. --}}
-            <div x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE'"
-                 x-cloak
-                 class="absolute bottom-3 left-4 hidden h-10 items-center gap-2 transition-opacity duration-300 sm:left-6 sm:flex"
-                 :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) ? 'opacity-0' : 'opacity-100'"
-                 style="z-index:45">
-                <svg class="h-4 w-4 shrink-0 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 2.682 2.282 16.975 16.975 0 0 0 1.145.742ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/>
-                </svg>
-                <span class="text-sm font-bold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
-                      x-text="currentChapterName || lessonLocation"></span>
-                <span x-show="lessonYear" class="h-1 w-1 shrink-0 rounded-full bg-white/40"></span>
-                <span x-show="lessonYear" class="text-sm font-medium text-slate-400 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
-                      x-text="lessonYear"></span>
             </div>
 
             {{-- Bottom scrim keeps the white icons and captions readable over bright scenes. --}}
             <div x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF'"
                  x-cloak
                  class="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-linear-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300"
-                 :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) && 'opacity-0'"
+                 :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) && 'opacity-0'"
                  style="z-index:44"></div>
 
             <div x-show="phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF'"
                  x-cloak
                  class="absolute inset-x-0 bottom-0 transition-all duration-300 ease-out"
-                 :class="(isPlaying && !zoneHover && !zoneFlash && !chaptersOpen && !subsOpen) ? 'pointer-events-none translate-y-2 opacity-0' : 'opacity-100'"
+                 :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'pointer-events-none translate-y-2 opacity-0' : 'opacity-100'"
                  style="z-index:46">
                 <div class="pointer-events-auto mx-auto w-[min(720px,92vw)] pb-3">
 
@@ -413,12 +397,43 @@
                         </template>
                     </div>
 
+                    {{-- Chapter line (Figma: "Bottom Info Chapter title") — one quiet line: location
+                         pin, place in white, a dot, then the date in muted slate.
+
+                         It lives INSIDE the deck so it has somewhere to go when the stage is narrow.
+                         The design puts it in the bottom-left corner, but the deck grows to 92vw on a
+                         small screen, and its play/pause button then lands on top of the title. So it
+                         only floats down to the corner (.lp-chapter-line in app.css) when the stage is
+                         wide enough for the two never to meet; below that it sits here, in flow, just
+                         above the chapter bar.
+
+                         This is the ONLY place the line is drawn. A voyage leg used to paint its own
+                         copy inside the map HUD, which both doubled up with this one and stayed on
+                         screen while the lesson played; the tour now reports its place + date
+                         (lesson:chapter-info) and this renders them. Everything else falls back to
+                         the scene's chapter name and year. Hidden entirely when the teacher chose the
+                         top date chip instead. --}}
+                    <div x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE') && !infoAtTop"
+                         x-cloak
+                         class="lp-chapter-line flex h-9 items-center gap-2">
+                        <svg class="h-4 w-auto shrink-0 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                             viewBox="0 0 21 26" fill="currentColor" aria-hidden="true">
+                            <path d="M10.3329 0C4.63543 0 0 4.63543 0 10.3329C0 19.3812 9.58334 25.4792 9.9913 25.735L10.334 25.9493L10.6767 25.735C11.0848 25.4795 20.668 19.3812 20.668 10.3329C20.668 4.63543 16.0326 0 10.3351 0H10.3329ZM10.3329 15.5C7.47996 15.5 5.16584 13.1871 5.16584 10.3329C5.16584 7.47996 7.47872 5.16584 10.3329 5.16584C13.1859 5.16584 15.5 7.47872 15.5 10.3329C15.5 13.1859 13.1871 15.5 10.3329 15.5Z"/>
+                        </svg>
+                        <span class="truncate text-sm font-bold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                              x-text="infoPlace || currentChapterName || lessonLocation"></span>
+                        <span x-show="infoDate || lessonYear" class="h-1 w-1 shrink-0 rounded-full bg-slate-400"></span>
+                        <span x-show="infoDate || lessonYear"
+                              class="shrink-0 text-sm font-medium text-slate-400 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                              x-text="infoDate || lessonYear"></span>
+                    </div>
+
                     {{-- Segmented progress — one bar per chapter, width ∝ duration; click to jump.
                          The track thickens slightly under the pointer, Netflix-style. --}}
                     <div x-show="chapters.length > 1 && !currentIsGame && phase !== 'GAME_BRIEF'"
                          class="flex items-center gap-1">
                         <template x-for="(c, i) in chapters" :key="c.index">
-                            <button type="button" @click="goToChapter(c.index)" :title="c.name"
+                            <button type="button" @click="goToChapter(c.index)" :data-tooltip="c.name"
                                     class="group relative flex items-center py-2" style="flex-grow: 1; flex-basis: 0"
                                     :style="`flex-grow:${c.dur || 1}`">
                                 <span class="relative block h-1 w-full overflow-hidden rounded-full bg-white/25 transition-all duration-150 group-hover:h-1.5 group-hover:bg-white/40">
@@ -434,16 +449,16 @@
                          the left, subtitles + chapters on the right. Icons grow a touch on hover. --}}
                     <div class="mt-0.5 flex items-center justify-between">
                         <div class="flex items-center gap-1 sm:gap-2">
-                            {{-- Play / pause — only when this scene has narration to control. --}}
-                            <button type="button" x-show="_audio" @click="toggleAudio()"
-                                    :title="audioPlaying ? @js(__('Pause').' (Space)') : @js(__('Play').' (Space)')"
-                                    :aria-label="audioPlaying ? @js(__('Pause')) : @js(__('Play'))"
+                            {{-- Play / pause — the same control as the centre glyph and Space. --}}
+                            <button type="button" @click="togglePlayback()"
+                                    :data-tooltip="playbackPaused ? @js(__('Play')) : @js(__('Pause'))" data-tooltip-key="K"
+                                    :aria-label="playbackPaused ? @js(__('Play')) : @js(__('Pause'))"
                                     class="group flex h-11 w-11 items-center justify-center rounded-lg text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
-                                <svg x-show="!audioPlaying" class="h-8 w-8 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
-                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                                <svg x-show="playbackPaused" class="h-8 w-8 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                     viewBox="0 0 24 24" fill="currentColor" stroke-width="1.5" aria-hidden="true">
+                                    <path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
                                 </svg>
-                                <svg x-show="audioPlaying" x-cloak class="h-8 w-8 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                <svg x-show="!playbackPaused" x-cloak class="h-8 w-8 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
                                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/>
                                 </svg>
@@ -456,15 +471,15 @@
                                  (Figma: mute + line with a dot handle). Dragging to 0 mutes. --}}
                             <div class="mr-1 flex items-center gap-2">
                                 <button type="button" @click="toggleMute()"
-                                        :title="audioMuted ? @js(__('Unmute').' (M)') : @js(__('Mute').' (M)')"
+                                        :data-tooltip="audioMuted ? @js(__('Unmute')) : @js(__('Mute'))" data-tooltip-key="M"
                                         :aria-label="audioMuted ? @js(__('Unmute')) : @js(__('Mute'))"
                                         class="group flex h-10 w-10 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                                         :class="audioMuted ? 'text-white/60 hover:text-white' : 'text-white/85 hover:text-white'">
-                                    <svg x-show="!audioMuted" class="h-6 w-6 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                    <svg x-show="!audioMuted" class="h-6 w-6 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"/>
                                     </svg>
-                                    <svg x-show="audioMuted" x-cloak class="h-6 w-6 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                    <svg x-show="audioMuted" x-cloak class="h-6 w-6 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75 19.5 12m0 0 2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6 4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"/>
                                     </svg>
@@ -477,62 +492,33 @@
                                        :style="`--lp-vol:${(audioMuted ? 0 : volumeLevel) * 100}%`">
                             </div>
 
-                            {{-- Subtitles — the button opens a small menu; the active choice is ticked.
-                                 A thin amber underline on the icon marks captions currently on.
-                                 C still toggles straight from the keyboard. --}}
-                            <div class="relative"
-                                 @click.outside="subsOpen = false"
-                                 @keydown.escape.window="subsOpen = false">
-                                <button type="button"
-                                        @click="subsOpen = !subsOpen"
-                                        :title="@js(__('Subtitles').' (C)')"
-                                        :aria-expanded="subsOpen"
-                                        aria-haspopup="menu"
-                                        class="group relative flex h-10 w-10 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                                        :class="captionsOn || subsOpen ? 'bg-white/10 text-white' : 'text-white/85 hover:text-white'">
-                                    <svg class="h-6 w-6 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
-                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                        <rect x="2.75" y="5.25" width="18.5" height="13.5" rx="2.25"/>
-                                        <path stroke-linecap="round" d="M10 10.4a2.4 2.4 0 1 0 0 3.2M18 10.4a2.4 2.4 0 1 0 0 3.2"/>
-                                    </svg>
-                                    <span x-show="captionsOn" class="absolute bottom-1 left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full bg-amber-400"></span>
-                                </button>
-
-                                {{-- No enter/leave transition on purpose: this menu sits inside a
-                                     container whose own show/hide already animates, and Alpine's
-                                     nested transition handling left the panel stuck a state behind.
-                                     A menu that appears at once is right for a player control anyway. --}}
-                                <div x-show="subsOpen" x-cloak
-                                     role="menu"
-                                     class="absolute bottom-full right-0 mb-2 w-52 overflow-hidden rounded-xl border border-white/10 bg-black/85 py-1.5 shadow-2xl backdrop-blur-md">
-                                    <p class="px-3 pb-1.5 pt-1 text-[10px] uppercase tracking-widest text-white/40">{{ __('Subtitles') }}</p>
-                                    {{-- Off first, like every player: it is the state you go back to. --}}
-                                    <template x-for="option in [{ on: false, label: @js(__('Off')) }, { on: true, label: @js(__('On')) }]" :key="option.label">
-                                        <button type="button" role="menuitemradio"
-                                                :aria-checked="captionsOn === option.on"
-                                                @click="setCaptions(option.on); subsOpen = false"
-                                                class="flex w-full items-center gap-2.5 py-2 pl-2.5 pr-3 text-left text-sm transition hover:bg-white/10"
-                                                :class="captionsOn === option.on ? 'text-white' : 'text-white/60'">
-                                            {{-- The tick occupies its slot either way, so the labels never shift. --}}
-                                            <svg class="h-4 w-4 shrink-0" :class="captionsOn === option.on ? 'text-amber-400' : 'text-transparent'"
-                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
-                                            </svg>
-                                            <span x-text="option.label"></span>
-                                        </button>
-                                    </template>
-                                </div>
-                            </div>
+                            {{-- Subtitles — a plain toggle: on/off is a single choice, so no menu.
+                                 The plate + amber underline mark the on state; C toggles from the
+                                 keyboard too. --}}
+                            <button type="button"
+                                    @click="toggleCaptions()"
+                                    data-tooltip="{{ __('Subtitles') }}" data-tooltip-key="C"
+                                    :aria-pressed="captionsOn"
+                                    aria-label="{{ __('Subtitles') }}"
+                                    class="group relative flex h-10 w-10 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                                    :class="captionsOn ? 'bg-white/10 text-white' : 'text-white/85 hover:text-white'">
+                                <svg class="h-6 w-6 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                                    <rect x="2.75" y="5.25" width="18.5" height="13.5" rx="2.25"/>
+                                    <path stroke-linecap="round" d="M10 10.4a2.4 2.4 0 1 0 0 3.2M18 10.4a2.4 2.4 0 1 0 0 3.2"/>
+                                </svg>
+                                <span x-show="captionsOn" class="absolute bottom-1 left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full bg-amber-400"></span>
+                            </button>
 
                             {{-- Chapter-list toggle. Hidden on game scenes like the old chapter bar:
                                  the quiz card paints in a sibling layer above this deck, so the list
                                  would open underneath it. --}}
                             <button type="button" x-show="chapters.length > 1 && !currentIsGame" @click="chaptersOpen = !chaptersOpen"
-                                    title="{{ __('Chapters') }}" aria-label="{{ __('Chapters') }}"
+                                    data-tooltip="{{ __('Chapters') }}" aria-label="{{ __('Chapters') }}"
                                     :aria-expanded="chaptersOpen"
                                     class="group flex h-10 w-10 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                                     :class="chaptersOpen ? 'text-white' : 'text-white/85 hover:text-white'">
-                                <svg class="h-6 w-6 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
+                                <svg class="h-6 w-6 shadow-sm transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
                                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/>
                                 </svg>
@@ -545,14 +531,12 @@
 
         {{-- ── TITLE SCREEN — Netflix style ────────────────────────────── --}}
         {{-- Background Ken Burns runs on z-0 layer behind this. --}}
+        {{-- Deliberately NO leave transition: Alpine transitions advance on animation frames,
+             and a hidden document (embedded preview in a background tab) never produces one —
+             the title screen then never reached display:none and sat painted over the whole
+             lesson. A plain x-show hides it synchronously on the phase flip, visible tab or not. --}}
         <div
             x-show="phase === 'TITLE_SCREEN'"
-            x-transition:enter="transition ease-out duration-1000"
-            x-transition:enter-start="opacity-0"
-            x-transition:enter-end="opacity-100"
-            x-transition:leave="transition ease-in duration-500"
-            x-transition:leave-start="opacity-100"
-            x-transition:leave-end="opacity-0"
             class="absolute inset-0 pointer-events-auto"
         >
             {{-- Cinematic gradients: heavy vignette bottom + sides --}}
@@ -623,7 +607,7 @@
                  style="z-index: 10;">
 
                 {{-- ── Left: title + meta + CTA ── --}}
-                <div class="min-w-0 flex-1 max-w-2xl">
+                <div class="min-w-0 flex-1 max-w-6xl">
 
                     {{-- Era / region --}}
                     <p x-show="lesson.era || lesson.region"
@@ -681,7 +665,11 @@
                                        transition duration-150 hover:bg-amber-400 hover:shadow-[0_0_64px_rgba(245,158,11,0.5)]
                                        active:scale-95"
                             >
-                                <svg class="h-5 w-5 fill-slate-950 shrink-0" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                <svg width="21" height="23" class="w-4 h-4 fill-current text-slate-950" viewBox="0 0 21 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path fill-rule="evenodd" clip-rule="evenodd" d="M0 2.52873C0 0.608107 2.05916 -0.609418 3.74205 0.316169L19.2842 8.86436C21.0285 9.82373 21.0285 12.3301 19.2842 13.2895L3.74205 21.8377C2.05916 22.7633 0 21.5457 0 19.6251V2.52873Z"/>
+                                </svg>
+
+
                                 <span>Start lesson</span>
                             </button>
                         </template>

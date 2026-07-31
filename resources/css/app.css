@@ -666,6 +666,26 @@
     .lp-tip { transition: none; }
 }
 
+/* ─── Player chapter line ───────────────────────────────────────────────
+   Pin, place and date. The design puts it in the stage's bottom-left corner,
+   and it lives inside the control deck so that it has somewhere else to be
+   when it cannot go there.
+
+   The deck is min(720px, 92vw) and centred, so on a narrow stage it reaches
+   almost edge to edge and its play/pause button sits exactly where the title
+   is — they overlapped, glyph over words. Below the width where the two can
+   coexist the line simply stays in flow, above the chapter bar. Above it, the
+   line floats into the corner, bounded by the gap actually left of the deck so
+   a long chapter name ellipsises rather than sliding underneath the controls. */
+@media (min-width: 1100px) {
+    .lp-chapter-line {
+        position: absolute;
+        left: 1.5rem;
+        bottom: 0.75rem;
+        max-width: calc((100vw - min(720px, 92vw)) / 2 - 2.5rem);
+    }
+}
+
 /* ─── Player volume slider ──────────────────────────────────────────────
    A hairline track with a small round handle (the player deck's volume).
    --lp-vol (0%..100%) paints the filled part of the track white. */
