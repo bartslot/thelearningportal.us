@@ -18,6 +18,11 @@ import QRCode from 'qrcode'
 import { resolveAnchorTime, pickShotIndex } from './scene/shot-sync.js'
 import { renderGallery } from './gallery-scene.js'
 import { isTopAnchored, normalizeFit, PORTRAIT_TOP_CSS } from './scene/background-fit.js'
+import { sameOriginMediaUrl } from './media-url.js'
+import { sceneTransitionFrames, easingBezier, EASINGS } from './scene/animations.js'
+
+// Easing key → cubic-bezier, for the scene transition set in the wizard's Animate tab.
+const SCENE_EASINGS = Object.fromEntries(EASINGS.map(e => [e.key, easingBezier(e.key)]))
 import { buildCues, cueAt } from './scene/captions.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
@@ -155,6 +160,13 @@ Alpine.data('lessonGame', (lesson) => ({
     audioPlaying: false,
     audioMuted: false,
     volumeLevel: 1.0,  // narration volume (0..1) — the deck's slider; survives scene changes
+    playbackPaused: false,  // student paused the stage (narration AND any scene animation)
+    readingOverlay: false,  // a gallery/reading surface owns the screen → the player shows no chrome
+    // The bottom-left chapter line. A voyage leg reports its own place + date (they change as the
+    // ship sails); everything else falls back to the scene's chapter name and year.
+    infoPlace: '',
+    infoDate: '',
+    infoAtTop: false,       // teacher chose the top date chip instead of the bottom line
 
     // Subtitles — the narration written along the bottom while it is spoken. The teacher sets
     // the starting state per lesson; a student toggling it (C) is remembered for this browser,
@@ -201,8 +213,10 @@ Alpine.data('lessonGame', (lesson) => ({
       if (_initDone) return
       _initDone = true
 
-      // Normalise all media URLs to the current page origin so localhost vs 127.0.0.1 mismatches don't block audio
-      const fixUrl = (u) => u ? u.replace(/^https?:\/\/[^/]+/, window.location.origin) : u
+      // Normalise OUR media URLs to the page origin so a localhost vs 127.0.0.1 mismatch doesn't
+      // block audio. Anything on another host — a CDN-hosted cover, say — is left alone: rewriting
+      // its origin turned https://res.cloudinary.com/<cloud>/… into a 404 on our own domain.
+      const fixUrl = (u) => sameOriginMediaUrl(u, window.location.origin)
       if (lesson.audio_url)    lesson.audio_url    = fixUrl(lesson.audio_url)
       if (lesson.visemes_url)  lesson.visemes_url  = fixUrl(lesson.visemes_url)
       if (lesson.cover_image_url) lesson.cover_image_url = fixUrl(lesson.cover_image_url)
@@ -287,13 +301,27 @@ Alpine.data('lessonGame', (lesson) => ({
         this._embed = params.get('embed') === '1'
         const sc = parseInt(params.get('scene'), 10)
         this._startSceneIndex = Number.isFinite(sc) ? Math.max(0, sc) : 0
+        // Autoplay only when a human actually asked for it in THIS visit.
+        //
+        // The wizard's Preview step embeds this player with autoplay=1, which is right when the
+        // teacher clicks through to it — and wrong on a reload. A tab left parked on Preview
+        // started narrating out loud every time it was refreshed, from a hidden iframe, with
+        // nothing on screen to say where the voice was coming from.
+        //
+        // hasBeenActive is false on a cold load and true once the page has been clicked or typed
+        // in, which is exactly the distinction. Browsers without it (Safari) keep the old
+        // behaviour; their own autoplay policy is stricter anyway.
         if (params.get('autoplay') === '1') {
-          setTimeout(() => { if (this.phase === 'TITLE_SCREEN') this.startLesson() }, 300)
+          const asked = window.navigator.userActivation?.hasBeenActive ?? true
+          if (asked) {
+            setTimeout(() => { if (this.phase === 'TITLE_SCREEN') this.startLesson() }, 300)
+          }
         }
       } catch (_) { /* no params */ }
 
       // Attach keyboard listeners for audio controls
       this._attachKeyboardListeners()
+      this._attachStagePause()
 
       // new Audio() objects play independently of the DOM, so without explicit
       // teardown the narration keeps playing after the user leaves the page —
@@ -301,6 +329,20 @@ Alpine.data('lessonGame', (lesson) => ({
       this._navStop = () => this._stopAllAudio()
       window.addEventListener('pagehide', this._navStop)
       document.addEventListener('livewire:navigating', this._navStop)
+
+      // A landfall gallery (and any future reading surface) announces itself so the player can
+      // clear its chrome out of the reader's way. See setReadingOverlayOpen in voyage-tour.js.
+      this._readingOverlayHandler = (e) => { this.readingOverlay = !!e.detail?.open }
+      window.addEventListener('lesson:reading-overlay', this._readingOverlayHandler)
+
+      // A voyage leg owns the place and date on the chapter line while it sails. See publishInfo
+      // in voyage-tour.js — the tour reports, the player is the only one that draws.
+      this._chapterInfoHandler = (e) => {
+        this.infoPlace = e.detail?.place || ''
+        this.infoDate = e.detail?.date || ''
+        this.infoAtTop = !!e.detail?.atTop
+      }
+      window.addEventListener('lesson:chapter-info', this._chapterInfoHandler)
     },
 
     _renderQr () {
@@ -556,6 +598,40 @@ Alpine.data('lessonGame', (lesson) => ({
       requestAnimationFrame(() => {
         el.style.transition = `opacity ${this._bgFadeDuration}ms ease-in-out, transform ${this._bgSlideMax}ms linear`
         el.style.transform  = `scale(${kbDir.toScale}) translate(${kbDir.toX}%, ${kbDir.toY}%)`
+      })
+    },
+
+    /**
+     * Apply the scene's transition (Animate tab) to the incoming background layer.
+     *
+     * Crossfade is what the player has always done and stays the default. A slide moves the
+     * INCOMING layer only — sliding both at once reads as a shove rather than a change of scene —
+     * and 'cut' means exactly that: no fade, no movement, straight to the next picture.
+     */
+    _applySceneTransition (scene) {
+      const t = (scene?.config || {}).transition || {}
+      const type = t.type || 'crossfade'
+      const seconds = Number.isFinite(t.duration) ? t.duration : 0.8
+      const ms = type === 'cut' ? 0 : Math.max(0, Math.min(3, seconds)) * 1000
+      const ease = SCENE_EASINGS[t.ease] || SCENE_EASINGS.move
+
+      this._bgFadeDuration = ms
+      this._sceneTransition = { type, ms, ease }
+
+      const incoming = this._bgActive === 'A' ? this._bgLayerB : this._bgLayerA
+      if (!incoming) return
+
+      const frames = sceneTransitionFrames(type)
+      // Reset any transform left by the previous scene's slide before the next one starts, or the
+      // layer begins its entrance from wherever the last transition happened to leave it.
+      incoming.style.transition = 'none'
+      incoming.style.transform = frames ? frames.from : 'none'
+
+      if (!frames) return
+
+      requestAnimationFrame(() => {
+        incoming.style.transition = `opacity ${ms}ms ${ease}, transform ${ms}ms ${ease}`
+        incoming.style.transform = frames.to
       })
     },
 
@@ -1066,9 +1142,34 @@ Alpine.data('lessonGame', (lesson) => ({
       const scene = _sceneQueue[index]
       if (!scene) { this._onAudioEnded(); return }
 
+      // A landfall gallery freezes this scene's auto-advance while it is open, and it is a GLOBAL
+      // flag. If a tour is torn down with its modal still up, nothing ever clears it and every
+      // later voyage scene sits on a frozen countdown with no visible modal to explain why. A new
+      // scene means no modal is open by definition, so this is the one place it can be asserted.
+      window.__voyageGalleryOpen = false
+      this.readingOverlay = false
+
+      // Moving to a new scene is an explicit "play" — never carry a pause across a chapter jump,
+      // or the next scene would arrive frozen with no obvious reason why. Clear the flag directly
+      // rather than through setPlaybackPaused: that would resume the OUTGOING scene's narration a
+      // line before _stopAudio tears it down.
+      if (this.playbackPaused) {
+        this.playbackPaused = false
+        try { _voyageInstance?.setPaused?.(false) } catch (_) { /* map gone */ }
+      }
+
+      // The outgoing scene's place/date must not linger on the next one — a voyage leg republishes
+      // its own within the frame, anything else falls back to its chapter name and year.
+      this.infoPlace = ''
+      this.infoDate = ''
+
       // Whatever was narrating belongs to the scene we are leaving — silence it before anything
       // else, or jumping chapters layers voice over voice.
       this._stopAudio()
+
+      // Same for a quiz card: it only clears itself on completion, so leaving a quiz scene
+      // through a chapter jump left the card painted over every later scene.
+      this._quizOverlay?.hide()
 
       // Chapter caption + bar (Micrio serial-tour). Chapters are filtered (no games), so look the
       // current one up by its queue index. A game scene (quiz) is not a chapter → hide the bar.
@@ -1138,6 +1239,10 @@ Alpine.data('lessonGame', (lesson) => ({
       this._bgFocus = scene.config?.background_focus || scene.focus || 'center'
       // How the background fills the stage: 'cover' (fill, crop) or 'contain' (whole image, bars).
       this._bgFit = scene.config?.background_fit || scene.background_fit || 'cover'
+
+      // How this scene replaces the one before it (Animate tab). Read before the swap below so
+      // _showBgImage / _showFlatColor apply it to whichever layer is coming in.
+      this._applySceneTransition(scene)
 
       // Swap background. Default scenes are a flat Ken Burns slide (2D); skybox is opt-in per
       // scene; no image at all = the scene's solid backdrop (brand navy by default).
@@ -1241,6 +1346,7 @@ Alpine.data('lessonGame', (lesson) => ({
           projection: cfg.projection || 'mercator',
           // per-block override → lesson-wide default → app default
           style: cfg.map_style || lesson.map_style || 'soft-atlas',
+          relief: Number(lesson.map_relief) || 0,   // 3D terrain, lesson-wide
           interactive: mode === 'interactive',
           annotations: cfg.annotations || [],   // read-only focus cities for students
         })
@@ -1307,7 +1413,12 @@ Alpine.data('lessonGame', (lesson) => ({
         // pinned at its leg's arrival. The teacher hides modern cities/borders via game_config.voyage_map.
         const legLabels = _sceneQueue
           .filter(s => s.kind === 'voyage' && s.location)
-          .map(s => ({ text: s.location, leg: Number((s.config || {}).leg) || 0 }))
+          .map(s => ({
+            text: s.location,
+            leg: Number((s.config || {}).leg) || 0,
+            // Overview scene = the port the voyage leaves from; the rest = the leg's landfall.
+            at: (s.config || {}).overview ? 'depart' : 'arrive',
+          }))
         _voyageInstance = window.renderVoyageTour(inner, {
           voyage: cfg.voyage,
           def: lesson.game_config?.voyage_def || null,       // lesson's editable copy wins over the catalog
@@ -1315,6 +1426,7 @@ Alpine.data('lessonGame', (lesson) => ({
           routeLine: lesson.game_config?.route_line || null, // styled/animated trail (lesson-wide)
           mapOptions: lesson.game_config?.voyage_map || null, // hide cities/borders, show place labels
           style: cfg.map_style || lesson.map_style || 'soft-atlas', // same palette as a map scene
+          relief: Number(lesson.map_relief) || 0,                   // …and the same 3D terrain
           legLabels,
           paintedFog: lesson.game_config?.voyage_fog || null, // teacher-painted undiscovered regions
           // On each arrival: show the carousel controls + start the 10s auto-advance.
@@ -1337,8 +1449,9 @@ Alpine.data('lessonGame', (lesson) => ({
       let elapsed = 0
       let last = performance.now()
       const tick = (now) => {
-        // Pause the countdown while the landfall gallery modal is open.
-        if (!window.__voyageGalleryOpen) elapsed += now - last
+        // Hold the countdown while the landfall gallery modal is open, or while the student
+        // has paused — an auto-advance that fires on a paused stage is just a lost stop.
+        if (!window.__voyageGalleryOpen && !this.playbackPaused) elapsed += now - last
         last = now
         this.autoAdvanceProgress = Math.min(1, elapsed / DUR)
         if (elapsed >= DUR) { this.advanceMap(); return }
@@ -1515,6 +1628,9 @@ Alpine.data('lessonGame', (lesson) => ({
       host.style.zIndex = onTop ? '32' : '30'   // above text (31) when stacked on top, else below it
       host.style.display = layers.length ? '' : 'none'
       this._artLayer.setLayers(layers)
+      // Each layer arrives the way the teacher set it in the Animate tab. Run after setLayers,
+      // which rebuilds the nodes the animation targets.
+      this._artLayer.playEntrances()
     },
 
     // Quiz segment: step through the lesson's questions in the card overlay, then
@@ -1627,17 +1743,44 @@ Alpine.data('lessonGame', (lesson) => ({
       this.intelDropMessage = ''
     },
 
-    // ── Audio Control Methods ──────────────────────────────────────────
+    // ── Playback control ───────────────────────────────────────────────
     /**
      * "Playing" for the overlay is broader than narration: on a voyage the ship sailing
      * between stops IS playback (showMapContinue only turns true at a landfall). The
      * player chrome hides while this is true and the pointer is away from the edges.
      */
     get isPlaying () {
+      if (this.playbackPaused) return false
       if (this.audioPlaying) return true
       return lesson.game_type === 'voyage'
         && (this.phase === 'INTRO' || this.phase === 'GAME_ACTIVE')
         && !this.showMapContinue
+    },
+
+    /**
+     * The one play/pause for the whole stage. A scene plays in more ways than narration —
+     * a voyage leg sails, a landfall counts down to the next one — and every one of them has
+     * to stop on a single press, whether it came from the deck button, Space, or a click on
+     * the stage. Anything scene-specific hangs off this, never off the audio element alone.
+     */
+    togglePlayback () {
+      this.setPlaybackPaused(!this.playbackPaused)
+    },
+
+    setPlaybackPaused (pause) {
+      this.playbackPaused = !!pause
+
+      if (this._audio) {
+        if (this.playbackPaused) {
+          this._audio.pause()
+        } else {
+          this._audio.play().catch(e => console.warn('lesson-player: resume blocked', e))
+        }
+      }
+
+      // The sailing ship freezes mid-ocean and picks up from the same spot; the landfall's
+      // auto-advance countdown stops accumulating (see _startVoyageAuto).
+      try { _voyageInstance?.setPaused?.(this.playbackPaused) } catch (_) { /* map gone */ }
     },
 
     _attachAudioListeners () {
@@ -1727,9 +1870,14 @@ Alpine.data('lessonGame', (lesson) => ({
           this.previousSlide()
           return
         }
-        if (e.code === 'Space') {
+        // The keys students already know from YouTube: K play/pause (Space too), M mute,
+        // C subtitles, F fullscreen, ↑/↓ volume. A modifier means the key belongs to the
+        // browser (⌘F is Find), so leave those alone.
+        if (e.metaKey || e.ctrlKey || e.altKey) return
+
+        if (e.code === 'Space' || e.code === 'KeyK') {
           e.preventDefault()
-          this.toggleAudio()
+          this.togglePlayback()
         } else if (e.code === 'Escape') {
           e.preventDefault()
           this.stopAudio()
@@ -1739,9 +1887,71 @@ Alpine.data('lessonGame', (lesson) => ({
         } else if (e.code === 'KeyC') {
           e.preventDefault()
           this.toggleCaptions()
+        } else if (e.code === 'KeyF') {
+          e.preventDefault()
+          this.toggleFullscreen()
+        } else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+          e.preventDefault()
+          const step = e.code === 'ArrowUp' ? 0.05 : -0.05
+          this.setVolume((this.audioMuted ? 0 : this.volumeLevel) + step)
         }
       }
       document.addEventListener('keydown', this._kbHandler)
+    },
+
+    /**
+     * Fullscreen on the whole page, so the stage AND its controls go with it. Best effort:
+     * iPhone Safari has no Element.requestFullscreen, and an embedded preview only gets it when
+     * the host iframe allows it — never let either case throw at the student.
+     */
+    toggleFullscreen () {
+      try {
+        if (document.fullscreenElement) document.exitFullscreen?.()
+        else document.documentElement.requestFullscreen?.().catch(() => {})
+      } catch (_) { /* unsupported */ }
+    },
+
+    // ── Click the stage to pause ───────────────────────────────────────
+    // Anywhere that isn't itself clickable acts as play/pause, the way a video does. Two things
+    // must not be mistaken for that click: a control (button, link, map hotspot — everything
+    // clickable in this player draws a pointer cursor, which is what we test for), and a map
+    // pan or pinch, which is a pointerdown and a pointerup like any other.
+    _attachStagePause () {
+      const stage = document.getElementById('lesson-stage')
+      if (!stage) return
+
+      const DRAG_SLOP_PX = 6
+      const HOLD_MS = 400
+
+      let startX = 0
+      let startY = 0
+      let startT = 0
+
+      const isControl = (el) => {
+        for (let n = el; n && n !== stage; n = n.parentElement) {
+          if (n.nodeType !== 1) continue
+          if (n.matches('button, a, input, select, textarea, label, [role="button"], [data-no-pause]')) return true
+          if (getComputedStyle(n).cursor === 'pointer') return true
+        }
+        return false
+      }
+
+      stage.addEventListener('pointerdown', (e) => {
+        startX = e.clientX
+        startY = e.clientY
+        startT = performance.now()
+      })
+
+      stage.addEventListener('pointerup', (e) => {
+        if (this.phase !== 'INTRO' && this.phase !== 'GAME_ACTIVE') return
+        if (this.currentIsGame) return               // the quiz card owns its own clicks
+        if (window.__voyageGalleryOpen) return       // so does an open landfall gallery
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) > DRAG_SLOP_PX) return  // a map pan
+        if (performance.now() - startT > HOLD_MS) return                               // a press-and-hold
+        if (isControl(e.target)) return
+
+        this.togglePlayback()
+      })
     },
 
     // ── Teardown ───────────────────────────────────────────────────────
@@ -1771,6 +1981,14 @@ Alpine.data('lessonGame', (lesson) => ({
       if (this._kbHandler) {
         document.removeEventListener('keydown', this._kbHandler)
         this._kbHandler = null
+      }
+      if (this._readingOverlayHandler) {
+        window.removeEventListener('lesson:reading-overlay', this._readingOverlayHandler)
+        this._readingOverlayHandler = null
+      }
+      if (this._chapterInfoHandler) {
+        window.removeEventListener('lesson:chapter-info', this._chapterInfoHandler)
+        this._chapterInfoHandler = null
       }
       clearInterval(this._timerInterval); this._timerInterval = null
       clearInterval(this._kbInterval);    this._kbInterval = null

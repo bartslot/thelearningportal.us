@@ -1553,6 +1553,9 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       } catch (_) { return null; }
     },
     destroy() {
+      // Close any open landfall gallery first, so its "a modal is open" flag can never outlive the
+      // tour that owned it (that leak froze the next scene's auto-advance).
+      try { galleryClose && galleryClose(); } catch (_) { /* already gone */ }
       clearOverview();
       legToken++;   // invalidate any in-flight leg
       if (raf) cancelAnimationFrame(raf);
