@@ -27,6 +27,9 @@ export default defineConfig({
             '--enable-unsafe-swiftshader',
             '--use-gl=angle',
             '--use-angle=swiftshader',
+            // Lesson specs press play, and a full suite is a lot of narration out loud on whoever's
+            // machine is running it. Silence the browser rather than relying on remembering to mute.
+            '--mute-audio',
           ],
         },
       },
