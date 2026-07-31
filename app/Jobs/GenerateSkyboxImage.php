@@ -36,6 +36,14 @@ class GenerateSkyboxImage implements ShouldQueue
 
     public function handle(#[Llm('mechanical')] OpenAiLlmService $llm, OpenAiImageService $imageService): void
     {
+        // Paid image generation is off unless explicitly enabled (services.imagery.ai_generation).
+        // Backgrounds come from the paintings corpus and Wikimedia Commons instead.
+        if (! config('services.imagery.ai_generation', false)) {
+            Log::info('GenerateSkyboxImage: skipped, AI image generation is disabled');
+
+            return;
+        }
+
         $scene = Scene::with('lesson')->findOrFail($this->sceneId);
         if ($scene->hasManualBackground()) {
             return;

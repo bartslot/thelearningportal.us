@@ -43,6 +43,16 @@ class GenerateSceneImage implements ShouldQueue
             return;
         }
 
+        // Real historical imagery is the default. Generating a background costs money per scene and
+        // invents a picture of something that actually happened; a sourced painting comes with an
+        // artist, a date and a credit. Only fall through to the image model when someone has
+        // explicitly switched it on (AI_IMAGE_GENERATION=true).
+        if (! config('services.imagery.ai_generation', false)) {
+            $this->sourceRealImagery($scene);
+
+            return;
+        }
+
         try {
             $style = (string) ($scene->image_style ?? $scene->lesson->image_style ?? 'realistic');
             $destination = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/skybox.png";
@@ -81,6 +91,52 @@ class GenerateSceneImage implements ShouldQueue
             }
             throw $e;
         }
+    }
+
+    /**
+     * Attach a real painting or photograph instead of generating one.
+     *
+     * Searches our paintings corpus first and Wikimedia Commons second (SceneImageSourcer decides
+     * the order from the scene's year — pre-photography subjects are far better served by art).
+     * The query is built from what the scene is actually about; a scene left without an image is
+     * still marked ready, because a missing background must never strand a lesson mid-build.
+     */
+    private function sourceRealImagery(Scene $scene): void
+    {
+        /** @var \App\Services\SceneImageSourcer $sourcer */
+        $sourcer = app(\App\Services\SceneImageSourcer::class);
+
+        $year = is_numeric($scene->year) ? (int) $scene->year : null;
+        $queries = array_values(array_filter([
+            trim((string) $scene->location.' '.(string) $scene->chapter_name),
+            (string) $scene->location,
+            (string) $scene->chapter_name,
+            (string) ($scene->lesson->topic ?? ''),
+        ], fn ($q) => mb_strlen(trim((string) $q)) >= 3));
+
+        foreach ($queries as $query) {
+            $hit = $sourcer->find($query, $year, 'auto');
+            if (! $hit) {
+                continue;
+            }
+            $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/bg.jpg";
+            if ($sourcer->download($hit['url'], $path) === null) {
+                continue;
+            }
+            $config = $scene->config ?? [];
+            $config['image_credit'] = $hit['credit'];
+            $config['image_source_url'] = $hit['url'];
+            if (! empty($hit['focus'])) {
+                $config['image_focus'] = $hit['focus'];
+            }
+            $scene->update(['image_path' => $path, 'config' => $config, 'upscale_status' => null]);
+            $this->maybeMarkReady($scene->fresh());
+
+            return;
+        }
+
+        Log::info('GenerateSceneImage: no real imagery found', ['scene' => $scene->id, 'tried' => $queries]);
+        $this->maybeMarkReady($scene->fresh());
     }
 
     private function buildPrompt(Scene $scene, string $style, OpenAiLlmService $llm, FigureAppearanceService $appearance): string

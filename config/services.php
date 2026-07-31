@@ -63,6 +63,17 @@ return [
 
     // ── Production AI APIs ────────────────────────────────────────────────────
 
+    // ── Imagery policy ────────────────────────────────────────────────────────
+    //
+    // Scene backgrounds come from REAL historical imagery: our paintings corpus first, then
+    // Wikimedia Commons. Generating them with an image model is expensive and, for history, worse:
+    // a real painting carries provenance and an artist, an invented one carries neither.
+    //
+    // AI generation is therefore OFF by default and must be switched on deliberately.
+    'imagery' => [
+        'ai_generation' => (bool) env('AI_IMAGE_GENERATION', false),
+    ],
+
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         // Dedicated key for image generation (gpt-image-1 needs a verified org); falls back to the main key.
