@@ -105,6 +105,47 @@ class BackgroundImageOptimizer
         }
     }
 
+    /**
+     * One-pass encode at a fixed quality, for bulk archiving.
+     *
+     * optimise() spends five encodes hunting the highest quality that fits the byte cap, which is
+     * right for a background a class will actually watch and hopeless for fourteen hundred archive
+     * files — that search is the difference between forty minutes and six hours. The result lands
+     * at the same stage size and format, so an archived image can be reused as a background by
+     * copying it, with no second generation of loss.
+     *
+     * @return array{bytes:string,extension:string,width:int,height:int,quality:int,grain:bool}
+     */
+    public function archive(string $bytes, int $quality = 45): array
+    {
+        $image = $this->readImage($bytes);
+
+        try {
+            $this->fitToStage($image);
+            $hasAlpha = $this->hasRealTransparency($image);
+
+            if (! $hasAlpha) {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
+                $image->setImageBackgroundColor('black');
+                $image = $image->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+            }
+
+            $width = $image->getImageWidth();
+            $height = $image->getImageHeight();
+
+            $source = $this->writeTemporarySource($image, $hasAlpha);
+            try {
+                $encoded = $this->encodeOnce($source, $image, $quality, $hasAlpha);
+            } finally {
+                @unlink($source);
+            }
+
+            return [...$encoded, 'width' => $width, 'height' => $height];
+        } finally {
+            $image->clear();
+        }
+    }
+
     private function readImage(string $bytes): Imagick
     {
         try {

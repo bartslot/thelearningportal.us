@@ -42,7 +42,11 @@ NUL
 .claude/worktrees/
 
 # Large generated audio assets — keep out of git (served from storage)
-/public/sound/
+/public/sound/*
+# …except the shipped soundtrack. These are product assets, not generated output: the lesson
+# player 404s without them, and deploys that build from `git archive` would leave them behind.
+!/public/sound/bg-music/
+!/public/sound/sfx/
 
 /public/flags/
 
@@ -67,3 +71,4 @@ tests/playwright/report/
 
 # Throwaway visual comparison built by scripts/… for judging background optimisation by eye.
 /public/bg-compare
+/public/image-archive
