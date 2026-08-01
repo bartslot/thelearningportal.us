@@ -322,7 +322,14 @@ trait EditsSceneArtwork
             'kind' => ['figure', 'strip', 'cover'],
             'blur' => [0, 2.5],
             'sway' => null, // boolean
-            'blend' => ['multiply', 'screen', 'overlay', 'darken', 'lighten'],
+            // 'normal' is how a teacher turns blending back OFF — without it in the list the
+            // enum check below rejects the value and the select silently refuses to clear.
+            'blend' => ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'],
+            // Animate tab: how the layer arrives, how long it waits first, and on which curve.
+            // The vocabulary is shared with resources/js/scene/animations.js, which plays it.
+            'anim' => ['none', 'fade', 'slide-left', 'slide-right', 'slide-up', 'slide-down', 'zoom', 'pop'],
+            'anim_delay' => [0, 10],   // seconds before the entrance starts
+            'anim_ease' => ['enter', 'move', 'exit', 'pop', 'linear'],
             'x' => [0, 100],   // stage position %, centre anchor
             // Drawing-mode ink controls (per layer).
             'ink_preset' => ['production', 'brush', 'etch', 'sketch', 'liner'],
@@ -348,10 +355,10 @@ trait EditsSceneArtwork
 
         // Coerce and clamp the value.
         $coercedValue = match ($field) {
-            'depth', 'scale', 'opacity', 'blur', 'x', 'y', 'draw_time' => (float) $value,
+            'depth', 'scale', 'opacity', 'blur', 'x', 'y', 'draw_time', 'anim_delay' => (float) $value,
             'height', 'wobble' => (int) $value,
             'sway' => (bool) $value,
-            'kind', 'blend', 'ink_preset', 'ink_fill' => (string) $value,
+            'kind', 'blend', 'ink_preset', 'ink_fill', 'anim', 'anim_ease' => (string) $value,
             default => $value,
         };
 
@@ -361,7 +368,7 @@ trait EditsSceneArtwork
             // Clamp: use floats for min/max to preserve float results when clamping floats
             $coercedValue = max((float) $min, min((float) $max, (float) $coercedValue));
             // Re-cast after clamping to preserve float/int type
-            if (in_array($field, ['depth', 'scale', 'opacity', 'blur', 'x', 'y'], true)) {
+            if (in_array($field, ['depth', 'scale', 'opacity', 'blur', 'x', 'y', 'anim_delay'], true)) {
                 $coercedValue = (float) $coercedValue;
             } elseif (in_array($field, ['height', 'wobble'], true)) {
                 $coercedValue = (int) $coercedValue;
@@ -369,7 +376,7 @@ trait EditsSceneArtwork
         }
 
         // Validate enum-like fields.
-        if (in_array($field, ['kind', 'blend', 'ink_preset', 'ink_fill'], true)) {
+        if (in_array($field, ['kind', 'blend', 'ink_preset', 'ink_fill', 'anim', 'anim_ease'], true)) {
             if (! in_array($coercedValue, $whitelist[$field], true)) {
                 return;
             }

@@ -105,6 +105,26 @@
         </label>
     @endforeach
 
+    {{-- How the layer mixes with what is behind it. Multiply is the one that earns its keep:
+         it drops the white paper out of an engraving or a scanned map so the artwork sits ON the
+         scene instead of in a box on top of it. --}}
+    <label class="flex items-center gap-2">
+        <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Blend') }}</span>
+        <select wire:change="updateArtworkLayer({{ $aid }}, 'blend', $event.target.value)"
+                class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300">
+            @foreach ([
+                'normal' => __('None'),
+                'multiply' => __('Multiply — drops white paper'),
+                'screen' => __('Screen — drops black'),
+                'overlay' => __('Overlay'),
+                'darken' => __('Darken'),
+                'lighten' => __('Lighten'),
+            ] as $bv => $bl)
+                <option value="{{ $bv }}" @selected(($layer['blend'] ?? 'normal') === $bv)>{{ $bl }}</option>
+            @endforeach
+        </select>
+    </label>
+
     {{-- Ink draw-on controls — only in Drawing mode. --}}
     @if ($slideshowMode === 'drawing')
         <div class="space-y-2 border-t border-slate-700/50 pt-2">

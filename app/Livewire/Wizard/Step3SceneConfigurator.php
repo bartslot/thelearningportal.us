@@ -198,6 +198,10 @@ class Step3SceneConfigurator extends Component
                 'blur' => isset($l['blur']) ? (float) $l['blur'] : null,
                 'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
                 'blend' => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
+                // Animate tab: entrance movement, its delay in seconds, and the easing key.
+                'anim' => $l['anim'] ?? null,
+                'anim_delay' => isset($l['anim_delay']) ? (float) $l['anim_delay'] : null,
+                'anim_ease' => $l['anim_ease'] ?? null,
                 'wobble' => isset($l['wobble']) ? (int) $l['wobble'] : null,
                 'z' => isset($l['z']) ? (int) $l['z'] : null,
                 // Drawing-mode ink controls (per layer).
@@ -415,6 +419,42 @@ class Step3SceneConfigurator extends Component
         }
 
         $this->selectedScene['background_color'] = $color;
+        $this->saveSelected();
+    }
+
+    /**
+     * Animate tab (scene): how this scene replaces the one before it.
+     *
+     * One field per call so a select and a slider can each autosave on change. Written into the
+     * scene config SNAPSHOT and saved through saveSelected — writing straight to the model would
+     * be overwritten by the next save, which rebuilds config from that snapshot.
+     */
+    public function setSceneTransition(string $key, string $value): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        // The vocabulary is shared with resources/js/scene/animations.js, which plays it back.
+        $clean = match ($key) {
+            'type' => in_array($value, ['crossfade', 'slide-left', 'slide-right', 'slide-up', 'slide-down', 'cut'], true) ? $value : null,
+            'ease' => in_array($value, ['enter', 'move', 'exit', 'pop', 'linear'], true) ? $value : null,
+            // A transition longer than a few seconds stops reading as a transition and starts
+            // reading as the lesson having stalled.
+            'duration' => max(0.0, min(3.0, (float) $value)),
+            default => null,
+        };
+
+        if ($clean === null) {
+            return;
+        }
+
+        $config = $this->selectedScene['config'] ?? [];
+        $transition = ($config['transition'] ?? []) + ['type' => 'crossfade', 'duration' => 0.8, 'ease' => 'move'];
+        $transition[$key] = $clean;
+
+        $config['transition'] = $transition;
+        $this->selectedScene['config'] = $config;
         $this->saveSelected();
     }
 

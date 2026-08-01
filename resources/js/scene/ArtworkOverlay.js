@@ -1,18 +1,20 @@
 /**
  * ArtworkOverlay — editor-only layer for clipart/artwork placed ON TOP of a scene.
  *
- * The wizard renders each artwork layer here as a free-positioned, draggable
+ * The wizard renders each artwork layer here as a free-positioned, draggable, scalable
  * element (centre-anchored, positions stored as % of the stage so they survive resize).
  * This is the EDIT surface; playback renders the same layers through ParallaxScene with
  * the parallax motion added. Interaction mirrors TextOverlayLayer:
  *   • drag anywhere on the layer to move it (x/y %)
- *   • Format panel controls set scale and visual treatment
+ *   • drag a corner handle to scale it; the Format panel sets the same values numerically
  *   • a press selects it (sky ring), broadcast via `scene-object-selected`
  *   • magnetic snap to ruler guides via window.__guides.snap
  *
  * Layers: [{ asset_id, url, x, y, scale, height, kind }]. Positions/scale persist through
  * the onChange(assetId, { x, y, scale }) callback (a batched Livewire save).
  */
+import { playEntrance } from './animations.js'
+
 const DRAG_THRESHOLD_PX = 4
 const MIN_SCALE = 0.2
 const MAX_SCALE = 3
@@ -27,6 +29,7 @@ export class ArtworkOverlay {
     this.readonly = readonly   // playback: render the layers but never let the viewer drag them
     this._layers = []
     this._selectedId = null
+    this._entrances = []   // Animations in flight, so a scene change can stop them
     this.host.style.pointerEvents = 'none'   // the host is transparent; only layer nodes catch events
     // Deselect when something that isn't one of MY layers is selected (mutually-exclusive
     // selection across text, artwork and background — no re-dispatch, so no loop).
@@ -54,6 +57,13 @@ export class ArtworkOverlay {
         depth: Number.isFinite(l.depth) ? l.depth : 1,   // parallax: higher = follows the camera more
         blur: Number.isFinite(l.blur) ? l.blur : 0,
         opacity: Number.isFinite(l.opacity) ? l.opacity : 1,
+        // CSS mix-blend-mode. 'multiply' is what makes a scanned engraving or map sit ON the
+        // scene by dropping its white paper, instead of floating in a white box.
+        blend: l.blend || 'normal',
+        // Animate tab: how this layer arrives, after how long, on which curve.
+        anim: l.anim || 'none',
+        anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
+        anim_ease: l.anim_ease || 'enter',
         kind: l.kind || 'figure',
         title: l.title || (l.embed && l.embed.title) || 'Clipart',
       }))
@@ -90,7 +100,42 @@ export class ArtworkOverlay {
     }
   }
 
-  clear() { this.setLayers([]) }
+  /**
+   * Run every layer's entrance, as configured in the Animate tab.
+   *
+   * Called when a scene starts — by the player on playback, and by the editor when the teacher
+   * loads or previews a scene, so what they set is what they see. Layers with no entrance are
+   * left alone rather than animated to their existing state, which would flicker.
+   */
+  playEntrances() {
+    this.cancelEntrances()
+    for (const item of this._layers) {
+      if (!item.anim || item.anim === 'none') continue
+      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+      if (!el) continue
+      const anim = playEntrance(el, {
+        anim: item.anim,
+        delay: item.anim_delay,
+        ease: item.anim_ease,
+        baseTransform: this._transform(item),
+      })
+      if (anim) this._entrances.push(anim)
+    }
+  }
+
+  /**
+   * Stop any entrance still running. A delayed entrance outlives the scene that owns it — without
+   * this, a layer from the previous scene keeps fading in over the new one, or is left stranded
+   * mid-transform because its animation was cancelled by a re-render instead of finished.
+   */
+  cancelEntrances() {
+    for (const anim of this._entrances) {
+      try { anim.cancel() } catch (_) { /* already finished */ }
+    }
+    this._entrances = []
+  }
+
+  clear() { this.cancelEntrances(); this.setLayers([]) }
 
   /** Whether the whole clipart group sits ABOVE the text overlay (drives the host z-index).
    *  Stored here so the object list can read it back when it rebuilds its rows. */
@@ -125,6 +170,7 @@ export class ArtworkOverlay {
       if (!el) continue
       const on = artObjId(item.asset_id) === this._selectedId
       el.style.boxShadow = on ? '0 0 0 2px #38bdf8' : ''
+      for (const handle of el.querySelectorAll('[data-scale-handle]')) handle.style.display = on ? 'block' : 'none'
     }
   }
 
@@ -213,15 +259,46 @@ export class ArtworkOverlay {
     // Applied to the IMG, not the node, so the selection ring stays crisp.
     if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
+    if (item.blend && item.blend !== 'normal') img.style.mixBlendMode = item.blend
     node.appendChild(img)
 
+    this._addScaleHandles(item, node)
     this._wireDrag(item, node)
     return node
+  }
+
+  /**
+   * Round resize handles on all four corners, shown only while the layer is selected.
+   * Dragging a corner keeps the OPPOSITE corner anchored rather than scaling about the centre.
+   *
+   * Playback never gets them: a student has nothing to resize, and the nodes are inert anyway.
+   */
+  _addScaleHandles(item, node) {
+    if (this.readonly) return
+
+    const CORNERS = [
+      { name: 'tl', pos: 'top:-5px; left:-5px;', cursor: 'nwse-resize' },
+      { name: 'tr', pos: 'top:-5px; right:-5px;', cursor: 'nesw-resize' },
+      { name: 'bl', pos: 'bottom:-5px; left:-5px;', cursor: 'nesw-resize' },
+      { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
+    ]
+
+    for (const c of CORNERS) {
+      const handle = document.createElement('div')
+      handle.dataset.scaleHandle = '1'
+      handle.setAttribute('data-tooltip', 'Drag to resize')
+      handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
+        border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
+        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
+      node.appendChild(handle)
+      this._wireScale(item, node, handle, c.name)
+    }
   }
 
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
   _wireDrag(item, node) {
     node.addEventListener('pointerdown', (e) => {
+      if (e.target.dataset && e.target.dataset.scaleHandle) return   // corner handles resize, not drag
       this.select(artObjId(item.asset_id))
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
