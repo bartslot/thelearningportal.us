@@ -23,6 +23,15 @@ final class PronunciationLexicon
     private const LEXICON = [
         'nl' => [
             'limes' => 'liemes',
+            // Initialisms are read as words unless they are spelled out: the Dutch voices said
+            // "vok" for the VOC. Respelt with the Dutch letter names so it comes out
+            // "vee-oh-see", the way a teacher says it in class. Spaces rather than hyphens —
+            // a hyphen makes the voice run the letters together again.
+            'VOC' => 'vee oh see',
+            'WIC' => 'wee ie see',
+        ],
+        'en' => [
+            'VOC' => 'vee oh see',
         ],
     ];
 
@@ -44,6 +53,13 @@ final class PronunciationLexicon
     /** Carry the original word's casing onto the respelling (Limes → Liemes, LIMES → LIEMES). */
     private static function matchCase(string $original, string $replacement): string
     {
+        // A multi-word respelling is a pronunciation ("vee oh see"), not a word whose case means
+        // anything. Upper-casing it would hand the voice "VEE OH SEE", which some engines then
+        // spell out letter by letter — the very thing the entry exists to stop.
+        if (str_contains($replacement, ' ')) {
+            return $replacement;
+        }
+
         if (mb_strtoupper($original) === $original) {
             return mb_strtoupper($replacement);
         }
