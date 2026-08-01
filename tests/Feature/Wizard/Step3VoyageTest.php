@@ -190,6 +190,25 @@ class Step3VoyageTest extends TestCase
         $this->assertSame('fit', $gallery->fresh()->config['fit']);
     }
 
+    public function test_the_overview_scene_labels_the_departure_not_the_first_landfall(): void
+    {
+        // The opening overview scene names the port the voyage LEAVES from, and it shares leg 0 with
+        // the first waypoint. Pinned like a landfall it landed on the first arrival coordinate, so
+        // the start city's name was drawn across the first stop ("Venice" written over Israel).
+        $overview = Scene::create([
+            'lesson_id' => $this->lesson->id, 'order' => 0, 'kind' => 'voyage', 'status' => 'ready',
+            'location' => 'Batavia',
+            'config' => ['voyage' => 'tasman-1642', 'leg' => 0, 'overview' => true],
+        ]);
+
+        $labels = $this->wizardOn($this->voyageScene)->instance()->voyageLegLabels();
+        $byText = collect($labels)->keyBy('text');
+
+        $this->assertSame('depart', $byText[$overview->location]['at'], 'overview names where the trip starts');
+        $this->assertSame('arrive', $byText[$this->voyageScene->location]['at'], 'a waypoint names its landfall');
+        $this->assertSame(0, $byText[$overview->location]['leg'], 'both still sit on leg 0 — only the end differs');
+    }
+
     public function test_voyage_map_toggles_hide_layers_lesson_wide(): void
     {
         // Defaults show everything; toggling one option persists it on game_config.voyage_map.
@@ -316,8 +335,10 @@ class Step3VoyageTest extends TestCase
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->instance()->voyageLegLabels();
 
-        $this->assertContains(['text' => 'Mauritius', 'leg' => 0], $labels);
-        $this->assertContains(['text' => 'Tonga', 'leg' => 3], $labels);
+        // Each waypoint scene names the landfall its leg arrives at ('arrive'); only the opening
+        // overview scene names a departure — see the overview test above.
+        $this->assertContains(['text' => 'Mauritius', 'leg' => 0, 'at' => 'arrive'], $labels);
+        $this->assertContains(['text' => 'Tonga', 'leg' => 3, 'at' => 'arrive'], $labels);
     }
 
     public function test_gallery_text_can_be_edited_inline_via_the_gallery_text_changed_event(): void
@@ -418,7 +439,7 @@ class Step3VoyageTest extends TestCase
         $this->assertSame($leg1Start + 1, (int) $def['legs'][1]['wp'][0], 'later legs were reindexed');
     }
 
-    public function test_setVoyageWaypoint_moves_a_point_within_the_leg_only(): void
+    public function test_set_voyage_waypoint_moves_a_point_within_the_leg_only(): void
     {
         $c = $this->wizardOn($this->voyageScene);
         $c->call('setLegDepart', '1642-08-14');
@@ -433,7 +454,7 @@ class Step3VoyageTest extends TestCase
         $this->assertEquals($before, $this->lesson->fresh()->game_config['voyage_def']['waypoints']);
     }
 
-    public function test_insertVoyageWaypoint_bends_the_line_at_an_arbitrary_point_within_the_leg(): void
+    public function test_insert_voyage_waypoint_bends_the_line_at_an_arbitrary_point_within_the_leg(): void
     {
         $c = $this->wizardOn($this->voyageScene);   // leg 0
         $c->call('setLegDepart', '1642-08-14');     // clone the catalog
@@ -453,7 +474,7 @@ class Step3VoyageTest extends TestCase
         $this->assertSame($leg1Start + 1, (int) $def['legs'][1]['wp'][0], 'later legs were reindexed');
     }
 
-    public function test_insertVoyageWaypoint_rejects_a_point_outside_the_current_leg(): void
+    public function test_insert_voyage_waypoint_rejects_a_point_outside_the_current_leg(): void
     {
         $c = $this->wizardOn($this->voyageScene);   // leg 0
         $c->call('setLegDepart', '1642-08-14');
@@ -470,7 +491,7 @@ class Step3VoyageTest extends TestCase
         $this->assertEquals($before, $this->lesson->fresh()->game_config['voyage_def']['waypoints']);
     }
 
-    public function test_setLegWaypoint_moves_the_leg_endpoint(): void
+    public function test_set_leg_waypoint_moves_the_leg_endpoint(): void
     {
         $c = $this->wizardOn($this->voyageScene);
         $c->dispatch('voyageLegEndpointMoved', sceneId: $this->voyageScene->id, which: 'to', lng: 20.5, lat: -12.25);

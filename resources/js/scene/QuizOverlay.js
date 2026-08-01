@@ -245,18 +245,7 @@ export class QuizOverlay {
     this.host.innerHTML = `
       <div class="${SCRIM}">
         <div class="${CARD} relative mx-4 w-full max-w-2xl p-8">
-          <div class="mb-4 flex items-center justify-between">
-            <span class="text-xs uppercase tracking-[0.2em] text-primary">Quiz</span>
-            <span class="flex items-center text-[13px] text-base-content/60">
-              ${streakBadge}
-              <span data-score class="mr-3.5 inline-flex items-center gap-1.5 text-[15px] font-extrabold text-warning">
-                <svg viewBox="0 0 24 24" fill="currentColor" class="h-[15px] w-[15px]"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>
-                <span data-score-value>${this._score}</span>
-              </span>
-              <span data-pager>${this._index + 1} / ${total}</span>
-            </span>
-          </div>
-          <div class="mb-5 text-[22px] font-semibold leading-snug">${this._escape(q.question)}</div>
+          <div class="mb-5 text-2xl sm:text-3xl font-semibold leading-snug">${this._escape(q.question)}</div>
           ${gated ? `<div data-gate-note class="mb-2.5 flex items-center gap-2 text-[13px] text-base-content/60">
               <span class="loading loading-ring loading-xs text-primary"></span>
               Read the question&hellip; answers unlock in <span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s</div>` : ''}
@@ -273,6 +262,16 @@ export class QuizOverlay {
               const tone = i === this._index ? 'bg-primary' : (done ? (ok ? 'bg-success' : 'bg-base-content/40') : 'bg-base-content/15')
               return `<span class="${tone} h-2 w-2 rounded-full transition-colors"></span>`
             }).join('')}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center text-[13px] text-base-content/60">
+              ${streakBadge}
+              <span data-score class="mr-3.5 inline-flex items-center gap-1.5 text-[15px] font-extrabold text-warning">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-[15px] w-[15px]"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>
+                <span data-score-value>${this._score}</span>
+              </span>
+              <span data-pager>${this._index + 1} / ${total}</span>
+            </span>
           </div>
         </div>
       </div>`

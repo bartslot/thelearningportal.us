@@ -292,7 +292,9 @@
             h.style.display = ''
             // Skip re-seeding on identical poll re-renders — it would reset an in-progress drag.
             const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || (l.embed && l.embed.src) || '').split('?')[0]]))
-            if (sig !== artSig) { artSig = sig; overlay.setLayers(layers) }
+            // Same rule as the slideshow overlay: re-seed only on a real change, and replay the
+            // entrances then — not on every poll, which would flicker the layers while editing.
+            if (sig !== artSig) { artSig = sig; overlay.setLayers(layers); overlay.playEntrances() }
             // A dedicated handle the object list reads on voyage scenes — the SHARED handle can be
             // repointed by a slideshow render (wizard-bridge), so it isn't reliable here.
             window.__voyageArtworkLayer = overlay
@@ -731,8 +733,25 @@
             {{-- Text and backing-panel controls live in Format, never over the canvas object. --}}
             <x-lesson.scene-text-inspector :text="$activeText" :scene="$this->selectedSceneModel" />
             @elseif ($activeLayerId && ($al = $this->activeLayer))
-            {{-- A clipart layer is selected → its settings take over the inspector. --}}
-            <x-lesson.scene-layer-inspector :layer="$al" :scene="$this->selectedSceneModel" />
+            {{-- A clipart layer is selected → its settings take over the inspector.
+                 Format is what the layer LOOKS like; Animate is how it arrives. Alpine-local so
+                 switching tabs never costs a round trip; keyed per layer so selecting a different
+                 one starts on Format rather than inheriting the last layer's tab. --}}
+            <div x-data="{ tab: 'format' }" wire:key="layer-tabs-{{ $al['asset_id'] ?? 0 }}" class="space-y-3">
+                <div role="tablist" class="tabs tabs-boxed tabs-xs bg-base-100/60">
+                    <button type="button" role="tab" @click="tab = 'format'"
+                            :class="tab === 'format' ? 'tab-active' : ''" class="tab">{{ __('Format') }}</button>
+                    <button type="button" role="tab" @click="tab = 'animate'"
+                            :class="tab === 'animate' ? 'tab-active' : ''" class="tab">{{ __('Animate') }}</button>
+                </div>
+
+                <div x-show="tab === 'format'">
+                    <x-lesson.scene-layer-inspector :layer="$al" :scene="$this->selectedSceneModel" />
+                </div>
+                <div x-show="tab === 'animate'" x-cloak>
+                    <x-lesson.animate-inspector mode="layer" :layer="$al" :scene="$this->selectedSceneModel" />
+                </div>
+            </div>
             @elseif ($panelView === 'scene')
             @php $sceneModel = $this->selectedSceneModel; @endphp
             @if ($sceneModel)
@@ -741,7 +760,22 @@
                      without a per-scene key, Livewire's morph preserves the previous scene's Alpine
                      state on switch, so sliders/tabs show — and can persist — the wrong scene's
                      values. A changing key forces Alpine to reinitialise from the new scene. --}}
-                <div wire:key="scene-inspector-{{ $sceneModel->id }}">
+                <div wire:key="scene-inspector-{{ $sceneModel->id }}" x-data="{ tab: 'format' }" class="space-y-3">
+                {{-- Same two tabs as a layer, for the same reason: what the scene looks like, and
+                     how it arrives. Every scene kind gets Animate — a map or a gallery replaces the
+                     scene before it just as a narration scene does. --}}
+                <div role="tablist" class="tabs tabs-boxed tabs-xs bg-base-100/60">
+                    <button type="button" role="tab" @click="tab = 'format'"
+                            :class="tab === 'format' ? 'tab-active' : ''" class="tab">{{ __('Format') }}</button>
+                    <button type="button" role="tab" @click="tab = 'animate'"
+                            :class="tab === 'animate' ? 'tab-active' : ''" class="tab">{{ __('Animate') }}</button>
+                </div>
+
+                <div x-show="tab === 'animate'" x-cloak>
+                    <x-lesson.animate-inspector mode="scene" :scene="$sceneModel" />
+                </div>
+
+                <div x-show="tab === 'format'">
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
                                                  :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style"
@@ -766,6 +800,7 @@
                 @if ($this->showsGameEffectsPanel($sceneModel))
                     <x-lesson.scene-inspector-story-effects :scene="$sceneModel" :meters="$this->storyMeters()" />
                 @endif
+                </div>{{-- /format tab --}}
                 </div>{{-- /scene-inspector-{{ $sceneModel->id }} --}}
             @else
                 <p class="text-sm text-slate-400">No scene selected.</p>
@@ -948,6 +983,16 @@
                 return Number.isFinite(t.z) ? t.z : (t.kind === 'rect' ? 0 : 1);
             },
             iconSvg(obj) { return window.__objIcons[obj.icon] || ''; },
+            /**
+             * The artwork overlay the teacher is actually looking at.
+             *
+             * A map-backed scene (map or voyage) draws its layers into its own overlay above the
+             * map, and wizard-bridge repoints the SHARED handle at the slideshow overlay whenever a
+             * flat scene renders. Reading the shared handle on a map therefore listed the wrong
+             * layers and sent select / delete / reorder to an overlay that wasn't on screen — so
+             * every caller has to resolve it the same way, here.
+             */
+            artOverlay() { return window.__artOverlay?.() ?? window.__lessonArtworkLayer; },
             refresh() {
                 const texts = (window.__lessonTextLayer && window.__lessonTextLayer._texts) || [];
                 // Front-most first: the top row is the highest z (drawn last / on top). Ties keep
@@ -959,10 +1004,8 @@
                     : { id: t.id, icon: 'text', label: (t.text || 'Text').slice(0, 40), bg: false });
                 // Clipart / artwork / embed layers (own overlay, drag-reorderable). _layers is bottom-first
                 // (last painted = on top), so reverse it to list front-most first like the text rows.
-                // On a voyage scene read the DEDICATED voyage overlay handle — the shared one can be
-                // repointed to a slideshow overlay by wizard-bridge, dropping the voyage layers.
                 const objKind = (window.__objScene || {}).kind;
-                const artLayer = (objKind === 'voyage' && window.__voyageArtworkLayer) || window.__lessonArtworkLayer;
+                const artLayer = this.artOverlay();
                 const arts = (artLayer && artLayer._layers) || [];
                 const artItems = [...arts].reverse().map((a) =>
                     ({ id: 'art_' + a.asset_id, icon: a.embed ? (a.embed.type === 'video' ? 'photo' : 'map') : 'photo',
@@ -1029,7 +1072,7 @@
             // layers among themselves and, when the clipart block was dragged above/below the text
             // block, raise/lower the whole overlay past the text layer. Persisted server-side.
             reorderClipart(allIds, textIds, artRowIds) {
-                const layer = window.__lessonArtworkLayer;
+                const layer = this.artOverlay();
                 if (!layer) return;
                 // Did the clipart block land above or below the text block? (compare mean row index)
                 const avg = (list) => list.reduce((s, id) => s + allIds.indexOf(id), 0) / list.length;
@@ -1057,7 +1100,7 @@
                     return;
                 }
                 if (obj.art) {
-                    window.__lessonArtworkLayer?.select?.(obj.id);   // ring the clipart (clears text ring)
+                    this.artOverlay()?.select?.(obj.id);   // ring the clipart (clears text ring)
                     document.querySelector(`[data-layer-id="${obj.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                     return;
                 }
@@ -1356,6 +1399,17 @@
                     title="{{ __('Publish this lesson') }}" aria-label="{{ __('Publish') }}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                    @php
+                        $statusColor = match (true) {
+                            $lesson->status === \App\Enums\LessonStatus::Published => 'fill-emerald-500',
+                            $lesson->scheduled_publish_at !== null => 'fill-amber-400',
+                            default => 'fill-purple-500',
+                        };
+                    @endphp
+
+                    <circle cx="20" cy="4" r="4"
+                            class="{{ $statusColor }} stroke-slate-900"
+                            stroke-width="1.5" />
                 </svg>
                 <span class="text-[10px] font-medium">{{ __('Publish') }}</span>
             </button>
@@ -1719,6 +1773,22 @@
     (() => {
         if (window.__lessonDeleteKeyMounted) return;
         window.__lessonDeleteKeyMounted = true;
+
+        /**
+         * The artwork overlay currently on screen — the ONE definition, used by the object list
+         * and by the Delete key alike.
+         *
+         * A map-backed scene draws its layers into its own overlay above the map, and
+         * wizard-bridge repoints the shared handle at the slideshow overlay whenever a flat scene
+         * renders. Reading the shared handle on a map picks an overlay the teacher isn't looking
+         * at, so nothing is selected and Delete quietly does nothing.
+         */
+        window.__artOverlay = () => {
+            const kind = (window.__objScene || {}).kind;
+            const mapBacked = kind === 'map' || kind === 'voyage';
+            return (mapBacked && window.__voyageArtworkLayer) || window.__lessonArtworkLayer;
+        };
+
         window.addEventListener('keydown', (e) => {
             if (e.key !== 'Backspace' && e.key !== 'Delete') return;
             if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1726,7 +1796,7 @@
             if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
             const sel = window.getSelection?.();
             if (sel && !sel.isCollapsed && sel.anchorNode?.parentElement?.closest?.('[contenteditable], input, textarea')) return;
-            const id = window.__lessonArtworkLayer?._selectedId || window.__lessonTextLayer?._selectedId;
+            const id = window.__artOverlay()?._selectedId || window.__lessonTextLayer?._selectedId;
             if (!id || id === '__bg__') return;
             e.preventDefault();
             window.Livewire.dispatch('scene:delete-object', { objectId: id });

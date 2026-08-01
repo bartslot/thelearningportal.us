@@ -16,7 +16,7 @@
         {{-- ── Heading ──────────────────────────────────────────────────── --}}
         <div class="mx-auto max-w-2xl text-center">
             <p class="text-xs uppercase tracking-[0.45em] text-sky-100/60">Pricing</p>
-            <h2 class="mt-3 font-history text-3xl tracking-tight text-white md:text-4xl">
+            <h2 class="mt-3 font-history font-semibold text-3xl tracking-tight text-white md:text-4xl">
                 Plans that grow with your school
             </h2>
             <p class="mt-4 text-base leading-relaxed text-slate-400">

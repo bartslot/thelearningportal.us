@@ -354,8 +354,10 @@
                  class="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300"
                  :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'opacity-0' : 'opacity-100'"
                  style="z-index:45">
+                {{-- No data-tooltip here on purpose: a 96px glyph in the middle of the stage says
+                     what it is, and a hover hint floating over the scene is noise. The deck's small
+                     play/pause carries the label and the K shortcut. --}}
                 <button type="button" @click="togglePlayback()"
-                        :data-tooltip="playbackPaused ? @js(__('Play')) : @js(__('Pause'))" data-tooltip-key="K"
                         :aria-label="playbackPaused ? @js(__('Play')) : @js(__('Pause'))"
                         class="group flex h-24 w-24 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                         :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'pointer-events-none' : 'pointer-events-auto'">
@@ -364,10 +366,12 @@
                         <path fill-rule="evenodd" clip-rule="evenodd" d="M0 2.52873C0 0.608107 2.05916 -0.609418 3.74205 0.316169L19.2842 8.86436C21.0285 9.82373 21.0285 12.3301 19.2842 13.2895L3.74205 21.8377C2.05916 22.7633 0 21.5457 0 19.6251V2.52873Z" fill="white"/>
                     </svg>
 
+                    {{-- Pause: two bars, drawn to the same weight and corner radius as the play
+                         triangle above so the two states feel like one control. --}}
                     <svg x-show="!playbackPaused" x-cloak class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95"
-                         viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3.40759 3.79631C3.40759 1.87569 5.46676 0.65816 7.14964 1.58375L22.6918 10.1319C24.4361 11.0913 24.4361 13.5977 22.6918 14.5571L7.14964 23.1053C5.46675 24.0308 3.40759 22.8133 3.40759 20.8927V3.79631Z"/>
+                         viewBox="0 0 21 23" fill="currentColor" aria-hidden="true">
+                        <rect x="0" y="0" width="6.5" height="23" rx="2.5"/>
+                        <rect x="14.5" y="0" width="6.5" height="23" rx="2.5"/>
                     </svg>
                 </button>
             </div>

@@ -37,8 +37,7 @@
     <div class="section-container">
         <div class="mb-12 flex items-end justify-between gap-4">
             <div>
-                <p class="text-[10px] uppercase tracking-[0.5em] text-sky-100/60">Most popular</p>
-                <h2 class="mt-3 font-history text-3xl tracking-tight text-white md:text-4xl">Trending history topics</h2>
+                <h2 class="mt-3 font-history font-semibold text-3xl tracking-tight text-white md:text-4xl">Trending history topics</h2>
             </div>
         </div>
 
@@ -104,8 +103,7 @@
         </div>
 
         <div id="features" class="mt-20">
-            <p class="text-xs uppercase tracking-[0.45em] text-sky-100/60">Teaching tools</p>
-            <h2 class="mt-3 font-history text-3xl tracking-tight text-sky-100 md:text-4xl">Built for better history teaching</h2>
+            <h2 class="mt-3 font-history font-semibold text-3xl tracking-tight text-white md:text-4xl">Built for better history teaching</h2>
 
             <div class="relative overflow-hidden rounded-[2rem] mt-8">
                 <!-- <div class="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-slate-950 via-slate-950/75 to-transparent"></div> -->
