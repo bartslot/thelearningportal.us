@@ -114,8 +114,8 @@
                 class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300">
             @foreach ([
                 'normal' => __('None'),
-                'multiply' => __('Multiply — drops white paper'),
-                'screen' => __('Screen — drops black'),
+                'multiply' => __('Multiply (drops white paper)'),
+                'screen' => __('Screen (drops black)'),
                 'overlay' => __('Overlay'),
                 'darken' => __('Darken'),
                 'lighten' => __('Lighten'),
