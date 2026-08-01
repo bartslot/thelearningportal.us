@@ -15,6 +15,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(\App\Services\ElevenLabsService::class);
 
+        // Built from config rather than autowired — its constructor takes the byte cap, stage size
+        // and grain preset as plain scalars, which the container cannot guess. A singleton also
+        // means the "does this avifenc have AOM?" probe runs once per process, not once per image.
+        $this->app->singleton(
+            \App\Services\BackgroundImageOptimizer::class,
+            fn () => \App\Services\BackgroundImageOptimizer::fromConfig(),
+        );
+
         // SiteGround's PHP ships serialize_precision=100, which makes json_encode() write the full
         // binary expansion of every float: a narration timing of 0.081 goes out as
         // 0.08100000000000000255351295663786004297435283660888671875. On the lesson player that is

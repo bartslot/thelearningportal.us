@@ -377,7 +377,7 @@ class SceneImageSourcer
             $original = $res->body();
 
             try {
-                $optimised = BackgroundImageOptimizer::fromConfig()->optimise($original);
+                $optimised = app(BackgroundImageOptimizer::class)->optimise($original);
                 $path = preg_replace('/\.[^.\/]+$/', '', $path).'.'.$optimised['extension'];
                 Storage::disk('public')->put($path, $optimised['bytes']);
 
