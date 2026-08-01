@@ -992,7 +992,14 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 artHost.style.zIndex = clipartOnTop ? '8' : '2'
                 // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
                 const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.depth, l.blur, l.opacity, String(l.url || '').split('?')[0]]))
-                if (sig !== _artworkSig) { _artworkSig = sig; _artworkOverlay.setLayers(artLayers) }
+                // Re-seed only on a real change, then replay the entrances so the teacher sees
+                // the movement they just set. Gated on the same signature, or the 3s poll would
+                // restart every entrance a few times a minute while they work.
+                if (sig !== _artworkSig) {
+                    _artworkSig = sig
+                    _artworkOverlay.setLayers(artLayers)
+                    _artworkOverlay.playEntrances()
+                }
             }
             return true
         } catch (e) {

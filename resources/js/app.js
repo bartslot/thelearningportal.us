@@ -4,6 +4,7 @@ import Sortable                from 'sortablejs';
 import { createTour } from './onboarding/tour.js';
 import { initTooltips } from './tooltip.js';
 import { watchCarousels } from './carousel.js';
+import { easingPreview } from './easing-preview.js';
 
 window.Sortable = Sortable;
 
@@ -18,6 +19,10 @@ watchCarousels();
 // Registered as a global (like wavePlayer in the app layout) so the Blade view can call it without
 // waiting on alpine:init ordering.
 window.onboardingTour = createTour;
+
+// Animated easing swatches for the wizard's Animate tab: x-data="easingPreview('enter')".
+// Same global-factory pattern, for the same reason.
+window.easingPreview = easingPreview;
 
 // The 3D scene system (three.js, ~1.7 MB) is used ONLY by the lesson-creation wizard. Load it on
 // demand via window.loadLessonScene() so the landing page and other app pages never download three.
