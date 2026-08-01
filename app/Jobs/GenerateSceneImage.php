@@ -119,8 +119,11 @@ class GenerateSceneImage implements ShouldQueue
             if (! $hit) {
                 continue;
             }
-            $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/bg.jpg";
-            if ($sourcer->download($hit['url'], $path) === null) {
+            // The sourcer re-encodes as it stores, so the path it RETURNS is the real one — asking
+            // for bg.jpg gets you bg.avif. Using the requested name here would record a file that
+            // does not exist.
+            $path = $sourcer->download($hit['url'], "lessons/{$scene->lesson_id}/scenes/{$scene->id}/bg.jpg");
+            if ($path === null) {
                 continue;
             }
             $config = $scene->config ?? [];

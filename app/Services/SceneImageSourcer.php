@@ -8,6 +8,7 @@ use App\Models\Corpus\Artwork;
 use App\Models\Corpus\Topic;
 use App\Support\PortraitFocus;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -358,8 +359,12 @@ class SceneImageSourcer
     }
 
     /**
-     * Download an image and store it on the public disk, returning the stored path (or null).
+     * Download an image, shrink it to a stage-sized AVIF, and store it on the public disk.
      * Records nothing itself — the caller decides which scene/gallery it belongs to.
+     *
+     * RETURNS THE STORED PATH, WHICH IS USUALLY NOT $path: originals come down as 3 MB JPEGs and
+     * leave as ~100 KB AVIFs, so the extension changes. Callers must use the returned value rather
+     * than the path they asked for.
      */
     public function download(string $url, string $path): ?string
     {
@@ -368,9 +373,28 @@ class SceneImageSourcer
             if (! $res->successful() || $res->body() === '') {
                 return null;
             }
-            Storage::disk('public')->put($path, $res->body());
 
-            return $path;
+            $original = $res->body();
+
+            try {
+                $optimised = BackgroundImageOptimizer::fromConfig()->optimise($original);
+                $path = preg_replace('/\.[^.\/]+$/', '', $path).'.'.$optimised['extension'];
+                Storage::disk('public')->put($path, $optimised['bytes']);
+
+                return $path;
+            } catch (Throwable $e) {
+                // A background we cannot re-encode is still a background. Store the original rather
+                // than leaving the scene blank, and say so — a run full of these means the encoder
+                // is missing on this machine, not that the images are bad.
+                Log::warning('SceneImageSourcer: optimisation failed, storing the original', [
+                    'url' => $url,
+                    'bytes' => strlen($original),
+                    'error' => $e->getMessage(),
+                ]);
+                Storage::disk('public')->put($path, $original);
+
+                return $path;
+            }
         } catch (Throwable) {
             return null;
         }

@@ -456,8 +456,10 @@ class LessonComposer
             return;
         }
 
-        $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/bg.jpg";
-        if ($this->images->download($hit['url'], $path) === null) {
+        // The sourcer re-encodes as it stores, so the path it RETURNS is the real one — asking for
+        // bg.jpg gets you bg.avif. Recording the requested name would point the scene at nothing.
+        $path = $this->images->download($hit['url'], "lessons/{$scene->lesson_id}/scenes/{$scene->id}/bg.jpg");
+        if ($path === null) {
             $this->say("     ! download failed for '{$query}'");
 
             return;

@@ -72,6 +72,23 @@ return [
     // AI generation is therefore OFF by default and must be switched on deliberately.
     'imagery' => [
         'ai_generation' => (bool) env('AI_IMAGE_GENERATION', false),
+
+        // Every sourced background is resized to fit this stage and squeezed under the byte cap.
+        // Originals arrive at 3840px and 1.7-3 MB; sixteen of those is a lesson a school's wifi
+        // cannot open. AVIF gets under 100 KB at a quality WebP needs twice the bytes to match.
+        'max_bytes' => (int) env('BACKGROUND_MAX_BYTES', 100_000),
+        'max_width' => (int) env('BACKGROUND_MAX_WIDTH', 1920),
+        'max_height' => (int) env('BACKGROUND_MAX_HEIGHT', 1080),
+
+        // Highest quality the search may spend, and how hard AOM works (0-10, lower is slower).
+        'start_quality' => (int) env('BACKGROUND_START_QUALITY', 60),
+        'encoder_speed' => (int) env('BACKGROUND_ENCODER_SPEED', 6),
+
+        // AV1 film grain, drawn by the DECODER from ~100 bytes of parameters rather than baked
+        // into the pixels. Presets 1-16 are different grain MODELS, not a weak-to-strong dial —
+        // compare them with scripts/test-avif-grain-presets.sh before changing this. 0 disables.
+        'grain_preset' => (int) env('BACKGROUND_GRAIN_PRESET', 1),
+        'avifenc_path' => (string) env('AVIFENC_PATH', 'avifenc'),
     ],
 
     'openai' => [
