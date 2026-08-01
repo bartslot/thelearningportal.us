@@ -64,3 +64,6 @@ tests/playwright/results/
 tests/playwright/report/
 .env.*
 .env.bak*
+
+# Throwaway visual comparison built by scripts/… for judging background optimisation by eye.
+/public/bg-compare
