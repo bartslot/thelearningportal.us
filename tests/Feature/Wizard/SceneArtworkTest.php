@@ -306,7 +306,12 @@ class SceneArtworkTest extends TestCase
         $this->assertSame('embed', $layer['kind']);
         $this->assertSame('sketchfab', $layer['embed']['type']);
         $this->assertStringContainsString('5122ceb52cfd4bf5be518fdf693efbb3', $layer['embed']['src']);
-        $this->assertStringContainsString('ui_controls=0', $layer['embed']['src']);   // clean, no chrome
+        // A model arrives grabbable: the Interact toggle defaults on, and EmbedParser maps that to
+        // Sketchfab's orbit controls. The chrome we don't want (badges, help, watermark, VR) is
+        // still off — the assertion below is the one that guards that.
+        $this->assertStringContainsString('ui_controls=1', $layer['embed']['src']);
+        $this->assertStringContainsString('ui_infos=0', $layer['embed']['src']);
+        $this->assertStringContainsString('ui_watermark=0', $layer['embed']['src']);
         $this->assertIsInt($layer['asset_id']);   // synthetic id → move/reorder/delete plumbing works
     }
 
