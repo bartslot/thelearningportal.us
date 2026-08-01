@@ -453,7 +453,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     if (placeMarkers) { map.off('move', placeMarkers); placeMarkers = null; }
     if (legHoverMove) { map.off('mousemove', legHoverMove); legHoverMove = null; }
     if (legHoverHide) { map.off('zoom', legHoverHide); map.off('movestart', legHoverHide); legHoverHide = null; }
-    Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place && c !== info) c.remove(); });
+    // chip and place are the only permanent HUD children; everything else belongs to the leg
+    // being torn down. (The bottom-left info line used to live here too — it is now published to
+    // the player via publishInfo, and the stale reference to its element threw on every leg
+    // change, which stopped a voyage scene dead.)
+    Array.from(hud.children).forEach((c) => { if (c !== chip && c !== place) c.remove(); });
     arrivalPins = []; arrivalHotspot = null; arrivalHandles = []; layoutInsertHandles = null;
   };
 
