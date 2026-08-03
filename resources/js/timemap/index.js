@@ -12,6 +12,7 @@ import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 import nationalColors from './national-colors.json';
 import { SATELLITE_SOURCE, DEM_SOURCE } from '../map-imagery.js';
+import { OCEAN_SOURCE, oceanLayers, createOcean } from '../map-ocean.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -64,6 +65,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // Real satellite ground for the Satellite style (keyless NASA GIBS Blue Marble). Hidden in
         // every other style, so its tiles are never requested there.
         satellite: SATELLITE_SOURCE,
+        // The shape of the sea, for the moving water that covers Blue Marble's painted ocean
+        // depths. Empty until the Satellite style is picked — see map-ocean.js.
+        ocean: OCEAN_SOURCE,
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -78,6 +82,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
         // Satellite ground — bottom of the stack, under the whole atlas. Satellite style only.
         { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        // Moving water over that photographed ocean — Satellite style only, straight on top of the
+        // imagery so the whole drawn atlas still goes above it.
+        ...oceanLayers(),
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time). Beneath the
         // coast/land. Recolored + toggled per style by applyMapStyle (atlas styles only).
         { id: 'graticule', type: 'line', source: 'graticule', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8a9aa0', 'line-width': 0.6, 'line-opacity': 0.5 } },
@@ -117,6 +124,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   // Exposed for dev tooling and the Playwright spec (layer/feature introspection).
   window.__tmMap = map;
+
+  // The moving sea. Idle until applyMapStyle asks for it, which only the Satellite style does.
+  const ocean = createOcean(map, { coastlineUrl: `${location.origin}/timemap/coastline.geojson` });
 
   // Dark "space" behind the globe: a very-dark-blue centre fading to near-black at the corners (a
   // vignette). The WebGL canvas is transparent outside the globe, so this container background shows
@@ -428,6 +438,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const photo = !!s.imagery;
     const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
     vis('satellite', photo);
+    // …and the imagery's painted ocean depths go under a flat, slowly moving sea.
+    ocean.show(photo);
     for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
     // The bold ink shore would fence off a real coastline; keep it as a faint guide line.
     if (map.getLayer('coast-bold')) map.setPaintProperty('coast-bold', 'line-opacity', photo ? 0.4 : 1);

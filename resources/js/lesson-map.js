@@ -17,6 +17,7 @@ import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
 import { mapTextProjector } from './map-text-projector.js'
 import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
+import { OCEAN_SOURCE, oceanLayers, createOcean } from './map-ocean.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -132,6 +133,9 @@ export function renderLessonMap (el, opts = {}) {
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         // Satellite style only — tiles are requested lazily, so the other styles pay nothing for it.
         satellite: SATELLITE_SOURCE,
+        // The shape of the sea, for the moving water that covers Blue Marble's painted ocean
+        // depths. Empty until the Satellite style is picked — see map-ocean.js.
+        ocean: OCEAN_SOURCE,
         // Height map behind the 3D terrain (`relief`). Only fetched once terrain is switched on.
         dem: DEM_SOURCE,
         // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
@@ -142,6 +146,9 @@ export function renderLessonMap (el, opts = {}) {
         // Real satellite ground (Satellite style only — hidden otherwise, so no tiles are fetched).
         // Sits directly on the background: everything else in the atlas draws over it.
         { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        // Moving water over that photographed ocean — Satellite style only, straight on top of the
+        // imagery so the rest of the atlas still draws above it.
+        ...oceanLayers(),
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time), beneath the coast/land.
         { id: 'graticule', type: 'line', source: 'graticule', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b9277', 'line-width': 0.55, 'line-opacity': 0.5 } },
         // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
@@ -234,6 +241,9 @@ export function renderLessonMap (el, opts = {}) {
   if (interactive) {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
   }
+
+  // The moving sea. Idle until applyStyle asks for it, which only the Satellite style does.
+  const ocean = createOcean(map, { coastlineUrl: `${location.origin}/timemap/coastline.geojson` })
 
   // Highlight + fit to the target polity once tiles for this area have loaded.
   // `activeQid` is mutable so a territory can be re-linked in place (setPolity) without
@@ -578,6 +588,8 @@ export function renderLessonMap (el, opts = {}) {
     // Satellite: show the photographed ground and hide everything that draws a substitute for it.
     const photo = !!s.imagery
     vis('satellite', photo)
+    // …and the imagery's painted ocean depths go under a flat, slowly moving sea.
+    ocean.show(photo)
     for (const drawn of ['land', 'graticule', 'coast-shadow', 'lakes']) vis(drawn, !photo)
     // The ink shore would fence off a real coastline; keep it as a faint guide line instead.
     paint('coast-bold', 'line-opacity', photo ? 0.4 : 1)
@@ -703,7 +715,7 @@ export function renderLessonMap (el, opts = {}) {
     revealAllLabels: () => { revealAll = true; applyLabelReveal() },
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
-    destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
+    destroy: () => { try { anno?.destroy() } catch (_) {} try { ocean.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
   }
 }
 
