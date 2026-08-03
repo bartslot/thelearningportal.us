@@ -8,6 +8,7 @@
     {{-- lesson-map.js (+ the ~1 MB MapLibre/volcanoes chunk) is loaded on demand by
          lesson-player.js only when a lesson actually contains a map scene. --}}
     @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js'])
+    <x-audio-manifest />
 </head>
 <body class="h-full overflow-hidden bg-[#020617]">
 
@@ -42,6 +43,10 @@
         // Does this lesson start with the narration written along the bottom? The teacher sets the
         // starting state; the student can still toggle it (C) while it plays.
         'subtitles'             => (bool) $lesson->subtitles,
+
+        // Does a music bed play under the narration? Off unless the teacher turned it on — most
+        // lessons run on a classroom speaker, where music under a voice is the last thing wanted.
+        'background_music'      => (bool) $lesson->background_music,
         'include_game'          => (bool) $lesson->include_game,
         'game_type'             => $lesson->game_type,
         'game_config'           => $lesson->game_config,
@@ -167,7 +172,10 @@
     {{-- Teacher clipart layers a scene carries ON TOP of the voyage map. z-30 (below text) by default,
          raised to z-32 when the teacher stacked clipart above text — mirrors the editor's ordering.
          Read-only in playback (pointer-events:none) so it never steals a map pan. --}}
-    <div id="lesson-voyage-art" class="absolute inset-0 z-30 pointer-events-none" style="display:none"></div>
+    {{-- No z class here: the layer NODES carry the level (ArtworkOverlay.setStackLevels(30, 32)).
+         A positioned host with a z-index is a stacking context, which would trap a layer's blend
+         mode inside this overlay and leave Multiply with nothing to blend against. --}}
+    <div id="lesson-voyage-art" class="absolute inset-0 pointer-events-none" style="display:none"></div>
 
     {{-- Quiz question cards (QuizOverlay mounts here during quiz segments). --}}
     <div id="lesson-game-overlay" class="absolute inset-0 z-30 pointer-events-none"></div>
@@ -347,12 +355,17 @@
 
             {{-- Center play/pause — a bare solid white glyph, exactly as in the design (no disc,
                  no chrome). The button box is bigger than the glyph for a comfortable hit target.
-                 Hidden on quiz scenes, where the centre belongs to the quiz card. Every other scene
-                 has something to pause: narration, or a voyage's sailing ship. --}}
+                 Hidden on quiz scenes, where the centre belongs to the quiz card.
+
+                 It answers a PRESS. It used to show whenever nothing happened to be playing, which
+                 on an interactive scene — a voyage landfall waiting for the class to move on — left
+                 a 96px triangle parked over the map the whole time. Now it flashes when the student
+                 presses play or pause (deck button, K, Space, a click on the stage) and stays up
+                 while the lesson is genuinely paused. See _flashPlaybackGlyph. --}}
             <div x-show="(phase === 'INTRO' || phase === 'GAME_ACTIVE' || phase === 'GAME_BRIEF') && !currentIsGame"
                  x-cloak
                  class="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300"
-                 :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'opacity-0' : 'opacity-100'"
+                 :class="(!readingOverlay && (playbackPaused || playbackGlyph)) ? 'opacity-100' : 'opacity-0'"
                  style="z-index:45">
                 {{-- No data-tooltip here on purpose: a 96px glyph in the middle of the stage says
                      what it is, and a hover hint floating over the scene is noise. The deck's small
@@ -360,7 +373,7 @@
                 <button type="button" @click="togglePlayback()"
                         :aria-label="playbackPaused ? @js(__('Play')) : @js(__('Pause'))"
                         class="group flex h-24 w-24 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                        :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'pointer-events-none' : 'pointer-events-auto'">
+                        :class="(!readingOverlay && (playbackPaused || playbackGlyph)) ? 'pointer-events-auto' : 'pointer-events-none'">
 
                     <svg x-show="playbackPaused" class="h-14 w-14 text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.8)] transition-transform duration-150 ease-out group-hover:scale-110 group-active:scale-95" viewBox="0 0 21 23" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path fill-rule="evenodd" clip-rule="evenodd" d="M0 2.52873C0 0.608107 2.05916 -0.609418 3.74205 0.316169L19.2842 8.86436C21.0285 9.82373 21.0285 12.3301 19.2842 13.2895L3.74205 21.8377C2.05916 22.7633 0 21.5457 0 19.6251V2.52873Z" fill="white"/>

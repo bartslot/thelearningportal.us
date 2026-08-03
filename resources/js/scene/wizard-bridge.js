@@ -860,7 +860,10 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         // overflow:visible so clipart can be dragged to bleed off the stage edge while editing
         // (a design-tool expectation). Playback clips at the stage via ParallaxScene, so the
         // off-stage part isn't shown to students.
-        host.style.cssText = 'position:absolute;inset:0;overflow:visible;z-index:2;pointer-events:none;'
+        // No z-index here on purpose: the layer NODES carry it (ArtworkOverlay.setStackLevels).
+        // A positioned host with a z-index is a stacking context, which traps mix-blend-mode
+        // inside the overlay so a Multiply layer has nothing but transparency to blend with.
+        host.style.cssText = 'position:absolute;inset:0;overflow:visible;pointer-events:none;'
         parent.appendChild(host)
         _artworkHost = host
         return host
@@ -989,7 +992,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 // list). The host is cached with z-index:2, so re-apply the flag on every scene load.
                 const clipartOnTop = !!payload.clipartOnTop
                 _artworkOverlay.setOnTop(clipartOnTop)
-                artHost.style.zIndex = clipartOnTop ? '8' : '2'
+                _artworkOverlay.setStackLevels(2, 8)   // on the nodes — a z-index here would break blending
                 // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
                 const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.depth, l.blur, l.opacity, String(l.url || '').split('?')[0]]))
                 // Re-seed only on a real change, then replay the entrances so the teacher sees

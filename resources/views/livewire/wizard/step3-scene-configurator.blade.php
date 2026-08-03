@@ -69,7 +69,7 @@
              (z-7) by default; raised to z-8 when the teacher stacks clipart above text. The host is
              transparent + pointer-events:none (only the layer nodes catch), so map panning still
              works between layers. --}}
-        <div id="lesson-voyage-art" class="absolute inset-0 z-6" style="display:none; pointer-events:none;"></div>
+        <div id="lesson-voyage-art" class="absolute inset-0" style="display:none; pointer-events:none;"></div>
     </div>
 
     {{-- Work-area sync — keep the stage's right edge glued to the live inspector width (16rem
@@ -288,7 +288,9 @@
             const layers = ((p.shots || [])[0]?.layers || []).filter((l) => l && (l.url || l.embed) && l.asset_id != null)
             const onTop = !!(p.config || {}).clipart_on_top
             overlay.setOnTop(onTop)
-            h.style.zIndex = onTop ? '8' : '6'      // above text (7) when stacked on top, else below it
+            // Levels go on the LAYER NODES, not this host: a host with a z-index is a stacking
+            // context, and that traps mix-blend-mode inside the overlay with an empty backdrop.
+            overlay.setStackLevels(6, 8)            // above text (7) when stacked on top, else below it
             h.style.display = ''
             // Skip re-seeding on identical poll re-renders — it would reset an in-progress drag.
             const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || (l.embed && l.embed.src) || '').split('?')[0]]))
@@ -317,6 +319,7 @@
         let lastVoyageId = null       // the mounted voyage's id — the ONLY thing that forces a REBUILD
         let lastVoyageDefStr = null   // last applied route geometry (waypoints/legs) — reshaped in place
         let lastLeg = null            // last-played leg index (for the no-rebuild leg switch)
+        let lastOverview = false      // was the last voyage scene the itinerary? (same switch, other mode)
         let lastGalleryId = null      // mounted standalone-gallery scene id — content edits refresh in place
         let currentSceneId = null     // the selected scene (callbacks read this, not the mount-time id)
         // Identity of the MAP is the VOYAGE ID alone. Switching legs, editing the route geometry
@@ -328,7 +331,7 @@
             host.innerHTML = ''
             host.style.display = 'none'
             hideMapArt()
-            lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null; lastGalleryId = null
+            lastKey = null; lastVoyageId = null; lastVoyageDefStr = null; lastLeg = null; lastGalleryId = null; lastOverview = false
         }
 
         // A re-mount key for voyage/gallery scenes: only scene-DEFINING bits belong in it, so the
@@ -410,7 +413,16 @@
                     if (defChanged && typeof inst.setVoyageDef === 'function') {
                         try { inst.setVoyageDef(p.voyage_def, legNow) } catch (_) {}
                     }
-                    if (legChanged) {
+                    // The itinerary is a MODE, not a leg. Switching to it on this path used to fall
+                    // through to playLeg/refreshArrivalContent, which rebuilt the leg's landfall
+                    // handles — so walking overview → waypoint → overview left the amber Destination
+                    // X sitting on the whole-trip map. Ask for the mode the scene actually wants.
+                    const wantsOverview = !!cfg.overview
+                    if (wantsOverview) {
+                        try { inst.showOverview({ animate: false }) } catch (_) {}
+                    } else if (legChanged || lastOverview) {
+                        // `|| lastOverview`: coming back from the itinerary the leg index is often
+                        // unchanged, and without this the map would stay zoomed out on the whole trip.
                         try {
                             inst.playLeg(legNow, {
                                 intro: !!cfg.intro,
@@ -432,7 +444,7 @@
                             })
                         } catch (_) {}
                     }
-                    lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr
+                    lastKey = key; lastLeg = legNow; lastVoyageDefStr = defStr; lastOverview = wantsOverview
                     showMapArt(p)   // keep the clipart layers in sync (a poll/leg switch may add/move one)
                     return
                 }
@@ -452,6 +464,9 @@
                 lastVoyageId = cfg.voyage
                 lastVoyageDefStr = JSON.stringify(p.voyage_def || null)
                 lastLeg = Number(cfg.leg) || 0
+                // `cfg`, not `vcfg`: the same scene config, but vcfg is declared further down and
+                // reading it here threw before the tour ever mounted.
+                lastOverview = !!cfg.overview
                 host.style.display = 'block'
                 const stageInner = document.createElement('div')
                 stageInner.style.width = '100%'
@@ -471,6 +486,7 @@
                         relief: Number(p.lesson_map_relief) || 0,
                         legLabels: p.leg_labels || [],
                         paintedFog: p.voyage_fog || [],     // teacher-painted undiscovered regions
+                        overviewAnim: vcfg.overview_anim || null,   // itinerary: draw the route on
                         {{-- Read currentSceneId (not the mount-time id) so a no-rebuild leg switch still
                              saves edits against the scene now on screen. --}}
                         onGalleryEdit: (field, value) =>
@@ -727,7 +743,11 @@
                   {{ $inspectorSceneModel?->kind === 'game' ? 'w-[min(48rem,calc(100vw-1rem))]' : 'w-[min(16rem,calc(100vw-1rem))]' }}">
         <div x-show="inspectorOpen"
              x-transition.opacity.duration.150ms
-             class="card-body overflow-y-auto p-4"
+             {{-- overflow-x-hidden, not the default `auto`: anything a shade too wide for the panel
+                  (a long select, the easing curves at a narrow width) gave the body a sideways
+                  scroll, and once it had scrolled a few pixels every label lost its first letter —
+                  "Transition" read as "RANSITION". Nothing in an inspector wants sideways scroll. --}}
+             class="card-body overflow-y-auto overflow-x-hidden p-4"
              :style="inspectorBodyStyle()">
             @if ($activeTextId && ($activeText = $this->activeText))
             {{-- Text and backing-panel controls live in Format, never over the canvas object. --}}
@@ -789,7 +809,7 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @elseif ($sceneModel->kind === 'voyage')
-                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" />
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" :stops="$this->voyageStops()" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @else
@@ -816,6 +836,10 @@
                 </div>
             @endif
 
+            {{-- Hidden from a landing-page demo guest: LessonWizard::clampForGuestDemo() pins them
+                 to steps 4-5, so this would silently land them back on the screen they were already
+                 looking at. A button that appears to do nothing is worse than no button. --}}
+            @unless (auth()->user()?->isGuestDemo())
             <div class="space-y-1.5">
                 <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Story') }}</span>
                 <p class="text-xs text-slate-400">{{ __('The narrative arc and framework this lesson is built on.') }}</p>
@@ -824,6 +848,7 @@
                     {{ __('Edit story') }}
                 </a>
             </div>
+            @endunless
 
             {{-- SUBTITLES — whether the lesson starts with the narration written along the bottom.
                  A class that needs captions should have them from the first scene, not after
@@ -874,39 +899,20 @@
                 </div>
             </div>
 
-            <div class="mt-6 pt-4 border-t border-slate-700/50" x-data="musicStrip">
-                <div class="mb-2 flex items-center justify-between">
-                    <span class="text-[10px] uppercase tracking-widest text-slate-500">Background Music</span>
-                    @if($lesson->background_music)
-                        <button wire:click="selectMusic('')" class="text-[10px] text-slate-500 transition-colors hover:text-rose-400">✕ off</button>
-                    @endif
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    @foreach($this->musicTracks() as $track)
-                    @php $url = asset('sound/bg-music/' . $track['file']); @endphp
-                    <button
-                        x-on:click="toggle('{{ $track['id'] }}', '{{ $url }}')"
-                        wire:click="selectMusic('{{ $track['id'] }}')"
-                        :class="selectedId === '{{ $track['id'] }}' ? 'border-amber-400' : 'border-slate-700/60 hover:border-indigo-500/50'"
-                        class="{{ $track['gradient_class'] }} relative cursor-pointer rounded-xl border p-2 transition-all"
-                        style="min-height:64px;"
-                        title="{{ $track['label'] }}"
-                        x-init="@if($lesson->background_music === $track['id']) selectedId = '{{ $track['id'] }}' @endif"
-                    >
-                        <div class="absolute right-1 top-1 z-10">
-                            <span x-show="playingId === '{{ $track['id'] }}'" class="flex h-3 items-end gap-0.5 text-indigo-400">
-                                <span class="wave-bar h-3"></span><span class="wave-bar h-2"></span><span class="wave-bar h-3"></span>
-                            </span>
-                            <span x-show="playingId !== '{{ $track['id'] }}' && selectedId === '{{ $track['id'] }}'" class="text-xs leading-none text-amber-400">✓</span>
-                        </div>
-                        <div class="mt-1 flex h-6 items-center justify-center">
-                            <svg class="h-5 w-5 text-white/50" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/></svg>
-                        </div>
-                        <p class="mt-1 truncate text-center text-[10px] leading-tight text-white/80">{{ $track['label'] }}</p>
-                    </button>
-                    @endforeach
-                </div>
-                <p class="mt-1 text-[10px] text-slate-600">Click to preview (20s). Selected track plays during lesson.</p>
+            {{-- BACKGROUND MUSIC — a quiet bed under the narration. One switch, not a picker: there
+                 is one soundtrack, and the player shuffles and crossfades it by itself. Off unless
+                 the teacher asks for it, because music under a voice on a classroom speaker makes
+                 the narration harder to follow. Students can still mute it with everything else. --}}
+            <div class="mt-6 border-t border-slate-700/50 pt-4">
+                <label class="flex items-center justify-between gap-3">
+                    <span>
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Background music') }}</span>
+                        <span class="mt-0.5 block text-xs text-slate-400">{{ __('Play a quiet music bed under the narration.') }}</span>
+                    </span>
+                    <input type="checkbox" @checked($lesson->background_music)
+                           wire:change="setBackgroundMusic($event.target.checked)"
+                           class="toggle toggle-sm toggle-warning shrink-0" />
+                </label>
             </div>
             @endif
         </div>
@@ -1079,8 +1085,9 @@
                 const onTop = textIds.length ? (avg(artRowIds) < avg(textIds)) : (layer.onTop ?? false);
                 layer.setOnTop(onTop);
                 const paintOrder = layer.reorder(artRowIds.map((id) => Number(id.slice(4))));  // bottom-first
-                const host = document.querySelector('.wizard-artwork-host');
-                if (host) host.style.zIndex = onTop ? '8' : '2';  // above (8) / below (2) the text overlay
+                // setOnTop above already restacked the layer NODES. The host must stay free of a
+                // z-index — one there is a stacking context, which stops blend modes reaching the
+                // scene behind them.
                 window.Livewire?.dispatch('artwork:reorder', { assetIds: paintOrder, onTop });
             },
             // Click a row → select that object: highlight the row, ring the object on the canvas
@@ -1391,6 +1398,19 @@
             <span class="text-[10px] font-medium">{{ __('Settings') }}</span>
         </button>
 
+        {{-- Publishing belongs to account holders. A landing-page demo guest is editing a
+             throwaway copy (App\Services\GuestDemoSession), so the Publish menu is replaced by
+             the one thing that would make their edits keepable. --}}
+        @if (auth()->user()?->isGuestDemo())
+        <a href="{{ route('login') }}"
+           class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-amber-300 transition hover:bg-slate-800"
+           data-tooltip="{{ __('Create an account to keep this lesson') }}" aria-label="{{ __('Create an account') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Sign up') }}</span>
+        </a>
+        @else
         {{-- Publish — now, or schedule for later (every scene must be ready) --}}
         <div x-data="{ open: false, when: '' }" class="relative" @click.outside="open = false" @keydown.escape.window="open = false">
             <button type="button" @click="open = !open"
@@ -1439,6 +1459,7 @@
                 @endif
             </div>
         </div>
+        @endif
         </div>
     </div>
 
@@ -1955,7 +1976,16 @@
                             @click="const c = (window.__voyageCenter && window.__voyageCenter()) || null; $wire.addScene('voyage', null, c ? c.lng : null, c ? c.lat : null)"
                             class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
                         <x-lesson.scene-type-thumb kind="voyage" />
-                        <span class="text-sm font-medium text-slate-200">Route waypoint</span>
+                        <span class="text-sm font-medium text-slate-200">{{ __('Route') }}</span>
+                    </button>
+                    {{-- The itinerary: the whole trip on one screen. Same scene kind as a stop on the
+                         route — it just stops nowhere — so it belongs beside it here. --}}
+                    <button type="button" wire:click="addScene('voyage-overview')"
+                            class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                        <div class="grid aspect-video place-items-center rounded-box border border-slate-700/60 bg-base-300/60 text-indigo-300">
+                            <x-lesson.icon-voyage-overview class="h-10 w-auto" />
+                        </div>
+                        <span class="text-sm font-medium text-slate-200">{{ __('Overview') }}</span>
                     </button>
                 @endif
             </div>
@@ -2198,44 +2228,6 @@
         function registerStep3() {
             if (window.__step3AlpineRegistered) return;
             window.__step3AlpineRegistered = true;
-
-            Alpine.data('musicStrip', () => ({
-                playingId: null,
-                selectedId: null,
-                _audio: null,
-                _timer: null,
-
-                toggle(trackId, url) {
-                    // Stop current preview
-                    if (this._audio) { this._audio.pause(); this._audio = null; }
-                    clearTimeout(this._timer);
-
-                    if (this.playingId === trackId) {
-                        this.playingId = null;
-                        return;
-                    }
-
-                    this.selectedId = trackId;
-                    this.playingId  = trackId;
-                    const audio = new Audio(url);
-                    audio.volume = 0.6;
-                    audio.play().catch(() => {});
-                    this._audio = audio;
-
-                    // Auto-stop after 20s
-                    this._timer = setTimeout(() => {
-                        audio.pause();
-                        this._audio = null;
-                        this.playingId = null;
-                    }, 20000);
-
-                    audio.addEventListener('ended', () => {
-                        this.playingId = null;
-                        this._audio = null;
-                        clearTimeout(this._timer);
-                    });
-                },
-            }));
 
             Alpine.data('step3SceneConfigurator', () => ({
                 // The Format panel is FIXED (docked right, below the header) — the old floating

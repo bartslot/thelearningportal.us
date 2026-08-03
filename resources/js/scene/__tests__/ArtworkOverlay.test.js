@@ -57,12 +57,18 @@ describe('ArtworkOverlay — resize handles', () => {
 })
 
 describe('ArtworkOverlay — blend mode', () => {
-  it('applies the blend mode to the image so the layer mixes with the scene', () => {
+  const node = (el, id = 'art_1') => el.querySelector(`[data-layer-id="${id}"]`)
+
+  // The blend must sit on the NODE. On the <img> it did nothing visible: the node carries a
+  // transform, which makes it a stacking context, so the img could only ever blend with the
+  // node's own empty backdrop. This is the regression that shipped once already.
+  it('puts the blend on the layer node, not the image', () => {
     const el = host()
     const overlay = new ArtworkOverlay(el)
     overlay.setLayers([layer({ blend: 'multiply' })])
 
-    expect(el.querySelector('img').style.mixBlendMode).toBe('multiply')
+    expect(node(el).style.mixBlendMode).toBe('multiply')
+    expect(el.querySelector('img').style.mixBlendMode).toBe('')
   })
 
   it('leaves an unblended layer alone', () => {
@@ -70,7 +76,8 @@ describe('ArtworkOverlay — blend mode', () => {
     const overlay = new ArtworkOverlay(el)
     overlay.setLayers([layer(), layer({ asset_id: 2, blend: 'normal' })])
 
-    for (const img of el.querySelectorAll('img')) expect(img.style.mixBlendMode).toBe('')
+    expect(node(el).style.mixBlendMode).toBe('')
+    expect(node(el, 'art_2').style.mixBlendMode).toBe('')
   })
 
   it('blends in playback too, or the editor would be lying about the result', () => {
@@ -78,6 +85,22 @@ describe('ArtworkOverlay — blend mode', () => {
     const overlay = new ArtworkOverlay(el, { readonly: true })
     overlay.setLayers([layer({ blend: 'screen' })])
 
-    expect(el.querySelector('img').style.mixBlendMode).toBe('screen')
+    expect(node(el).style.mixBlendMode).toBe('screen')
+  })
+
+  // A z-index on the host makes it a stacking context, which is exactly what stopped the blend
+  // reaching the map. The level belongs on the nodes so the host stays transparent to stacking.
+  it('stacks the nodes and never the host, so a blend can reach what is behind it', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setStackLevels(6, 8)
+    overlay.setLayers([layer({ blend: 'multiply' })])
+
+    expect(el.style.zIndex).toBe('')
+    expect(node(el).style.zIndex).toBe('6')
+
+    overlay.setOnTop(true)
+    expect(node(el).style.zIndex).toBe('8')
+    expect(el.style.zIndex).toBe('')
   })
 })

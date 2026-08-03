@@ -24,6 +24,8 @@ import { sceneTransitionFrames, easingBezier, EASINGS } from './scene/animations
 // Easing key → cubic-bezier, for the scene transition set in the wizard's Animate tab.
 const SCENE_EASINGS = Object.fromEntries(EASINGS.map(e => [e.key, easingBezier(e.key)]))
 import { buildCues, cueAt } from './scene/captions.js'
+import { createBackgroundMusic } from './scene/background-music.js'
+import { Sfx } from './scene/sfx.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -129,6 +131,7 @@ let _mapTimer       = null   // timed-mode auto-advance timer
 let _voyageInstance = null   // voyage tour instance (kind 'voyage'; outside Alpine's proxy)
 let _galleryInstance = null  // gallery slideshow instance (kind 'gallery'; outside Alpine's proxy)
 let _autoAdvanceRaf = null    // voyage auto-advance progress loop
+let _music          = null   // BackgroundMusic bed (owns its own Audio elements; outside Alpine's proxy)
 let _initDone       = false  // guard: prevent double-init from Vite HMR / Alpine re-mount
 let _parallax       = null   // live ParallaxScene instance (layered bg+hero shot, E3b)
 let _parallaxMod    = null   // cached ./scene/ParallaxScene.js module (lazy-loaded once)
@@ -161,6 +164,12 @@ Alpine.data('lessonGame', (lesson) => ({
     audioMuted: false,
     volumeLevel: 1.0,  // narration volume (0..1) — the deck's slider; survives scene changes
     playbackPaused: false,  // student paused the stage (narration AND any scene animation)
+    // The big centre play/pause glyph. It answers a press — it is not a state light. It used to
+    // show whenever nothing happened to be playing, which on an interactive scene (a voyage
+    // landfall waiting for the class) meant a 96px triangle parked over the map for as long as
+    // anyone looked at it. Now: it flashes when the student presses play or pause, and it stays up
+    // while the lesson is actually paused. Nothing else brings it back.
+    playbackGlyph: false,
     readingOverlay: false,  // a gallery/reading surface owns the screen → the player shows no chrome
     // The bottom-left chapter line. A voyage leg reports its own place + date (they change as the
     // ship sails); everything else falls back to the scene's chapter name and year.
@@ -229,6 +238,11 @@ Alpine.data('lessonGame', (lesson) => ({
       // switch them back on in every lesson.
       const remembered = (() => { try { return localStorage.getItem('lp:captions') } catch (_) { return null } })()
       this.captionsOn = remembered === null ? !!lesson.subtitles : remembered === '1'
+
+      // The quiz's right-answer chime obeys the deck from the first question, and is fetched now
+      // so the first correct answer isn't waiting on a download.
+      this._syncSoundLevels()
+      Sfx.preload('correct')
 
       const { year, location } = extractYearAndLocation(lesson)
       this.lessonYear     = year
@@ -474,8 +488,25 @@ Alpine.data('lessonGame', (lesson) => ({
         } catch (e) { console.warn('lesson-player: story game engine failed to load', e) }
       }
 
+      // The music bed starts with the lesson, not with the title screen: the student pressed Play
+      // a moment ago, so the browser will let it make a sound. It is created here rather than in
+      // init() so a lesson opened and never started never downloads a track.
+      this._startBackgroundMusic()
+
       this.phase = 'INTRO'
       this._playIntro()
+    },
+
+    // ── Background music ───────────────────────────────────────────────
+    // A per-lesson choice by the teacher. The bed shuffles and crossfades on its own; all this
+    // has to do is hand it the student's volume and stop it when the lesson does.
+    _startBackgroundMusic () {
+      if (_music) return
+      _music = createBackgroundMusic(lesson.background_music)
+      if (!_music) return
+      _music.setMuted(this.audioMuted)
+      _music.setVolume(this.volumeLevel)
+      _music.start()
     },
 
     // ── Background / Ken Burns ─────────────────────────────────────────
@@ -1458,9 +1489,23 @@ Alpine.data('lessonGame', (lesson) => ({
           relief: Number(lesson.map_relief) || 0,                   // …and the same 3D terrain
           legLabels,
           paintedFog: lesson.game_config?.voyage_fog || null, // teacher-painted undiscovered regions
+          overviewAnim: cfg.overview_anim || null,            // itinerary: draw the route on
           // On each arrival: show the carousel controls + start the 10s auto-advance.
           onArrived: () => { this.showMapContinue = true; this._startVoyageAuto() },
         })
+      }
+      // The itinerary scene: the whole voyage on one screen, no leg sailed. Same branch the editor
+      // takes (see step3-scene-configurator) — without it the player sailed leg 0 instead, so a
+      // scene the teacher had set to Overview arrived as just another waypoint.
+      if (cfg.overview) {
+        // Already fitted when it appears — no fly-in. A lesson that opens by panning across the
+        // world before it settles reads as the map loading, not as the itinerary being presented.
+        _voyageInstance.showOverview({ animate: false })
+        // Nothing sails, so no arrival will ever fire: hand the class the same controls a landfall
+        // gets — side arrows and the 10s auto-advance — or the lesson would stop here for good.
+        this.showMapContinue = true
+        this._startVoyageAuto()
+        return
       }
       _voyageInstance.playLeg(Number(cfg.leg) || 0, {
         intro: !!cfg.intro,
@@ -1654,7 +1699,7 @@ Alpine.data('lessonGame', (lesson) => ({
       this._artLayer = this._artLayer || new ArtworkOverlay(host, { readonly: true })
       const onTop = !!(scene.config || {}).clipart_on_top
       this._artLayer.setOnTop(onTop)
-      host.style.zIndex = onTop ? '32' : '30'   // above text (31) when stacked on top, else below it
+      this._artLayer.setStackLevels(30, 32)   // on the nodes: a z-index on the host would kill blending
       host.style.display = layers.length ? '' : 'none'
       this._artLayer.setLayers(layers)
       // Each layer arrives the way the teacher set it in the Animate tab. Run after setLayers,
@@ -1716,6 +1761,9 @@ Alpine.data('lessonGame', (lesson) => ({
     _endLesson () {
       if (this._audio && !this._audio.paused) this._audio.pause()
       if (this._timerInterval) clearInterval(this._timerInterval)
+      // The bed fades away over the closing screen rather than cutting on the last word.
+      try { _music?.stop() } catch (_) {}
+      _music = null
       try { this._teardownStageScene(true) } catch (_) { /* tear down the persistent voyage map */ }
       this.phase = 'ENDED'
       this.audioPlaying = false
@@ -1796,8 +1844,22 @@ Alpine.data('lessonGame', (lesson) => ({
       this.setPlaybackPaused(!this.playbackPaused)
     },
 
+    /**
+     * Show the centre glyph for a moment, as feedback for a press.
+     *
+     * While paused it simply stays (setPlaybackPaused leaves `playbackGlyph` true and the view
+     * keeps it on for as long as `playbackPaused` is). On resume it fades out on its own.
+     */
+    _flashPlaybackGlyph () {
+      this.playbackGlyph = true
+      clearTimeout(this._glyphTimer)
+      if (this.playbackPaused) return          // a pause is a state worth showing — leave it up
+      this._glyphTimer = setTimeout(() => { this.playbackGlyph = false }, 700)
+    },
+
     setPlaybackPaused (pause) {
       this.playbackPaused = !!pause
+      this._flashPlaybackGlyph()
 
       if (this._audio) {
         if (this.playbackPaused) {
@@ -1810,6 +1872,11 @@ Alpine.data('lessonGame', (lesson) => ({
       // The sailing ship freezes mid-ocean and picks up from the same spot; the landfall's
       // auto-advance countdown stops accumulating (see _startVoyageAuto).
       try { _voyageInstance?.setPaused?.(this.playbackPaused) } catch (_) { /* map gone */ }
+
+      // Pausing the lesson pauses everything the lesson is making, music included — a bed still
+      // playing over a frozen picture is how you get a teacher hunting for a second stop button.
+      if (this.playbackPaused) _music?.pause()
+      else _music?.resume()
     },
 
     _attachAudioListeners () {
@@ -1840,9 +1907,15 @@ Alpine.data('lessonGame', (lesson) => ({
       this.audioPlaying = false
     },
 
+    /**
+     * Mute means the lesson, not just the narration: the music bed and the quiz's right-answer
+     * chime go quiet with it. A teacher who pressed M in a quiet classroom expects silence, and
+     * a chime arriving anyway reads as the button being broken.
+     */
     toggleMute () {
       this.audioMuted = !this.audioMuted
       if (this._audio) this._audio.volume = this.audioMuted ? 0 : this.volumeLevel
+      this._syncSoundLevels()
     },
 
     /** Deck volume slider. Dragging to 0 mutes; dragging up from 0 unmutes. */
@@ -1851,6 +1924,16 @@ Alpine.data('lessonGame', (lesson) => ({
       this.audioMuted = level === 0
       if (level > 0) this.volumeLevel = level
       if (this._audio) this._audio.volume = level
+      this._syncSoundLevels()
+    },
+
+    /** Push the deck's mute + volume out to everything else that makes a sound. */
+    _syncSoundLevels () {
+      const level = this.audioMuted ? 0 : this.volumeLevel
+      _music?.setMuted(this.audioMuted)
+      _music?.setVolume(this.volumeLevel)
+      Sfx.setMuted(this.audioMuted)
+      Sfx.setVolume(level)
     },
 
     // ── Subtitles ──────────────────────────────────────────────────────
@@ -1994,6 +2077,8 @@ Alpine.data('lessonGame', (lesson) => ({
       if (intel) {
         try { intel.pause(); intel.removeAttribute('src'); intel.load?.() } catch (_) {}
       }
+      try { _music?.destroy() } catch (_) {}
+      _music = null
       this.audioPlaying = false
     },
 

@@ -30,6 +30,10 @@ export class ArtworkOverlay {
     this._layers = []
     this._selectedId = null
     this._entrances = []   // Animations in flight, so a scene change can stop them
+    // Stacking order for the layer NODES: [normal, when stacked above the text overlay].
+    // Deliberately not on the host — see setStackLevels.
+    this._zNormal = 6
+    this._zTop = 8
     this.host.style.pointerEvents = 'none'   // the host is transparent; only layer nodes catch events
     // Deselect when something that isn't one of MY layers is selected (mutually-exclusive
     // selection across text, artwork and background — no re-dispatch, so no loop).
@@ -139,7 +143,32 @@ export class ArtworkOverlay {
 
   /** Whether the whole clipart group sits ABOVE the text overlay (drives the host z-index).
    *  Stored here so the object list can read it back when it rebuilds its rows. */
-  setOnTop(onTop) { this.onTop = !!onTop }
+  setOnTop(onTop) { this.onTop = !!onTop; this._applyStacking() }
+
+  /**
+   * Where the layer NODES sit in the surrounding stacking order: normal, and when the teacher
+   * has stacked the clipart above the text overlay.
+   *
+   * The z-index belongs on the nodes and never on the host, because a positioned host WITH a
+   * z-index is a stacking context — and that traps mix-blend-mode inside the overlay, where the
+   * backdrop is empty and a blend has nothing to mix with. Keeping the host transparent to
+   * stacking lets a node blend against what is really behind it: the map, or the scene art.
+   * (A node having its own transform is fine — an element's own stacking context doesn't stop
+   * it blending with its parent's group; only an ANCESTOR's does.)
+   */
+  setStackLevels(normal, top) {
+    this._zNormal = normal
+    this._zTop = top
+    this._applyStacking()
+  }
+
+  _applyStacking() {
+    const z = String(this.onTop ? this._zTop : this._zNormal)
+    for (const item of this._layers) {
+      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+      if (el) el.style.zIndex = z
+    }
+  }
 
   /**
    * Reorder the clipart layers from the object list. `idsTopFirst` is the asset ids in panel
@@ -198,7 +227,7 @@ export class ArtworkOverlay {
       const ratio = item.embed.type === 'video' ? '16 / 9' : '4 / 3'
       node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
         aspect-ratio:${ratio}; width:auto; transform:${this._transform(item)}; transform-origin:center;
-        ${interact} touch-action:none; user-select:none;`
+        z-index:${this.onTop ? this._zTop : this._zNormal}; ${interact} touch-action:none; user-select:none;`
 
       const frame = document.createElement('iframe')
       frame.src = item.embed.src
@@ -248,7 +277,7 @@ export class ArtworkOverlay {
     // never steals a map pan; editor nodes catch pointers to move/select.
     node.style.cssText = `position:absolute; left:${item.x}%; top:${item.y}%; height:${this._heightPct(item)}%;
       width:max-content; transform:${this._transform(item)}; transform-origin:center;
-      ${interact} touch-action:none; user-select:none;`
+      z-index:${this.onTop ? this._zTop : this._zNormal}; ${interact} touch-action:none; user-select:none;`
 
     const img = document.createElement('img')
     img.src = item.url
@@ -259,7 +288,10 @@ export class ArtworkOverlay {
     // Applied to the IMG, not the node, so the selection ring stays crisp.
     if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
-    if (item.blend && item.blend !== 'normal') img.style.mixBlendMode = item.blend
+    // Blend on the NODE, not the img: the node carries the transform, which makes it a stacking
+    // context, so a blend on the img would only ever mix with the node's own empty backdrop.
+    // On the node it mixes with whatever the overlay sits over — which is the point of Multiply.
+    if (item.blend && item.blend !== 'normal') node.style.mixBlendMode = item.blend
     node.appendChild(img)
 
     this._addScaleHandles(item, node)
