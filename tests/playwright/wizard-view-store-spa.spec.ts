@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
  * won't fire again. Without registering on `livewire:navigated`, $store.view was undefined and the
  * panel x-effects threw ("Cannot read properties of undefined (reading 'objects'/'scenes'/'script')").
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 
 test('wizard view store survives an SPA navigation into the wizard', async ({ page }) => {
   test.setTimeout(90_000);

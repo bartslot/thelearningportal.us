@@ -23,11 +23,17 @@ final class CatalogManifestTest extends TestCase
 
     private function lesson(array $attributes = []): Lesson
     {
-        return Lesson::factory()->create($attributes + [
+        $lesson = Lesson::factory()->create($attributes + [
             'teacher_id' => User::factory()->create()->id,
             'status' => LessonStatus::Published,
             'subject' => 'history',
         ]);
+        // Every lesson a class can open has at least one scene, and the catalogue now says so
+        // (see CatalogEmptyLessonTest). These tests are about what the manifest REPORTS, so they
+        // need a lesson that would legitimately be in it.
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration']);
+
+        return $lesson->refresh();
     }
 
     private function url(array $query = []): string
@@ -60,7 +66,6 @@ final class CatalogManifestTest extends TestCase
     public function test_each_entry_carries_what_a_client_needs_to_list_and_filter(): void
     {
         $lesson = $this->lesson(['title' => 'The VOC in Batavia, 1602', 'grade_level' => '6']);
-        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration']);
 
         $entry = $this->getJson($this->url())->assertOk()->json('lessons.0');
 
@@ -76,7 +81,6 @@ final class CatalogManifestTest extends TestCase
     public function test_the_vocabulary_explains_the_taxonomy_keys_a_lesson_uses(): void
     {
         $lesson = $this->lesson(['title' => 'Rome, 80 AD']);
-        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration']);
 
         $body = $this->getJson($this->url())->assertOk()->json();
         $entry = $body['lessons'][0];
@@ -156,7 +160,7 @@ final class CatalogManifestTest extends TestCase
     public function test_editing_only_a_scene_still_changes_the_version_token(): void
     {
         $lesson = $this->lesson();
-        $scene = Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration']);
+        $scene = $lesson->scenes()->first();
 
         $before = $this->getJson($this->url())->json('lessons.0.version');
 

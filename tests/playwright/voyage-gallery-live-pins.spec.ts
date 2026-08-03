@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Editing the gallery (reorder/add/remove images) updates the map pins LIVE — no tour rebuild.
  * Uses a reorder (no network) and restores it, asserting the map instance is never rebuilt.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 39; // Hispaniola / La Navidad — several gallery images
 
 const pinSrcs = () =>

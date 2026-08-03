@@ -24,6 +24,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'is_guest_demo',
         'locale',
         'teaching_locale',
         'tag',
@@ -42,6 +43,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_guest_demo' => 'boolean',
             'onboarded_at' => 'datetime',
             'onboarding_status' => OnboardingStatus::class,
             'onboarding_step' => 'integer',
@@ -81,6 +83,13 @@ class User extends Authenticatable
     public function isStudent(): bool
     {
         return $this->role === 'student';
+    }
+
+    /** A throwaway account created by the landing-page demo: a real teacher, fenced in and swept
+     *  up after a day. See App\Services\GuestDemoSession. */
+    public function isGuestDemo(): bool
+    {
+        return (bool) $this->is_guest_demo;
     }
 
     public function isAdmin(): bool

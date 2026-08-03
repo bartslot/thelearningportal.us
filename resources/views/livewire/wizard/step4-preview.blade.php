@@ -154,14 +154,9 @@
                 : null],
         ))->toJson() !!}
     </script>
-    {{-- Background music URL (empty string = none) --}}
-    @php
-        $musicFile = match($lesson->background_music) {
-            'default','track2','track3','track4','track5','track6' => 'default.mp3',
-            default => null,
-        };
-    @endphp
-    <meta id="step4-bg-music" content="{{ $musicFile ? asset('sound/bg-music/' . $musicFile) : '' }}">
+    {{-- Does this lesson play a music bed? The tracks themselves come from the page's audio
+         manifest, so the preview is playing the same soundtrack the class will hear. --}}
+    <meta id="step4-bg-music" content="{{ $lesson->background_music ? '1' : '' }}">
     @endif
 </div>
 
@@ -173,8 +168,7 @@
             stage:   null,
             total:   0,
             _startIndex: 0,   // the scene the teacher opened Play on — playback starts here, not scene 0
-            _bgAudio: null,
-            _fadingOut: false,
+            _bgMusic: null,   // shared BackgroundMusic engine — null when this lesson has none
             // Elapsed-time readout state — the display was static before (set once at init):
             // completed-scene seconds + wall-clock within the current scene, ticked every 500ms.
             _elapsedBase: 0,
@@ -207,14 +201,11 @@
                 const rootEl       = document.getElementById('lesson-canvas-root');
                 const characterUrl = rootEl?.dataset.characterUrl || null;
                 this._startIndex   = Math.max(0, Number(rootEl?.dataset.startIndex) || 0);
-                const musicUrl     = document.getElementById('step4-bg-music')?.content || '';
-
-                if (musicUrl) {
-                    const a = new Audio(musicUrl);
-                    a.loop   = true;
-                    a.volume = 0.26;
-                    this._bgAudio = a;
-                }
+                // The same music engine the student player uses — shuffled, crossfaded, at the same
+                // level — so a teacher previewing a lesson hears exactly what the class will.
+                this._bgMusic = window.LessonScene.createBackgroundMusic(
+                    Boolean(document.getElementById('step4-bg-music')?.content)
+                );
 
                 this.stage = await window.LessonScene.mountWizardScene({
                     canvasEl, overlayEl, timerEl, scenes, characterUrl,
@@ -234,19 +225,10 @@
                     this._elapsedBase = scenes.slice(0, Math.max(0, idx))
                         .reduce((acc, x) => acc + Math.max(0, x.duration_seconds || 0), 0);
                     this._sceneStart = Date.now();
-
-                    // Fade out music when a game scene starts; fade in for narration.
-                    if (this._bgAudio) {
-                        if (s.kind === 'game') {
-                            this._fadeVolume(this._bgAudio, this._bgAudio.volume, 0, 1200);
-                        } else {
-                            this._fadeVolume(this._bgAudio, this._bgAudio.volume, 0.26, 1200);
-                        }
-                    }
                 });
                 this.stage.sequencer.on('timelineend', () => {
                     this.playing = false;
-                    this._stopBgMusic();
+                    this._bgMusic?.stop();
                     this._stopReadout(true);
                 });
             },
@@ -257,44 +239,25 @@
                     this.stage.sequencer.pause();
                     this.playing = false;
                     this._stopReadout();
-                    if (this._bgAudio) this._bgAudio.pause();
+                    this._bgMusic?.pause();
                 } else {
                     this.playing = true;
                     this._elapsedBase = 0;
                     this._sceneStart = Date.now();
                     this._startReadout();
-                    if (this._bgAudio) {
-                        this._bgAudio.currentTime = 0;
-                        this._bgAudio.volume = 0.26;
-                        this._bgAudio.play().catch(() => {});
-                    }
+                    // start() on a fresh run, resume() on an unpause — the engine knows which.
+                    this._bgMusic?.start();
+                    this._bgMusic?.resume();
                     // Play from the scene the teacher was on (clamped), not always scene 0.
                     const from = Math.min(this._startIndex, Math.max(0, (this.stage.sequencer.scenes?.length || 1) - 1));
                     await this.stage.sequencer.playFrom(from);
                 }
             },
 
-            _stopBgMusic() {
-                if (!this._bgAudio) return;
-                this._fadeVolume(this._bgAudio, this._bgAudio.volume, 0, 800, () => {
-                    this._bgAudio.pause();
-                    this._bgAudio.currentTime = 0;
-                });
-            },
-
-            _fadeVolume(audio, from, to, ms, done) {
-                const steps = 20;
-                const interval = ms / steps;
-                const delta = (to - from) / steps;
-                let step = 0;
-                const tick = setInterval(() => {
-                    step++;
-                    audio.volume = Math.min(1, Math.max(0, from + delta * step));
-                    if (step >= steps) {
-                        clearInterval(tick);
-                        done?.();
-                    }
-                }, interval);
+            destroy() {
+                this._bgMusic?.destroy();
+                this._bgMusic = null;
+                this._stopReadout();
             },
 
             _fmt(s) {

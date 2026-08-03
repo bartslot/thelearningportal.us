@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Landfall map pins are the gallery's own images (first 3) — so images added to the gallery show on
  * the map, not a separate "stop images" list.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 39; // Hispaniola / La Navidad — carries several gallery images
 
 test('landfall pins mirror the gallery images', async ({ page }) => {

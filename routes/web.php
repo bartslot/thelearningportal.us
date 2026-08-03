@@ -115,6 +115,17 @@ Route::prefix('{locale}')
 // Student lesson player — public, no auth required
 Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
 
+// TEMPORARY: preview of the reworked hero animation for review on production. Unlinked and
+// noindex; delete with resources/views/hero-preview.blade.php once a variant is chosen.
+Route::view('/hero-preview', 'hero-preview')->name('hero.preview');
+
+// "Configure" on the landing page: hands a visitor with no account a throwaway teacher account
+// and a private copy of the demo lesson, then opens the real wizard on it. Throttled because each
+// hit writes a user + a lesson + its scenes.
+Route::get('/try', \App\Http\Controllers\GuestDemoController::class)
+    ->middleware('throttle:10,1')
+    ->name('demo.configure');
+
 // Quiz leaderboard (Kahoot-style, anonymous nicknames) — public like the player, throttled.
 Route::get('/lesson/{lessonCode}/leaderboard', [\App\Http\Controllers\QuizLeaderboardController::class, 'index'])
     ->middleware('throttle:60,1')->name('lesson.leaderboard');
@@ -141,13 +152,17 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 // Self-service account settings (UI-language switcher) — available to any signed-in user.
 // Named `settings.index` so the nav's existing "Account Settings" link activates automatically.
-Route::middleware(['auth'])->get('/settings', \App\Livewire\Settings::class)->name('settings.index');
+Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])->get('/settings', \App\Livewire\Settings::class)->name('settings.index');
 
 // Help centre — how the app works, for any signed-in user. Shares its copy with the welcome tour
 // (App\Support\HelpGuide), and holds the button that replays that tour.
-Route::middleware(['auth'])->get('/help', \App\Livewire\Help::class)->name('help.index');
+Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])->get('/help', \App\Livewire\Help::class)->name('help.index');
 
-Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function () {
+// RestrictGuestDemo fences landing-page demo guests (App\Services\GuestDemoSession) into the
+// wizard for their own copy — they hold a real teacher account, so without it the whole
+// workspace would be open to anyone who pressed Configure.
+Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])
+    ->prefix('teacher')->name('teacher.')->group(function () {
 
     // The dashboard IS the workspace root: /teacher. The old /teacher/dashboard URL
     // redirects so bookmarks keep working. Lessons live on their own page below.

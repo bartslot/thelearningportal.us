@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Switching between legs of the SAME voyage must NOT rebuild the map — the tour plays the new leg on
  * the existing instance, preserving zoom / centre / globe-flat projection and the loaded tiles.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 
 test('switching voyage legs plays live on the same map (no re-mount)', async ({ page }) => {
   test.setTimeout(120_000);

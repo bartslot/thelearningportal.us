@@ -11,7 +11,7 @@ import { test, expect } from '@playwright/test';
  * faded dot half way along each segment that adds a bend, plus one ghost that rides the line under
  * the cursor and stays hidden at rest.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 39; // a voyage leg
 
 test('voyage legs expose route handles that sit on the drawn line', async ({ page }) => {

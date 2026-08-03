@@ -6,8 +6,8 @@ import { test, expect, Page } from '@playwright/test';
  *  1. editSceneHref builds /wizard?step=4&scene=<id>&modal=<0|1> for the current scene.
  *  2. Following such a link lands the wizard on the scene editor with THAT exact scene selected.
  */
-const LESSON_CODE = process.env.VOYAGE_LESSON_CODE || 'M4MXMR';
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const LESSON_CODE = process.env.VOYAGE_LESSON_CODE!;
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 /**
  * The scene to deep-link to, read from the fixture at run time.
  *

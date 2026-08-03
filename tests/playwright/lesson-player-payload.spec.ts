@@ -14,7 +14,7 @@ test('the inlined lesson payload parses, with punctuation intact', async ({ page
     const failures: string[] = []
     page.on('pageerror', (error) => failures.push(`pageerror: ${error.message}`))
 
-    await page.goto('/lesson/YWH3NW', { waitUntil: 'domcontentloaded' })
+    await page.goto(`/lesson/${process.env.PLAYER_LESSON_CODE}`, { waitUntil: 'domcontentloaded' })
 
     const shape = await page.evaluate(() => {
         const lesson = (window as any).LESSON

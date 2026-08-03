@@ -10,7 +10,10 @@
              to draw a second one right beside it, which read as two stacked arrows. Getting into the
              wizard's editing view is the "Edit scene" pill's job, not a back arrow's.
              A plain wire:navigate link (no $wire method call, so it can never 500). --}}
-        <a href="{{ route('teacher.lessons.index') }}" wire:navigate
+        {{-- A landing-page demo guest has no lesson list to go back to (RestrictGuestDemo);
+             their way out is the site they came from. --}}
+        @php($wizardExitUrl = auth()->user()?->isGuestDemo() ? route('home') : route('teacher.lessons.index'))
+        <a href="{{ $wizardExitUrl }}" wire:navigate
            class="fixed left-3 top-3 z-60 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-base-300 text-slate-300 shadow-lg transition hover:border-amber-400 hover:text-amber-300"
            title="{{ __('Back to lessons') }}" aria-label="{{ __('Back to lessons') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5" aria-hidden="true">

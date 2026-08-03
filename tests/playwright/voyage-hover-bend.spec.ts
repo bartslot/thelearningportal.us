@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  * "bend" ghost handle appears under the cursor. This drives real mouse moves over the map canvas near
  * the leg's destination (which sits ON the line) and asserts the ghost reveals itself.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 39; // a voyage leg with an intermediate waypoint
 
 test('hovering the route line reveals the bend ghost handle', async ({ page }) => {

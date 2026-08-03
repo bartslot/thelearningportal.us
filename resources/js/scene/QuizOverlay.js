@@ -14,6 +14,8 @@
  *
  * Shared by the student player, wizard Preview and the Configure canvas.
  */
+import { Sfx } from './sfx.js'
+
 const LETTERS = ['A', 'B', 'C', 'D']
 // The four answer letters keep their Kahoot-style colour coding, drawn from the theme's
 // semantic palette rather than raw hexes.
@@ -364,6 +366,10 @@ export class QuizOverlay {
   }
 
   _playCorrectEffects({ gained, from, at }) {
+    // The chime that says "yes" before the child has read anything. It follows the player's mute
+    // button and volume slider like every other sound in the lesson (see scene/sfx.js).
+    Sfx.play('correct')
+
     // Score ticker: count up with a bump.
     const scoreEl = this.host.querySelector('[data-score]')
     const valueEl = this.host.querySelector('[data-score-value]')

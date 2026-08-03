@@ -1,4 +1,4 @@
-@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas', 'lessonMapRelief' => 0])
+@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas', 'lessonMapRelief' => 0, 'stops' => []])
 
 @php
     $config = $scene->config ?? [];
@@ -25,44 +25,52 @@
     // Which collection to show: the leg's own choice decides, so a sea leg opens on ships and a
     // desert crossing opens on mounts, with the other a click away.
     $legTerrain = $transportById[$legTransport]['terrain'] ?? 'water';
+    // The itinerary scene — the whole trip on one screen. It is a voyage scene like any other, but
+    // it sails nothing and stops nowhere, so everything that belongs to a LANDFALL (its name, dates,
+    // how it was travelled, its gallery) and everything that belongs to SAILING (fog of war, the
+    // ship and the cinematic camera) has nothing to act on here. Only the route and how it is
+    // labelled remain. The whole-trip toggle in the header puts any voyage scene in the same state,
+    // so both drive the one `overview` flag below.
+    $isOverview = (bool) ($config['overview'] ?? false);
 @endphp
 
 {{-- The voyage inspector is split into three tabs — Leg (this stop's content), Map (how the whole
      map looks) and Route (the sailed line + fleet). Alpine owns the active tab; Livewire preserves
      that state across the component's 3s wire:poll, and every panel stays in the DOM (x-show) so the
      wire:model bindings never detach. --}}
-<div class="text-sm" x-data="{ tab: 'leg' }"
-     x-on:voyage-obj-focus.window="tab = 'leg'; if ($event.detail?.which === 'gallery') $nextTick(() => { if ($refs.gallerySection) $refs.gallerySection.open = true; $refs.gallerySection?.scrollIntoView({ block: 'start', behavior: 'smooth' }) })">
-    {{-- Header --}}
-    <div class="flex items-center justify-between gap-2">
+<div class="text-sm" x-data="{ tab: @js($isOverview ? 'map' : 'leg'), wide: @js($isOverview) }"
+     x-on:voyage-obj-focus.window="if (wide) return; tab = 'leg'; if ($event.detail?.which === 'gallery') $nextTick(() => { if ($refs.gallerySection) $refs.gallerySection.open = true; $refs.gallerySection?.scrollIntoView({ block: 'start', behavior: 'smooth' }) })">
+    {{-- Header. Wraps rather than clips: the inspector is a narrow column and the rail beside it is
+         resizable, so the switch and the waypoint counter have to be able to drop onto a second row. --}}
+    <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <h3 class="flex items-center gap-2 font-semibold text-indigo-300">
             <x-lesson.icon-voyage class="h-5 w-5" />
-            Route
+            <span x-text="wide ? @js(__('Route overview')) : @js(__('Route'))"></span>
         </h3>
-        <div class="flex items-center gap-1.5">
-            {{-- Zoom out to the whole trip from any leg, and back again. Purely a camera move on the
-                 live map — nothing is saved, so a teacher can check the shape of the voyage
-                 mid-edit without disturbing the scene they are working on. --}}
-            <button type="button"
-                    x-data="{ wide: false }"
-                    x-on:click="wide = !wide; wide ? window.__voyageTour?.showOverview?.() : window.__voyageTour?.hideOverview?.()"
-                    :class="wide ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:text-amber-300'"
-                    class="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition"
-                    :title="wide ? @js(__('Back to this leg')) : @js(__('See the whole voyage'))">
-                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 5.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-                </svg>
-                <span x-text="wide ? @js(__('This leg')) : @js(__('Whole trip'))"></span>
-            </button>
-            @if ($legCount)
-                <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Waypoint {{ $legIndex + 1 }} / {{ $legCount }}</span>
-            @endif
-        </div>
+        @if ($legCount)
+            {{-- Which landfall is being edited. Meaningless on the overview: it stops nowhere. --}}
+            <span x-show="!wide" class="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Waypoint {{ $legIndex + 1 }} / {{ $legCount }}</span>
+        @endif
+    </div>
+
+    {{-- What the editor is looking at: one waypoint, or the whole voyage. Same control as the tab
+         row below — same box, same button size — because it is the same kind of choice, and two
+         switches stacked in one panel must not be two different sizes. Purely a camera move on the
+         live map (nothing is saved), but it also decides which controls make sense: see `wide`. --}}
+    <div role="group" aria-label="{{ __('Route view') }}" class="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-800/60 p-1">
+        <button type="button" wire:click="setVoyageOverview(false)"
+                x-on:click="if (wide) { wide = false; window.__voyageTour?.hideOverview?.() }"
+                :class="!wide ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-slate-100'"
+                class="rounded-lg py-1.5 text-xs font-medium transition-colors">{{ __('Single') }}</button>
+        <button type="button" wire:click="setVoyageOverview(true)"
+                x-on:click="if (!wide) { wide = true; if (tab === 'leg') tab = 'map'; window.__voyageTour?.showOverview?.() }"
+                :class="wide ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-slate-100'"
+                class="rounded-lg py-1.5 text-xs font-medium transition-colors">{{ __('Overview') }}</button>
     </div>
 
     {{-- TABS --}}
-    <div role="tablist" class="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-800/60 p-1">
-        <button type="button" role="tab" x-on:click="tab = 'leg'"
+    <div role="tablist" class="mt-3 grid gap-1 rounded-xl bg-slate-800/60 p-1" :class="wide ? 'grid-cols-2' : 'grid-cols-3'">
+        <button type="button" role="tab" x-on:click="tab = 'leg'" x-show="!wide"
                 :class="tab === 'leg' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-slate-100'"
                 class="rounded-lg py-1.5 text-xs font-medium transition-colors">
             Waypoint
@@ -80,7 +88,7 @@
     </div>
 
     {{-- ══════════════════ TAB: WAYPOINT — this stop's title, dates, thumbnails and story ══════════ --}}
-    <div x-show="tab === 'leg'" class="mt-3 space-y-4">
+    <div x-show="tab === 'leg' && !wide" class="mt-3 space-y-4">
         {{-- STOP TITLE — the landfall's name, stored in the voyage format (voyage_def leg), NOT the
              gallery title. It's the single source for the landfall name: the map label, the date chip
              and the scene-list label all follow it. --}}
@@ -94,7 +102,6 @@
                        wire:change="setLegTitle($event.target.value)"
                        placeholder="e.g. Hispaniola"
                        class="input input-sm input-bordered bg-slate-900 mt-1.5" />
-                <span class="mt-1 text-[10px] text-slate-500">The landfall's name — shown on the map, the date chip and the scene list.</span>
             </label>
         </section>
 
@@ -120,16 +127,8 @@
                                class="input input-xs input-bordered bg-slate-900 mt-1" />
                     </label>
                 </div>
-                <p class="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-                    <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/></svg>
-                    Drag the <span class="text-amber-400">Destination</span> X to set the landfall — the waypoint sails from the previous one.
-                </p>
-                {{-- The teacher steers the route around land (a ship can't sail across it — e.g. through
-                     the Strait of Gibraltar) by grabbing the route line itself and dragging a bend. --}}
-                <p class="mt-1.5 flex items-center gap-1.5 text-[10px] text-slate-500">
-                    <span class="inline-block h-2.5 w-2.5 shrink-0 rounded-full border-2 border-white" style="background:rgba(59,130,246,.95)"></span>
-                    Hover the <span class="text-blue-300">blue sailing line</span> and drag to bend it around the coast — or drag an existing bend to move it.
-                </p>
+                {{-- How to drag the Destination X and bend the sailing line lives in Help, not here:
+                     a teacher edits the same lesson dozens of times and reads the instructions once. --}}
             @else
                 <p class="mt-2 rounded-lg border border-amber-700/40 bg-amber-950/20 px-2.5 py-1.5 text-[11px] text-amber-300/80">
                     This voyage has no waypoint data yet — dates can't be edited.
@@ -150,7 +149,6 @@
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
                     Travelled by
                 </div>
-                <span class="mt-0.5 block text-[10px] text-slate-500">Just this leg — the marker swaps as the traveller reaches the coast.</span>
 
                 {{-- Water or land splits the collection: a sea crossing is offered ships, an overland
                      stretch is offered mounts. --}}
@@ -205,9 +203,8 @@
                             <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M18 6.75h.008v.008H18V6.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6a2.25 2.25 0 0 1 2.25-2.25h15A2.25 2.25 0 0 1 21.75 6v12a2.25 2.25 0 0 1-2.25 2.25h-15A2.25 2.25 0 0 1 2.25 18V6Z"/></svg>
                         </span>
                         <div class="min-w-0 flex-1">
-                            <p class="text-[11px] text-slate-400">No model for this journey?</p>
                             <button type="button" wire:click="openMarkerImagePicker"
-                                    class="mt-1 text-[11px] text-amber-300 underline hover:text-amber-200">Use a picture instead</button>
+                                    class="text-[11px] text-amber-300 underline hover:text-amber-200">{{ __('Use a picture instead') }}</button>
                         </div>
                     @endif
                 </div>
@@ -423,8 +420,10 @@
 
         {{-- PAINT FOG — brush over the map to hide land the voyagers hadn't discovered yet.
              The header count + undo/reset are server-state (reactive); the brush toggle/size live in a
-             wire:ignore island so Alpine's paint state survives Livewire re-renders. --}}
-        <section class="border-t border-slate-700/50 pt-3">
+             wire:ignore island so Alpine's paint state survives Livewire re-renders.
+             Hidden on the overview: fog is what the SAILING reveals, and the overview is the one
+             screen that is meant to show the whole trip at once. --}}
+        <section x-show="!wide" class="border-t border-slate-700/50 pt-3">
             <div class="flex items-center justify-between gap-2">
                 <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
@@ -492,6 +491,89 @@
 
     {{-- ══════════════════ TAB: ROUTE — the sailed line + fleet ══════════════════ --}}
     <div x-show="tab === 'route'" x-cloak class="mt-3 space-y-4">
+        {{-- ITINERARY — every place the voyage calls at, numbered in sailing order, drag to re-sail
+             it in a different order. Same row as the object list (grab cursor, icon slot, truncated
+             label, hover-revealed actions) and the same SortableJS contract, so a list is a list
+             everywhere in the editor. Only scenes ON the route appear: the overview is the screen
+             that shows them all, not a place the voyage calls at. --}}
+        @if (count($stops) > 1)
+            <section x-data="voyageItinerary()" x-init="initSortable()">
+                <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
+                    <x-lesson.icon-voyage-overview class="h-4 w-auto" />
+                    {{ __('Itinerary') }}
+                </div>
+                <div x-ref="stops" class="mt-2 space-y-0.5">
+                    @foreach ($stops as $stop)
+                        <div @class([
+                                'group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-800',
+                                'cursor-grab active:cursor-grabbing' => true,
+                            ])
+                             data-stop-leg="{{ $stop['leg'] }}"
+                             @if ($stop['scene_id']) wire:click="selectScene({{ $stop['scene_id'] }})" @endif>
+                            <span data-stop-number class="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-slate-700/70 text-[10px] font-semibold text-slate-200">{{ $stop['n'] }}</span>
+                            <span class="flex-1 truncate">
+                                {{ $stop['title'] ?: __('Unnamed stop') }}
+                            </span>
+                            @if (! $stop['scene_id'])
+                                {{-- A stop the class cannot watch: this leg has no scene. One click makes
+                                     one, rather than leaving a row that only says something is wrong. --}}
+                                <button type="button" data-nodrag wire:click.stop="addVoyageSceneForLeg({{ $stop['leg'] }})"
+                                        class="btn btn-ghost btn-xs shrink-0 gap-1 text-amber-300 hover:text-amber-200"
+                                        title="{{ __('This stop has no scene yet') }}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    {{ __('Scene') }}
+                                </button>
+                            @endif
+                            {{-- Drop the stop. Hover-revealed like every other list row's actions, and
+                                 never on the last one: a voyage with no crossing left is not a voyage. --}}
+                            @if (count($stops) > 1)
+                                <button type="button" data-nodrag
+                                        wire:click.stop="deleteVoyageStop({{ $stop['leg'] }})"
+                                        wire:confirm="{{ __('Remove this stop from the voyage?') }}"
+                                        class="btn btn-ghost btn-xs shrink-0 px-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-300 focus-visible:opacity-100"
+                                        aria-label="{{ __('Remove this stop') }}"
+                                        data-tooltip="{{ __('Remove this stop') }}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </section>
+            <script>
+                // Registered once per page, not per render: the inspector is re-rendered by the 3s
+                // poll and re-declaring an Alpine data function on every pass throws.
+                window.voyageItinerary ??= () => ({
+                    initSortable() {
+                        const list = this.$refs.stops;
+                        if (!list || !window.Sortable || list._stopSortable) return;
+                        list._stopSortable = true;
+                        window.Sortable.create(list, {
+                            animation: 150,
+                            draggable: '[data-stop-leg]',
+                            // Pointer dragging, like the object list: reliable inside this fixed panel.
+                            forceFallback: true,
+                            fallbackTolerance: 4,
+                            onStart: (evt) => { evt.item._stopNext = evt.item.nextSibling; },
+                            onEnd: (evt) => {
+                                const order = [...evt.to.querySelectorAll('[data-stop-leg]')]
+                                    .map((el) => Number(el.dataset.stopLeg));
+                                // Put the DOM back the way Blade rendered it and let the server's
+                                // re-render be the single source of truth (the Alpine+Sortable
+                                // double-move trap the object list already learned about).
+                                evt.from.insertBefore(evt.item, evt.item._stopNext || null);
+                                if (order.length) window.Livewire.dispatch('reorderVoyageStops', { order });
+                            },
+                        });
+                    },
+                });
+            </script>
+        @endif
+
         {{-- FLEET — compact chips (editing ships is coming). Reads the lesson's voyage copy. --}}
         <section>
             <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
@@ -514,9 +596,9 @@
 
         {{-- SHIP & CAMERA — whole-voyage. Ship on-screen size + whether it scales with zoom; plus the
              cinematic camera moves that play during the sail (Preview / student player, not the editor
-             jump). --}}
+             jump). Hidden on the overview, which sails nothing and holds one still camera. --}}
         @php $vmr = fn ($k, $d) => $voyageMap[$k] ?? $d; @endphp
-        <section class="border-t border-slate-700/50 pt-3">
+        <section x-show="!wide" class="border-t border-slate-700/50 pt-3">
             <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
                 <x-lesson.icon-voyage class="h-4 w-4" />
                 Ship &amp; camera
@@ -668,8 +750,10 @@
         </button>
     </div>
 
-    {{-- Footer — always visible under the tabs. --}}
+    {{-- Footer — under every tab, except on the overview: there is no waypoint there to delete, and
+         offering it would read as "delete the voyage". --}}
     <button type="button" wire:click="deleteScene({{ $scene->id }})"
+            x-show="!wide"
             wire:confirm="Delete this waypoint?"
             class="mt-4 flex items-center gap-1 border-t border-slate-700/50 pt-3 text-xs text-rose-300 hover:text-rose-200">
         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>

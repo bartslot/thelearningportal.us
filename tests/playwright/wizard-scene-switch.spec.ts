@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test'
  * voyage scene hand the preview to the real player instead and have no rail.
  */
 test('clicking a scene thumbnail swaps the stage without waiting for the server', async ({ page }) => {
-    await page.goto('/teacher/lessons/11/wizard?step=5', { waitUntil: 'domcontentloaded' })
+    await page.goto(`${process.env.WIZARD_URL}?step=5`, { waitUntil: 'domcontentloaded' })
 
     const track = page.locator('#timeline-track')
     await expect(track).toBeVisible()

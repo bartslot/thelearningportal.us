@@ -326,6 +326,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // weights (the main source of "hand-drawn" width variance; MapLibre can't vary width along a line).
   const inkWidth = (min, max) => ['interpolate', ['linear'],
     ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
+  // Label hands, per style — the same rule the lesson map follows. The drawn atlases are
+  // hand-lettered (Cinzel small-caps for territories, Eagle Lake for regions/peoples); the two
+  // modern grounds, Satellite and Night, switch both to the app sans, because calligraphy over
+  // satellite imagery reads as a costume rather than a map. Fontstacks are built by
+  // scripts/build-glyphs.mjs; `display` labels territories, `body` labels everything else.
+  const LETTERED = { display: ['Cinzel'], body: ['Eagle Lake'] };
+  const MODERN = { display: ['inter'], body: ['inter'] };
   const MAP_STYLES = {
     'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, voyage: '#1f5f8f', paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
     'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, voyage: '#274f66', paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
@@ -359,9 +366,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       selected: '#f5c518', hover: '#e8cf94',
       shore: { color: '#f6efdc', width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
       line: { color: '#ffd9a0', width: 0.9, blur: 0.2 },
-      text: { color: '#241a10', halo: '#f2e9d4' }, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
+      text: { color: '#241a10', halo: '#f2e9d4' }, fonts: MODERN, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
     },
-    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, fonts: MODERN, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
@@ -426,6 +433,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Satellite: the photographed ground replaces the drawn one, so every layer that paints a
     // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
     const photo = !!s.imagery;
+    const fonts = s.fonts || LETTERED;
     const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
     vis('satellite', photo);
     for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
@@ -518,12 +526,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setLayoutProperty('boundaries-line', 'visibility', s.borderSource ? 'none' : 'visible');
       map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
       map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
+      map.setLayoutProperty('boundaries-label', 'text-font', fonts.display);
     }
     if (map.getLayer('markers-label')) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
       map.setPaintProperty('markers-label', 'text-halo-color', s.text.halo);
+      map.setLayoutProperty('markers-label', 'text-font', fonts.body);
     }
-    applyVoyageStyle(map, { color: s.voyage, halo: s.text && s.text.halo });
+    applyVoyageStyle(map, { color: s.voyage, halo: s.text && s.text.halo, font: fonts.display });
     // Hand-drawn ink: several stacked strokes (per-feature varying width + bleed + broken dashes)
     // so borders read as uneven pen work rather than uniform vector lines.
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.removeLayer(`ink-${i}`); }

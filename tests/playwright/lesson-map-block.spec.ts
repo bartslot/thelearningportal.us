@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Lesson map block (composer)', () => {
   // step=4 — the Configure editor (the Story step's arrival renumbered the wizard;
   // step=3 is now Generate and has no timeline).
-  const url = 'http://localhost:8000/teacher/lessons/1/wizard?step=4';
+  const url = `${process.env.WIZARD_URL}?step=4`;
 
   test('add → renders preview → inspector → delete', async ({ page }) => {
     const errors: string[] = [];

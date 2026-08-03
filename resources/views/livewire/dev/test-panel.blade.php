@@ -14,7 +14,7 @@
 
     {{-- Panel --}}
     <div x-show="open" x-cloak x-transition
-         class="absolute bottom-12 right-0 w-72 rounded-xl border border-fuchsia-700/60 bg-slate-900 p-4 shadow-2xl">
+         class="absolute bottom-12 right-0 max-h-[80vh] w-72 overflow-y-auto overscroll-contain rounded-xl border border-fuchsia-700/60 bg-slate-900 p-4 shadow-2xl">
 
         <div class="mb-3 flex items-center gap-2">
             <x-icons.beaker class="w-5 h-5 text-fuchsia-400" />
@@ -96,6 +96,98 @@
             </div>
             <p class="mt-1.5 text-[0.65rem] leading-snug text-slate-500">
                 Switches account instantly, no logout needed. Switching back returns to the same account.
+            </p>
+        </div>
+
+        {{-- Hero demo tuning. Only appears on a page that actually runs the animation, because
+             window.heroDemo is exposed by resources/js/hero/lesson-demo.js. Values are written
+             straight into the live settings object and persisted to localStorage, so a replay
+             uses them immediately — no edit-and-rebuild loop. --}}
+        @php
+            $heroDials = [
+                ['beat', 'Beat (pause between steps)', 0, 4, 0.1, 's'],
+                ['typeSpeed', 'Typing speed', 5, 60, 1, 'ch/s'],
+                ['inhale', 'Inhale (held breath)', 0, 3, 0.1, 's'],
+                ['windUp', 'Wind-up', 0.5, 10, 0.1, 's'],
+                ['brake', 'Brake', 0.3, 4, 0.1, 's'],
+                ['timeScaleStart', 'Time scale, story', 0.2, 2, 0.05, '×'],
+                ['timeScaleWarp', 'Time scale, warp', 0.5, 5, 0.1, '×'],
+                ['warpRate', 'Warp rate', 0.2, 8, 0.1, 'e/s'],
+                ['warpSpin', 'Warp spin', 0, 4, 0.05, 'rad/s'],
+                ['warpTrail', 'Streak length', 0.05, 1, 0.01, ''],
+                ['warpDensity', 'Card density', 0.1, 1, 0.05, ''],
+                ['warpGlow', 'Mouth glow', 0, 1, 0.05, ''],
+            ];
+        @endphp
+
+        <div class="mt-3 border-t border-slate-800 pt-3"
+             x-data="{
+                ready: false,
+                s: {},
+                scrub: 0,
+                attach() {
+                    if (!window.heroDemo) return false;
+                    this.s = window.heroDemo.settings;
+                    this.ready = true;
+                    return true;
+                },
+                init() {
+                    if (this.attach()) return;
+                    const poll = setInterval(() => { if (this.attach()) clearInterval(poll) }, 250);
+                    setTimeout(() => clearInterval(poll), 8000);
+                },
+                apply() { window.heroDemo.save(); window.heroDemo.replay(); this.scrub = 0 },
+                onScrub() { window.heroDemo.seek(this.scrub / 100) },
+             }"
+             x-show="ready" x-cloak>
+            <div class="mb-1.5 flex items-center justify-between">
+                <span class="text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">Hero demo</span>
+                <button type="button" @click="window.heroDemo.reset(); s = window.heroDemo.settings; scrub = 0"
+                        class="text-[0.65rem] text-slate-500 underline hover:text-slate-300">reset</button>
+            </div>
+
+            {{-- The four warp characters. Scored in resources/js/hero/__tests__/variants.bench.test.js
+                 on how many lesson pictures a teacher can actually read. --}}
+            <div class="mb-2 flex flex-wrap gap-1">
+                <template x-for="(label, name) in (window.heroDemo?.variants ?? {})" :key="name">
+                    <button type="button"
+                            @click="window.heroDemo.setVariant(name); s = window.heroDemo.settings; scrub = 0"
+                            class="btn btn-xs"
+                            :class="s.variant === name ? 'btn-primary' : 'btn-outline'"
+                            x-text="label"></button>
+                </template>
+            </div>
+
+            <div class="space-y-2">
+                @foreach ($heroDials as [$key, $label, $min, $max, $step, $unit])
+                    <label class="block">
+                        <span class="flex items-baseline justify-between text-[0.65rem] text-slate-400">
+                            {{ $label }}
+                            <span class="font-mono text-slate-200"
+                                  x-text="Number(s.{{ $key }}).toFixed({{ $step < 1 ? 2 : 0 }}) + '{{ $unit }}'"></span>
+                        </span>
+                        <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
+                               x-model.number="s.{{ $key }}" @change="apply()"
+                               class="range range-xs mt-0.5 w-full">
+                    </label>
+                @endforeach
+            </div>
+
+            <label class="mt-3 block">
+                <span class="text-[0.65rem] text-slate-400">Scrub</span>
+                <input type="range" min="0" max="100" step="0.5"
+                       x-model.number="scrub" @input="onScrub()"
+                       class="range range-xs range-secondary mt-0.5 w-full">
+            </label>
+
+            <div class="mt-2 flex gap-1.5">
+                <button type="button" @click="apply()" class="btn btn-xs btn-primary flex-1">Replay</button>
+                <button type="button" @click="window.heroDemo.play()" class="btn btn-xs btn-outline">Play</button>
+                <button type="button" @click="window.heroDemo.pause()" class="btn btn-xs btn-outline">Pause</button>
+            </div>
+            <p class="mt-1.5 text-[0.65rem] leading-snug text-slate-500">
+                Saved in this browser. Once it feels right, tell Claude the numbers and they become
+                the defaults in <span class="text-slate-400 font-mono">hero/lesson-demo.js</span>.
             </p>
         </div>
 

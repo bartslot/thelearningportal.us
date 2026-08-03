@@ -24,3 +24,6 @@ Schedule::command('lessons:publish-due')->everyMinute()->withoutOverlapping();
 
 // Email the admin when AI provider credits run low (ElevenLabs narration quota).
 Schedule::command('tokens:check')->dailyAt('08:00');
+
+// Sweep the throwaway accounts behind the landing-page "Configure" demo (config/demo.php).
+Schedule::command('demo:prune-guests')->hourly()->withoutOverlapping();

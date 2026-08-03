@@ -9,6 +9,19 @@ use Illuminate\Support\Facades\Http;
 
 class ElevenLabsService
 {
+    /**
+     * How long to stop asking after a failed voice fetch.
+     *
+     * Without this, a failing API is a loop: getVoices() caches nothing on failure, so the
+     * "are the voices warm yet?" guard never goes true and the app queues another warm job every
+     * time its lock lapses — forever, and unboundedly while no worker is draining them.
+     */
+    private const FAILURE_BACKOFF_SECONDS = 900;
+
+    public const VOICES_KEY = 'elevenlabs_voices';
+
+    public const FAILED_KEY = 'elevenlabs_voices_failed';
+
     private string $apiKey;
     private string $baseUrl;
 
@@ -24,9 +37,14 @@ class ElevenLabsService
     /** @return array<int, array{id: string, label: string, preview_url: string, gradient_class: string, gender: string}> */
     public function getVoices(): array
     {
-        $cached = Cache::get('elevenlabs_voices');
+        $cached = Cache::get(self::VOICES_KEY);
         if (is_array($cached) && count($cached) > 0) {
             return $cached;
+        }
+
+        // Still inside the backoff from a failed fetch — don't ask again yet.
+        if (Cache::has(self::FAILED_KEY)) {
+            return [];
         }
 
         $response = Http::withHeaders([
@@ -34,6 +52,8 @@ class ElevenLabsService
         ])->timeout(25)->connectTimeout(3)->get("{$this->baseUrl}/v1/voices");
 
         if (! $response->successful()) {
+            Cache::put(self::FAILED_KEY, true, self::FAILURE_BACKOFF_SECONDS);
+
             return [];
         }
 
@@ -49,7 +69,11 @@ class ElevenLabsService
             ->all();
 
         if (count($voices) > 0) {
-            Cache::put('elevenlabs_voices', $voices, 3600);
+            Cache::put(self::VOICES_KEY, $voices, 3600);
+            Cache::forget(self::FAILED_KEY);
+        } else {
+            // A 200 with an empty roster is still nothing to cache, so back off the same way.
+            Cache::put(self::FAILED_KEY, true, self::FAILURE_BACKOFF_SECONDS);
         }
 
         return $voices;

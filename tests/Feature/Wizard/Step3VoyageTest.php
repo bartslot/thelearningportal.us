@@ -63,7 +63,9 @@ class Step3VoyageTest extends TestCase
     public function test_voyage_scene_shows_the_voyage_inspector_with_gallery_not_slideshow(): void
     {
         $this->wizardOn($this->voyageScene)
-            ->assertSee('Route waypoint')          // the scene-type is "Route waypoint" (was "Voyage leg")
+            // The vocabulary is "Route": a scene on the route, with its stop on the Waypoint tab.
+            // (Was "Voyage leg", then "Route waypoint" — "voyage" is gone from the scene UI.)
+            ->assertSee('Waypoint')
             ->assertSee('Fleet')
             ->assertSee('Gallery / description')   // gallery is now merged into the voyage inspector
             ->assertDontSee('Slideshow');

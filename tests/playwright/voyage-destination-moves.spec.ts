@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
  * (Regression guard for "the map refreshes every time I edit the route.") Mutates the fixture's
  * waypoint then restores it.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 37; // San Salvador leg
 
 test('editing the destination reshapes the route in place — no re-mount, no camera jump', async ({ page }) => {

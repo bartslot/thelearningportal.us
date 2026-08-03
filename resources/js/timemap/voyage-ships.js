@@ -700,6 +700,22 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
       const v = voyages.find((x) => x.id === voyageId);
       return v ? pointAt(v.track, t) : null;
     },
+    /**
+     * On-map length (metres) of whatever is travelling at track fraction `t` — a tall ship, a
+     * mount, or a picture marker — at the current zoom and the live ship_scale/anchoring.
+     *
+     * The models are normalised to length 1 and placed by their centre, so this is the full length
+     * and half of it is how far the marker reaches ahead of its own coordinate. The route trail
+     * reads it to stop UNDER the traveller: cut at the bare coordinate, a ship at 110 px leaves
+     * half a hull of line sticking out past the bow.
+     */
+    markerMetres(voyageId, t) {
+      const v = voyages.find((x) => x.id === voyageId);
+      if (!v) return 0;
+      const mpp = EARTH_CIRCUMFERENCE / (512 * Math.pow(2, map.getZoom()));
+      const basePx = markerImageAt(v, t) ? MARKER_PX : (transportAt(v, t) === 'sea' ? SHIP_PX : MOUNT_PX);
+      return unitWorldSize(basePx, sScale, mpp, sAnchored);
+    },
     /** Live-update the ship's on-screen size + whether it scales with zoom (whole-voyage setting). */
     setShipScale(scale, anchored) {
       if (Number(scale) > 0) sScale = Number(scale);
