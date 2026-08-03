@@ -96,9 +96,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => env('DB_SEARCH_PATH', 'public'),
             'sslmode' => env('DB_SSLMODE', 'prefer'),
-            // Reuse the connection across requests so the ~1.5s TLS handshake to the remote
-            // Supabase pooler isn't repeated on every Livewire round-trip.
-            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN)],
+            // Default OFF, for the same reason spelled out on pgsql_corpus below: a persistent
+            // handle survives the pooler closing the socket, and comes back with PDO still
+            // inside a transaction that Laravel's transactionLevel counter has forgotten
+            // ("There is already an active transaction", on every queue:work poll). Only worth
+            // turning on when the DB is remote AND the handshake cost outweighs that risk.
+            'options' => [\PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', false), FILTER_VALIDATE_BOOLEAN)],
         ],
 
         // Read-only view over the corpus (public schema). Prefer a dedicated SELECT-only

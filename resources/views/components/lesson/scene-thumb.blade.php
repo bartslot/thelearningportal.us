@@ -76,10 +76,19 @@
             <span class="text-[9px] opacity-70">Seg {{ $scene->game_segment_index }}</span>
         </div>
     @elseif ($scene->kind === 'voyage')
+        {{-- The itinerary scene is a voyage scene that stops nowhere, so it has no landfall to name.
+             It gets its own glyph (the route with its stops numbered) and reads simply "Overview" —
+             one word, no "Voyage" above it, because the icon already says which it belongs to. --}}
+        @php $isVoyageOverview = (bool) ($scene->config['overview'] ?? false); @endphp
         <div class="w-full h-full bg-indigo-800/30 border border-indigo-500/30 flex flex-col items-center justify-center text-white gap-1">
-            <x-lesson.icon-voyage class="h-7 w-7 opacity-90" />
-            <span class="text-[9px] font-bold uppercase tracking-widest">Voyage</span>
-            <span class="text-[9px] opacity-70 truncate max-w-[90%]">{{ $scene->location ?? '—' }}</span>
+            @if ($isVoyageOverview)
+                <x-lesson.icon-voyage-overview class="h-8 w-auto opacity-90" />
+                <span class="text-[9px] font-bold uppercase tracking-widest">{{ __('Overview') }}</span>
+            @else
+                <x-lesson.icon-voyage class="h-7 w-7 opacity-90" />
+                <span class="text-[9px] font-bold uppercase tracking-widest">{{ __('Route') }}</span>
+                <span class="text-[9px] opacity-70 truncate max-w-[90%]">{{ $scene->location ?? '—' }}</span>
+            @endif
         </div>
     @elseif ($scene->kind === 'gallery')
         <div class="w-full h-full bg-violet-800/30 border border-violet-500/30 flex flex-col items-center justify-center text-white gap-1">

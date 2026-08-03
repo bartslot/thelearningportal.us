@@ -23,8 +23,25 @@
         <env name="APP_ENV" value="testing"/>
         <!-- Isolate tests from the dev database. Without this, RefreshDatabase runs
              migrate:fresh against DB_DATABASE from .env (learningportal_dev) and wipes
-             local dev data every run. learningportal_test already exists for this. -->
+             local dev data every run. learningportal_test already exists for this.
+             DB_URL must be blanked as well: Laravel parses it into host AND database, so a
+             DB_URL in .env silently outranks the DB_DATABASE pinned here. -->
+        <env name="DB_URL" value=""/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="5432"/>
         <env name="DB_DATABASE" value="learningportal_test"/>
+        <env name="DB_USERNAME" value="bartslot"/>
+        <env name="DB_PASSWORD" value=""/>
+        <env name="DB_SSLMODE" value="prefer"/>
+        <!-- The corpus tests build PostGIS geometry, and the local Postgres has no postgis
+             extension — inherited from DB_HOST above, 14 of them died on "extension postgis is not
+             available". Point them at the Docker postgis container (docker/README or
+             `docker start lp_postgis_test`) instead, which is what they were written against. -->
+        <env name="CORPUS_DB_HOST" value="127.0.0.1"/>
+        <env name="CORPUS_DB_PORT" value="54329"/>
+        <env name="CORPUS_DB_DATABASE" value="learningportal_test"/>
+        <env name="CORPUS_DB_USERNAME" value="postgres"/>
+        <env name="CORPUS_DB_PASSWORD" value="postgres"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

@@ -55,6 +55,25 @@ class QuizLeaderboardTest extends TestCase
         $this->assertSame(5, $entry->correct, 'Correct caps at total');
     }
 
+    public function test_score_submission_survives_a_stale_csrf_token(): void
+    {
+        // A player tab open longer than the session lives (or embedded cross-site, where the
+        // session cookie never arrives) posts a stale token. That must not 419 away a kid's
+        // result, so the route is exempt. Laravel skips CSRF entirely under test, hence the
+        // white-box check on the except list rather than a plain post().
+        $middleware = app(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+        $inExceptArray = new \ReflectionMethod($middleware, 'inExceptArray');
+        $request = \Illuminate\Http\Request::create(
+            "/lesson/{$this->lesson->lesson_code}/quiz-score",
+            'POST',
+        );
+
+        $this->assertTrue(
+            $inExceptArray->invoke($middleware, $request),
+            'The public quiz-score endpoint must stay exempt from CSRF verification.',
+        );
+    }
+
     public function test_leaderboard_is_public_and_scoped_to_the_lesson(): void
     {
         $other = Lesson::create([

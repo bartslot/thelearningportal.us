@@ -1402,6 +1402,18 @@
             <span class="text-[10px] font-medium">{{ __('Format') }}</span>
         </button>
 
+        {{-- Help — where the editor's instructions live. The panels themselves carry controls and
+             short labels only: a teacher opens the same lesson dozens of times to write a leg and add
+             images, and how-to prose above those fields is read once and then in the way forever. --}}
+        <a href="{{ route('help.index') }}#edit" target="_blank" rel="noopener"
+           class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-slate-800 hover:text-amber-300"
+           title="{{ __('How the editor works') }}" aria-label="{{ __('Help') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+            </svg>
+            <span class="text-[10px] font-medium">{{ __('Help') }}</span>
+        </a>
+
         {{-- Settings — global class/lesson settings (Story + Music). Lives on the toolbar, not
              inside the per-scene inspector. --}}
         <button type="button"

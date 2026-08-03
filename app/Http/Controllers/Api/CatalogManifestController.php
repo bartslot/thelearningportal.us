@@ -74,6 +74,10 @@ class CatalogManifestController extends Controller
         return Lesson::query()
             ->where('status', LessonStatus::Published)
             ->whereNotNull('lesson_code')
+            // A lesson with no scenes has nothing to play. The wizard checks that at the moment of
+            // publishing, but nothing re-checks it afterwards, so a published lesson whose scenes
+            // are later deleted would otherwise stay in this list and open to a blank screen.
+            ->has('scenes')
             ->when($since, fn ($q) => $q->where('updated_at', '>', $since))
             ->with(['scenes', 'firstScene', 'source'])
             ->orderByDesc('updated_at')

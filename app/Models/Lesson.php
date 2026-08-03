@@ -112,6 +112,7 @@ class Lesson extends Model
         // instead of up to 10–30 min later.
         $forgetCaches = static function (Lesson $lesson): void {
             Cache::forget('home.playable_lessons');
+            \App\Support\DemoLesson::forget();
             if (! empty($lesson->lesson_code)) {
                 Cache::forget('lesson.player.'.strtoupper($lesson->lesson_code));
             }
@@ -154,6 +155,7 @@ class Lesson extends Model
             'wizard_step' => 'integer',
             'focus_tags' => 'array',
             'subtitles' => 'boolean',
+            'background_music' => 'boolean',
         ];
     }
 
@@ -662,6 +664,26 @@ class Lesson extends Model
      *
      * @return array<int,array{url:string,label:string}>
      */
+    /**
+     * This lesson's own artwork, packed into one sprite sheet for the hero timewarp.
+     *
+     * Built by `lessons:build-warp-atlas`, which puts the cell count in the filename so the
+     * browser can slice the sheet without a database column. Null when no sheet has been built,
+     * in which case the hero simply flies through the generic history cards.
+     *
+     * @return array{url: string, cells: int}|null
+     */
+    public function warpAtlas(): ?array
+    {
+        foreach (Storage::disk('public')->files("lessons/{$this->id}") as $file) {
+            if (preg_match('/warp-atlas-(\d+)\.webp$/', $file, $match)) {
+                return ['url' => Storage::disk('public')->url($file), 'cells' => (int) $match[1]];
+            }
+        }
+
+        return null;
+    }
+
     public function posterCandidates(): array
     {
         $out = [];

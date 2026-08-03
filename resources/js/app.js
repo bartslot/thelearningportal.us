@@ -5,6 +5,8 @@ import { createTour } from './onboarding/tour.js';
 import { initTooltips } from './tooltip.js';
 import { watchCarousels } from './carousel.js';
 import { easingPreview } from './easing-preview.js';
+import { setupHeroLessonDemo } from './hero/lesson-demo.js';
+import { setupSiteHeader } from './site-header.js';
 
 window.Sortable = Sortable;
 
@@ -286,7 +288,9 @@ const setupPortalExitAnimation = () => {
     const glow = hero.querySelector('.hero-glow');
     const spotlight = hero.querySelector('.hero-spotlight');
     const orb = hero.querySelector('.hero-orb');
-    const copy = hero.querySelector('.hero-copy');
+    // The invite link lives in the hero's finished state, so that block — not the demo
+    // conversation above it — is what this animation fades away behind the portal.
+    const copy = hero.querySelector('[data-demo-reveal]') ?? hero.querySelector('.hero-copy');
     const cta = hero.querySelector('.hero-cta');
     const signup = hero.querySelector('[data-portal-signup]');
 
@@ -575,10 +579,14 @@ if (document.readyState === 'loading') {
         setupWheelMotion();
         setupHeroParallax();
         setupPortalExitAnimation();
+        setupHeroLessonDemo();
+        setupSiteHeader();
     }, { once: true });
 } else {
     setupLandingCursor();
     setupWheelMotion();
     setupHeroParallax();
     setupPortalExitAnimation();
+    setupHeroLessonDemo();
+    setupSiteHeader();
 }

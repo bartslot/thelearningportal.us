@@ -3,46 +3,32 @@
     $isAuthenticated = (bool) $user;
     $isTeacher = $isAuthenticated && $user->isTeacher();
     $isAdmin = $isAuthenticated && $user->role === 'admin';
+
+    // One action, whoever is looking: the place this person actually belongs.
+    [$actionUrl, $actionLabel] = match (true) {
+        $isTeacher => [route('teacher.dashboard'), __('Dashboard')],
+        $isAdmin => [route('admin.dashboard'), __('Dashboard')],
+        $isAuthenticated => [route('home'), __('Home')],
+        default => ['/login', __('Login')],
+    };
 @endphp
 
-<header class="fixed inset-x-0 top-0 z-50">
-    <div class="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-        <a href="/#home" class="shrink-0">
-            <img src="{{ asset('assets/logo.svg') }}" alt="History Portal" width="75" height="64" class="h-20 w-auto">
+<header data-site-header class="site-header fixed inset-x-0 top-0 z-50">
+    <div class="site-header__row mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <a href="/#home" class="site-header__logo shrink-0" aria-label="{{ __('History Portal') }}">
+            <img
+                src="{{ asset('assets/logo.svg') }}"
+                alt="History Portal"
+                width="182"
+                height="156"
+                class="h-20 w-auto sm:h-16"
+            >
         </a>
 
-        <nav class="flex items-center gap-8">
-            <a href="{{ route('about') }}" class="text-sm text-white/80 transition hover:text-white">{{ __('About') }}</a>
-            <a href="/#pricing" class="text-sm text-white/80 transition hover:text-white">{{ __('Pricing') }}</a>
-            @if($isTeacher)
-                <a
-                    href="{{ route('teacher.dashboard') }}"
-                    class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
-                >
-                    {{ __('Dashboard') }}
-                </a>
-            @elseif($isAdmin)
-                <a
-                    href="{{ route('admin.dashboard') }}"
-                    class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
-                >
-                    {{ __('Dashboard') }}
-                </a>
-            @elseif($isAuthenticated)
-                <a
-                    href="{{ route('home') }}"
-                    class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
-                >
-                    {{ __('Home') }}
-                </a>
-            @else
-                <a
-                    href="/login"
-                    class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
-                >
-                    {{ __('Login') }}
-                </a>
-            @endif
+        <nav class="site-nav flex items-center gap-5 sm:gap-8">
+            <a href="{{ route('about') }}" class="site-nav__link">{{ __('About') }}</a>
+            <a href="/#pricing" class="site-nav__link">{{ __('Pricing') }}</a>
+            <a href="{{ $actionUrl }}" class="site-nav__action">{{ $actionLabel }}</a>
         </nav>
     </div>
 </header>

@@ -801,6 +801,325 @@
             0 12px 24px rgba(0, 0, 0, 0.45);
     }
 
+    /* ── Site header ─────────────────────────────────────────────────────────
+       Over the hero the header is a hairline: no bar, no fill, and its action is a ghost
+       pill, because the hero already owns the one solid button on the screen. Once the hero
+       has scrolled away the bar earns a tinted backdrop and the action turns amber — the
+       brand's action colour — so it can carry the page on its own. */
+    .site-header::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: color-mix(in oklch, var(--color-base-100) 78%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        opacity: 0;
+        transition: opacity 320ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .site-header.is-scrolled::before {
+        opacity: 1;
+    }
+
+    .site-header__row {
+        position: relative;
+    }
+
+    /* Entrance. CSS, not GSAP, so a JS failure can never leave the navigation invisible —
+       `backwards` fill means the element starts hidden only while the animation is pending. */
+    @keyframes site-header-rise {
+        from { opacity: 0; transform: translate3d(0, -10px, 0); }
+        to   { opacity: 1; transform: none; }
+    }
+
+    .site-header__logo,
+    .site-nav > * {
+        animation: site-header-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+
+    .site-header__logo { animation-delay: 60ms; }
+    .site-nav > :nth-child(1) { animation-delay: 200ms; }
+    .site-nav > :nth-child(2) { animation-delay: 260ms; }
+    .site-nav > :nth-child(3) { animation-delay: 320ms; }
+
+    .site-header__logo img {
+        transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .site-header__logo:hover img {
+        transform: scale(1.04);
+    }
+
+    .site-header.is-scrolled .site-header__logo img {
+        transform: scale(0.9);
+    }
+
+    .site-nav__link {
+        position: relative;
+        font-size: 0.8125rem;
+        color: rgba(255, 255, 255, 0.72);
+        transition: color 200ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    @media (min-width: 640px) {
+        .site-nav__link { font-size: 0.875rem; }
+    }
+
+    .site-nav__link:hover,
+    .site-nav__link:focus-visible {
+        color: #fff;
+    }
+
+    /* Underline grows from the left rather than fading in: it reads as the pointer
+       arriving, not as a box lighting up. */
+    .site-nav__link::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -0.4rem;
+        height: 1px;
+        background: currentColor;
+        transform: scaleX(0);
+        transform-origin: left center;
+        transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .site-nav__link:hover::after,
+    .site-nav__link:focus-visible::after {
+        transform: scaleX(1);
+    }
+
+    .site-nav__action {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        padding: 0.5rem 1rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #fff;
+        transition:
+            transform 150ms cubic-bezier(0.25, 1, 0.5, 1),
+            background-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+            border-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+            color 240ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    @media (min-width: 640px) {
+        .site-nav__action { padding: 0.625rem 1.25rem; font-size: 0.875rem; }
+    }
+
+    .site-nav__action:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.6);
+        transform: scale(1.03);
+    }
+
+    .site-nav__action:active {
+        transform: scale(0.97);
+    }
+
+    .site-header.is-scrolled .site-nav__action {
+        background-color: var(--color-primary);
+        border-color: transparent;
+        color: var(--color-primary-content);
+    }
+
+    .site-header.is-scrolled .site-nav__action:hover {
+        background-color: var(--color-link);
+        border-color: transparent;
+    }
+
+    /* While the hero is still building its lesson, the navigation steps back so the demo is
+       the only thing asking to be read. It returns the moment the lesson lands. */
+    .js-hero-demo:not(.hero-revealed) .site-nav {
+        opacity: 0.55;
+        transition: opacity 700ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .site-nav {
+        transition: opacity 700ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .site-header__logo,
+        .site-nav > * {
+            animation: none;
+        }
+
+        .site-header::before,
+        .site-header__logo img,
+        .site-nav,
+        .site-nav__link,
+        .site-nav__link::after,
+        .site-nav__action {
+            transition-duration: 1ms;
+        }
+
+        .site-nav__action:hover,
+        .site-nav__action:active,
+        .site-header__logo:hover img {
+            transform: none;
+        }
+    }
+
+    /* ── Hero lesson demo ────────────────────────────────────────────────────
+       The hero renders its FINISHED state by default: that is what a search engine, a
+       visitor with JavaScript off, and anyone on reduced motion should get. The `.js-hero-demo`
+       class (set inline, before the hero paints) flips it round so the animation can play from
+       the start without the ending flashing up first. */
+    .hero-timewarp-atlas {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    [data-demo-conversation] {
+        display: none;
+    }
+
+    .js-hero-demo [data-demo-conversation] {
+        display: block;
+    }
+
+    .js-hero-demo [data-demo-reveal] {
+        opacity: 0;
+        visibility: hidden;
+    }
+
+    .hero-skip {
+        display: none;
+    }
+
+    .js-hero-demo [data-demo]:not(.is-revealed) .hero-skip {
+        display: block;
+    }
+
+    /* Blinking insertion point for the typed learning goal. */
+    /* The ring of thumbnails goes down the tunnel with everything else and stays gone: the
+       finished lesson gets a clean field behind it. !important because the hero's pointer
+       parallax keeps writing an inline opacity onto the wheel and would resurrect it. */
+    .hero-revealed .wheel {
+        opacity: 0 !important;
+        transition: opacity 600ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .hero-caret {
+        display: inline-block;
+        width: 0;
+        height: 1em;
+        vertical-align: -0.12em;
+        /* Zero-width on purpose, painted by a shadow outside the box: a caret with real width can
+           fail to fit at the end of a full line and drop onto the next one by itself, which is
+           exactly what it must never do. */
+        box-shadow: 2px 0 0 rgba(255, 255, 255, 0.85);
+    }
+
+    /* The two things the hero asks you to do. Both lift on hover and press back down on click,
+       so the pointer always gets an answer; the icons carry the difference between them. */
+    .hero-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        border-radius: 9999px;
+        padding: 0.875rem 1.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        transition:
+            transform 160ms cubic-bezier(0.25, 1, 0.5, 1),
+            background-color 220ms cubic-bezier(0.25, 1, 0.5, 1),
+            border-color 220ms cubic-bezier(0.25, 1, 0.5, 1),
+            box-shadow 220ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .hero-action:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Press is faster than hover — the acknowledgement has to land under the finger. */
+    .hero-action:active {
+        transform: translateY(0) scale(0.975);
+        transition-duration: 90ms;
+    }
+
+    .hero-action:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.85);
+        outline-offset: 3px;
+    }
+
+    .hero-action--primary {
+        background-color: #fff;
+        color: var(--color-base-100);
+        box-shadow: 0 12px 30px -14px rgba(2, 6, 23, 0.95);
+    }
+
+    .hero-action--primary:hover {
+        box-shadow: 0 20px 44px -14px rgba(2, 6, 23, 1);
+    }
+
+    .hero-action__play {
+        transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .hero-action--primary:hover .hero-action__play {
+        transform: translateX(2px);
+    }
+
+    .hero-action--ghost {
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #fff;
+    }
+
+    .hero-action--ghost:hover {
+        border-color: rgba(255, 255, 255, 0.6);
+        background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .hero-action__knob {
+        /* Explicit, so the translate is measured in the 24-unit viewBox on every engine. */
+        transform-box: view-box;
+        transition: transform 280ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .hero-action--ghost:hover .hero-action__knob--a {
+        transform: translateX(4px);
+    }
+
+    .hero-action--ghost:hover .hero-action__knob--b {
+        transform: translateX(-4.5px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .hero-action,
+        .hero-action__play,
+        .hero-action__knob {
+            transition-duration: 1ms;
+        }
+
+        .hero-action:hover,
+        .hero-action:active,
+        .hero-action--primary:hover .hero-action__play,
+        .hero-action--ghost:hover .hero-action__knob--a,
+        .hero-action--ghost:hover .hero-action__knob--b {
+            transform: none;
+        }
+    }
+
+    .hero-chip {
+        transition: border-color 0.25s ease, background-color 0.25s ease;
+    }
+
+    .hero-chip.is-picked {
+        border-color: rgba(255, 255, 255, 0.9);
+        background-color: rgba(255, 255, 255, 0.12);
+        color: #fff;
+    }
+
     .hero-portal-scene {
         position: absolute;
         inset: 0;

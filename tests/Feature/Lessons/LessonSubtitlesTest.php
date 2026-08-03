@@ -7,6 +7,7 @@ namespace Tests\Feature\Lessons;
 use App\Enums\LessonStatus;
 use App\Livewire\Wizard\Step3SceneConfigurator;
 use App\Models\Lesson;
+use App\Models\Scene;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -25,10 +26,15 @@ class LessonSubtitlesTest extends TestCase
 
     private function lesson(User $teacher): Lesson
     {
-        return Lesson::factory()->create([
+        $lesson = Lesson::factory()->create([
             'teacher_id' => $teacher->id,
             'status' => LessonStatus::Published->value,
         ]);
+        // The player only opens a lesson that has something to play (see CatalogEmptyLessonTest);
+        // these tests are about what the payload carries, so give them a lesson worth opening.
+        Scene::create(['lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration']);
+
+        return $lesson->refresh();
     }
 
     public function test_a_lesson_starts_without_subtitles_unless_the_teacher_asks_for_them(): void

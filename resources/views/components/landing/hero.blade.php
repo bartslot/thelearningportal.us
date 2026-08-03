@@ -1,19 +1,4 @@
 @php
-    $images = [
-        '1history.jpg',
-        '2history.jpg',
-        '3history.jpg',
-        '4history.jpg',
-        '5history.jpg',
-        '6history.jpg',
-        '7history.jpg',
-        '8history.jpg',
-        '9history.jpg',
-        '10history.jpg',
-        '11history.jpg',
-        '12history.jpg',
-    ];
-
     $portalCards = [
         'historycards/history.jpg',
         'historycards/history12.jpg',
@@ -25,163 +10,156 @@
         'historycards/history115.jpg',
     ];
 
-    $count = count($images);
     $isTeacher = auth()->check() && auth()->user()->isTeacher();
-    $hasRegisterRoute = \Illuminate\Support\Facades\Route::has('register');
+
+    // The lesson the animation pretends to build, and the one both buttons open. Resolved by
+    // title so a rebuilt Canon lesson keeps working — see App\Support\DemoLesson.
+    $demoLesson = \App\Support\DemoLesson::resolve();
+
+    // What the demo types. Kept here, not in JS, so it is translatable and indexable.
+    //
+    // The typed goal has to describe the lesson the buttons below actually open. The scripted
+    // line is written for the configured demo lesson, so when DemoLesson falls back to a
+    // different one, the demo types THAT lesson's title instead of promising the wrong thing.
+    $demoGoal = __(\App\Support\DemoLesson::goal());
+
+    // This lesson's own artwork, packed into one small sheet by `lessons:build-warp-atlas`.
+    // With it the tunnel is made of Tasman's fleet and the Golden Bay encounter rather than
+    // stock history cards; without it the hero falls back to the generic set.
+    $warpAtlas = $demoLesson?->warpAtlas();
+
+    $demoGrades = [__('Grade 6'), __('Grade 8'), __('Grade 10'), __('Grade 12')];
+    $demoPick = __('Grade 12');
 @endphp
+
+{{-- Set before the hero paints, so the finished state (which is what non-JS visitors and search
+     engines get) never flashes on screen ahead of the animation. --}}
+<script>
+    if (window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+        document.documentElement.classList.add('js-hero-demo');
+    }
+</script>
 
 <section
     id="home"
+    data-demo
     class="relative isolate flex min-h-screen flex-col items-center justify-center overflow-hidden"
     data-portal-images='@json(array_map(fn ($image) => asset("assets/{$image}"), $portalCards))'
 >
     {{-- Deep navy radial gradient background --}}
-    <img src="{{ asset('assets/videocards.webp') }}" alt="wheel" fetchpriority="high" class="h-7xl w-7xl pointer-events-none absolute wheel z-10" />
+    <img src="{{ asset('assets/videocards.webp') }}" alt="" fetchpriority="high" class="h-7xl w-7xl pointer-events-none absolute wheel z-10" />
     <div class="hero-glow pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_100%,#0d2a4a_0%,#020b24_55%,#010510_100%)] opacity-60"></div>
     {{-- Subtle center glow --}}
     <div class="hero-spotlight pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_60%,rgba(30,80,140,0.45)_0%,transparent_70%)] bg-blend-overlay"></div>
     <div class="hero-orb pointer-events-none absolute left-1/2 top-[16%] z-0 h-[34rem] w-[34rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.14)_0%,rgba(56,189,248,0.05)_35%,transparent_72%)] blur-3xl"></div>
 
-    {{-- Centered text content --}}
-    <div class="hero-copy relative z-30 mt-20 max-w-4xl px-4 text-center">
-        <h1 class="text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
-            <span class="text-white">Effective History Teaching</span>
-        </h1>
+    {{-- The timewarp field. One sprite sheet, 24 cells, drawn as depth-sorted cards by
+         resources/js/hero/timewarp.js. --}}
+    <canvas data-timewarp-canvas class="hero-timewarp pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"></canvas>
+    @if ($warpAtlas)
+        <img
+            data-timewarp-lesson-atlas
+            data-cells="{{ $warpAtlas['cells'] }}"
+            src="{{ $warpAtlas['url'] }}"
+            alt=""
+            class="hero-timewarp-atlas"
+            fetchpriority="high"
+            decoding="async"
+            aria-hidden="true"
+        >
+    @endif
 
-        <p class="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">
-            We use storytelling to engage learners and make history come alive.</p>
-        <p class="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">
-            Our platform is currently in beta and invite-only.<br>
-            Request an invite now to receive a link to create your account.
+    <picture class="hero-timewarp-atlas" aria-hidden="true">
+        <source srcset="{{ asset('assets/timewarp-cards.avif') }}" type="image/avif">
+        <img data-timewarp-atlas src="{{ asset('assets/timewarp-cards.webp') }}" alt="" width="640" height="960" fetchpriority="high" decoding="async">
+    </picture>
+
+    {{-- Act one: the lesson asks for itself.
+         Both acts are absolutely centred on top of each other, so the hero never reflows as one
+         hands over to the other. --}}
+    <div class="hero-stage pointer-events-none absolute inset-0 z-30 flex items-center justify-center px-4">
+    <div data-demo-conversation class="hero-copy pointer-events-auto w-full max-w-2xl text-center">
+        <p data-demo-step="goal" class="font-history text-lg text-white/55 sm:text-xl">{{ __('What is your learning goal?') }}</p>
+
+        <p class="font-history mt-4 text-2xl leading-snug text-white sm:text-4xl">
+            <span data-demo-typed="{{ $demoGoal }}"></span><span data-demo-caret class="hero-caret" aria-hidden="true"></span>
         </p>
 
-        <div class="hero-cta mt-10 relative z-30">
-            @if($isTeacher)
-                <a
-                    href="{{ route('teacher.lessons.create') }}"
-                    class="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:bg-white/90"
-                >
-                    Create a lesson
-                </a>
-            @else
-                <a
-                    href="{{ route('login') }}"
-                    data-portal-launch
-                    class="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:bg-white/90"
-                >
-                    Join the History portal
-                </a>
-            @endif
+        <p data-demo-step="audience" class="font-history mt-10 text-lg text-white/55 sm:text-xl">{{ __('Great. Who is it for?') }}</p>
+
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+            @foreach ($demoGrades as $grade)
+                <span
+                    data-demo-chip
+                    @if ($grade === $demoPick) data-demo-chip-pick @endif
+                    class="hero-chip rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/80"
+                >{{ $grade }}</span>
+            @endforeach
         </div>
     </div>
+    </div>
 
-    @unless($isTeacher)
-        <div
-            data-portal-signup
-            class="pointer-events-none absolute left-1/2 top-1/2 z-40 w-full max-w-md -translate-x-1/2 -translate-y-1/2 px-4 opacity-0"
-            inert
-        >
-            <div class="rounded-3xl border border-white/15 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
-                <h2 class="text-center text-2xl font-semibold text-white">Create your account</h2>
-                <p class="mt-2 text-center text-sm text-slate-300">Temporary form: using register flow for now.</p>
+    {{-- Act two: the lesson exists. This is also the whole hero for anyone with JS off or
+         reduced motion on, which is why the h1 and the real links live here. --}}
+    <div class="hero-stage pointer-events-none absolute inset-0 z-30 flex items-center justify-center px-4">
+    <div data-demo-reveal class="hero-cta pointer-events-auto flex max-w-4xl flex-col items-center gap-8 text-center sm:flex-row sm:gap-10 sm:text-left">
+        @if ($demoLesson)
+            {{-- The lesson itself, playable. It is what the demo just built, so it arrives out of
+                 the tunnel ahead of the words. --}}
+            <x-lesson-poster-card
+                data-reveal-item
+                :lesson="$demoLesson"
+                class="w-[11.5rem] shrink-0 sm:w-[13rem]"
+            />
+        @endif
 
-                <form method="{{ $hasRegisterRoute ? 'POST' : 'GET' }}" action="{{ $hasRegisterRoute ? route('register') : route('login') }}" class="mt-6 space-y-4">
-                    @if($hasRegisterRoute)
-                        @csrf
-                    @endif
-                    <div>
-                        <label for="portal_name" class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-300">Name</label>
-                        <input
-                            id="portal_name"
-                            name="name"
-                            type="text"
-                            required
-                            class="w-full rounded-xl border border-white/15 bg-slate-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-300/70"
-                        >
-                    </div>
+        <div class="flex flex-col items-center sm:items-start">
+            <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+                {{ __('Your lesson is ready') }}
+            </h1>
 
-                    <div>
-                        <label for="portal_email" class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-300">Email</label>
-                        <input
-                            id="portal_email"
-                            name="email"
-                            type="email"
-                            required
-                            class="w-full rounded-xl border border-white/15 bg-slate-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-300/70"
-                        >
-                    </div>
+            {{-- Names what was just built, for the class it was just built for: the two answers
+                 the demo typed, handed back. --}}
+            <p data-reveal-item class="mt-5 max-w-md text-balance text-sm leading-relaxed text-white/60 sm:text-base">
+                @if ($demoLesson)
+                    {{ __('Check out :lesson for :grade', ['lesson' => $demoLesson->title, 'grade' => $demoPick]) }}
+                @else
+                    {{ __('We use storytelling to engage learners and make history come alive.') }}
+                @endif
+            </p>
 
-                    <div>
-                        <label for="portal_password" class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-300">Password</label>
-                        <input
-                            id="portal_password"
-                            name="password"
-                            type="password"
-                            required
-                            class="w-full rounded-xl border border-white/15 bg-slate-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-300/70"
-                        >
-                    </div>
-
-                    <div>
-                        <label for="portal_password_confirmation" class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-300">Confirm password</label>
-                        <input
-                            id="portal_password_confirmation"
-                            name="password_confirmation"
-                            type="password"
-                            required
-                            class="w-full rounded-xl border border-white/15 bg-slate-900/80 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-300/70"
-                        >
-                    </div>
-
-                    <button
-                        type="submit"
-                        class="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white/90"
-                    >
-                        {{ $hasRegisterRoute ? 'Register' : 'Continue to login' }}
-                    </button>
-                </form>
+            <div data-reveal-item class="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                @if ($demoLesson)
+                    {{-- The sliders answer the label: hover, and the two knobs slide along their
+                         tracks. Configuring is what the button does, so that is what it shows. --}}
+                    <a href="{{ route('demo.configure') }}" class="hero-action hero-action--ghost">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                            <path stroke-linecap="round" d="M3 8.5h18M3 15.5h18" />
+                            <circle class="hero-action__knob hero-action__knob--a" cx="8.5" cy="8.5" r="2.6" />
+                            <circle class="hero-action__knob hero-action__knob--b" cx="15.5" cy="15.5" r="2.6" />
+                        </svg>
+                        {{ __('Configure') }}
+                    </a>
+                    <a href="{{ route('lesson.play', $demoLesson->lesson_code) }}" class="hero-action hero-action--primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="hero-action__play h-4 w-4" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
+                        </svg>
+                        {{ __('Play lesson') }}
+                    </a>
+                @elseif ($isTeacher)
+                    <a href="{{ route('teacher.lessons.create') }}" class="hero-action hero-action--primary">
+                        {{ __('Create a lesson') }}
+                    </a>
+                @endif
             </div>
         </div>
-    @endunless
+    </div>
+    </div>
 
-    {{-- Semicircular arc of images --}}
-    <!-- <div class="pointer-events-none relative z-10 -mt-8 h-144 w-full sm:-mt-16 sm:h-176">
-        @foreach ($images as $i => $image)
-            @php
-                // Spread images across a 180° arc (from 180° to 360°/0°)
-                $angle = 180 + ($i * 180 / ($count - 1));
-                $radiusX = 42; // vw units via inline style
-                $radiusY = 38;
-                $cx = 50;
-                $cy = 0; // top of the container = center of the arc
-                $rad = deg2rad($angle);
-                $x = $cx + $radiusX * cos($rad);
-                $y = $cy + $radiusY * sin($rad);
+    <button
+        type="button"
+        data-demo-skip
+        class="hero-skip absolute bottom-8 right-6 z-30 text-xs uppercase tracking-widest text-white/35 transition hover:text-white/80"
+    >{{ __('Skip') }}</button>
 
-                // Size decreases toward the sides
-                $centerIndex = ($count - 1) / 2;
-                $distFromCenter = abs($i - $centerIndex) / $centerIndex;
-                $sizeRem = 8 - $distFromCenter * 3; // 8rem center → 5rem edges
-            @endphp
-            <div
-                class="absolute overflow-hidden rounded-2xl shadow-2xl"
-                style="
-                    left: {{ $x }}%;
-                    top: {{ $y }}%;
-                    width: {{ round($sizeRem, 2) }}rem;
-                    height: {{ round($sizeRem, 2) }}rem;
-                    transform: translate(-50%, 0);
-                "
-            >
-                <img
-                    src="{{ asset('history/' . $image) }}"
-                    alt=""
-                    class="h-full w-full object-cover"
-                    draggable="false"
-                >
-            </div>
-        @endforeach
-    </div> -->
-    
-    
 </section>

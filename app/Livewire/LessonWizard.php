@@ -35,9 +35,24 @@ class LessonWizard extends Component
             if ($this->step === 3 && $this->hasNothingToGenerate($lesson)) {
                 $this->step = 4;
             }
+
+            $this->step = $this->clampForGuestDemo($this->step);
         } else {
             $this->step = $resolvedStep ?? 1;
         }
+    }
+
+    /**
+     * Landing-page guests get the two canvas steps and nothing else. Steps 1–3 are the settings
+     * and generation screens: the Generate step alone would let an anonymous visitor spend real
+     * money on AI credits. The route middleware cannot see `step`, because Livewire changes it
+     * without a request — so the clamp has to live here.
+     */
+    private function clampForGuestDemo(int $step): int
+    {
+        return auth()->user()?->isGuestDemo()
+            ? max(4, min(5, $step))
+            : $step;
     }
 
     public function goBackStep()
@@ -61,7 +76,7 @@ class LessonWizard extends Component
 
     public function goToStep(int $step): void
     {
-        $this->step = max(1, min(5, $step));
+        $this->step = $this->clampForGuestDemo(max(1, min(5, $step)));
         if ($this->lesson) {
             $this->lesson->update(['wizard_step' => $this->step]);
         }

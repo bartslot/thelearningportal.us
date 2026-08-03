@@ -108,6 +108,21 @@ final class HelpGuide
                         ],
                     ],
                     [
+                        // Where the voyage editor's own instructions live now. They used to sit in the
+                        // waypoint panel, above the fields a teacher opens dozens of times per lesson —
+                        // read once, then permanent clutter. Here they are one click away and out of
+                        // the way. See the Help button beside Format in the editor toolbar.
+                        'heading' => __('Drawing a voyage route'),
+                        'body' => __('A voyage scene is one crossing: the ship sails from the stop before it to this one.'),
+                        'steps' => [
+                            __('Drag the amber Destination X to set where this crossing ends.'),
+                            __('Hover the blue sailing line and drag to bend the route around a coast, or drag an existing bend to move it.'),
+                            __('Double-click a bend to remove it.'),
+                            __('Travelled by picks the marker for this crossing only — it swaps as the traveller reaches the coast. No model to suit the journey? Use a picture instead.'),
+                            __('Gallery / description is what opens when the class arrives: the story of the stop and its images.'),
+                        ],
+                    ],
+                    [
                         'heading' => __('Text, images and narration'),
                         'body' => __('Rewrite the narration text and the narrator records it again in your chosen voice. Swap an image for another one from the museum collections, or drop text and drawings on top of a picture. Every change saves itself.'),
                         'steps' => [],

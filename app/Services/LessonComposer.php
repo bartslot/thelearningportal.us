@@ -9,7 +9,6 @@ use App\Jobs\GenerateSceneAudio;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -83,6 +82,16 @@ class LessonComposer
                 : 'quiz',
             'status' => LessonStatus::Draft,
         ]);
+
+        if (isset($spec['map_relief'])) {
+            $lesson->map_relief = (float) $spec['map_relief'];
+        }
+        if (! empty($spec['game_config'])) {
+            // A voyage lesson keeps its own edited copy of the route here, so a rebuild that
+            // ignored it would quietly snap the ship back to the catalogue's default track.
+            $lesson->game_config = array_merge((array) ($lesson->game_config ?? []), (array) $spec['game_config']);
+        }
+
         if ($lesson->trashed()) {
             $lesson->restore();
         }
@@ -109,6 +118,8 @@ class LessonComposer
                 default => $this->storyScene($lesson, $sceneSpec, $order),
             };
 
+            $this->applyPassthrough($scene, $sceneSpec);
+
             $this->say("  #{$order} {$type} — ".($scene->location ?: $scene->chapter_name ?: '…'));
 
             if ($narrate && $scene->script_segment) {
@@ -127,6 +138,36 @@ class LessonComposer
         $this->assignPoster($lesson, $spec);
 
         return $lesson->fresh();
+    }
+
+    /**
+     * Re-apply scene state this service does not author itself.
+     *
+     * A rebuild recreates every scene from the spec, which is what makes a spec the unit of change
+     * — but it also means anything the wizard added on top (an Animate tab transition, a voyage
+     * overview, artwork layers) would be dropped. `lessons:export` writes those into `extra_config`
+     * and `shots`, and they are merged back here.
+     *
+     * @param  array<string,mixed>  $s
+     */
+    private function applyPassthrough(Scene $scene, array $s): void
+    {
+        $extra = (array) ($s['extra_config'] ?? []);
+        $shots = (array) ($s['shots'] ?? []);
+
+        if ($extra === [] && $shots === []) {
+            return;
+        }
+
+        $update = [];
+        if ($extra !== []) {
+            $update['config'] = array_merge((array) ($scene->config ?? []), $extra);
+        }
+        if ($shots !== []) {
+            $update['shots'] = $shots;
+        }
+
+        $scene->update($update);
     }
 
     /**
@@ -202,7 +243,7 @@ class LessonComposer
         ]);
 
         if (! empty($s['image'])) {
-            $this->attachBackground($scene, (string) $s['image'], $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'), $s['focus'] ?? null);
+            $this->attachBackground($scene, $s['image'], $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'), $s['focus'] ?? null);
         }
 
         return $scene;
@@ -215,16 +256,7 @@ class LessonComposer
      */
     private function galleryScene(Lesson $lesson, array $s, int $order): Scene
     {
-        $images = [];
-        foreach ((array) ($s['images'] ?? []) as $slot => $query) {
-            $hit = $this->images->find((string) $query, $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'));
-            if (! $hit) {
-                $this->say("     ! no image for '{$query}'");
-
-                continue;
-            }
-            $images[] = ['url' => $hit['url'], 'credit' => $hit['credit']];
-        }
+        $images = $this->resolveImages($s);
 
         return $lesson->scenes()->create([
             'order' => $order,
@@ -301,13 +333,7 @@ class LessonComposer
      */
     private function voyageScene(Lesson $lesson, array $s, int $order): Scene
     {
-        $images = [];
-        foreach ((array) ($s['images'] ?? []) as $query) {
-            $hit = $this->images->find((string) $query, $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'));
-            if ($hit) {
-                $images[] = ['url' => $hit['url'], 'credit' => $hit['credit']];
-            }
-        }
+        $images = $this->resolveImages($s);
 
         return $lesson->scenes()->create([
             'order' => $order,
@@ -446,12 +472,61 @@ class LessonComposer
         return $scene;
     }
 
-    /** Source, download and attach a scene background image. */
-    private function attachBackground(Scene $scene, string $query, ?int $year, string $prefer, ?string $focus = null): void
+    /**
+     * The `images` list of a gallery or voyage scene, resolved and credited.
+     *
+     * @param  array<string,mixed>  $s
+     * @return list<array{url:string,credit:?string}>
+     */
+    private function resolveImages(array $s): array
     {
-        $hit = $this->images->find($query, $year, $prefer);
+        $images = [];
+        foreach ((array) ($s['images'] ?? []) as $entry) {
+            $hit = $this->resolveImage($entry, $s['year'] ?? null, (string) ($s['prefer'] ?? 'auto'));
+            if (! $hit) {
+                $label = is_array($entry) ? ($entry['url'] ?? '?') : $entry;
+                $this->say("     ! no image for '{$label}'");
+
+                continue;
+            }
+            $images[] = ['url' => $hit['url'], 'credit' => $hit['credit']];
+        }
+
+        return $images;
+    }
+
+    /**
+     * Resolve one spec image entry.
+     *
+     * A string is a search query, answered by the corpus and Commons. An array carrying a `url` is
+     * an image that has ALREADY been chosen — what `lessons:export` writes — and is taken as-is:
+     * re-running the query would be a fresh roll of the dice and could swap the picture out from
+     * under a lesson someone has already reviewed.
+     *
+     * @return array{url:string,credit:?string,focus?:string}|null
+     */
+    private function resolveImage(mixed $image, ?int $year, string $prefer): ?array
+    {
+        if (is_array($image)) {
+            $url = (string) ($image['url'] ?? '');
+
+            return $url === '' ? null : [
+                'url' => $url,
+                'credit' => $image['credit'] ?? null,
+                'focus' => $image['focus'] ?? null,
+            ];
+        }
+
+        return $this->images->find((string) $image, $year, $prefer);
+    }
+
+    /** Source, download and attach a scene background image. */
+    private function attachBackground(Scene $scene, mixed $query, ?int $year, string $prefer, ?string $focus = null): void
+    {
+        $hit = $this->resolveImage($query, $year, $prefer);
         if (! $hit) {
-            $this->say("     ! no image for '{$query}'");
+            $label = is_array($query) ? ($query['url'] ?? '?') : $query;
+            $this->say("     ! no image for '{$label}'");
 
             return;
         }

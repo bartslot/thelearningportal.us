@@ -7,6 +7,7 @@
     <title>{{ $title ?? config('app.name') }} · The Learning Portal</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-audio-manifest />
     @stack('head-scripts')
     @livewireStyles
 </head>

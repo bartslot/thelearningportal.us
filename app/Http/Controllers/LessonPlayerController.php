@@ -26,6 +26,9 @@ class LessonPlayerController extends Controller
         $lesson = Cache::remember("lesson.player.{$code}", now()->addMinutes(30), function () use ($code, $playableStatuses) {
             $lesson = Lesson::where('lesson_code', $code)
                 ->whereIn('status', $playableStatuses)
+                // Same rule as the catalogue: no scenes, nothing to play. Without this the player
+                // renders its whole chrome around an empty stage and the class sits looking at it.
+                ->has('scenes')
                 ->with(['strategyGame', 'avatar', 'source', 'scenes'])
                 ->first();
 
