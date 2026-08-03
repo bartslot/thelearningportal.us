@@ -1,3 +1,4 @@
+import { filterMarkup, layerFilterId } from './layer-filters.js'
 /**
  * ParallaxScene — multiplane webcomic shot: N depth-sorted layers (E3c).
  *
@@ -271,7 +272,8 @@ export class ParallaxScene {
    * the paper tones beneath them.
    * @param {HTMLElement} layer @param {PlaneSpec} spec
    */
-  _applyArtisticProps (layer, { blur = 0, opacity = 1, blend = null, wobble = 0, z = null } = {}) {
+  _applyArtisticProps (layer, { blur = 0, opacity = 1, blend = null, wobble = 0, z = null,
+    asset_id = null, white_key = 0, grayscale = false, tint = null } = {}) {
     // Server-serialized layers carry explicit nulls for unset props (JSON has no
     // undefined), which bypass the parameter defaults above — normalize first.
     blur = blur ?? 0
@@ -281,6 +283,21 @@ export class ParallaxScene {
     const wobbleLevel = Math.min(2, Math.max(0, Math.round(wobble)))
     if (wobbleLevel > 0) filters.push(`url(#px-wobble-${wobbleLevel})`)
     if (blur > 0) filters.push(`blur(${Math.min(20, blur)}px)`)
+    // Colour treatment (white key / grayscale / tint) — the same SVG filter the editor builds, so
+    // a layer that had its paper knocked out on the canvas plays back that way too.
+    const treatment = filterMarkup({ white_key: white_key ?? 0, grayscale, tint })
+    if (treatment && asset_id != null) {
+      const id = layerFilterId(asset_id)
+      let svg = this.host.querySelector(`#${id}`)?.closest('svg')
+      if (!svg) {
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        svg.setAttribute('aria-hidden', 'true')
+        svg.style.cssText = 'position:absolute; width:0; height:0; pointer-events:none;'
+        this.host.appendChild(svg)
+      }
+      svg.innerHTML = `<defs><filter id="${id}" color-interpolation-filters="sRGB">${treatment}</filter></defs>`
+      filters.unshift(`url(#${id})`)
+    }
     if (filters.length) layer.style.filter = filters.join(' ')
     if (opacity !== 1) layer.style.opacity = String(Math.min(1, Math.max(0, opacity)))
     if (blend) layer.style.mixBlendMode = blend

@@ -125,6 +125,39 @@
         </select>
     </label>
 
+    {{-- Colour treatment. Drop White is the one that changes what a scan can be used for: an
+         engraving arrives as ink on paper, and keying the paper out leaves just the ink, which can
+         then be drained and recoloured to sit with the lesson's palette. --}}
+    <div class="space-y-2 border-t border-slate-700/50 pt-2">
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Drop white') }}</span>
+            <input type="range" min="0" max="0.5" step="0.01"
+                   value="{{ $layer['white_key'] ?? 0 }}"
+                   wire:change="updateArtworkLayer({{ $aid }}, 'white_key', $event.target.value)"
+                   class="range range-xs flex-1" />
+            <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ round(((float) ($layer['white_key'] ?? 0)) * 100) }}%</span>
+        </label>
+
+        <label class="flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-300">{{ __('Grayscale') }}</span>
+            <input type="checkbox" @checked($layer['grayscale'] ?? false)
+                   wire:change="updateArtworkLayer({{ $aid }}, 'grayscale', $event.target.checked)"
+                   class="toggle toggle-sm toggle-warning shrink-0" />
+        </label>
+
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Tint') }}</span>
+            <input type="color" value="{{ $layer['tint'] ?? '#38bdf8' }}"
+                   wire:change="updateArtworkLayer({{ $aid }}, 'tint', $event.target.value)"
+                   class="h-6 w-10 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-900" />
+            <button type="button" wire:click="updateArtworkLayer({{ $aid }}, 'tint', '')"
+                    class="flex-1 rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200">
+                {{ __('No tint') }}
+            </button>
+        </label>
+        <p class="text-[10px] leading-tight text-slate-500">{{ __('Tint recolours what survives the white key, so drop the white first.') }}</p>
+    </div>
+
     {{-- Ink draw-on controls — only in Drawing mode. --}}
     @if ($slideshowMode === 'drawing')
         <div class="space-y-2 border-t border-slate-700/50 pt-2">

@@ -11,6 +11,7 @@ use App\Jobs\GenerateSceneScript;
 use App\Jobs\GenerateSkyboxCandidates;
 use App\Jobs\GenerateSkyboxImage;
 use App\Jobs\GenerateWorldLabsScene;
+use App\Livewire\Wizard\Concerns\BlocksGuestDemoSpending;
 use App\Livewire\Wizard\Concerns\EditsQuizQuestions;
 use App\Livewire\Wizard\Concerns\EditsSceneArtwork;
 use App\Livewire\Wizard\Concerns\EditsStoryGame;
@@ -34,6 +35,7 @@ use Livewire\WithFileUploads;
 
 class Step3SceneConfigurator extends Component
 {
+    use BlocksGuestDemoSpending;
     use EditsQuizQuestions;
     use EditsSceneArtwork;
     use EditsStoryGame;
@@ -203,6 +205,10 @@ class Step3SceneConfigurator extends Component
                 'anim_delay' => isset($l['anim_delay']) ? (float) $l['anim_delay'] : null,
                 'anim_ease' => $l['anim_ease'] ?? null,
                 'wobble' => isset($l['wobble']) ? (int) $l['wobble'] : null,
+                // Colour treatment — knock out the paper, drain the colour, recolour the ink.
+                'white_key' => isset($l['white_key']) ? (float) $l['white_key'] : null,
+                'grayscale' => ! empty($l['grayscale']),
+                'tint' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($l['tint'] ?? '')) ? $l['tint'] : null,
                 'z' => isset($l['z']) ? (int) $l['z'] : null,
                 // Drawing-mode ink controls (per layer).
                 'ink_preset' => $l['ink_preset'] ?? null,
@@ -1692,6 +1698,316 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
+     * The itinerary: every place the voyage calls at, in sailing order.
+     *
+     * Stop 1 is where it leaves from (the overview scene names it — that scene stops nowhere, so its
+     * own location is the departure port); stop 2 onwards is each leg's landfall. Names come from the
+     * leg's own title where the teacher set one, otherwise from the scene that plays that leg, which
+     * is what the map labels already use — one name per place, not two that can disagree.
+     *
+     * @return array<int,array{n:int,leg:int|null,title:string,scene_id:int|null}>
+     */
+    public function voyageStops(): array
+    {
+        $def = $this->voyageDef();
+        $legs = $def['legs'] ?? [];
+        if (! $legs) {
+            return [];
+        }
+
+        $scenes = $this->lesson->scenes()->where('kind', 'voyage')->ordered()->get();
+        $overview = $scenes->first(fn ($s) => (bool) ($s->config['overview'] ?? false));
+        $sceneForLeg = $scenes->reject(fn ($s) => (bool) ($s->config['overview'] ?? false))
+            ->keyBy(fn ($s) => (int) ($s->config['leg'] ?? 0));
+
+        $nameOfLeg = function (int $i) use ($legs, $sceneForLeg): string {
+            $scene = $sceneForLeg[$i] ?? null;
+
+            return trim((string) ($legs[$i]['title'] ?? '')) ?: (string) ($scene->location ?? '');
+        };
+
+        // Only the scenes ON the route are listed, numbered from the first landfall: stop 1 is the
+        // first place the voyage arrives at, not the port it left from. The overview is not a place
+        // the voyage calls at — it is the screen that shows them all — so it has no row of its own,
+        // and the departure port carries no number of its own either (it is where stop 1 sails from).
+        $stops = [];
+        foreach ($legs as $i => $leg) {
+            $scene = $sceneForLeg[$i] ?? null;
+            $stops[] = [
+                'n' => $i + 1,
+                'leg' => $i,
+                'title' => $nameOfLeg($i),
+                'scene_id' => $scene?->id,
+            ];
+        }
+
+        return $stops;
+    }
+
+    /** Does the last leg end where the first one began (within ~100 km)? */
+    private function voyageReturnsHome(array $def): bool
+    {
+        $legs = array_values($def['legs'] ?? []);
+        $points = $def['waypoints'] ?? [];
+        if (count($legs) < 2) {
+            return false;
+        }
+        $start = $points[$legs[0]['wp'][0]] ?? null;
+        $end = $points[$legs[count($legs) - 1]['wp'][1]] ?? null;
+        if (! is_array($start) || ! is_array($end)) {
+            return false;
+        }
+
+        return abs((float) $start[0] - (float) $end[0]) < 1.0 && abs((float) $start[1] - (float) $end[1]) < 1.0;
+    }
+
+    /**
+     * The name of the port a voyage leaves from, when nothing has named it yet.
+     *
+     * Most historical voyages are round trips, so the place the route ends at IS the place it began
+     * — Tasman left Batavia and came home to Batavia. Reading the name back off the returning leg
+     * beats making the teacher type a name the lesson already knows. A one-way voyage returns ''
+     * and the row shows its placeholder instead of a wrong guess.
+     *
+     * @param  callable(int):string  $nameOfLeg
+     */
+    private function homePortName(array $def, callable $nameOfLeg): string
+    {
+        $legs = array_values($def['legs'] ?? []);
+
+        return $this->voyageReturnsHome($def) ? $nameOfLeg(count($legs) - 1) : '';
+    }
+
+    /**
+     * Re-sail the voyage in a new order of calls: `$order` is the leg indices as they should now run.
+     *
+     * A leg owns the waypoints from just after its departure up to and including its landfall — its
+     * bends belong to that crossing — so reordering moves those BLOCKS and re-chains them onto the
+     * origin. Each leg keeps its own bends, dates and title; what changes is where it sails from,
+     * which is the whole point of reordering an itinerary. The scenes that play the legs are
+     * renumbered and re-ordered to match, so the rail and the itinerary can never disagree.
+     */
+    /**
+     * Add the itinerary scene — the whole trip on one screen, before anyone sets off.
+     *
+     * It carries no geometry of its own (the renderer derives the route and every stop from
+     * voyage_def), so all it needs is the flag and a leg to seed the map's era and style from.
+     */
+    private function addVoyageOverviewScene(): void
+    {
+        $this->addSceneOpen = false;
+        $scene = Scene::create([
+            'lesson_id' => $this->lesson->id,
+            'kind' => 'voyage',
+            'status' => 'ready',
+            'order' => ((int) $this->lesson->scenes()->max('order')) + 1,
+            'title' => __('The whole voyage'),
+            'config' => [
+                'voyage' => $this->lesson->game_config['voyage'] ?? ($this->voyageDef()['id'] ?? null),
+                'overview' => true,
+                'leg' => 0,
+                'view' => 'flat',
+                'intro' => false,
+            ],
+        ]);
+        $this->placeSceneAfterSelected($scene, $this->selectedSceneId);
+        $this->lesson->refresh();
+        $this->dispatch('scenesUpdated');
+        $this->selectSceneInternal($scene->id);
+    }
+
+    /**
+     * The itinerary scene's own animation: the route drawing itself, and its stops numbering as it
+     * goes. Lives on the scene (Animate tab) because it is that scene's motion, not a map setting.
+     */
+    public function setOverviewAnim(string $key, $value): void
+    {
+        if (! $this->selectedScene || ($this->selectedScene['kind'] ?? null) !== 'voyage') {
+            return;
+        }
+        $anim = ($this->selectedScene['config']['overview_anim'] ?? []) + ['route' => 'draw', 'duration' => 3.0, 'stops' => true];
+        $anim[$key] = match ($key) {
+            'route' => in_array($value, ['draw', 'none'], true) ? $value : 'draw',
+            'duration' => max(0.5, min(10.0, (float) $value)),
+            'stops' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            default => null,
+        };
+        if ($anim[$key] === null) {
+            return;
+        }
+        $this->selectedScene['config']['overview_anim'] = $anim;
+        $this->saveSelected();
+    }
+
+    /**
+     * Give a leg that has no scene one, so the class can actually see that stop.
+     *
+     * A route can end up with more legs than scenes — an added crossing, a deleted scene — and the
+     * itinerary is where that finally shows: a stop nobody can watch. The new scene is built like
+     * every other leg scene (see addScene's voyage branch) and lands in sailing order.
+     */
+    public function addVoyageSceneForLeg(int $leg): void
+    {
+        $def = $this->voyageDef();
+        $legs = $def['legs'] ?? [];
+        if (! isset($legs[$leg])) {
+            return;
+        }
+        $voyageScenes = $this->lesson->scenes()->where('kind', 'voyage')->ordered()->get();
+        // Never a second scene for the same leg: two scenes on one leg is the bug this repairs.
+        if ($voyageScenes->contains(fn ($s) => ! ($s->config['overview'] ?? false) && (int) ($s->config['leg'] ?? 0) === $leg)) {
+            return;
+        }
+
+        $scene = Scene::create([
+            'lesson_id' => $this->lesson->id,
+            'kind' => 'voyage',
+            'status' => 'ready',
+            // Lesson-wide max, not the voyage scenes' — scene order is unique across the lesson, and
+            // a quiz sitting after the last leg already owns that number.
+            'order' => ($this->lesson->scenes()->max('order') ?? 0) + 1,
+            'location' => trim((string) ($legs[$leg]['title'] ?? '')) ?: null,
+            'config' => [
+                'voyage' => $this->lesson->game_config['voyage'] ?? ($def['id'] ?? null),
+                'leg' => $leg,
+                'view' => 'flat',
+                'intro' => false,
+                'stop_images' => [],
+                'gallery' => ['title' => '', 'date_label' => '', 'story' => '', 'images' => []],
+            ],
+        ]);
+
+        $this->lesson->refresh();
+        $this->dispatch('scenesUpdated');
+        $this->selectSceneInternal($scene->id);
+    }
+
+    #[On('reorderVoyageStops')]
+    public function reorderVoyageStops(array $order): void
+    {
+        $gc = $this->ensureVoyageDef();
+        $def = $gc['voyage_def'] ?? $this->voyageDef();
+        $legs = array_values($def['legs'] ?? []);
+        $points = array_values($def['waypoints'] ?? []);
+        $order = array_values(array_unique(array_map('intval', $order)));
+        // Ignore anything that isn't a clean permutation — a half-applied route is worse than none.
+        if (count($order) !== count($legs) || array_diff($order, array_keys($legs))) {
+            return;
+        }
+
+        $this->applyLegOrder($order);
+    }
+
+    /**
+     * Delete a stop: the crossing that ends there stops being part of the voyage.
+     *
+     * A stop only exists because a leg arrives at it, so removing the stop means removing that leg
+     * and sailing straight on to the next one — which is exactly a re-chain over the legs that are
+     * left. Its scene goes with it: a scene that points at a leg which no longer exists would show
+     * an empty map. The last leg cannot go, or there would be no voyage.
+     */
+    public function deleteVoyageStop(int $leg): void
+    {
+        $def = $this->voyageDef();
+        $legs = array_values($def['legs'] ?? []);
+        if (count($legs) < 2 || ! array_key_exists($leg, $legs)) {
+            return;
+        }
+
+        $this->lesson->scenes()
+            ->where('kind', 'voyage')
+            ->get()
+            ->filter(fn ($s) => ! ($s->config['overview'] ?? false) && (int) ($s->config['leg'] ?? 0) === $leg)
+            ->each(fn ($s) => $s->delete());
+
+        $this->applyLegOrder(array_values(array_diff(array_keys($legs), [$leg])));
+    }
+
+    /**
+     * Re-chain the route over `$order` — the legs to keep, in the order they are sailed.
+     *
+     * Shared by reordering (a permutation) and deleting (a subset). Each leg keeps its own bends and
+     * dates; only where it starts and ends is recomputed, so dragging a crossing around the itinerary
+     * never straightens the course the teacher drew.
+     *
+     * @param  int[]  $order  leg indices into the CURRENT def
+     */
+    private function applyLegOrder(array $order): void
+    {
+        $gc = $this->ensureVoyageDef();
+        $def = $gc['voyage_def'] ?? $this->voyageDef();
+        $legs = array_values($def['legs'] ?? []);
+        $points = array_values($def['waypoints'] ?? []);
+        if (! $order || array_diff($order, array_keys($legs))) {
+            return;
+        }
+
+        $origin = $points[$legs[0]['wp'][0]] ?? null;
+        if ($origin === null) {
+            return;
+        }
+
+        $rebuiltPoints = [$origin];
+        $rebuiltLegs = [];
+        foreach ($order as $legIndex) {
+            $leg = $legs[$legIndex];
+            [$from, $to] = [(int) $leg['wp'][0], (int) $leg['wp'][1]];
+            $block = array_slice($points, $from + 1, max(0, $to - $from));   // this leg's bends + its landfall
+            if (! $block) {
+                return;                                                      // malformed leg — leave the route alone
+            }
+            $start = count($rebuiltPoints) - 1;
+            $rebuiltPoints = array_merge($rebuiltPoints, $block);
+            $rebuiltLegs[] = array_merge($leg, ['wp' => [$start, count($rebuiltPoints) - 1]]);
+        }
+
+        $this->pushVoyageUndo();          // a reorder is a route edit like any other — take it back with Undo
+        $gc = $this->lesson->game_config ?? [];
+        $def['waypoints'] = $rebuiltPoints;
+        $def['legs'] = $rebuiltLegs;
+        $gc['voyage_def'] = $def;
+        $this->lesson->update(['game_config' => $gc]);
+        $this->lesson->refresh();
+        unset($this->voyageDef);
+
+        // Renumber the scenes onto their leg's new index, then lay them out in sailing order behind
+        // the overview scene. Done in one pass so no scene is ever left pointing at a stale leg.
+        $newIndexOf = array_flip($order);
+        $scenes = $this->lesson->scenes()->where('kind', 'voyage')->ordered()->get();
+        $legScenes = [];
+        foreach ($scenes as $scene) {
+            if ((bool) ($scene->config['overview'] ?? false)) {
+                continue;
+            }
+            $old = (int) ($scene->config['leg'] ?? 0);
+            if (! array_key_exists($old, $newIndexOf)) {
+                continue;
+            }
+            $config = $scene->config;
+            $config['leg'] = $newIndexOf[$old];
+            $scene->update(['config' => $config]);
+            $legScenes[$newIndexOf[$old]] = $scene;
+        }
+        ksort($legScenes);
+        $order0 = $scenes->min('order');
+        $next = $order0 + ($scenes->contains(fn ($s) => (bool) ($s->config['overview'] ?? false)) ? 1 : 0);
+        // Park them past every existing order first: scene order is unique per lesson, so assigning
+        // the final numbers in place collides with whichever scene still holds the one we want.
+        $parking = ($this->lesson->scenes()->max('order') ?? 0) + 1;
+        foreach ($legScenes as $scene) {
+            $scene->update(['order' => $parking++]);
+        }
+        foreach ($legScenes as $scene) {
+            $scene->update(['order' => $next++]);
+        }
+
+        $this->dispatch('scenesUpdated');
+        if ($this->selectedSceneId) {
+            $this->selectSceneInternal($this->selectedSceneId);   // re-fire scene:load → the live map re-chains
+        }
+    }
+
+    /**
      * The voyage's map projection (flat 2D vs 3D globe). GLOBAL to the whole voyage — every waypoint
      * shares it, like all the other voyage map settings — so it lives in game_config, not scene.config.
      */
@@ -1717,6 +2033,23 @@ class Step3SceneConfigurator extends Component
         $this->lesson->refresh();
         // Re-fire scene:load so the running tour applies the new projection in place (no re-mount).
         $this->selectSceneInternal($this->selectedSceneId);
+    }
+
+    /**
+     * Voyage scene: is this scene the itinerary (the whole trip on one screen) or one waypoint?
+     *
+     * Saved on the scene, not held in the panel: a teacher who sets a scene to the overview, walks
+     * off to another scene and comes back must find it still on the overview — and so must the
+     * student, since this same flag is what makes the player open the itinerary instead of sailing
+     * a leg. The leg index is kept either way, so flipping back lands on the waypoint it came from.
+     */
+    public function setVoyageOverview(bool $on): void
+    {
+        if (! $this->selectedScene || ($this->selectedScene['kind'] ?? null) !== 'voyage') {
+            return;
+        }
+        $this->selectedScene['config']['overview'] = $on;
+        $this->saveSelected();
     }
 
     /** Voyage scene: toggle the "from space" intro fly-in (only meaningful on the first leg). */
@@ -2433,6 +2766,10 @@ class Step3SceneConfigurator extends Component
 
     public function generateSkyboxImage(int $sceneId): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->image_path) {
@@ -2455,6 +2792,10 @@ class Step3SceneConfigurator extends Component
      */
     public function generateSkyboxCandidates(int $sceneId): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->image_path) {
@@ -2497,6 +2838,10 @@ class Step3SceneConfigurator extends Component
 
     public function enhanceSkybox(int $sceneId): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->skybox_image_path) {
@@ -2789,28 +3134,14 @@ class Step3SceneConfigurator extends Component
     public function useLessonImageBackground(string $url): void
     {
         $url = trim($url);
-        if ($url === '' || ! $this->selectedSceneId) {
+        // Called from the browser, so the URL is checked against what we own — this reuses an
+        // image the lesson already has, it is not a place to name an arbitrary host.
+        if ($url === '' || ! $this->selectedSceneId || ! $this->isOwnImageUrl($url)) {
             return;
         }
-        if (preg_match('#/storage/(.+)$#', $url, $m)) {
-            $this->applyUploadedBackground(rawurldecode($m[1]));
-
-            return;
-        }
-        try {
-            $resp = \Illuminate\Support\Facades\Http::timeout(15)->get($url);
-            if (! $resp->successful()) {
-                return;
-            }
-            $ext = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
-            if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif'], true)) {
-                $ext = 'jpg';
-            }
-            $path = "lessons/{$this->lesson->id}/uploads/reuse-".\Illuminate\Support\Str::random(10).'.'.$ext;
-            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $resp->body());
+        $path = $this->libraryImagePath($url);
+        if ($path) {
             $this->applyUploadedBackground($path);
-        } catch (\Throwable) {
-            // network / decode failure — leave the background unchanged
         }
     }
 
@@ -2939,6 +3270,14 @@ class Step3SceneConfigurator extends Component
     /** Thumbnail click → route to background-swap / add-as-layer / voyage-stop / gallery per mode. */
     public function applyPaintingChoice(string $source, string $key): void
     {
+        // A library pick is a picture we already host, so it never goes through the
+        // download-and-credit path the corpus and Commons need.
+        if ($source === 'library') {
+            $this->applyLibraryImage($key);
+
+            return;
+        }
+
         match ($this->paintingPickerMode) {
             'layer' => $this->applyPaintingAsLayer($source, $key),
             'voyage_stop' => $this->applyPaintingAsStopImage($source, $key),
@@ -3124,6 +3463,11 @@ class Step3SceneConfigurator extends Component
             return $this->modelResults();
         }
 
+        // "Library" is our own imagery — no corpus, no Commons.
+        if ($this->paintingKind === 'library') {
+            return $this->libraryResults();
+        }
+
         try {
             $term = trim($this->paintingQuery);
             $topicQid = preg_match('/^(?:figure|polity|event):(Q\d+)$/', (string) $this->lesson->topic_id, $m) ? $m[1] : null;
@@ -3277,16 +3621,21 @@ class Step3SceneConfigurator extends Component
                 ]));
             }
 
-            return $tiles->unique(fn ($t) => mb_strtolower($t['title']))
+            $grid = $tiles->unique(fn ($t) => mb_strtolower($t['title']))
                 ->take(self::PAINTING_GRID_LIMIT)
                 ->values();
+
+            // Neither shelf had anything. Show what we already own rather than an empty grid —
+            // the teacher can always use one of our own pictures.
+            return $grid->isEmpty() ? $this->libraryResults() : $grid;
         } catch (\Throwable $e) {
             // Corpus / Commons unavailable (e.g. a dropped Supabase pooler connection that didn't
-            // recover on the single retry) — degrade to an empty grid so the picker still OPENS
-            // instead of rendering a 500 that reads as "can't open Browse paintings".
+            // recover on the single retry) — fall back to our own library so the picker still
+            // OPENS with something in it instead of rendering a 500 that reads as "can't open
+            // Browse paintings".
             report($e);
 
-            return collect();
+            return $this->libraryResults();
         }
     }
 
@@ -3317,6 +3666,231 @@ class Step3SceneConfigurator extends Component
             'provenance' => 'Sketchfab',
             'correctness' => null,
         ])->values();
+    }
+
+    /**
+     * The Library shelf: pictures we already have. This lesson's own imagery comes first (the
+     * teacher just put it there, so it is the likeliest pick), then everything on our Cloudinary
+     * account. Shaped like painting tiles so the one grid renders all three shelves.
+     *
+     * This is also the fallback when the corpus and Commons both come up empty — "nothing found"
+     * in front of a collection we own is a dead end we can always avoid.
+     *
+     * @return \Illuminate\Support\Collection<int,array<string,mixed>>
+     */
+    private function libraryResults(): Collection
+    {
+        $term = trim($this->paintingQuery);
+        $cloud = app(\App\Services\CloudinaryService::class);
+
+        $tiles = collect($this->lesson->posterCandidates())
+            ->filter(fn (array $c) => $term === '' || mb_stripos($c['label'].' '.$c['url'], $term) !== false)
+            ->map(fn (array $c) => [
+                'source' => 'library',
+                'key' => $c['url'],
+                'thumb' => $cloud->thumb($this->libraryImageSrc($c['url'])),
+                'title' => $c['label'],
+                'caption' => __('In this lesson'),
+                'kind' => 'library',
+                'provenance' => __('This lesson'),
+                'correctness' => null,
+            ]);
+
+        $tiles = $tiles->concat(collect($cloud->library($term))->map(fn (array $img) => [
+            'source' => 'library',
+            'key' => $img['url'],
+            'thumb' => $img['thumb'],
+            'title' => $img['title'],
+            'caption' => __('Our collection'),
+            'kind' => 'library',
+            'provenance' => __('Our collection'),
+            'correctness' => null,
+        ]));
+
+        // A lesson image that lives on Cloudinary appears in both shelves under two different
+        // delivery transforms, so the same picture would show up twice. The public id (the last
+        // path segment) is what identifies it; a local /storage image dedupes on its own URL.
+        return $tiles
+            ->unique(fn (array $t) => str_contains($t['key'], 'res.cloudinary.com')
+                ? pathinfo((string) parse_url($t['key'], PHP_URL_PATH), PATHINFO_FILENAME)
+                : $t['key'])
+            ->take(self::PAINTING_GRID_LIMIT)
+            ->values();
+    }
+
+    /**
+     * Use one of our own pictures — routed to whatever the picker was opened for. Nothing is
+     * downloaded from a third party here: the image is already on our CDN or our public disk.
+     */
+    private function applyLibraryImage(string $url): void
+    {
+        $url = trim($url);
+        // The key arrives from the browser, so it is checked against what we actually own rather
+        // than trusted — otherwise this would fetch any URL a crafted call names.
+        if ($url === '' || ! $this->selectedSceneId || ! $this->isOwnImageUrl($url)) {
+            return;
+        }
+        $this->paintingPickerOpen = false;
+
+        match ($this->paintingPickerMode) {
+            'layer' => $this->addLibraryImageLayer($url),
+            'voyage_stop' => $this->addStopImage($url),
+            'voyage_marker' => $this->setLegMarkerImage($url),
+            'gallery_image' => $this->addGalleryImage($url),
+            default => $this->useLessonImageBackground($url),
+        };
+    }
+
+    /**
+     * Drop one of our own pictures on the slide as an editable image layer. Mirrors
+     * applyPaintingAsLayer(), minus the download and the attribution — this picture is ours.
+     */
+    private function addLibraryImageLayer(string $url): void
+    {
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        if (! $scene->hasBackdrop()) {
+            $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
+
+            return;
+        }
+
+        $path = $this->libraryImagePath($url);
+        if (! $path) {
+            $this->dispatch('toast', message: __('We could not use that image. Try another one.'), type: 'error');
+
+            return;
+        }
+
+        // The layer machinery (move / scale / reorder / delete) is keyed on an SvgAsset, so wrap
+        // the picture in one. The URL is the dedupe key, hashed to fit the source_ref column.
+        $asset = $this->upsertPictureAsset('library', md5($url), [
+            'source_url' => $url,
+            'title' => pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME) ?: __('Image'),
+            'license' => 'own',
+            'attribution' => null,
+            'svg_path' => $path,
+        ]);
+
+        $this->attachArtwork($asset->id);
+    }
+
+    /**
+     * The asset behind a picture layer, created or refreshed.
+     *
+     * withTrashed, because (user, source, source_ref) is unique and a soft delete leaves the row
+     * in place: a plain updateOrCreate on a picture the teacher had deleted inserted a second one
+     * and died on the constraint — a 500 in the middle of "add an image". Picking it again is a
+     * perfectly reasonable way to say "I want it back", so un-delete it.
+     */
+    private function upsertPictureAsset(string $source, string $ref, array $attributes): \App\Models\SvgAsset
+    {
+        $asset = \App\Models\SvgAsset::withTrashed()->firstOrNew([
+            'user_id' => (int) auth()->id(),
+            'source' => $source,
+            'source_ref' => $ref,
+        ]);
+
+        $asset->fill($attributes)->forceFill(['deleted_at' => null])->save();
+
+        return $asset;
+    }
+
+    /**
+     * Public-disk path for an image we already own — what a scene background and an artwork layer
+     * both store. An image already on the public disk is reused where it lies; the other two homes
+     * our own pictures have (public/ itself, for imagery a lesson builder shipped, and our
+     * Cloudinary CDN) are copied into this lesson's uploads once.
+     */
+    private function libraryImagePath(string $url): ?string
+    {
+        $relative = $this->ownRelativePath($url);
+        if ($relative !== null) {
+            $disk = \Illuminate\Support\Facades\Storage::disk('public');
+            if ($disk->exists($relative)) {
+                return $relative;
+            }
+
+            // public/lessons/<slug>/… — shipped with the lesson, next to the public disk rather
+            // than on it. The storage disk cannot see those files, so copy the bytes in.
+            $absolute = public_path($relative);
+
+            return is_file($absolute)
+                ? $this->storeLibraryImage((string) file_get_contents($absolute), pathinfo($absolute, PATHINFO_EXTENSION))
+                : null;
+        }
+
+        try {
+            $resp = \Illuminate\Support\Facades\Http::timeout(15)->get($url);
+            if (! $resp->successful() || $resp->body() === '') {
+                return null;
+            }
+
+            return $this->storeLibraryImage($resp->body(), pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+        } catch (\Throwable $e) {
+            report($e);   // network / decode failure
+
+            return null;
+        }
+    }
+
+    /** Copy a picture we own into this lesson's uploads and return its public-disk path. */
+    private function storeLibraryImage(string $bytes, string $extension): string
+    {
+        $ext = strtolower($extension);
+        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif'], true)) {
+            $ext = 'jpg';
+        }
+        $path = "lessons/{$this->lesson->id}/uploads/reuse-".\Illuminate\Support\Str::random(10).'.'.$ext;
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $bytes);
+
+        return $path;
+    }
+
+    /**
+     * Is this a picture we host? Our own public disk and our own Cloudinary cloud always are, and
+     * so is anything already sitting in this lesson (a gallery image may be hosted elsewhere).
+     */
+    private function isOwnImageUrl(string $url): bool
+    {
+        $cloud = app(\App\Services\CloudinaryService::class)->cloudName();
+        if ($this->ownRelativePath($url) !== null
+            || ($cloud && str_starts_with($url, "https://res.cloudinary.com/{$cloud}/"))) {
+            return true;
+        }
+
+        return collect($this->lesson->posterCandidates())->contains(fn (array $c) => $c['url'] === $url);
+    }
+
+    /**
+     * The path behind an image reference of ours, relative to the public root, or null when it
+     * names another host. Voyage and gallery configs hold every shape: a /storage URL, a
+     * root-relative public path ("/lessons/tasman/mauritius-voc.jpg"), and the bare path with no
+     * leading slash — the last two were fetched over HTTP as if they were URLs, which sent the
+     * picker looking for a host called "lessons" and told the teacher the image was unusable.
+     */
+    private function ownRelativePath(string $url): ?string
+    {
+        $path = preg_match('#/storage/(.+)$#', $url, $m)
+            ? rawurldecode($m[1])
+            : (preg_match('#^[a-z][a-z0-9+.-]*://#i', $url) ? null : ltrim($url, '/'));
+
+        // "/storage/../../.env" is a path on the disk too. It is not one of ours.
+        return ($path === null || $path === '' || str_contains($path, '..')) ? null : $path;
+    }
+
+    /**
+     * Display URL for a library tile. Same shapes as ownRelativePath() — a bare path would
+     * otherwise resolve against the wizard's own URL and render as a broken thumbnail.
+     */
+    private function libraryImageSrc(string $url): string
+    {
+        if (preg_match('#^([a-z][a-z0-9+.-]*://|/)#i', $url)) {
+            return $url;
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+
+        return $disk->exists($url) ? $disk->url($url) : '/'.$url;
     }
 
     public function applyPaintingBackground(string $source, string $key): void
@@ -3463,9 +4037,11 @@ class Step3SceneConfigurator extends Component
         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $response->body());
 
         // Wrap the painting in an asset so it becomes a first-class artwork layer (move / scale /
-        // reorder / delete). updateOrCreate dedupes on the (user, source, source_ref) unique key.
-        $asset = \App\Models\SvgAsset::updateOrCreate(
-            ['user_id' => (int) auth()->id(), 'source' => 'commons', 'source_ref' => 'painting:'.$key],
+        // reorder / delete). Deduped on the (user, source, source_ref) unique key; a Commons file
+        // title is bounded, so only a hand-built key long enough to overflow the column is hashed.
+        $asset = $this->upsertPictureAsset(
+            'commons',
+            'painting:'.(mb_strlen($key) > 200 ? md5($key) : $key),
             [
                 'source_url' => $credit['source_url'] ?? '',
                 'title' => $credit['title'] ?? __('Painting'),
@@ -3681,6 +4257,10 @@ class Step3SceneConfigurator extends Component
 
     public function regenerate(int $sceneId, string $asset): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
         $updates = ['status' => 'generating', 'error_message' => null];
         if ($asset === 'image') {
@@ -3702,6 +4282,10 @@ class Step3SceneConfigurator extends Component
 
     public function generateWorld(int $sceneId): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
 
         if (! $scene->image_path) {
@@ -3723,8 +4307,19 @@ class Step3SceneConfigurator extends Component
     {
         $this->addSceneOpen = false;
         $isVoyageLesson = ($this->lesson->game_type ?? null) === 'voyage';
+        // The itinerary is not its own kind — it is a route scene that stops nowhere, flagged with
+        // `overview`. Adding it from the picker is the one place that distinction has a name.
+        $wantsOverview = $kind === 'voyage-overview';
+        if ($wantsOverview) {
+            $kind = 'voyage';
+        }
         $allowed = $isVoyageLesson ? ['game', 'map', 'voyage', 'gallery'] : ['game', 'map', 'gallery', 'branch'];
         $kind = in_array($kind, $allowed, true) ? $kind : 'narration';
+        if ($wantsOverview && $kind === 'voyage') {
+            $this->addVoyageOverviewScene();
+
+            return;
+        }
 
         // A branch is three scenes, not one, so it has its own builder.
         if ($kind === 'branch') {
@@ -4136,24 +4731,18 @@ class Step3SceneConfigurator extends Component
         }
     }
 
-    /** Static music track catalogue (slot → file in public/sound/bg-music/). */
-    public function musicTracks(): array
+    /**
+     * Play a music bed under the narration (or don't).
+     *
+     * There is one soundtrack (config/audio.php) and the player shuffles it, so the only decision
+     * here is whether a class hears it at all. Off by default: most lessons run on a classroom
+     * speaker, where music under a voice makes the narration harder to follow, not richer.
+     */
+    public function setBackgroundMusic(bool $on): void
     {
-        return [
-            ['id' => 'default',    'label' => 'Ancient',     'file' => 'default.mp3', 'gradient_class' => 'vg-indigo'],
-            ['id' => 'track2',     'label' => 'Epic',        'file' => 'default.mp3', 'gradient_class' => 'vg-violet'],
-            ['id' => 'track3',     'label' => 'Mystical',    'file' => 'default.mp3', 'gradient_class' => 'vg-teal'],
-            ['id' => 'track4',     'label' => 'Battle',      'file' => 'default.mp3', 'gradient_class' => 'vg-navy'],
-            ['id' => 'track5',     'label' => 'Peaceful',    'file' => 'default.mp3', 'gradient_class' => 'vg-amber'],
-            ['id' => 'track6',     'label' => 'Dramatic',    'file' => 'default.mp3', 'gradient_class' => 'vg-base'],
-        ];
-    }
-
-    public function selectMusic(string $trackId): void
-    {
-        $track = collect($this->musicTracks())->firstWhere('id', $trackId);
-        $this->lesson->update(['background_music' => $track ? $track['id'] : null]);
+        $this->lesson->update(['background_music' => $on]);
         $this->lesson->refresh();
+        $this->dispatch('toast', message: $on ? __('Background music is on for this lesson.') : __('Background music is off for this lesson.'), type: 'success');
     }
 
     /** Override the lesson poster — only a URL that's actually one of the lesson's own images. */
@@ -4340,6 +4929,16 @@ class Step3SceneConfigurator extends Component
     #[On('lesson:publish')]
     public function publish(): void
     {
+        // A landing-page guest is editing a throwaway copy. Publishing it would put an anonymous
+        // visitor's edits on the public catalogue, so the control is hidden from them and the
+        // method refuses them.
+        if (auth()->user()?->isGuestDemo()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('Create an account to publish a lesson.');
+
+            return;
+        }
+
         $notReady = $this->lesson->scenes()
             ->where('status', '!=', 'ready')
             ->orderBy('order')
@@ -4378,6 +4977,13 @@ class Step3SceneConfigurator extends Component
     /** Schedule the lesson to auto-publish at a future time (lessons:publish-due does the flip). */
     public function schedulePublish(string $when): void
     {
+        if (auth()->user()?->isGuestDemo()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('Create an account to publish a lesson.');
+
+            return;
+        }
+
         if ($this->lesson->scenes()->where('status', '!=', 'ready')->exists()) {
             $this->publishOk = false;
             $this->publishNotice = __('All scenes must be ready before you can schedule publishing.');

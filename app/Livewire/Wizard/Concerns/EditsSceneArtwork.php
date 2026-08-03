@@ -325,6 +325,11 @@ trait EditsSceneArtwork
             // 'normal' is how a teacher turns blending back OFF — without it in the list the
             // enum check below rejects the value and the select silently refuses to clear.
             'blend' => ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'],
+            // Colour treatment. white_key is how much of the top of the luminance range becomes
+            // transparent — 0.04 is the 4% that clears scanned paper without eating light greys.
+            'white_key' => [0, 0.5],
+            'grayscale' => null,   // boolean
+            'tint' => null,        // #rrggbb or '' to clear
             // Animate tab: how the layer arrives, how long it waits first, and on which curve.
             // The vocabulary is shared with resources/js/scene/animations.js, which plays it.
             'anim' => ['none', 'fade', 'slide-left', 'slide-right', 'slide-up', 'slide-down', 'zoom', 'pop'],
@@ -357,7 +362,7 @@ trait EditsSceneArtwork
         $coercedValue = match ($field) {
             'depth', 'scale', 'opacity', 'blur', 'x', 'y', 'draw_time', 'anim_delay' => (float) $value,
             'height', 'wobble' => (int) $value,
-            'sway' => (bool) $value,
+            'sway', 'grayscale' => (bool) $value,
             'kind', 'blend', 'ink_preset', 'ink_fill', 'anim', 'anim_ease' => (string) $value,
             default => $value,
         };
@@ -372,6 +377,18 @@ trait EditsSceneArtwork
                 $coercedValue = (float) $coercedValue;
             } elseif (in_array($field, ['height', 'wobble'], true)) {
                 $coercedValue = (int) $coercedValue;
+            }
+        }
+
+        // A tint is a hex colour or empty (cleared). Anything else is dropped rather than stored,
+        // because it would end up inside an SVG flood-color attribute.
+        if ($field === 'tint') {
+            $coercedValue = trim((string) $coercedValue);
+            if ($coercedValue !== '' && ! preg_match('/^#[0-9a-fA-F]{6}$/', $coercedValue)) {
+                return;
+            }
+            if ($coercedValue === '') {
+                $coercedValue = null;
             }
         }
 

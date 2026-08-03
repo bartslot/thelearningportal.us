@@ -14,6 +14,7 @@
  * the onChange(assetId, { x, y, scale }) callback (a batched Livewire save).
  */
 import { playEntrance } from './animations.js'
+import { applyLayerFilter } from './layer-filters.js'
 
 const DRAG_THRESHOLD_PX = 4
 const MIN_SCALE = 0.2
@@ -63,6 +64,7 @@ export function layersSignature(layers) {
     String(l.url || (l.embed && l.embed.src) || '').split('?')[0],
     l.x, l.y, l.scale, l.height, l.depth,
     l.blur, l.opacity, l.blend,
+    l.white_key, l.grayscale, l.tint,
     l.anim, l.anim_delay, l.anim_ease,
     l.kind,
     l.embed ? JSON.stringify(l.embed.opts || null) : null,
@@ -111,6 +113,10 @@ export class ArtworkOverlay {
         // CSS mix-blend-mode. 'multiply' is what makes a scanned engraving or map sit ON the
         // scene by dropping its white paper, instead of floating in a white box.
         blend: l.blend || 'normal',
+        // Colour treatment: knock the paper out, drain the colour, recolour the ink.
+        white_key: Number.isFinite(l.white_key) ? l.white_key : 0,
+        grayscale: !!l.grayscale,
+        tint: l.tint || null,
         // Animate tab: how this layer arrives, after how long, on which curve.
         anim: l.anim || 'none',
         anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
@@ -391,7 +397,10 @@ export class ArtworkOverlay {
     img.addEventListener('load', () => this._syncChrome(item), { once: true })
     // Depth-of-field blur + opacity preview from the Format panel.
     // Applied to the IMG, not the node, so the selection ring stays crisp.
-    if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
+    // One property for the whole treatment — white key, grayscale, tint and blur compose into a
+    // single CSS filter, so they can't overwrite one another.
+    const filter = applyLayerFilter(this.host, item)
+    if (filter) img.style.filter = filter
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
     // Blend on the NODE, not the img: the node carries the transform, which makes it a stacking
     // context, so a blend on the img would only ever mix with the node's own empty backdrop.

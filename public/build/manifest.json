@@ -25,6 +25,10 @@
     "file": "assets/index-DDlvirwQ.js",
     "name": "index"
   },
+  "_layer-filters-CtZ4_t63.js": {
+    "file": "assets/layer-filters-CtZ4_t63.js",
+    "name": "layer-filters"
+  },
   "_map-imagery-BT2azzOK.js": {
     "file": "assets/map-imagery-BT2azzOK.js",
     "name": "map-imagery",
@@ -67,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-BPHV9rxN.js",
+    "file": "assets/app-CEs2IhVc.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -124,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-CGMzP0YZ.js",
+    "file": "assets/lesson-player-BQImqeLJ.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -148,12 +152,13 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-2lE9eL0b.js",
+    "file": "assets/ArtworkOverlay-CawwmaDX.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true,
     "imports": [
       "_animations-C__iDcd_.js",
+      "_layer-filters-CtZ4_t63.js",
       "_easing-CafrHVyY.js"
     ]
   },
@@ -164,10 +169,13 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/ParallaxScene.js": {
-    "file": "assets/ParallaxScene-DVzTGPhS.js",
+    "file": "assets/ParallaxScene-BYnzlU4-.js",
     "name": "ParallaxScene",
     "src": "resources/js/scene/ParallaxScene.js",
-    "isDynamicEntry": true
+    "isDynamicEntry": true,
+    "imports": [
+      "_layer-filters-CtZ4_t63.js"
+    ]
   },
   "resources/js/scene/QuizOverlay.js": {
     "file": "assets/QuizOverlay-adNgO4AX.js",
@@ -191,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-BRduyok6.js",
+    "file": "assets/index-Dlm8Cqjm.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -205,6 +213,7 @@
       "_sfx-CmqJVBmD.js",
       "_animations-C__iDcd_.js",
       "_easing-CafrHVyY.js",
+      "_layer-filters-CtZ4_t63.js",
       "_FBXLoader-DYOGQobv.js"
     ],
     "dynamicImports": [
