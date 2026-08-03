@@ -16,6 +16,22 @@ const CORRIDOR_KM = 450;         // how far the crew "sees" — wide enough that
                                  // its nearby extent too (e.g. all of NZ, not just the South Island coast)
 const WATER_FALLBACK = '#c7d4c6'; // soft-atlas water; real colour comes from the active style
 
+// Feathered boundary. The fog fill is solid to its own outline; these blurred lines ride that
+// outline and carry the colour outwards, so the mask fades from nothing to solid instead of
+// ending at an edge. One line (the old behaviour) gave a ~40 px ramp — short enough to read as a
+// drawn line, and unmissable where an auto mask cuts a straight bbox edge across open sea. Five
+// stacked bands ramp over ~10× that distance, each too faint to show a step of its own; their
+// alphas compound to ~0.94 by the time they meet the solid fill.
+// Screen pixels on purpose: the feather should look the same at every zoom, and a world-distance
+// buffer would have to be re-cut by turf on every reveal.
+const FEATHER = [
+  { id: 'voyage-fog-feather-4', width: 240, blur: 200, opacity: 0.16 },
+  { id: 'voyage-fog-feather-3', width: 150, blur: 120, opacity: 0.24 },
+  { id: 'voyage-fog-feather-2', width: 90, blur: 70, opacity: 0.34 },
+  { id: 'voyage-fog-feather-1', width: 50, blur: 38, opacity: 0.5 },
+  { id: 'voyage-fog-edge', width: 26, blur: 18, opacity: 0.7 },
+];
+
 // A [minLng,minLat,maxLng,maxLat] box → a closed polygon ring (kept in the route's unwrapped lng
 // frame so Pacific/antimeridian voyages, e.g. Tonga ≈ 184.8°E, stay contiguous).
 const boxRing = (b) => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]];
@@ -129,13 +145,14 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
     id: 'voyage-fog', type: 'fill', source: FOG_SRC,
     paint: { 'fill-color': water, 'fill-opacity': 1 },
   }, before);
-  // Feathered boundary: wide blurred water-colour line along the fog outline. Over open sea it
-  // is invisible (water on water); where the cut crosses land it dissolves the hard seam.
-  map.addLayer({
-    id: 'voyage-fog-edge', type: 'line', source: FOG_SRC,
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': water, 'line-width': 26, 'line-blur': 18, 'line-opacity': 0.92 },
-  }, before);
+  // Widest band first so the tightest one lands on top and the ramp builds inwards.
+  for (const f of FEATHER) {
+    map.addLayer({
+      id: f.id, type: 'line', source: FOG_SRC,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': water, 'line-width': f.width, 'line-blur': f.blur, 'line-opacity': f.opacity },
+    }, before);
+  }
   // Chart lines continue across undiscovered paper, exactly like the engraving.
   if (map.getLayer('graticule')) map.moveLayer('graticule');
 
@@ -169,12 +186,28 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
         if (src) src.setData(current);
       } catch (_) { /* a malformed ring must not break the fog */ }
     },
-    /** Repaint the fog to a new water colour (call on style change). */
+    /**
+     * Show or hide the whole mask without losing what has been revealed.
+     *
+     * The itinerary shows the WHOLE voyage — every leg, every numbered stop — so a mask whose job
+     * is to hide what the crew had not reached yet would black out most of what the class came to
+     * look at. Hidden there, restored the moment a leg is played again.
+     */
+    setVisible(on) {
+      const vis = on ? 'visible' : 'none';
+      try { if (map.getLayer('voyage-fog')) map.setLayoutProperty('voyage-fog', 'visibility', vis); } catch (_) { /* layer gone */ }
+      for (const f of FEATHER) {
+        try { if (map.getLayer(f.id)) map.setLayoutProperty(f.id, 'visibility', vis); } catch (_) { /* layer gone */ }
+      }
+    },
+    /** Repaint the fog to a new colour (call on style change) — fill and every feather band. */
     setWaterColor(c) {
       if (!c) return;
       water = c;
       try { map.setPaintProperty('voyage-fog', 'fill-color', c); } catch (_) { /* layer gone */ }
-      try { map.setPaintProperty('voyage-fog-edge', 'line-color', c); } catch (_) { /* layer gone */ }
+      for (const f of FEATHER) {
+        try { map.setPaintProperty(f.id, 'line-color', c); } catch (_) { /* layer gone */ }
+      }
     },
     /** Replace the undiscovered regions (catalog + teacher-painted) and repaint. Ignored in auto mode
      *  (the whole-route mask owns the fog then). */
@@ -198,7 +231,7 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
     current: () => current,
     destroy() {
       try {
-        if (map.getLayer('voyage-fog-edge')) map.removeLayer('voyage-fog-edge');
+        for (const f of FEATHER) { if (map.getLayer(f.id)) map.removeLayer(f.id); }
         if (map.getLayer('voyage-fog')) map.removeLayer('voyage-fog');
         if (map.getSource(FOG_SRC)) map.removeSource(FOG_SRC);
       } catch (_) { /* map may already be gone */ }

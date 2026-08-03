@@ -6,7 +6,7 @@ import { test, expect, Page } from '@playwright/test';
  * again. Regression: the panel's open state never reached the (sibling, wire:ignore) toolbar, so the
  * button showed no active state and always re-opened instead of toggling.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 
 async function fmtState(page: Page) {
   return page.evaluate(() => {

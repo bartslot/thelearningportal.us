@@ -17,6 +17,7 @@ import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
 import { mapTextProjector } from './map-text-projector.js'
 import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
+import { boxView, openingView } from './map-view.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -32,6 +33,25 @@ const PALETTE = {
   coastShadow: '#8a7a5e',
 }
 
+// Label hands. The drawn-atlas styles are hand-lettered (Eagle Lake calligraphy, matching the
+// Tolkien-chart look); the two photographic/modern grounds — Satellite and Night — get the app
+// sans instead, because calligraphy over satellite imagery reads as a costume, not a map.
+// Both fontstacks are built locally by scripts/build-glyphs.mjs and served from /fonts.
+const CALLIGRAPHY_FONT = ['Eagle Lake']
+const MODERN_FONT = ['inter']
+// Every label layer whose hand follows the style (the atlas's own labels + the teacher's).
+const LABEL_LAYERS = ['city-labels', 'hcity-label', 'lesson-labels', 'focus-label', 'focus-shadow']
+
+// Focus cities (the teacher's own pins) per style. They used to be deep-red ink on a thick
+// parchment halo in every style, which shouted — a cream slab behind red lettering, laid over
+// satellite photography or a night ground it had nothing to do with. They stay primary through
+// size and their dot instead: the ink and halo come from the ground they sit on, the halo is
+// thinner, and the drop shadow is a hint rather than a second copy of the word (`shadow` is its
+// opacity; on the dark Night ground a dark shadow does nothing, so it is off).
+const FOCUS_INK = { color: '#7a1f12', haloWidth: 1, shadow: 0.3 }   // historical red on parchment
+const FOCUS_PHOTO = { color: '#fbe9dd', halo: 'rgba(12,9,6,0.55)', haloWidth: 1.2, shadow: 0.4 }
+const FOCUS_NIGHT = { color: '#f0b3a5', halo: '#10151f', haloWidth: 1, shadow: 0 }
+
 // Map styles — the same five the Time-Map's palette offers (window.__applyMapStyle), reduced to
 // the layers the lesson map actually has. `terrain` hides the ink hill/forest glyphs on the dark
 // Night style (they vanish on a dark ground). Applied by applyStyle(); the block's chosen style
@@ -41,14 +61,18 @@ const PALETTE = {
 // and the painted ground (land fill, sea grid, coast shadow, lakes, ink glyphs) goes off, because
 // the photo already shows all of it. Labels flip to light-on-dark so they stay readable over it.
 const MAP_STYLES = {
-  'soft-atlas': { land: '#efe6d0', water: '#c7d4c6', coast: '#2b2013', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true },
-  'antique': { land: '#e8d6ac', water: '#dcdcba', coast: '#2a1d0c', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true },
-  'pen-ink': { land: '#e6d6ad', water: '#dedec0', coast: '#211809', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true },
-  'night': { land: '#1b2230', water: '#0f1420', coast: '#aeb9d4', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false },
+  'soft-atlas': { focus: FOCUS_INK, land: '#efe6d0', water: '#c7d4c6', coast: '#2b2013', coastShadow: '#9fb0b4', line: '#6b5640', river: '#6a8fa0', text: '#3b3326', halo: '#f3ead6', grid: '#93a18f', terrain: true, font: CALLIGRAPHY_FONT },
+  'antique': { focus: FOCUS_INK, land: '#e8d6ac', water: '#dcdcba', coast: '#2a1d0c', coastShadow: '#8f7d5c', line: '#4a3420', river: '#8a9aa0', text: '#3a2c1a', halo: '#ecdcb8', grid: '#9b9277', terrain: true, font: CALLIGRAPHY_FONT },
+  'pen-ink': { focus: FOCUS_INK, land: '#e6d6ad', water: '#dedec0', coast: '#211809', coastShadow: '#574631', line: '#3a2c1c', river: '#6a7c74', text: '#33271a', halo: '#efe2c4', grid: '#8f8c6e', terrain: true, font: CALLIGRAPHY_FONT },
+  'night': { focus: FOCUS_NIGHT, land: '#1b2230', water: '#0f1420', coast: '#aeb9d4', coastShadow: '#070b12', line: '#8a99b8', river: '#3a5570', text: '#e6ecf7', halo: '#10151f', grid: '#3a5570', terrain: false, font: MODERN_FONT },
   // Dark label ink on a bright halo, like the atlas styles — over a photo that runs from dark ocean
   // to bright desert, that pairing is the one that stays readable everywhere (and it survives a
   // lesson's own dark label colour, which would vanish into a dark halo).
-  'satellite': { imagery: true, land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false },
+  // `fog` — voyage fog-of-war paints undiscovered world in the sea colour, because on a drawn
+  // atlas undiscovered world IS blank paper. Over satellite imagery that reading breaks: a navy
+  // wash still looks like sea, and the photo's ocean-depth banding reads through the feathered
+  // edge. Black instead — undiscovered means nothing is there, not "shallower water here".
+  'satellite': { focus: FOCUS_PHOTO, imagery: true, fog: '#000000', land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false, font: MODERN_FONT },
 }
 const DEFAULT_STYLE = 'soft-atlas'
 
@@ -77,6 +101,12 @@ export function renderLessonMap (el, opts = {}) {
   // Voyage maps can hide anachronistic detail (modern city dots/labels + political borders that
   // didn't exist yet) and pin their own period place labels. Defaults keep the normal atlas.
   const { showCities = true, showBorders = true } = opts
+  // A voyage knows where it is going, and the student cannot pan away from it. Bounding the imagery
+  // and elevation sources to the route's box means MapLibre never asks for a tile the lesson will
+  // not show — no requests for the far side of the world when the camera dips wide, and no 404s
+  // from the corners of a sparse tileset. [w, s, e, n]; omitted, the whole world stays available.
+  const tileBounds = Array.isArray(opts.tileBounds) && opts.tileBounds.length === 4 ? opts.tileBounds : null
+  const bounded = (source) => (tileBounds ? { ...source, bounds: tileBounds } : source)
   let layerToggles = { cities: showCities, borders: showBorders }
   let placeLabels = Array.isArray(opts.labels) ? opts.labels : []
   // Coerce — the inspector saves the year through a JSON config, so it can arrive as a string.
@@ -106,6 +136,12 @@ export function renderLessonMap (el, opts = {}) {
     } catch (_) { /* source not ready */ }
   }
 
+  // Where this block points before anything loads — its own focus cities and pinned place labels,
+  // not a hardcoded Europe (see map-view.js). The polity fit still refines it once the territory's
+  // polygon streams in; this is what the teacher and the student see in the meantime, and what
+  // they keep when no territory is linked.
+  const opening = openingView({ annotations, labels: placeLabels })
+
   const map = new maplibregl.Map({
     container: el,
     interactive,
@@ -131,9 +167,9 @@ export function renderLessonMap (el, opts = {}) {
         // True coastline for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         // Satellite style only — tiles are requested lazily, so the other styles pay nothing for it.
-        satellite: SATELLITE_SOURCE,
+        satellite: bounded(SATELLITE_SOURCE),
         // Height map behind the 3D terrain (`relief`). Only fetched once terrain is switched on.
-        dem: DEM_SOURCE,
+        dem: bounded(DEM_SOURCE),
         // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
         'lesson-labels': { type: 'geojson', data: labelsFC(placeLabels) },
       },
@@ -141,7 +177,11 @@ export function renderLessonMap (el, opts = {}) {
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
         // Real satellite ground (Satellite style only — hidden otherwise, so no tiles are fetched).
         // Sits directly on the background: everything else in the atlas draws over it.
-        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        // `raster-fade-duration` is the only easing MapLibre gives a raster, and it is what stops a
+        // tile from popping in. 700ms reads as the photograph developing rather than snapping on;
+        // under it the background is BLACK on this style (see applyStyle), so a tile that has not
+        // arrived yet is empty space rather than a grey plate or a wrong-coloured sea.
+        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 700 } },
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time), beneath the coast/land.
         { id: 'graticule', type: 'line', source: 'graticule', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b9277', 'line-width': 0.55, 'line-opacity': 0.5 } },
         // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
@@ -226,9 +266,13 @@ export function renderLessonMap (el, opts = {}) {
         },
       ],
     },
-    center: [8.23, 46.8],
-    zoom: 3,
+    center: opening.center,
+    zoom: opening.zoom,
     maxZoom: 6,
+    // A voyage revisits the same water on the way out and the way home, and the default cache is
+    // small enough that a long crossing evicts the tiles the return leg is about to want — which
+    // shows up as the sea reloading in a place the class has already been.
+    maxTileCacheSize: 1500,
   })
 
   if (interactive) {
@@ -288,11 +332,7 @@ export function renderLessonMap (el, opts = {}) {
     // NOTE: map.fitBounds() is unreliable under the globe projection (it can solve to a wildly wrong
     // centre — e.g. snapping Europe to South America). Compute centre + zoom ourselves and easeTo,
     // which behaves the same in both projections.
-    const spanX = Math.max(0.4, b.maxX - b.minX)
-    const spanY = Math.max(0.4, b.maxY - b.minY)
-    const center = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]
-    const zoom = Math.min(6, Math.max(1.6, Math.log2(300 / Math.max(spanX, spanY * 1.7))))
-    map.easeTo({ center, zoom, duration: 800 })
+    map.easeTo({ ...boxView(b), duration: 800 })
     didFit = true
   }
 
@@ -537,6 +577,7 @@ export function renderLessonMap (el, opts = {}) {
 
   map.on('load', () => {
     anno = renderAnnotations(map, annotations, { editable, onChange: onAnnotationsChange, onFocusNames })
+    applyStyle(activeStyle) // the focus-city layers only exist now — give them the style's hand
   })
 
   // Re-fit only until the first successful fit — never yank the view after the teacher pans.
@@ -602,6 +643,18 @@ export function renderLessonMap (el, opts = {}) {
     paint('hcity-label', 'text-halo-color', s.halo)
     paint('lesson-labels', 'text-color', s.text)
     paint('lesson-labels', 'text-halo-color', s.halo)
+    // The hand follows the ground: calligraphy on the drawn atlases, the app sans on the
+    // photographic (Satellite) and dark (Night) styles. Covers the atlas's own city names, the
+    // historical-city overlay, the voyage place labels and the teacher's focus cities — those
+    // last two layers are added later, hence the getLayer guard inside `font`.
+    const font = (layer) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'text-font', s.font || CALLIGRAPHY_FONT) } catch (_) {} } }
+    LABEL_LAYERS.forEach(font)
+    // Focus cities: ink and halo from the ground they sit on, halo thinner, shadow a hint.
+    const f = s.focus || FOCUS_INK
+    paint('focus-label', 'text-color', f.color)
+    paint('focus-label', 'text-halo-color', f.halo || s.halo)
+    paint('focus-label', 'text-halo-width', f.haloWidth)
+    paint('focus-shadow', 'text-opacity', f.shadow)
     // Ink hill/forest glyphs are dark drawings — hide them on the dark Night ground.
     for (const t of ['land-scatter', 'forests', 'mountains', 'volcanoes']) {
       if (map.getLayer(t)) { try { map.setLayoutProperty(t, 'visibility', s.terrain ? 'visible' : 'none') } catch (_) {} }
@@ -655,6 +708,8 @@ export function renderLessonMap (el, opts = {}) {
     setAnnotations: (a) => anno?.update(a),
     setPolity: (id) => setPolity(id),
     setStyle: (name) => applyStyle(name),
+    /** Colour the voyage fog-of-war paints undiscovered world in — the sea, unless the style says otherwise. */
+    fogColor: () => { const s = MAP_STYLES[activeStyle] || MAP_STYLES[DEFAULT_STYLE]; return s.fog || s.water },
     /** 3D terrain exaggeration; 0 = flat. Applied live, no re-mount. */
     setRelief: (v) => applyRelief(v),
     /** Ground height (metres, exaggeration included) under a point — 0 when terrain is off. */

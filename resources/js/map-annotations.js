@@ -24,7 +24,10 @@ const FOCUS_SRC = 'focus-src'
 const FOCUS_SHADOW_LAYER = 'focus-shadow'
 const FOCUS_LABEL_LAYER = 'focus-label'
 const FOCUS_DOT_LAYER = 'focus-dot'
-const FOCUS_FONT = ['Eagle Lake']        // same Tolkien-style calligraphy as the map's city labels
+// Same Tolkien-style calligraphy as the map's city labels. It is the STARTING hand only: the host
+// map re-fonts these two layers per style (lesson-map.js applyStyle), so Satellite and Night get
+// the modern sans instead.
+const FOCUS_FONT = ['Eagle Lake']
 const FOCUS_SHADOW_COLOR = '#1c140b'     // near-black ink, offset = drop shadow
 const FOCUS_LABEL_COLOR = '#7a1f12'      // deep historical red
 const FOCUS_HALO_COLOR = '#f3ead6'       // parchment halo

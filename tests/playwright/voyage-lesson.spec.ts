@@ -5,7 +5,7 @@ import { test, expect, Page } from '@playwright/test';
  * Voyage scenes sail a dated leg then wait; galleries cycle images; → advances, ← goes back.
  * Rebuild the fixture lesson with: php artisan lessons:make-tasman-voyage
  */
-const LESSON_CODE = process.env.VOYAGE_LESSON_CODE || 'YMJ1W9';
+const LESSON_CODE = process.env.VOYAGE_LESSON_CODE!;
 
 async function currentDateChip(page: Page): Promise<string> {
   return (await page.locator('#lesson-map-stage div.rounded-full').first().textContent()) || '';

@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
  * desert that has a voice" with no modal visible to explain it.
  */
 test('the gallery-open flag never survives a scene change', async ({ page }) => {
-  await page.goto('/lesson/EWQ7RV');
+  await page.goto(`/lesson/${process.env.VOYAGE_LESSON_CODE}`);
 
   // Simulate the leak: a tour torn down while its modal was open.
   await page.evaluate(() => { (window as any).__voyageGalleryOpen = true; });
@@ -24,7 +24,7 @@ test('the gallery-open flag never survives a scene change', async ({ page }) => 
 });
 
 test('closing a landfall gallery leaves the countdown able to run', async ({ page }) => {
-  await page.goto('/lesson/EWQ7RV');
+  await page.goto(`/lesson/${process.env.VOYAGE_LESSON_CODE}`);
   await page.getByRole('button', { name: /start lesson/i }).click();
   await page.waitForTimeout(3000);
 

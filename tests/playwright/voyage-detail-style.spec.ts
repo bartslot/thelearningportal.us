@@ -4,14 +4,19 @@ import { test, expect, Page } from '@playwright/test';
  * "Visible detail" style controls (place-label / city / border colour + size/width/opacity) must
  * apply to the live map without re-mounting the tour.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 
 async function openFirstVoyageScene(page: Page): Promise<void> {
   const rail = page.locator('[wire\\:click^="selectScene"]');
   const count = await rail.count();
   for (let i = 0; i < count; i++) {
     await rail.nth(i).click();
-    if (await page.getByRole('tab', { name: 'Route' }).isVisible().catch(() => false)) return;
+    // Auto-waiting assertion, not isVisible(): selecting a scene is a Livewire round-trip, and
+    // a bare isVisible() reads the inspector before it has swapped, so every scene looked wrong.
+    try {
+      await expect(page.getByRole('tab', { name: 'Route' })).toBeVisible({ timeout: 3_000 });
+      return;
+    } catch { /* not a voyage scene — try the next one */ }
   }
   throw new Error('No voyage scene found');
 }

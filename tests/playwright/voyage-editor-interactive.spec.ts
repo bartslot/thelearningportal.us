@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * The voyage map must be pan/zoomable IN THE EDITOR (to place a leg's destination dot) — but not
  * rotatable, and a real drag on the map must actually move the camera.
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 const SCENE = 37;
 
 test('editor voyage map is pan/zoomable (rotate disabled), drag moves the camera', async ({ page }) => {

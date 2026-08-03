@@ -6,17 +6,24 @@ import { test, expect, Page } from '@playwright/test';
  * 3s wire:poll, and a Livewire action inside a tab round-trips 200 with no console/page errors.
  * Runs against the Columbus fixture (lesson 3) in the local wizard (AutoLoginDev signs us in).
  */
-const WIZARD_URL = process.env.VOYAGE_WIZARD_URL || '/teacher/lessons/3/wizard';
+const WIZARD_URL = process.env.VOYAGE_WIZARD_URL!;
 
 async function openFirstVoyageScene(page: Page): Promise<void> {
-  // Select scenes down the rail until the voyage inspector (its tablist) appears.
+  // Select scenes down the rail until a voyage LEG's inspector appears. The Waypoint tab is what
+  // makes it a leg: the itinerary scene is a voyage scene too, but it stops nowhere, so it offers
+  // only Map and Route — landing on it would fail every assertion below for the right reason.
   const selectors = page.locator('[wire\\:click^="selectScene"]');
   const count = await selectors.count();
   for (let i = 0; i < count; i++) {
     await selectors.nth(i).click();
-    if (await page.getByRole('tab', { name: 'Route' }).isVisible().catch(() => false)) return;
+    // Auto-waiting assertion, not isVisible(): selecting a scene is a Livewire round-trip, and
+    // a bare isVisible() reads the inspector before it has swapped, so every scene looked wrong.
+    try {
+      await expect(page.getByRole('tab', { name: 'Waypoint' })).toBeVisible({ timeout: 3_000 });
+      return;
+    } catch { /* not a voyage leg — try the next one */ }
   }
-  throw new Error('No voyage scene found in the rail');
+  throw new Error('No voyage leg scene found in the rail');
 }
 
 test('voyage inspector: tabs switch, survive the poll, and actions round-trip', async ({ page }) => {

@@ -80,15 +80,30 @@ export const smoothSlice = (waypoints, from, to) => smooth(waypoints.slice(from,
 // the traveller. Small on a ship, glaring on a camel. Measuring from the traveller's POSITION
 // instead makes the line stop exactly where it stands.
 
-/** Cumulative length along `coords`, longitudes corrected for latitude. Built once per redraw. */
+/**
+ * Web-Mercator y for a latitude, in degrees.
+ *
+ * Everything below measures in THIS space, because the number it produces is fed to MapLibre's
+ * `line-progress`, and line-progress is the fraction of the line's length in Mercator tile
+ * coordinates. Measuring in ground distance instead (longitudes scaled by cos φ, which is what
+ * this file used to do) is a different ruler: Mercator stretches with latitude, so a leg through
+ * the Roaring Forties counts for far more of the line than the same ground distance near the
+ * equator. On Tasman's route — Batavia at 6°S, New Zealand at 45°S — the two rulers disagreed by
+ * thousands of kilometres, and the reveal stopped an ocean short of the ship.
+ */
+const mercY = (lat) => {
+  const φ = Math.max(-89.9, Math.min(89.9, lat)) * Math.PI / 180;
+  return Math.log(Math.tan(Math.PI / 4 + φ / 2)) * 180 / Math.PI;
+};
+
+/** Cumulative length along `coords` in Mercator space — the ruler line-progress uses. */
 export const arcTable = (coords) => {
   const cum = new Array(coords.length).fill(0);
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
     const [ax, ay] = coords[i - 1];
     const [bx, by] = coords[i];
-    const kx = Math.cos((ay + by) * 0.5 * Math.PI / 180);
-    total += Math.hypot((bx - ax) * kx, by - ay);
+    total += Math.hypot(bx - ax, mercY(by) - mercY(ay));
     cum[i] = total;
   }
   return { cum, total };
@@ -98,20 +113,20 @@ export const arcTable = (coords) => {
 const segT = (coords, i, pos) => {
   const [ax, ay] = coords[i - 1];
   const [bx, by] = coords[i];
-  const kx = Math.cos(ay * Math.PI / 180);
-  const dx = (bx - ax) * kx, dy = by - ay;
+  const ay2 = mercY(ay), by2 = mercY(by), py = mercY(pos.lat);
+  const dx = bx - ax, dy = by2 - ay2;
   const len2 = dx * dx + dy * dy;
   if (len2 <= 0) return 0;
-  return Math.min(1, Math.max(0, (((pos.lng - ax) * kx) * dx + (pos.lat - ay) * dy) / len2));
+  return Math.min(1, Math.max(0, ((pos.lng - ax) * dx + (py - ay2) * dy) / len2));
 };
 
-/** How far `pos` sits from segment `i` (planar degrees). */
+/** How far `pos` sits from segment `i`, in the same Mercator space. */
 const segDistance = (coords, i, pos) => {
   const [ax, ay] = coords[i - 1];
   const [bx, by] = coords[i];
   const t = segT(coords, i, pos);
-  const kx = Math.cos(ay * Math.PI / 180);
-  return Math.hypot((pos.lng - (ax + (bx - ax) * t)) * kx, pos.lat - (ay + (by - ay) * t));
+  const ay2 = mercY(ay), by2 = mercY(by);
+  return Math.hypot(pos.lng - (ax + (bx - ax) * t), mercY(pos.lat) - (ay2 + (by2 - ay2) * t));
 };
 
 /**
@@ -141,6 +156,37 @@ export const cutAtPoint = (coords, table, pos, estimate) => {
     if (gap < bestGap) { bestGap = gap; bestCut = cut; }
   }
   return bestCut;
+};
+
+// A marker's size comes back in metres; arcTable measures in Mercator degrees, which stretch with
+// latitude — so a metre is worth 1/(111320·cos φ) of them, at the traveller's own latitude.
+const METRES_PER_DEGREE = 111_320;
+const mercatorDegreesPerMetre = (lat) => 1 / (METRES_PER_DEGREE * Math.max(0.05, Math.cos(lat * Math.PI / 180)));
+
+/**
+ * Where the drawn trail has to stop: at the traveller, never past it, set back by half its marker.
+ *
+ * cutAtPoint lands on the traveller's coordinate, and every marker is drawn CENTRED on it, so a
+ * line cut there runs on under the hull and out past the bow. Half a marker puts the end of the
+ * line beneath it. The bigger the marker (a tall ship at a teacher-raised ship_scale, zoomed in)
+ * the further back it stops — hence a size per call rather than a constant.
+ *
+ * The projection itself is the ceiling, deliberately: it is where the traveller IS on the drawn
+ * line, so it cannot be second-guessed with its track fraction. Clamping to that fraction instead
+ * would bring back the older bug in the other direction, the line trailing behind a camel.
+ *
+ * @param {Array<[number, number]>} coords  the drawn line
+ * @param {{cum: number[], total: number}} table  from arcTable(coords)
+ * @param {{lng: number, lat: number}} pos  where the traveller is
+ * @param {number} estimate  its progress along its own track — the tie-breaker, the ceiling, and
+ *   the fallback when there is no line to measure against
+ * @param {number} markerMetres  the marker's on-map length; 0 cuts at the bare coordinate
+ */
+export const trailCutAt = (coords, table, pos, estimate, markerMetres = 0) => {
+  const cut = cutAtPoint(coords, table, pos, estimate);
+  if (!table || !table.total || !(markerMetres > 0) || !pos) return cut;
+  const setback = (markerMetres / 2) * mercatorDegreesPerMetre(pos.lat) / table.total;
+  return Math.max(0, cut - setback);
 };
 
 const voyageFeatures = () => {
@@ -216,11 +262,14 @@ export function applyVoyageYear(map, year) {
   for (const id of LAYERS) map.setFilter(id, voyageFilter(year));
 }
 
-// Recolor routes to sit with the active map style (called from applyMapStyle).
-export function applyVoyageStyle(map, { color, halo }) {
+// Recolor routes to sit with the active map style (called from applyMapStyle). `font` carries the
+// style's display hand, so route names switch to the modern sans on Satellite and Night with
+// every other label instead of staying in calligraphy on their own.
+export function applyVoyageStyle(map, { color, halo, font }) {
   if (!map.getLayer('voyage-line')) return;
   const c = color || DEFAULT_COLOR;
   map.setPaintProperty('voyage-line', 'line-color', c);
   map.setPaintProperty('voyage-label', 'text-color', c);
   if (halo) map.setPaintProperty('voyage-label', 'text-halo-color', halo);
+  if (font) map.setLayoutProperty('voyage-label', 'text-font', font);
 }

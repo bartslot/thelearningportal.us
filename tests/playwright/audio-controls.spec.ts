@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Audio Controls (H1)', () => {
   test('Audio controls are visible during playback', async ({ page }) => {
     // Any published lesson renders the transport deck; this one is stable in dev.
-    const LESSON_CODE = process.env.PLAYER_LESSON_CODE || 'EWQ7RV';
+    const LESSON_CODE = process.env.PLAYER_LESSON_CODE!;
     await page.goto(`/lesson/${LESSON_CODE}`, { waitUntil: 'domcontentloaded' });
 
     // Wait for the lesson stage to be ready

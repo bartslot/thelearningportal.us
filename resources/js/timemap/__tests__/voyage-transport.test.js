@@ -95,7 +95,7 @@ describe('transportAt', () => {
   it('leaves every route that is not an overland one entirely at sea', () => {
     // The land routes are the exception, so they are named rather than assumed: adding another
     // overland voyage should make someone come and think about this list.
-    const overland = ['marco-polo-1271', 'hannibal-218']
+    const overland = ['marco-polo-1271', 'hannibal-218', 'napoleon-1796']
     for (const v of voyagesDoc.voyages.filter((x) => !overland.includes(x.id))) {
       const t = { ...v, track: trackFor(v.waypoints.length) }
       const kinds = new Set(v.waypoints.map((_, i) => transportAt(t, (i * SAMPLES_PER_SEGMENT) / t.track.total)))

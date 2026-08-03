@@ -8,7 +8,7 @@ import { test, expect, Page } from '@playwright/test';
  * Every test fails on ANY console error — silent Livewire/Alpine breakage is the target.
  */
 
-const LESSON = process.env.PW_LESSON_ID ?? '2';
+const LESSON = process.env.PW_LESSON_ID!;
 
 function watchConsole(page: Page): string[] {
   const errors: string[] = [];
