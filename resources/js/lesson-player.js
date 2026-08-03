@@ -281,12 +281,16 @@ Alpine.data('lessonGame', (lesson) => ({
 
       // Start Ken Burns immediately for title screen — faster interval (4-7s) for drama
       if (this._kbImages.length > 0) {
-        this._showBgImage(this._kbImages[0], 'A')
         if (this._kbImages.length > 1) {
           this._bgSlideMin = 6000
           this._bgSlideMax = 6000
-          this._startKenBurns()
         }
+        this._showBgImage(this._kbImages[0], 'A')
+        // Also run for a SINGLE image. The drift is one CSS transition, so it ends after
+        // _bgSlideMax and then sits perfectly still — which is what a lesson with one cover (every
+        // voyage lesson) showed: twelve seconds of movement and then a frozen title screen. The
+        // interval re-triggers the same drift instead of leaving it parked at its end frame.
+        this._startKenBurns()
       }
 
       // Fire bg (skybox) init in background — should be ready by play time, but do
@@ -588,31 +592,20 @@ Alpine.data('lessonGame', (lesson) => ({
       el.style.backgroundSize  = fit
       el.style.backgroundColor = ''
 
-      // Crop anchor. A portrait cropped to a 16:9 stage from the centre loses the head, so a
-      // top-anchored scene starts its crop 10% down the image — the face, with a little headroom.
-      // (Same anchor the wizard's 3D stage uses via PORTRAIT_TOP_BIAS, so both crop identically.)
+      // Crop anchor. Centre unless the scene is explicitly marked as having a face up top, in
+      // which case the crop starts 20% down — the face, with a little headroom. (Same anchor the
+      // wizard's 3D stage uses via PORTRAIT_TOP_BIAS, so both crop identically.)
       const anchor = (w, h) => {
         el.style.backgroundPosition = isTopAnchored(fit, this._bgFocus, w, h)
           ? PORTRAIT_TOP_CSS
           : 'center center'
       }
 
-      // Apply what the stored hint already tells us, so a known portrait never flashes centred…
+      // The stored hint is now the only signal, so this settles it in one go. There used to be a
+      // second pass here that loaded the file to measure its shape and re-anchored tall images to
+      // the top; that is exactly what cropped a ship down to its mast, and it cost an extra image
+      // load per scene to do it.
       anchor(0, 0)
-
-      // …then measure the real file, because the hint is missing or wrong on plenty of scenes (a
-      // corpus painting tagged {battle,soldiers} is still a full-length portrait). The browser
-      // serves this from cache — it is the same URL the layer above is painting.
-      if (fit === 'cover' && this._bgFocus !== 'top') {
-        const probe = new Image()
-        probe.onload = () => {
-          // The scene may have moved on while this loaded — only anchor what is still on screen.
-          if (el.style.backgroundImage.includes(img.url)) {
-            anchor(probe.naturalWidth, probe.naturalHeight)
-          }
-        }
-        probe.src = img.url
-      }
 
       // Motion off for this scene → a calm, static image. 'contain' is always static: the teacher
       // asked to see the whole work, and a Ken Burns zoom would crop straight back into it.
@@ -622,7 +615,7 @@ Alpine.data('lessonGame', (lesson) => ({
         return
       }
 
-      const kbDir = pickKbDirection(this._kbIndex, this._kbNamedDirection)
+      const kbDir = pickKbDirection(this._kbPass ?? this._kbIndex, this._kbNamedDirection)
       el.style.transform = `scale(${kbDir.fromScale}) translate(${kbDir.fromX}%, ${kbDir.fromY}%)`
 
       // Animate Ken Burns — scale + pan simultaneously
@@ -691,8 +684,12 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     _advanceBg () {
-      if (this._kbImages.length < 2) return
+      if (this._kbImages.length < 1) return
       this._kbIndex = (this._kbIndex + 1) % this._kbImages.length
+      // Every drift gets the next direction. This used to key off _kbIndex, which is the IMAGE
+      // index — fine while pictures kept changing, but with a single cover it stays 0, so each
+      // repeat replayed the identical move and the picture snapped back to the start to do it.
+      this._kbPass = (this._kbPass ?? 0) + 1
       const next = this._kbImages[this._kbIndex]
 
       if (this._bgActive === 'A') {

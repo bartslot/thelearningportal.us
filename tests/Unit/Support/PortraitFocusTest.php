@@ -50,11 +50,11 @@ class PortraitFocusTest extends TestCase
         ];
     }
 
-    public function test_a_tall_image_is_treated_as_a_portrait_even_with_a_neutral_title(): void
+    public function test_a_tall_image_is_left_centred_when_nothing_says_there_is_a_face_in_it(): void
     {
-        // Anything meaningfully taller than it is wide gets cropped from the top: a cover-fit into a
-        // 16:9 stage would otherwise slice the head off whatever is standing in the frame.
-        $this->assertSame('top', PortraitFocus::forImage('Christopher Columbus', 900, 1400));
+        // Shape used to be enough on its own, and a tall engraving of Abel Tasman's fleet came out
+        // cropped to mast and flag with the ships gone. Tall is not evidence of a face.
+        $this->assertSame('center', PortraitFocus::forImage('Christopher Columbus', 900, 1400));
         $this->assertSame('center', PortraitFocus::forImage('Christopher Columbus', 1600, 900));
     }
 
@@ -69,14 +69,23 @@ class PortraitFocusTest extends TestCase
     }
 
     /**
-     * Shape is the only signal that catches a portrait the corpus mis-tags. The real case: Antonis
-     * Mor's full-length "Philip II at the Battle of St. Quentin" is 736×1475 but tagged
-     * {battle, empire, military-camp, painting, soldiers, war} — no 'portrait' anywhere — so a
-     * tag-only reading centred the crop and put Philip's waist on screen instead of his face.
+     * The cost of ignoring shape, recorded deliberately.
+     *
+     * Antonis Mor's full-length "Philip II at the Battle of St. Quentin" is 736×1475 but tagged
+     * {battle, empire, military-camp, painting, soldiers, war} — no 'portrait' anywhere — so it is
+     * now centred, and Philip loses some of his head. Shape used to catch exactly this case.
+     *
+     * It is still the right trade. Shape caught every mislabelled portrait AND every tall
+     * engraving, map and landscape, and those are the common case: a face wrongly centred loses
+     * some forehead, a ship wrongly anchored to the top loses the ship. Scenes that really do need
+     * a top crop can say so with an explicit `focus`.
      */
-    public function test_shape_catches_a_standing_portrait_the_tags_call_a_battle_scene(): void
+    public function test_a_mistagged_standing_portrait_is_now_centred_and_that_is_accepted(): void
     {
         $this->assertSame('center', PortraitFocus::forTags(['battle', 'empire', 'military-camp', 'painting', 'soldiers', 'war']));
+        $this->assertSame('center', PortraitFocus::forImage('Philip II at the Battle of St. Quentin', 736, 1475));
+
+        // The shape helper itself still works; it simply no longer decides the crop on its own.
         $this->assertTrue(PortraitFocus::isPortraitShape(736, 1475));
     }
 

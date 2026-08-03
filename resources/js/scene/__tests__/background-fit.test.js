@@ -36,9 +36,10 @@ describe('isPortraitShape', () => {
 })
 
 describe('isTopAnchored', () => {
-  it('anchors a portrait on shape alone, even when the stored hint says centre', () => {
-    // This is the whole point: the hint is wrong or missing on plenty of scenes.
-    expect(isTopAnchored('cover', 'center', 736, 1475)).toBe(true)
+  it('leaves a TALL image centred when nothing says there is a face in it', () => {
+    // The regression this replaces: a tall engraving of a ship anchored top, so the stage showed
+    // mast and flag and cropped the ship away. Tall is not evidence of a face.
+    expect(isTopAnchored('cover', 'center', 736, 1475)).toBe(false)
   })
 
   it('honours a stored top hint for a WIDE image, which shape can never detect', () => {
@@ -55,8 +56,7 @@ describe('isTopAnchored', () => {
     expect(isTopAnchored('contain', 'center', 736, 1475)).toBe(false)
   })
 
-  it('falls back to the hint when dimensions are not known yet', () => {
-    // The player anchors from the hint first, then re-anchors once the image reports its size.
+  it('needs no dimensions at all — the hint is the whole decision', () => {
     expect(isTopAnchored('cover', 'top', 0, 0)).toBe(true)
     expect(isTopAnchored('cover', 'center', 0, 0)).toBe(false)
   })

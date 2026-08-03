@@ -71,15 +71,17 @@ final class PortraitFocus
     }
 
     /**
-     * Best guess from everything known about a file: its descriptive text and its pixel dimensions.
-     * Either signal alone is enough — an untitled tall canvas and a wide "Portrait of…" both crop top.
+     * Best guess from everything known about a file.
+     *
+     * The DESCRIPTION decides. Shape used to be a second, sufficient signal — any image taller
+     * than wide cropped from the top — and that is what put a tall engraving of a ship on screen
+     * as mast and flag with the ship cropped away. Tall is not the same as "there is a face here".
+     *
+     * The dimensions stay in the signature because callers pass what they measured and a future
+     * face detector would use them; they no longer decide on their own.
      */
     public static function forImage(string $text, ?int $width = null, ?int $height = null): string
     {
-        if (self::forText($text) === self::TOP) {
-            return self::TOP;
-        }
-
-        return self::isPortraitShape($width, $height) ? self::TOP : self::CENTER;
+        return self::forText($text);
     }
 }
