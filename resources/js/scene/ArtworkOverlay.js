@@ -19,8 +19,40 @@ const DRAG_THRESHOLD_PX = 4
 const MIN_SCALE = 0.2
 const MAX_SCALE = 3
 
+// Corner resize handles. Dragging one keeps the OPPOSITE corner anchored, like other editors.
+const CORNERS = [
+  { name: 'tl', pos: 'top:-5px; left:-5px;', cursor: 'nwse-resize' },
+  { name: 'tr', pos: 'top:-5px; right:-5px;', cursor: 'nesw-resize' },
+  { name: 'bl', pos: 'bottom:-5px; left:-5px;', cursor: 'nesw-resize' },
+  { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
+]
+
 // Object-list / selection id namespace so artwork ids never collide with text-box ids.
 export const artObjId = (assetId) => `art_${assetId}`
+
+/**
+ * A fingerprint of everything that changes how these layers LOOK.
+ *
+ * Both editor surfaces re-seed the overlay only when this changes, so the 3s status poll can't
+ * reset a drag in progress or restart every entrance while the teacher works. That makes the
+ * fingerprint load-bearing: a rendered property missing from it is a setting that silently does
+ * nothing until something else happens to change too. Blend was missing from both call sites,
+ * which is why picking a blend mode looked frozen until you nudged the layer.
+ *
+ * Keep this in step with what _node() reads. The url is stripped of its cache-busting query so a
+ * re-save of the same file doesn't count as a change.
+ */
+export function layersSignature(layers) {
+  return JSON.stringify((Array.isArray(layers) ? layers : []).map(l => [
+    l.asset_id,
+    String(l.url || (l.embed && l.embed.src) || '').split('?')[0],
+    l.x, l.y, l.scale, l.height, l.depth,
+    l.blur, l.opacity, l.blend,
+    l.anim, l.anim_delay, l.anim_ease,
+    l.kind,
+    l.embed ? JSON.stringify(l.embed.opts || null) : null,
+  ]))
+}
 
 export class ArtworkOverlay {
   constructor(hostEl, { onChange = null, readonly = false } = {}) {
@@ -101,6 +133,7 @@ export class ArtworkOverlay {
       const dx = (m.panX || 0) / 100 * rect.width * p * item.depth
       const dy = (m.panY || 0) / 100 * rect.height * p * item.depth
       el.style.transform = this._transform(item, dx, dy)
+      this._syncChrome(item)
     }
   }
 
@@ -195,18 +228,72 @@ export class ArtworkOverlay {
 
   _applySelection() {
     for (const item of this._layers) {
-      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
-      if (!el) continue
-      const on = artObjId(item.asset_id) === this._selectedId
-      el.style.boxShadow = on ? '0 0 0 2px #38bdf8' : ''
-      for (const handle of el.querySelectorAll('[data-scale-handle]')) handle.style.display = on ? 'block' : 'none'
+      const chrome = this._chromeEl(item)
+      if (chrome) chrome.style.display = artObjId(item.asset_id) === this._selectedId ? 'block' : 'none'
     }
+  }
+
+  _chromeEl(item) {
+    return this.host.querySelector(`[data-layer-chrome="${artObjId(item.asset_id)}"]`)
+  }
+
+  _nodeEl(item) {
+    return this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+  }
+
+  /**
+   * Copy the layer's geometry onto its chrome, which is a SIBLING rather than a child.
+   *
+   * The ring and handles have to live outside the blended node: a blend applies to the node's
+   * whole rendered subtree, so handles inside it would be multiplied into the map and become
+   * invisible exactly when the teacher needs to grab them. Width is measured rather than copied
+   * because the node is width:max-content — it sizes itself to the image's aspect.
+   */
+  _syncChrome(item) {
+    const node = this._nodeEl(item)
+    const chrome = this._chromeEl(item)
+    if (!node || !chrome) return
+    chrome.style.left = node.style.left
+    chrome.style.top = node.style.top
+    chrome.style.height = node.style.height
+    chrome.style.transform = node.style.transform
+    const w = node.offsetWidth
+    if (w) chrome.style.width = `${w}px`
   }
 
   _render() {
     this.host.innerHTML = ''
-    for (const item of this._layers) this.host.appendChild(this._node(item))
+    for (const item of this._layers) {
+      this.host.appendChild(this._node(item))
+      if (!this.readonly) this.host.appendChild(this._chrome(item))
+    }
+    for (const item of this._layers) this._syncChrome(item)
     this._applySelection()
+  }
+
+  /**
+   * The editor chrome for one layer: selection ring plus four corner handles, in an element that
+   * never carries the layer's blend, opacity or blur. Playback gets none of this.
+   */
+  _chrome(item) {
+    const chrome = document.createElement('div')
+    chrome.dataset.layerChrome = artObjId(item.asset_id)
+    chrome.style.cssText = `position:absolute; display:none; pointer-events:none; box-sizing:border-box;
+      transform-origin:center; box-shadow:0 0 0 2px #38bdf8; z-index:${this._zTop + 1};`
+
+    const node = this._nodeEl(item)
+    for (const c of CORNERS) {
+      const handle = document.createElement('div')
+      handle.dataset.scaleHandle = '1'
+      handle.setAttribute('data-tooltip', 'Drag to resize')
+      handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; pointer-events:auto;
+        border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
+        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none;`
+      chrome.appendChild(handle)
+      if (node) this._wireScale(item, node, handle, c.name)
+    }
+
+    return chrome
   }
 
   _node(item) {
@@ -284,6 +371,9 @@ export class ArtworkOverlay {
     img.alt = item.title
     img.draggable = false
     img.style.cssText = 'height:100%; width:auto; display:block; pointer-events:none; user-select:none;'
+    // The node sizes itself to the image's aspect, so the chrome can only be measured once the
+    // file has decoded. Without this the ring is a sliver on first paint.
+    img.addEventListener('load', () => this._syncChrome(item), { once: true })
     // Depth-of-field blur + opacity preview from the Format panel.
     // Applied to the IMG, not the node, so the selection ring stays crisp.
     if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
@@ -294,37 +384,8 @@ export class ArtworkOverlay {
     if (item.blend && item.blend !== 'normal') node.style.mixBlendMode = item.blend
     node.appendChild(img)
 
-    this._addScaleHandles(item, node)
     this._wireDrag(item, node)
     return node
-  }
-
-  /**
-   * Round resize handles on all four corners, shown only while the layer is selected.
-   * Dragging a corner keeps the OPPOSITE corner anchored rather than scaling about the centre.
-   *
-   * Playback never gets them: a student has nothing to resize, and the nodes are inert anyway.
-   */
-  _addScaleHandles(item, node) {
-    if (this.readonly) return
-
-    const CORNERS = [
-      { name: 'tl', pos: 'top:-5px; left:-5px;', cursor: 'nwse-resize' },
-      { name: 'tr', pos: 'top:-5px; right:-5px;', cursor: 'nesw-resize' },
-      { name: 'bl', pos: 'bottom:-5px; left:-5px;', cursor: 'nesw-resize' },
-      { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
-    ]
-
-    for (const c of CORNERS) {
-      const handle = document.createElement('div')
-      handle.dataset.scaleHandle = '1'
-      handle.setAttribute('data-tooltip', 'Drag to resize')
-      handle.style.cssText = `position:absolute; ${c.pos} width:10px; height:10px; display:none;
-        border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
-        box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; z-index:6;`
-      node.appendChild(handle)
-      this._wireScale(item, node, handle, c.name)
-    }
   }
 
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
@@ -343,7 +404,12 @@ export class ArtworkOverlay {
         item.x = Math.min(150, Math.max(-50, item.x))
         item.y = Math.min(150, Math.max(-50, item.y))
       }
-      const paint = () => { node.style.left = `${item.x}%`; node.style.top = `${item.y}%` }
+      // The chrome is a sibling, so it has to be moved with the layer on every frame of a drag.
+      const paint = () => {
+        node.style.left = `${item.x}%`
+        node.style.top = `${item.y}%`
+        this._syncChrome(item)
+      }
 
       const onMove = (ev) => {
         const dx = ev.clientX - startX, dy = ev.clientY - startY
@@ -412,6 +478,7 @@ export class ArtworkOverlay {
         node.style.left = `${item.x}%`
         node.style.top = `${item.y}%`
         node.style.height = `${this._heightPct(item)}%`   // scale lives in height, not transform
+        this._syncChrome(item)
       }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)

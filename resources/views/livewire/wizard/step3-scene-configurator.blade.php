@@ -313,7 +313,7 @@
             overlay.setStackLevels(6, 8)            // above text (7) when stacked on top, else below it
             h.style.display = ''
             // Skip re-seeding on identical poll re-renders — it would reset an in-progress drag.
-            const sig = JSON.stringify(layers.map((l) => [l.asset_id, l.x, l.y, l.scale, l.height, String(l.url || (l.embed && l.embed.src) || '').split('?')[0]]))
+            const sig = window.LessonScene.layersSignature(layers)
             // Same rule as the slideshow overlay: re-seed only on a real change, and replay the
             // entrances then — not on every poll, which would flicker the layers while editing.
             if (sig !== artSig) { artSig = sig; overlay.setLayers(layers); overlay.playEntrances() }

@@ -994,7 +994,7 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 _artworkOverlay.setOnTop(clipartOnTop)
                 _artworkOverlay.setStackLevels(2, 8)   // on the nodes — a z-index here would break blending
                 // Skip re-seeding on identical poll re-renders (would reset an in-progress edit).
-                const sig = JSON.stringify(artLayers.map(l => [l.asset_id, l.x, l.y, l.scale, l.height, l.depth, l.blur, l.opacity, String(l.url || '').split('?')[0]]))
+                const sig = _artworkMod.layersSignature(artLayers)
                 // Re-seed only on a real change, then replay the entrances so the teacher sees
                 // the movement they just set. Gated on the same signature, or the 3s poll would
                 // restart every entrance a few times a minute while they work.

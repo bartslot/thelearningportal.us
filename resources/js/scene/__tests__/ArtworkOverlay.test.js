@@ -5,14 +5,15 @@ const host = () => document.createElement('div')
 const layer = (extra = {}) => ({ asset_id: 1, url: '/a.png', x: 50, y: 58, scale: 1, height: 40, ...extra })
 
 describe('ArtworkOverlay — resize handles', () => {
+  const chrome = (el, id = 'art_1') => el.querySelector(`[data-layer-chrome="${id}"]`)
+
   it('gives a layer four corner handles, hidden until it is selected', () => {
     const el = host()
     const overlay = new ArtworkOverlay(el)
     overlay.setLayers([layer()])
 
-    const handles = el.querySelectorAll('[data-scale-handle]')
-    expect(handles).toHaveLength(4)
-    for (const h of handles) expect(h.style.display).toBe('none')
+    expect(el.querySelectorAll('[data-scale-handle]')).toHaveLength(4)
+    expect(chrome(el).style.display).toBe('none')
   })
 
   it('shows the handles on select and hides them again on deselect', () => {
@@ -21,10 +22,10 @@ describe('ArtworkOverlay — resize handles', () => {
     overlay.setLayers([layer()])
 
     overlay.select('art_1')
-    for (const h of el.querySelectorAll('[data-scale-handle]')) expect(h.style.display).toBe('block')
+    expect(chrome(el).style.display).toBe('block')
 
     overlay.select(null)
-    for (const h of el.querySelectorAll('[data-scale-handle]')) expect(h.style.display).toBe('none')
+    expect(chrome(el).style.display).toBe('none')
   })
 
   // A student has nothing to resize, and a stray handle over a map would be a target to grab.
@@ -44,7 +45,7 @@ describe('ArtworkOverlay — resize handles', () => {
     overlay.setLayers([layer()])
 
     const node = el.querySelector('[data-layer-id="art_1"]')
-    const handle = node.querySelector('[data-scale-handle]')
+    const handle = chrome(el).querySelector('[data-scale-handle]')
     const before = { left: node.style.left, top: node.style.top }
 
     handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 }))
@@ -78,6 +79,23 @@ describe('ArtworkOverlay — blend mode', () => {
 
     expect(node(el).style.mixBlendMode).toBe('')
     expect(node(el, 'art_2').style.mixBlendMode).toBe('')
+  })
+
+  // The blend applies to a node's whole rendered subtree, so chrome inside it would be multiplied
+  // into the map and become unusable — white handles vanish over dark satellite imagery.
+  it('never puts the ring or handles inside the blended node', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer({ blend: 'multiply' })])
+
+    const n = node(el)
+    expect(n.style.mixBlendMode).toBe('multiply')
+    expect(n.querySelectorAll('[data-scale-handle]')).toHaveLength(0)
+
+    const ch = el.querySelector('[data-layer-chrome="art_1"]')
+    expect(ch.parentElement).toBe(el)                 // sibling of the node, not a child
+    expect(ch.style.mixBlendMode).toBe('')
+    expect(ch.querySelectorAll('[data-scale-handle]')).toHaveLength(4)
   })
 
   it('blends in playback too, or the editor would be lying about the result', () => {
