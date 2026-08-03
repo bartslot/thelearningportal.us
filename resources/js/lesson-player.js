@@ -1698,6 +1698,16 @@ Alpine.data('lessonGame', (lesson) => ({
       this._artLayer.setOnTop(onTop)
       this._artLayer.setStackLevels(30, 32)   // on the nodes: a z-index on the host would kill blending
       host.style.display = layers.length ? '' : 'none'
+      // Layers pinned to a place need the map before they are seeded, or the first paint puts
+      // them at whatever x/y the editor's camera happened to leave behind. Same projector, same
+      // host box, as the text labels above.
+      if (_mapInstance && typeof _mapInstance.textProjector === 'function') {
+        this._artLayer.setProjector(_mapInstance.textProjector(host))
+        if (!_mapInstance.map.__artMoveBound) {
+          _mapInstance.map.__artMoveBound = true
+          _mapInstance.map.on('move', () => this._artLayer?.refreshPositions())
+        }
+      }
       this._artLayer.setLayers(layers)
       // Each layer arrives the way the teacher set it in the Animate tab. Run after setLayers,
       // which rebuilds the nodes the animation targets.

@@ -806,17 +806,17 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('once', $this->s2->fresh()->config['quiz_shuffle']);
     }
 
-    public function test_opens_the_ink_svg_artwork_library_from_the_insert_tool(): void
+    public function test_opens_the_teachers_own_svg_library_on_the_event(): void
     {
-        // Clipart is inserted from the canvas tools strip, which is wire:ignore and
-        // therefore dispatches a browser event rather than a wire:click.
+        // The bundled icons live in the dock's Icons tab; this modal is the way a teacher brings
+        // in an SVG of their OWN. Its trigger sits in that panel (see IconPanelTest), and reaches
+        // this component as an event because the panel is a separate Livewire component.
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->assertSet('svgLibraryOpen', false)
-            ->assertSeeHtml("Livewire.dispatch('open-svg-library')")
             ->dispatch('open-svg-library')
             ->assertSet('svgLibraryOpen', true)
-            ->assertSee('Clipart library')
+            ->assertSee('Import icons')
             ->assertSeeLivewire('svg-asset-library');
     }
 

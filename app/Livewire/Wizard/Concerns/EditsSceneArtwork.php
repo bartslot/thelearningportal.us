@@ -14,10 +14,16 @@ trait EditsSceneArtwork
     /** Asset id of the layer whose settings fill the inspector (Keynote "active object"). */
     public ?int $activeLayerId = null;
 
+    /**
+     * An icon was picked in the Icons panel, or an SVG in the teacher's own library.
+     *
+     * A click carries no position and lands mid-stage; a drag carries the drop point, and over a
+     * live map it also carries the place under the cursor so the icon is pinned there.
+     */
     #[On('svg-asset:attach')]
-    public function onSvgAssetAttach(int $assetId): void
+    public function onSvgAssetAttach(int $assetId, ?float $x = null, ?float $y = null, ?float $lng = null, ?float $lat = null): void
     {
-        $this->attachArtwork($assetId);
+        $this->attachArtwork($assetId, $x, $y, $lng, $lat);
     }
 
     /** A layer was selected on the canvas / object list → its settings take over the inspector. */
@@ -47,7 +53,11 @@ trait EditsSceneArtwork
         return collect($this->sceneArtworkLayers())->firstWhere('asset_id', $this->activeLayerId);
     }
 
-    public function attachArtwork(int $assetId): void
+    /**
+     * @param  float|null  $x  drop point on the stage (% , centre anchor); null = the default spot
+     * @param  float|null  $lng  the place under the drop point when a map is live beneath the stage
+     */
+    public function attachArtwork(int $assetId, ?float $x = null, ?float $y = null, ?float $lng = null, ?float $lat = null): void
     {
         if (! $this->selectedSceneId) {
             $this->dispatch('toast', message: 'No scene selected.', type: 'warning');
@@ -55,8 +65,10 @@ trait EditsSceneArtwork
             return;
         }
 
+        // The teacher's own imports AND the icons that ship with the app — an icon belongs to
+        // nobody, so ownedBy() would refuse every one of them.
         $asset = SvgAsset::query()
-            ->ownedBy((int) auth()->id())
+            ->availableTo((int) auth()->id())
             ->findOrFail($assetId);
 
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
@@ -72,9 +84,17 @@ trait EditsSceneArtwork
             'sway' => false,
             // Free position on the stage (centre anchor, % of the stage) — teacher drags it
             // on the canvas. Defaults to just-below-centre where a figure usually reads best.
-            'x' => 50.0,
-            'y' => 58.0,
+            'x' => $x !== null ? max(0.0, min(100.0, $x)) : 50.0,
+            'y' => $y !== null ? max(0.0, min(100.0, $y)) : 58.0,
         ];
+
+        // Dropped over a live map → the icon belongs to that PLACE, not to that pixel, so it
+        // keeps sitting on it through every pan and zoom. Same anchor a text label uses.
+        if ($lng !== null && $lat !== null) {
+            $newLayer['anchor'] = 'map';
+            $newLayer['lng'] = max(-180.0, min(180.0, $lng));
+            $newLayer['lat'] = max(-90.0, min(90.0, $lat));
+        }
 
         // Immutable transformation: build new arrays, never mutate in place
         if (empty($shots)) {
@@ -330,6 +350,9 @@ trait EditsSceneArtwork
             'anim' => ['none', 'fade', 'slide-left', 'slide-right', 'slide-up', 'slide-down', 'zoom', 'pop'],
             'anim_delay' => [0, 10],   // seconds before the entrance starts
             'anim_ease' => ['enter', 'move', 'exit', 'pop', 'linear'],
+            // Recolour for line-art icons: '' / 'none' keeps the original artwork, otherwise a
+            // #rrggbb the icon's own shape is filled with. Validated as a colour, not an enum.
+            'tint' => null,
             'x' => [0, 100],   // stage position %, centre anchor
             // Drawing-mode ink controls (per layer).
             'ink_preset' => ['production', 'brush', 'etch', 'sketch', 'liner'],
@@ -350,6 +373,18 @@ trait EditsSceneArtwork
         $shots = $scene->shots ?? [];
 
         if (empty($shots)) {
+            return;
+        }
+
+        // A tint is free-form colour, so it is validated here rather than against a list: either
+        // "leave the artwork alone" or a hex colour. Anything else is dropped.
+        if ($field === 'tint') {
+            $tint = (string) $value;
+            if ($tint !== '' && $tint !== 'none' && ! preg_match('/^#[0-9a-fA-F]{6}$/', $tint)) {
+                return;
+            }
+            $this->writeLayerField($assetId, 'tint', $tint === 'none' ? '' : $tint);
+
             return;
         }
 
@@ -382,11 +417,31 @@ trait EditsSceneArtwork
             }
         }
 
-        // Immutable: update the matching layer in every shot.
-        $shots = collect($shots)->map(function (array $shot) use ($assetId, $field, $coercedValue): array {
-            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $field, $coercedValue): array {
+        $this->writeLayerField($assetId, $field, $coercedValue);
+    }
+
+    /**
+     * Write one already-validated field onto the matching layer in every shot, immutably.
+     *
+     * The last step of every per-layer setting, shared so a new control cannot quietly grow its
+     * own slightly-different way of saving.
+     */
+    private function writeLayerField(int $assetId, string $field, mixed $value): void
+    {
+        if (! $this->selectedSceneId) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+        $shots = $scene->shots ?? [];
+        if (empty($shots)) {
+            return;
+        }
+
+        $shots = collect($shots)->map(function (array $shot) use ($assetId, $field, $value): array {
+            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $field, $value): array {
                 if (($l['asset_id'] ?? null) === $assetId) {
-                    $l[$field] = $coercedValue;
+                    $l[$field] = $value;
                 }
 
                 return $l;
@@ -458,7 +513,7 @@ trait EditsSceneArtwork
      * text overlay uses). The Livewire re-render still refreshes the Layers panel thumbnails.
      */
     #[On('artwork:move')]
-    public function moveArtworkLayer(int $assetId, float $x, float $y, float $scale): void
+    public function moveArtworkLayer(int $assetId, float $x, float $y, float $scale, ?string $anchor = null, ?float $lng = null, ?float $lat = null): void
     {
         if (! $this->selectedSceneId) {
             return;
@@ -474,12 +529,30 @@ trait EditsSceneArtwork
         $y = max(0.0, min(100.0, $y));
         $scale = max(0.2, min(3.0, $scale));
 
-        $shots = collect($shots)->map(function (array $shot) use ($assetId, $x, $y, $scale): array {
-            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $x, $y, $scale): array {
+        // A pinned layer's PLACE is what has to survive; x/y is only where the current camera
+        // puts it. A pin is only accepted with real coordinates, so a projector that failed to
+        // resolve one can never leave a layer anchored to nowhere.
+        $pinned = $anchor === 'map' && $lng !== null && $lat !== null;
+        $lng = $pinned ? max(-180.0, min(180.0, $lng)) : null;
+        $lat = $pinned ? max(-90.0, min(90.0, $lat)) : null;
+
+        $shots = collect($shots)->map(function (array $shot) use ($assetId, $x, $y, $scale, $anchor, $pinned, $lng, $lat): array {
+            $layers = collect($shot['layers'] ?? [])->map(function (array $l) use ($assetId, $x, $y, $scale, $anchor, $pinned, $lng, $lat): array {
                 if (($l['asset_id'] ?? null) === $assetId) {
                     $l['x'] = $x;
                     $l['y'] = $y;
                     $l['scale'] = $scale;
+                    // Only an overlay that knows about anchoring sends one; an older caller
+                    // that doesn't leaves whatever the layer already had alone.
+                    if ($anchor !== null) {
+                        if ($pinned) {
+                            $l['anchor'] = 'map';
+                            $l['lng'] = $lng;
+                            $l['lat'] = $lat;
+                        } else {
+                            unset($l['anchor'], $l['lng'], $l['lat']);
+                        }
+                    }
                 }
 
                 return $l;

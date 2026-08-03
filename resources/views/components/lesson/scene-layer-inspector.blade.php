@@ -6,6 +6,10 @@
     $aid = $layer['asset_id'];
     $slideshowMode = (string) ($scene->config['slideshow_mode'] ?? (($scene->config['parallax'] ?? false) ? 'parallax' : 'standard'));
     $parallax = $slideshowMode === 'parallax';
+    // A map sits under voyage and map scenes, so a layer there can be pinned to a place.
+    $isMapScene = in_array($scene->kind, ['map', 'voyage'], true);
+    $isPinned = ($layer['anchor'] ?? 'screen') === 'map';
+    $tint = (string) ($layer['tint'] ?? '');
 @endphp
 
 <div class="space-y-3 text-sm" wire:key="layer-inspector-{{ $aid }}">
@@ -72,7 +76,7 @@
     <div class="flex items-center gap-2">
         <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] ?? '' }}"
              class="h-9 w-9 shrink-0 rounded bg-base-100 object-contain" />
-        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Clipart') }}</h3>
+        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Icon') }}</h3>
         <button type="button" wire:click="detachArtwork({{ $aid }})"
                 class="btn btn-ghost btn-xs btn-square text-slate-500 hover:text-rose-400"
                 aria-label="{{ __('Remove layer') }}">
@@ -124,6 +128,42 @@
             @endforeach
         </select>
     </label>
+
+    {{-- Colour — a line-art icon is black ink, which vanishes on a night scene. Leaving it empty
+         keeps the artwork exactly as it was drawn; a colour repaints the icon's own shape. --}}
+    <label class="flex items-center gap-2">
+        <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Colour') }}</span>
+        <input type="color" value="{{ $tint !== '' ? $tint : '#ffffff' }}"
+               wire:change="updateArtworkLayer({{ $aid }}, 'tint', $event.target.value)"
+               class="h-6 w-10 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-900"
+               data-tooltip="{{ __('Repaint this icon') }}" />
+        <button type="button" wire:click="updateArtworkLayer({{ $aid }}, 'tint', 'none')"
+                class="text-[10px] text-slate-500 transition hover:text-slate-200 {{ $tint === '' ? 'invisible' : '' }}">
+            {{ __('Original') }}
+        </button>
+    </label>
+
+    {{-- Pin to map — the same anchor a text label uses, so "pinned" means one thing on a scene.
+         A pinned layer stores the lng/lat it sits over and tracks that place through pan and
+         zoom; the placement sliders belong to a screen-anchored one, so they step aside. --}}
+    @if ($isMapScene)
+        <div class="space-y-1 border-t border-slate-700/50 pt-3">
+            <label class="flex items-center justify-between gap-3">
+                <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Pin to map') }}</span>
+                {{-- The map scene's overlay by its OWN handle first: the shared one can be
+                     repointed by a slideshow render, and pinning the wrong overlay's layer
+                     would silently do nothing. --}}
+                <input type="checkbox" @checked($isPinned)
+                       x-on:change="(window.__voyageArtworkLayer || window.__lessonArtworkLayer)?.togglePin?.({{ $aid }})"
+                       class="toggle toggle-sm toggle-warning shrink-0" />
+            </label>
+            <p class="text-[10px] leading-tight text-slate-500">
+                {{ $isPinned
+                    ? __('Stays on this place as the map pans and zooms.')
+                    : __('Sits at a fixed spot on the screen. Pin it to stick to the place underneath.') }}
+            </p>
+        </div>
+    @endif
 
     {{-- Ink draw-on controls — only in Drawing mode. --}}
     @if ($slideshowMode === 'drawing')

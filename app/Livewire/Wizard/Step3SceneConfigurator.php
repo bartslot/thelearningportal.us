@@ -198,6 +198,12 @@ class Step3SceneConfigurator extends Component
                 'blur' => isset($l['blur']) ? (float) $l['blur'] : null,
                 'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
                 'blend' => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
+                // Recolour for line-art icons (a hex, or null for the artwork's own ink).
+                'tint' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($l['tint'] ?? '')) ? $l['tint'] : null,
+                // Pinned to a place on the map beneath the stage, rather than to the stage itself.
+                'anchor' => ($l['anchor'] ?? null) === 'map' ? 'map' : null,
+                'lng' => isset($l['lng']) ? (float) $l['lng'] : null,
+                'lat' => isset($l['lat']) ? (float) $l['lat'] : null,
                 // Animate tab: entrance movement, its delay in seconds, and the easing key.
                 'anim' => $l['anim'] ?? null,
                 'anim_delay' => isset($l['anim_delay']) ? (float) $l['anim_delay'] : null,

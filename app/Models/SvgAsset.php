@@ -12,12 +12,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * A public-domain / freely-licensed SVG a teacher imported into their library.
+ * A public-domain / freely-licensed SVG: either one a teacher imported into their own
+ * library, or one of the icons that ship WITH the app.
+ *
+ * A bundled icon has no owner (user_id null) and is filed under collection ▸ category ▸
+ * subcategory — the pills in the Icons panel. A teacher's import has an owner and no filing.
  *
  * @property int $id
- * @property int $user_id
+ * @property int|null $user_id
  * @property string $source
  * @property string $source_ref
+ * @property string|null $collection
+ * @property string|null $category
+ * @property string|null $subcategory
  * @property string $source_url
  * @property string $title
  * @property string $license
@@ -34,6 +41,7 @@ class SvgAsset extends Model
 
     protected $fillable = [
         'user_id', 'source', 'source_ref', 'source_url',
+        'collection', 'category', 'subcategory',
         'title', 'license', 'attribution',
         'svg_path', 'width', 'height', 'view_box',
     ];
@@ -67,9 +75,37 @@ class SvgAsset extends Model
         return $who.$this->license.$where;
     }
 
-    /** @param  Builder<SvgAsset>  $query */
+    /**
+     * The teacher's OWN imports. Deliberately excludes the bundled library, so "remove from my
+     * library" can never delete an icon that ships with the app and belongs to everyone.
+     *
+     * @param  Builder<SvgAsset>  $query
+     */
     public function scopeOwnedBy(Builder $query, int $userId): void
     {
         $query->where('user_id', $userId);
+    }
+
+    /**
+     * Everything this teacher may place on a scene: their own imports plus the bundled library.
+     * This is the scope for reading and attaching; {@see scopeOwnedBy} is the one for deleting.
+     *
+     * @param  Builder<SvgAsset>  $query
+     */
+    public function scopeAvailableTo(Builder $query, int $userId): void
+    {
+        $query->where(fn (Builder $q) => $q->where('user_id', $userId)->orWhereNull('user_id'));
+    }
+
+    /** The icons that ship with the app (no owner). @param  Builder<SvgAsset>  $query */
+    public function scopeBundled(Builder $query): void
+    {
+        $query->whereNull('user_id');
+    }
+
+    /** True for an icon that ships with the app — no teacher may delete or edit it. */
+    public function isBundled(): bool
+    {
+        return $this->user_id === null;
     }
 }
