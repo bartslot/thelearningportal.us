@@ -271,6 +271,34 @@ class SceneArtworkTest extends TestCase
         $this->assertNotNull($layers[0]['asset_id'] ?? null, 'it needs an asset id to move / scale / delete');
     }
 
+    /**
+     * A teacher blowing one detail of a painting up to fill the stage is a normal thing to want.
+     * The cap is a guard against a runaway drag, not a rendering limit.
+     */
+    public function test_a_layer_can_be_scaled_up_to_six(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id)
+            ->call('updateArtworkLayer', $this->asset1->id, 'scale', 6);
+
+        $layer = collect($this->scene->refresh()->shots[0]['layers'])->firstWhere('asset_id', $this->asset1->id);
+        $this->assertSame(6.0, (float) $layer['scale']);
+    }
+
+    public function test_a_scale_beyond_the_cap_is_clamped_not_rejected(): void
+    {
+        Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id)
+            ->call('updateArtworkLayer', $this->asset1->id, 'scale', 99);
+
+        $layer = collect($this->scene->refresh()->shots[0]['layers'])->firstWhere('asset_id', $this->asset1->id);
+        $this->assertSame(6.0, (float) $layer['scale']);
+    }
+
     public function test_detaching_the_last_clipart_from_a_voyage_scene_collapses_shots_to_null(): void
     {
         // A layer-only voyage shot carries nothing once its clipart is removed — it must not
