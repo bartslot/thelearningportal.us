@@ -19,6 +19,7 @@
  * pan and zoom instead of sliding off it.
  */
 import { playEntrance } from './animations.js'
+import { applyLayerFilter } from './layer-filters.js'
 
 const DRAG_THRESHOLD_PX = 4
 const MIN_SCALE = 0.2
@@ -68,8 +69,9 @@ export function layersSignature(layers) {
     String(l.url || (l.embed && l.embed.src) || '').split('?')[0],
     l.x, l.y, l.scale, l.height, l.depth,
     l.blur, l.opacity, l.blend,
+    l.white_key, l.grayscale, l.tint,
     l.anim, l.anim_delay, l.anim_ease,
-    l.kind, l.tint,
+    l.kind,
     l.anchor, l.lng, l.lat,
     l.embed ? JSON.stringify(l.embed.opts || null) : null,
   ]))
@@ -120,14 +122,15 @@ export class ArtworkOverlay {
         // CSS mix-blend-mode. 'multiply' is what makes a scanned engraving or map sit ON the
         // scene by dropping its white paper, instead of floating in a white box.
         blend: l.blend || 'normal',
+        // Colour treatment: knock the paper out, drain the colour, recolour the ink.
+        white_key: Number.isFinite(l.white_key) ? l.white_key : 0,
+        grayscale: !!l.grayscale,
+        tint: l.tint || null,
         // Animate tab: how this layer arrives, after how long, on which curve.
         anim: l.anim || 'none',
         anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
         anim_ease: l.anim_ease || 'enter',
         kind: l.kind || 'figure',
-        // Recolour: a line-art icon is black ink, which disappears on a dark scene. A tint
-        // repaints it through a mask; '' / 'none' leaves the original artwork alone.
-        tint: l.tint || '',
         // 'map' pins the layer to lng/lat and lets the projector place it; 'screen' (default)
         // keeps it at its x/y on the stage.
         anchor: l.anchor === 'map' ? 'map' : 'screen',
@@ -487,40 +490,21 @@ export class ArtworkOverlay {
     img.addEventListener('load', () => this._syncChrome(item), { once: true })
     // Depth-of-field blur + opacity preview from the Format panel.
     // Applied to the IMG, not the node, so the selection ring stays crisp.
-    if (item.blur > 0) img.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
+    // One property for the whole treatment — white key, grayscale, tint and blur compose into a
+    // single CSS filter, so they can't overwrite one another.
+    const filter = applyLayerFilter(this.host, item)
+    if (filter) img.style.filter = filter
     if (item.opacity < 1) img.style.opacity = String(Math.max(0.05, item.opacity))
     // Blend on the NODE, not the img: the node carries the transform, which makes it a stacking
     // context, so a blend on the img would only ever mix with the node's own empty backdrop.
     // On the node it mixes with whatever the overlay sits over — which is the point of Multiply.
     if (item.blend && item.blend !== 'normal') node.style.mixBlendMode = item.blend
     node.appendChild(img)
-    this._addTint(item, node, img)
 
     this._wireDrag(item, node)
     return node
   }
 
-  /**
-   * Recolour a line-art icon. Black ink is invisible on a night scene, and a filter chain can
-   * only ever approximate a target colour — so paint a flat colour and cut it to the artwork's
-   * own shape with a mask, which gives the exact colour the teacher picked, anti-aliasing intact.
-   *
-   * The original <img> stays in the box (hidden, not removed) because it is what gives the node
-   * its width: the artwork's aspect at the layer's height. Drop it and the box collapses.
-   */
-  _addTint(item, node, img) {
-    if (!item.tint || item.tint === 'none') return
-
-    img.style.visibility = 'hidden'
-
-    const paint = document.createElement('div')
-    paint.style.cssText = `position:absolute; inset:0; pointer-events:none; background:${item.tint};
-      -webkit-mask:url("${item.url}") center / contain no-repeat;
-      mask:url("${item.url}") center / contain no-repeat;`
-    if (item.blur > 0) paint.style.filter = `blur(${Math.min(2.5, item.blur)}px)`
-    if (item.opacity < 1) paint.style.opacity = String(Math.max(0.05, item.opacity))
-    node.appendChild(paint)
-  }
 
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
   _wireDrag(item, node) {

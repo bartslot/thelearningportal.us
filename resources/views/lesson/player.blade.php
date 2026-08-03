@@ -109,7 +109,12 @@
                         'blur'    => isset($l['blur']) ? (float) $l['blur'] : null,
                         'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
                         'blend'   => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
-                        // Recolour for line-art icons (a hex, or null for the artwork's own ink).
+                        // Colour treatment — knock out the paper, drain the colour, recolour the
+                        // ink. All three travel together: a tint without its white key would
+                        // paint the paper back in, so the class would see something the teacher
+                        // never set up.
+                        'white_key' => isset($l['white_key']) ? (float) $l['white_key'] : null,
+                        'grayscale' => ! empty($l['grayscale']),
                         'tint'    => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($l['tint'] ?? '')) ? $l['tint'] : null,
                         // Pinned to a place on the map beneath the stage, rather than to the stage.
                         'anchor'  => ($l['anchor'] ?? null) === 'map' ? 'map' : null,

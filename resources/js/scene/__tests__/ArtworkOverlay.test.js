@@ -218,27 +218,3 @@ describe('ArtworkOverlay — pinned to the map', () => {
   })
 })
 
-// Black ink disappears on a night scene, so an icon can be repainted in a colour of its own.
-describe('ArtworkOverlay — tint', () => {
-  const node = (el, id = 'art_1') => el.querySelector(`[data-layer-id="${id}"]`)
-
-  it('leaves the artwork alone by default', () => {
-    const el = host()
-    new ArtworkOverlay(el).setLayers([layer()])
-
-    expect(node(el).querySelector('img').style.visibility).toBe('')
-    expect(node(el).querySelector('div[style*="mask"]')).toBeNull()
-  })
-
-  it('paints the colour through the artwork’s own shape, keeping its box', () => {
-    const el = host()
-    new ArtworkOverlay(el).setLayers([layer({ tint: '#e11d48' })])
-
-    const img = node(el).querySelector('img')
-    const paint = node(el).querySelector('div[style*="mask"]')
-
-    expect(img.style.visibility).toBe('hidden')   // still sizes the node, no longer seen
-    expect(paint.style.background).toBe('rgb(225, 29, 72)')
-    expect(paint.style.getPropertyValue('mask')).toContain('/a.png')
-  })
-})

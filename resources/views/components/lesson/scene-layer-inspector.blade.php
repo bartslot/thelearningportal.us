@@ -9,7 +9,6 @@
     // A map sits under voyage and map scenes, so a layer there can be pinned to a place.
     $isMapScene = in_array($scene->kind, ['map', 'voyage'], true);
     $isPinned = ($layer['anchor'] ?? 'screen') === 'map';
-    $tint = (string) ($layer['tint'] ?? '');
 @endphp
 
 <div class="space-y-3 text-sm" wire:key="layer-inspector-{{ $aid }}">
@@ -76,7 +75,7 @@
     <div class="flex items-center gap-2">
         <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] ?? '' }}"
              class="h-9 w-9 shrink-0 rounded bg-base-100 object-contain" />
-        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Icon') }}</h3>
+        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Clipart') }}</h3>
         <button type="button" wire:click="detachArtwork({{ $aid }})"
                 class="btn btn-ghost btn-xs btn-square text-slate-500 hover:text-rose-400"
                 aria-label="{{ __('Remove layer') }}">
@@ -129,19 +128,41 @@
         </select>
     </label>
 
-    {{-- Colour — a line-art icon is black ink, which vanishes on a night scene. Leaving it empty
-         keeps the artwork exactly as it was drawn; a colour repaints the icon's own shape. --}}
-    <label class="flex items-center gap-2">
-        <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Colour') }}</span>
-        <input type="color" value="{{ $tint !== '' ? $tint : '#ffffff' }}"
-               wire:change="updateArtworkLayer({{ $aid }}, 'tint', $event.target.value)"
-               class="h-6 w-10 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-900"
-               data-tooltip="{{ __('Repaint this icon') }}" />
-        <button type="button" wire:click="updateArtworkLayer({{ $aid }}, 'tint', 'none')"
-                class="text-[10px] text-slate-500 transition hover:text-slate-200 {{ $tint === '' ? 'invisible' : '' }}">
-            {{ __('Original') }}
-        </button>
-    </label>
+    {{-- Colour treatment. Drop White is the one that changes what a scan can be used for: an
+         engraving arrives as ink on paper, and keying the paper out leaves just the ink, which can
+         then be drained and recoloured to sit with the lesson's palette. --}}
+    <div class="space-y-2 border-t border-slate-700/50 pt-2">
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Drop white') }}</span>
+            <input type="range" min="0" max="0.5" step="0.01"
+                   value="{{ $layer['white_key'] ?? 0 }}"
+                   wire:change="updateArtworkLayer({{ $aid }}, 'white_key', $event.target.value)"
+                   class="range range-xs flex-1" />
+            <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ round(((float) ($layer['white_key'] ?? 0)) * 100) }}%</span>
+        </label>
+
+        <label class="flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-300">{{ __('Grayscale') }}</span>
+            <input type="checkbox" @checked($layer['grayscale'] ?? false)
+                   wire:change="updateArtworkLayer({{ $aid }}, 'grayscale', $event.target.checked)"
+                   class="toggle toggle-sm toggle-warning shrink-0" />
+        </label>
+
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Tint') }}</span>
+            <input type="color" value="{{ $layer['tint'] ?? '#38bdf8' }}"
+                   wire:change="updateArtworkLayer({{ $aid }}, 'tint', $event.target.value)"
+                   class="h-6 w-10 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-900" />
+            <button type="button" wire:click="updateArtworkLayer({{ $aid }}, 'tint', '')"
+                    class="flex-1 rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200">
+                {{ __('No tint') }}
+            </button>
+        </label>
+        <p class="text-[10px] leading-tight text-slate-500">{{ __('Tint recolours what survives the white key, so drop the white first.') }}</p>
+        {{-- A line-art icon is black ink on nothing: there is no paper to key out, so Tint alone
+             is what rescues it from a night scene. It reaches the ink either way — the flood is
+             composited INTO the source's alpha, which for an icon is the strokes themselves. --}}
+    </div>
 
     {{-- Pin to map — the same anchor a text label uses, so "pinned" means one thing on a scene.
          A pinned layer stores the lng/lat it sits over and tracks that place through pan and

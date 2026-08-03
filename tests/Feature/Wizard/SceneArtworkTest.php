@@ -299,6 +299,60 @@ class SceneArtworkTest extends TestCase
         $this->assertSame(6.0, (float) $layer['scale']);
     }
 
+    /** @return array<string, mixed> */
+    private function attachedLayer(): array
+    {
+        return collect($this->scene->refresh()->shots[0]['layers'])
+            ->firstWhere('asset_id', $this->asset1->id);
+    }
+
+    private function layerComponent()
+    {
+        return Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->call('selectScene', $this->scene->id)
+            ->call('attachArtwork', $this->asset1->id);
+    }
+
+    public function test_the_white_key_grayscale_and_tint_persist(): void
+    {
+        $this->layerComponent()
+            ->call('updateArtworkLayer', $this->asset1->id, 'white_key', 0.04)
+            ->call('updateArtworkLayer', $this->asset1->id, 'grayscale', true)
+            ->call('updateArtworkLayer', $this->asset1->id, 'tint', '#38bdf8');
+
+        $layer = $this->attachedLayer();
+        $this->assertSame(0.04, (float) $layer['white_key']);
+        $this->assertTrue((bool) $layer['grayscale']);
+        $this->assertSame('#38bdf8', $layer['tint']);
+    }
+
+    /** The tint lands inside an SVG flood-color attribute, so anything but a hex colour is dropped. */
+    public function test_a_tint_that_is_not_a_hex_colour_is_refused(): void
+    {
+        $this->layerComponent()
+            ->call('updateArtworkLayer', $this->asset1->id, 'tint', '#38bdf8')
+            ->call('updateArtworkLayer', $this->asset1->id, 'tint', 'red" onload="alert(1)');
+
+        $this->assertSame('#38bdf8', $this->attachedLayer()['tint'], 'the good value must survive');
+    }
+
+    public function test_an_empty_tint_clears_it(): void
+    {
+        $this->layerComponent()
+            ->call('updateArtworkLayer', $this->asset1->id, 'tint', '#38bdf8')
+            ->call('updateArtworkLayer', $this->asset1->id, 'tint', '');
+
+        $this->assertNull($this->attachedLayer()['tint']);
+    }
+
+    public function test_the_white_key_is_clamped_to_its_range(): void
+    {
+        $this->layerComponent()->call('updateArtworkLayer', $this->asset1->id, 'white_key', 5);
+
+        $this->assertSame(0.5, (float) $this->attachedLayer()['white_key']);
+    }
+
     public function test_detaching_the_last_clipart_from_a_voyage_scene_collapses_shots_to_null(): void
     {
         // A layer-only voyage shot carries nothing once its clipart is removed — it must not

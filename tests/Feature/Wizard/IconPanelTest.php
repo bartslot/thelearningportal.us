@@ -254,25 +254,19 @@ class IconPanelTest extends TestCase
 
     // ── Recolouring ────────────────────────────────────────────────────────
 
-    public function test_a_tint_is_stored_as_a_hex_and_cleared_by_original(): void
+    public function test_an_icon_can_be_recoloured_and_put_back(): void
     {
+        // The layer colour treatment (white key ▸ grayscale ▸ tint) is what rescues a line-art
+        // icon from a night scene: its flood composites into the source's alpha, which for an
+        // icon is the strokes themselves. So an icon needs no recolouring of its own.
         $wizard = $this->wizardOn($this->slideshowScene);
         $wizard->call('attachArtwork', $this->pharaoh->id);
 
         $wizard->call('updateArtworkLayer', $this->pharaoh->id, 'tint', '#E11D48');
         $this->assertSame('#E11D48', $this->slideshowScene->fresh()->shots[0]['layers'][1]['tint']);
 
-        $wizard->call('updateArtworkLayer', $this->pharaoh->id, 'tint', 'none');
-        $this->assertSame('', $this->slideshowScene->fresh()->shots[0]['layers'][1]['tint']);
-    }
-
-    public function test_a_tint_that_is_not_a_colour_is_refused(): void
-    {
-        $wizard = $this->wizardOn($this->slideshowScene);
-        $wizard->call('attachArtwork', $this->pharaoh->id);
-        $wizard->call('updateArtworkLayer', $this->pharaoh->id, 'tint', 'javascript:alert(1)');
-
-        $this->assertArrayNotHasKey('tint', $this->slideshowScene->fresh()->shots[0]['layers'][1]);
+        $wizard->call('updateArtworkLayer', $this->pharaoh->id, 'tint', '');
+        $this->assertNull($this->slideshowScene->fresh()->shots[0]['layers'][1]['tint']);
     }
 
     // ── Ownership ──────────────────────────────────────────────────────────
