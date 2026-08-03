@@ -316,6 +316,9 @@
             const sig = window.LessonScene.layersSignature(layers)
             // Same rule as the slideshow overlay: re-seed only on a real change, and replay the
             // entrances then — not on every poll, which would flicker the layers while editing.
+            // Before the layers, never after: a pinned layer has no usable x/y of its own, so a
+            // seed without the projector paints it at a stale position for one frame.
+            wireArtProjector()
             if (sig !== artSig) { artSig = sig; overlay.setLayers(layers); overlay.playEntrances() }
             // A dedicated handle the object list reads on voyage scenes — the SHARED handle can be
             // repointed by a slideshow render (wizard-bridge), so it isn't reliable here.
@@ -387,9 +390,82 @@
             inst.map.on('move', () => layer.refreshPositions())
         }
 
+        // …and so can ICON layers. Same projector, same host box as the layers it positions, so
+        // an icon dropped on a city sits on that city through every pan and zoom. Wired on the
+        // same occasions as the text one (either the map or the overlay may be created first).
+        const wireArtProjector = () => {
+            const overlay = artOverlay
+            const artHost = voyageArtHost()
+            if (!overlay) return
+            if (!inst || !artHost || typeof inst.textProjector !== 'function') { overlay.setProjector(null); return }
+            overlay.setProjector(inst.textProjector(artHost))
+            // Bind the move handler ONCE per map: wireArtProjector runs on every scene:load, and
+            // a fresh listener each time would leave dozens of them repositioning on one pan.
+            if (!inst.map.__artMoveBound) {
+                inst.map.__artMoveBound = true
+                inst.map.on('move', () => artOverlay && artOverlay.refreshPositions())
+            }
+        }
+
+        // Every place the map or an overlay appears or disappears re-wires BOTH, because either
+        // one can be created first and a half-wired pair is a pin that silently does nothing.
+        const wireMapProjectors = () => { wireTextProjector(); wireArtProjector() }
+
+        // ── Drop an icon from the Icons panel onto the scene ──────────────────────
+        // The panel only picks the icon; WHERE it lands is decided here, because only the stage
+        // knows its box and only the map knows which place a point is over.
+        //
+        // Both hosts listen: on a map scene the map preview is a fixed SIBLING painted over the
+        // stage, so a drop there never reaches the canvas root. Positions are measured against
+        // the stage either way — that is the box the layer's own x/y is a percentage of.
+        const ICON_DND_TYPE = 'application/x-lp-icon'
+        const carriesIcon = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes(ICON_DND_TYPE)
+
+        /**
+         * Put an icon on the scene at a point on the stage, or — with no point — at the spot a
+         * figure reads best. THE one placement path: clicking an icon in the panel and dragging
+         * one onto the canvas differ only in where the point comes from, so an icon put on a map
+         * is pinned to a place either way.
+         */
+        window.__placeIcon = (assetId, clientX = null, clientY = null) => {
+            const stage = document.getElementById('lesson-canvas-root')
+            const r = stage ? stage.getBoundingClientRect() : null
+            if (!assetId || !r || !r.width || !r.height) return
+
+            const x = clientX === null ? 50 : ((clientX - r.left) / r.width) * 100
+            const y = clientY === null ? 58 : ((clientY - r.top) / r.height) * 100
+            // Over a live map the icon belongs to the PLACE under that point, not to the pixel,
+            // so it stays on it through every pan and zoom.
+            const artHost = voyageArtHost()
+            const ll = (inst && artHost && typeof inst.textProjector === 'function')
+                ? inst.textProjector(artHost).unproject(x, y)
+                : null
+
+            window.Livewire.dispatch('svg-asset:attach', {
+                assetId, x, y, lng: ll ? ll.lng : null, lat: ll ? ll.lat : null,
+            })
+        }
+
+        const onIconDragOver = (e) => {
+            if (!carriesIcon(e)) return
+            e.preventDefault()                     // without this the browser refuses the drop
+            e.dataTransfer.dropEffect = 'copy'
+        }
+        const onIconDrop = (e) => {
+            if (!carriesIcon(e)) return
+            e.preventDefault()
+            window.__placeIcon(Number(e.dataTransfer.getData(ICON_DND_TYPE)), e.clientX, e.clientY)
+        }
+        for (const el of [document.getElementById('lesson-canvas-root'), host]) {
+            if (!el || el.__iconDropBound) continue
+            el.__iconDropBound = true
+            el.addEventListener('dragover', onIconDragOver)
+            el.addEventListener('drop', onIconDrop)
+        }
+
         window.Livewire.on('scene:load', (e) => {
             const p = Array.isArray(e) ? e[0]?.payload : e?.payload
-            if (!p) { destroy(); wireTextProjector(); return }
+            if (!p) { destroy(); wireMapProjectors(); return }
 
             // Tell the object/layers list what KIND of scene is on stage, so a Route waypoint scene can
             // list its own layers (the Waypoint map + the Gallery overlay) instead of a bare "Background".
@@ -479,7 +555,7 @@
                     hideMapArt()   // gallery scenes don't carry map clipart
                     return
                 }
-                destroy(); wireTextProjector()
+                destroy(); wireMapProjectors()
                 lastKey = key
                 lastVoyageId = cfg.voyage
                 lastVoyageDefStr = JSON.stringify(p.voyage_def || null)
@@ -552,7 +628,7 @@
                 return
             }
 
-            if (p.kind !== 'map') { destroy(); wireTextProjector(); return }
+            if (p.kind !== 'map') { destroy(); wireMapProjectors(); return }
             // Layers ride above the map here exactly as they do on a voyage — and as the player
             // already draws them. Called before the in-place early-returns below so a poll or a
             // year/style tweak keeps them on screen; the re-mount path calls it again after
@@ -617,7 +693,7 @@
                     // Click a polity on the map → link it as this block's territory (hover shows its name).
                     onPolityClick: (t) => window.Livewire.dispatch('mapTerritoryClicked', { sceneId: p.sceneId, qid: t.qid, name: t.name }),
                 })
-                wireTextProjector()
+                wireMapProjectors()
             } else {
                 // lesson-map.js failed to load — surface it instead of silently leaving an empty host,
                 // which reveals the 3D canvas (narration art) behind and reads as "the map didn't open".
@@ -668,7 +744,7 @@
                 },
             })
             window.__lessonTextLayer = textLayer
-            wireTextProjector()   // a map block may already be live — pin labels to it now
+            wireMapProjectors()   // a map block may already be live — pin labels to it now
             return textLayer
         }
         window.Livewire.on('scene:text-updated', (e) => {
@@ -1035,7 +1111,7 @@
                 const arts = (artLayer && artLayer._layers) || [];
                 const artItems = [...arts].reverse().map((a) =>
                     ({ id: 'art_' + a.asset_id, icon: a.embed ? (a.embed.type === 'video' ? 'photo' : 'map') : 'photo',
-                       label: a.title || (a.embed ? (a.embed.type === 'video' ? 'Video' : '3D model') : 'Clipart'), bg: false, art: true }));
+                       label: a.title || (a.embed ? (a.embed.type === 'video' ? 'Video' : '3D model') : @js(__('Icon'))), bg: false, art: true }));
                 // The clipart group sits above the text objects only when the teacher dragged it there
                 // (config.clipart_on_top → the overlay host's z-index is raised above the text layer).
                 const onTop = !!(artLayer && artLayer.onTop);
@@ -1206,6 +1282,8 @@
         if (!window.Alpine || window.Alpine.store('view')) return;
         Alpine.store('view', {
             scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
+            // Which tab the bottom dock is showing: 'icons' | 'script'.
+            bottomTab: 'script',
             objectsW: 208,   // object-list width (px); drag-resizable, ≤108px → icons-only
             init() {
                 try { Object.assign(this, JSON.parse(localStorage.getItem('wizard.view') || '{}')); } catch (_) {}
@@ -1219,9 +1297,12 @@
             _save() {
                 localStorage.setItem('wizard.view', JSON.stringify({
                     scenes: this.scenes, objects: this.objects, rulers: this.rulers,
-                    notes: this.notes, script: this.script, railLast: this.railLast, objectsW: this.objectsW,
+                    notes: this.notes, script: this.script, bottomTab: this.bottomTab,
+                    railLast: this.railLast, objectsW: this.objectsW,
                 }));
             },
+            /** Show a tab of the bottom dock, opening the dock if it was hidden. */
+            showTab(tab) { this.bottomTab = tab; this.script = true; this._save(); },
             toggleScenes() {
                 const el = document.documentElement;
                 if (this.scenes) {
@@ -1285,7 +1366,7 @@
                 <p class="px-2 py-1 text-[10px] uppercase tracking-widest text-slate-500">{{ __('Show') }}</p>
                 <template x-for="item in [
                     { k: 'scenes',  label: @js(__('Scenes')) },
-                    { k: 'script',  label: @js(__('Script')) },
+                    { k: 'script',  label: @js(__('Icons & Script')) },
                     { k: 'objects', label: @js(__('Object list')) },
                     { k: 'rulers',  label: @js(__('Rulers')) },
                     { k: 'notes',   label: @js(__('Internal notes')) },
@@ -1322,7 +1403,7 @@
                     class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-300 transition hover:bg-base-200 hover:text-amber-300"
                     :class="addOpen && 'bg-sky-500/15 text-sky-300'"
                     aria-haspopup="menu" :aria-expanded="addOpen.toString()"
-                    title="{{ __('Add a scene, text, image, or clipart') }}" aria-label="{{ __('Add') }}">
+                    title="{{ __('Add a scene, text, image, or icon') }}" aria-label="{{ __('Add') }}">
                 <x-icons.plus class="h-6 w-6" />
                 <span class="text-[10px] font-medium">{{ __('Add') }}</span>
             </button>
@@ -1347,10 +1428,12 @@
                     <x-icons.photo class="h-4 w-4 shrink-0 text-slate-400" />
                     <span>{{ __('Image') }}</span>
                 </button>
-                <button type="button" @click="Livewire.dispatch('open-svg-library'); addOpen = false"
+                {{-- Icons open the dock's Icons tab rather than a modal: the whole point of the
+                     panel is that the scene stays visible while you pick and drag. --}}
+                <button type="button" @click="$store.view.showTab('icons'); addOpen = false"
                         class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-200 hover:bg-base-200" role="menuitem">
                     <x-icons.puzzle-piece class="h-4 w-4 shrink-0 text-slate-400" />
-                    <span>{{ __('Clipart') }}</span>
+                    <span>{{ __('Icons') }}</span>
                 </button>
                 {{-- 3D model / video AS A LAYER (an iframe layer on top of the scene, like clipart). --}}
                 {{-- Opens OUR picker (the paintings modal, searching Sketchfab) rather than a browser
@@ -2236,7 +2319,7 @@
          role="dialog" aria-modal="true">
         <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
             <div class="mb-3 flex items-center justify-between gap-3">
-                <h2 class="text-lg font-semibold text-slate-100">{{ __('Clipart library') }}</h2>
+                <h2 class="text-lg font-semibold text-slate-100">{{ __('Import icons') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
                         aria-label="Close" wire:click="$set('svgLibraryOpen', false)">✕</button>
             </div>

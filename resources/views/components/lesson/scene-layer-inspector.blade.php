@@ -6,6 +6,9 @@
     $aid = $layer['asset_id'];
     $slideshowMode = (string) ($scene->config['slideshow_mode'] ?? (($scene->config['parallax'] ?? false) ? 'parallax' : 'standard'));
     $parallax = $slideshowMode === 'parallax';
+    // A map sits under voyage and map scenes, so a layer there can be pinned to a place.
+    $isMapScene = in_array($scene->kind, ['map', 'voyage'], true);
+    $isPinned = ($layer['anchor'] ?? 'screen') === 'map';
 @endphp
 
 <div class="space-y-3 text-sm" wire:key="layer-inspector-{{ $aid }}">
@@ -156,7 +159,32 @@
             </button>
         </label>
         <p class="text-[10px] leading-tight text-slate-500">{{ __('Tint recolours what survives the white key, so drop the white first.') }}</p>
+        {{-- A line-art icon is black ink on nothing: there is no paper to key out, so Tint alone
+             is what rescues it from a night scene. It reaches the ink either way — the flood is
+             composited INTO the source's alpha, which for an icon is the strokes themselves. --}}
     </div>
+
+    {{-- Pin to map — the same anchor a text label uses, so "pinned" means one thing on a scene.
+         A pinned layer stores the lng/lat it sits over and tracks that place through pan and
+         zoom; the placement sliders belong to a screen-anchored one, so they step aside. --}}
+    @if ($isMapScene)
+        <div class="space-y-1 border-t border-slate-700/50 pt-3">
+            <label class="flex items-center justify-between gap-3">
+                <span class="text-[10px] uppercase tracking-widest text-slate-500">{{ __('Pin to map') }}</span>
+                {{-- The map scene's overlay by its OWN handle first: the shared one can be
+                     repointed by a slideshow render, and pinning the wrong overlay's layer
+                     would silently do nothing. --}}
+                <input type="checkbox" @checked($isPinned)
+                       x-on:change="(window.__voyageArtworkLayer || window.__lessonArtworkLayer)?.togglePin?.({{ $aid }})"
+                       class="toggle toggle-sm toggle-warning shrink-0" />
+            </label>
+            <p class="text-[10px] leading-tight text-slate-500">
+                {{ $isPinned
+                    ? __('Stays on this place as the map pans and zooms.')
+                    : __('Sits at a fixed spot on the screen. Pin it to stick to the place underneath.') }}
+            </p>
+        </div>
+    @endif
 
     {{-- Ink draw-on controls — only in Drawing mode. --}}
     @if ($slideshowMode === 'drawing')

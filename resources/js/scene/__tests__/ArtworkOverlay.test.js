@@ -134,3 +134,87 @@ describe('ArtworkOverlay — blend mode', () => {
     expect(el.style.zIndex).toBe('')
   })
 })
+
+// A layer over a map belongs to a PLACE, not to a pixel. Positions come from the projector on
+// every map move, and the place — not the position — is what gets saved.
+describe('ArtworkOverlay — pinned to the map', () => {
+  const node = (el, id = 'art_1') => el.querySelector(`[data-layer-id="${id}"]`)
+
+  // A stand-in for mapTextProjector: one degree of longitude = one percent of the host.
+  const projector = (originLng = 0, originLat = 0) => ({
+    project: (lng, lat) => ({ x: (lng - originLng) + 50, y: (lat - originLat) + 50 }),
+    unproject: (x, y) => ({ lng: (x - 50) + originLng, lat: (y - 50) + originLat }),
+  })
+
+  const pinned = (extra = {}) => layer({ anchor: 'map', lng: 10, lat: -20, x: 0, y: 0, ...extra })
+
+  it('places a pinned layer from its lng/lat, ignoring the stored x/y', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setProjector(projector())
+    overlay.setLayers([pinned()])
+
+    expect(node(el).style.left).toBe('60%')
+    expect(node(el).style.top).toBe('30%')
+  })
+
+  it('falls back to the stored x/y when no map is under it', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([pinned({ x: 12, y: 34 })])
+
+    expect(node(el).style.left).toBe('12%')
+    expect(node(el).style.top).toBe('34%')
+  })
+
+  it('repositions pinned layers on a map move and leaves screen layers alone', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setProjector(projector())
+    overlay.setLayers([pinned(), layer({ asset_id: 2, x: 25, y: 75 })])
+
+    overlay.setProjector(projector(5, 5))   // the camera panned
+    overlay.refreshPositions()
+
+    expect(el.querySelector('[data-layer-id="art_1"]').style.left).toBe('55%')
+    expect(el.querySelector('[data-layer-id="art_2"]').style.left).toBe('25%')
+  })
+
+  it('saves the PLACE a pinned layer was dragged to, not just the position', () => {
+    const el = host()
+    const saved = []
+    const overlay = new ArtworkOverlay(el, { onChange: (id, t) => saved.push({ id, ...t }) })
+    overlay.setProjector(projector())
+    overlay.setLayers([pinned()])
+
+    const item = overlay._layers[0]
+    item.x = 70; item.y = 20               // as a drag would leave it
+    overlay._emit(item)
+
+    expect(saved[0]).toMatchObject({ id: 1, anchor: 'map', lng: 20, lat: -30 })
+  })
+
+  it('pins a screen layer to what it is sitting over, and releases it again', () => {
+    const el = host()
+    const saved = []
+    const overlay = new ArtworkOverlay(el, { onChange: (id, t) => saved.push(t) })
+    overlay.setProjector(projector())
+    overlay.setLayers([layer({ x: 65, y: 40 })])
+
+    expect(overlay.togglePin(1)).toBe(true)
+    expect(saved.at(-1)).toMatchObject({ anchor: 'map', lng: 15, lat: -10 })
+
+    expect(overlay.togglePin(1)).toBe(false)
+    expect(saved.at(-1)).toMatchObject({ anchor: 'screen', lng: null, lat: null })
+  })
+
+  it('refuses to pin when there is no map to pin to', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer()])
+
+    expect(overlay.canPin()).toBe(false)
+    expect(overlay.togglePin(1)).toBe(false)
+  })
+})
+

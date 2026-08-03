@@ -200,12 +200,18 @@ class Step3SceneConfigurator extends Component
                 'blur' => isset($l['blur']) ? (float) $l['blur'] : null,
                 'opacity' => isset($l['opacity']) ? (float) $l['opacity'] : null,
                 'blend' => in_array($l['blend'] ?? null, ['multiply', 'screen', 'overlay', 'darken', 'lighten'], true) ? $l['blend'] : null,
+                // Pinned to a place on the map beneath the stage, rather than to the stage itself.
+                'anchor' => ($l['anchor'] ?? null) === 'map' ? 'map' : null,
+                'lng' => isset($l['lng']) ? (float) $l['lng'] : null,
+                'lat' => isset($l['lat']) ? (float) $l['lat'] : null,
                 // Animate tab: entrance movement, its delay in seconds, and the easing key.
                 'anim' => $l['anim'] ?? null,
                 'anim_delay' => isset($l['anim_delay']) ? (float) $l['anim_delay'] : null,
                 'anim_ease' => $l['anim_ease'] ?? null,
                 'wobble' => isset($l['wobble']) ? (int) $l['wobble'] : null,
                 // Colour treatment — knock out the paper, drain the colour, recolour the ink.
+                // Tint reaches a line-art icon too: it floods INTO the source's alpha, which for
+                // an icon is the strokes, so it is also what rescues black ink on a night scene.
                 'white_key' => isset($l['white_key']) ? (float) $l['white_key'] : null,
                 'grayscale' => ! empty($l['grayscale']),
                 'tint' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($l['tint'] ?? '')) ? $l['tint'] : null,

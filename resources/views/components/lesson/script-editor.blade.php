@@ -1,10 +1,17 @@
 @props(['scene' => null])
 
-{{-- Script editing view (Figma "Script panel"): the scene's narration as timecoded lines
-     synced to a REAL WaveSurfer play bar. Docked below the stage — it reserves --work-bottom
-     so the canvas shrinks above it and it never overlays the scene. Drag the TOP EDGE to
-     resize it (it can go compact for small screens); drag it very small to hide (View ▸ Script
-     re-opens). No close button, no cogwheel. --}}
+{{-- The BOTTOM DOCK (Figma "Script panel"), with a tab per thing that belongs under the stage:
+
+       Icons  — the icon library; pick one, or drag it onto the scene.
+       Script — the scene's narration as timecoded lines synced to a REAL WaveSurfer play bar.
+
+     One dock, so there is one height, one --work-bottom reservation and one resize grip however
+     many tabs it grows: the canvas shrinks above it and it never overlays the scene. Drag the TOP
+     EDGE to resize (it can go compact for small screens); drag it very small to hide (View ▸ Script
+     re-opens). No close button, no cogwheel.
+
+     It still lives in this file because the dock's geometry — height, resize, reserved space — is
+     owned by the script editor's Alpine component. --}}
 @php
     // One editable box per PARAGRAPH (blank-line separated). Single Enter = soft newline within a
     // paragraph; double Enter splits into a new paragraph (its own timecode + TTS topic).
@@ -28,8 +35,30 @@
          x-on:pointerup.window="dragEnd($event)"
          x-on:pointercancel.window="dragEnd($event)"
          role="separator" aria-orientation="horizontal"
-         aria-label="{{ __('Resize the script panel · drag small to hide') }}">
+         aria-label="{{ __('Resize the panel · drag small to hide') }}">
     </div>
+
+    {{-- Which tab the dock is showing. Lives in $store.view alongside the panel toggles, so it
+         survives a scene change (this component is rebuilt per scene) and a reload. --}}
+    <div role="tablist" class="tabs tabs-bordered tabs-sm shrink-0 justify-start px-2">
+        <button type="button" role="tab" x-on:click="$store.view.showTab('icons')"
+                :aria-selected="$store.view.bottomTab === 'icons'"
+                :class="$store.view.bottomTab === 'icons' ? 'tab-active' : ''"
+                class="tab">{{ __('Icons') }}</button>
+        <button type="button" role="tab" x-on:click="$store.view.showTab('script')"
+                :aria-selected="$store.view.bottomTab === 'script'"
+                :class="$store.view.bottomTab === 'script' ? 'tab-active' : ''"
+                class="tab">{{ __('Script') }}</button>
+    </div>
+
+    {{-- ── Icons tab ─────────────────────────────────────────────────────────────
+         Its own Livewire component: the dock owns the geometry, the panel owns the library. --}}
+    <div x-show="$store.view.bottomTab === 'icons'" x-cloak class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <livewire:wizard.icon-panel />
+    </div>
+
+    {{-- ── Script tab ────────────────────────────────────────────────────────── --}}
+    <div x-show="$store.view.bottomTab === 'script'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
 
     {{-- EMPTY STATE — a scene with no narration is not a scene that cannot HAVE narration. Every
          kind can be narrated, voyage legs and map scenes included (the script is saved on the
@@ -159,6 +188,7 @@
                   x-text="regenerating ? @js(__('recording…')) : (hasAudio ? (fmt(t) + ' / ' + fmt(dur)) : '–:––')"></span>
         </div>
     </div>
+    </div>{{-- /Script tab --}}
 </div>
 
 @once

@@ -12,6 +12,11 @@
  *
  * Layers: [{ asset_id, url, x, y, scale, height, kind }]. Positions/scale persist through
  * the onChange(assetId, { x, y, scale }) callback (a batched Livewire save).
+ *
+ * Map anchoring: over a live map a layer can be pinned to a PLACE rather than to the stage —
+ * `anchor: 'map'` plus a lng/lat. The host wires the same projector the text layer uses
+ * (setProjector / refreshPositions), so an icon dropped on Cairo stays on Cairo through every
+ * pan and zoom instead of sliding off it.
  */
 import { playEntrance } from './animations.js'
 import { applyLayerFilter } from './layer-filters.js'
@@ -67,6 +72,7 @@ export function layersSignature(layers) {
     l.white_key, l.grayscale, l.tint,
     l.anim, l.anim_delay, l.anim_ease,
     l.kind,
+    l.anchor, l.lng, l.lat,
     l.embed ? JSON.stringify(l.embed.opts || null) : null,
   ]))
 }
@@ -83,6 +89,9 @@ export class ArtworkOverlay {
     // Deliberately not on the host — see setStackLevels.
     this._zNormal = 6
     this._zTop = 8
+    // { project(lng,lat) → {x,y} host-%, unproject(x%,y%) → {lng,lat} } while a map is live
+    // beneath this overlay. Null on a slideshow scene, where positions are stage-relative.
+    this._projector = null
     this.host.style.pointerEvents = 'none'   // the host is transparent; only layer nodes catch events
     // Deselect when something that isn't one of MY layers is selected (mutually-exclusive
     // selection across text, artwork and background — no re-dispatch, so no loop).
@@ -122,9 +131,93 @@ export class ArtworkOverlay {
         anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
         anim_ease: l.anim_ease || 'enter',
         kind: l.kind || 'figure',
-        title: l.title || (l.embed && l.embed.title) || 'Clipart',
+        // 'map' pins the layer to lng/lat and lets the projector place it; 'screen' (default)
+        // keeps it at its x/y on the stage.
+        anchor: l.anchor === 'map' ? 'map' : 'screen',
+        lng: Number.isFinite(l.lng) ? l.lng : null,
+        lat: Number.isFinite(l.lat) ? l.lat : null,
+        title: l.title || (l.embed && l.embed.title) || 'Icon',
       }))
+    this._projectPinned()
     this._render()
+  }
+
+  /**
+   * Wire (or clear, with null) the map projector used by map-anchored layers. Same contract as
+   * TextOverlayLayer.setProjector, and fed by the same mapTextProjector() — one map, one way of
+   * turning a place into a position, whether it carries a label or an icon.
+   */
+  setProjector(projector) {
+    this._projector = projector || null
+    this._projectPinned()
+    this._render()
+  }
+
+  /** Is a map live under this overlay? Only then can a layer be pinned to a place. */
+  canPin() {
+    return !!this._projector
+  }
+
+  /** Is this layer currently pinned to a lng/lat? */
+  isPinned(assetId) {
+    const item = this._layers.find((l) => String(l.asset_id) === String(assetId))
+    return !!item && item.anchor === 'map'
+  }
+
+  /**
+   * Pin a layer to the place it is currently sitting over, or release it back to the stage.
+   * Mirrors TextOverlayLayer.togglePin so pinning means the same thing for every object.
+   *
+   * @returns {boolean} the anchor state after the toggle (true = pinned to the map)
+   */
+  togglePin(assetId) {
+    const item = this._layers.find((l) => String(l.asset_id) === String(assetId))
+    if (!item || !this._projector) return false
+
+    if (item.anchor === 'map') {
+      item.anchor = 'screen'
+      item.lng = null
+      item.lat = null
+    } else {
+      const ll = this._projector.unproject(item.x, item.y)
+      if (!ll) return false
+      item.anchor = 'map'
+      item.lng = ll.lng
+      item.lat = ll.lat
+    }
+    this._emit(item)
+    return item.anchor === 'map'
+  }
+
+  /** Reposition map-anchored layers — call on every map move/zoom. */
+  refreshPositions() {
+    if (!this._projector) return
+    for (const item of this._layers) {
+      if (!this._projectPinnedItem(item)) continue
+      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+      if (el && el !== this._dragNode) {
+        el.style.left = `${item.x}%`
+        el.style.top = `${item.y}%`
+        this._syncChrome(item)
+      }
+    }
+  }
+
+  /** Bring every pinned layer's x/y up to date with the live map, before the next paint. */
+  _projectPinned() {
+    for (const item of this._layers) this._projectPinnedItem(item)
+  }
+
+  /** @returns {boolean} whether this layer is pinned AND the projector could place it */
+  _projectPinnedItem(item) {
+    if (item.anchor !== 'map' || !this._projector) return false
+    if (!Number.isFinite(item.lng) || !Number.isFinite(item.lat)) return false
+    const pos = this._projector.project(item.lng, item.lat)
+    if (!pos) return false
+    item.x = pos.x
+    item.y = pos.y
+
+    return true
   }
 
   // Base node transform: centre-anchored translate only (+ optional parallax offset).
@@ -412,6 +505,7 @@ export class ArtworkOverlay {
     return node
   }
 
+
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
   _wireDrag(item, node) {
     node.addEventListener('pointerdown', (e) => {
@@ -535,11 +629,26 @@ export class ArtworkOverlay {
     })
   }
 
+  /**
+   * Persist a layer after a drag / resize / pin toggle.
+   *
+   * A pinned layer's PLACE is the thing that has to survive: x/y are only where the current
+   * camera happens to put it, so the final screen position is turned back into a lng/lat here.
+   * Do that before the save and an icon dropped on a city is still on that city after a pan.
+   */
   _emit(item) {
+    if (item.anchor === 'map' && this._projector) {
+      const ll = this._projector.unproject(item.x, item.y)
+      if (ll) { item.lng = ll.lng; item.lat = ll.lat }
+    }
+
     this.onChange?.(item.asset_id, {
       x: Math.round(item.x * 100) / 100,
       y: Math.round(item.y * 100) / 100,
       scale: Math.round(item.scale * 1000) / 1000,
+      anchor: item.anchor,
+      lng: Number.isFinite(item.lng) ? item.lng : null,
+      lat: Number.isFinite(item.lat) ? item.lat : null,
     })
   }
 }

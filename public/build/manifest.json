@@ -1,9 +1,15 @@
 {
+  "../../../node_modules/three/build/three.module.js": {
+    "file": "assets/three.module-CpB-wl7P.js",
+    "name": "three.module",
+    "src": "../../../node_modules/three/build/three.module.js",
+    "isDynamicEntry": true
+  },
   "_FBXLoader-DYOGQobv.js": {
     "file": "assets/FBXLoader-DYOGQobv.js",
     "name": "FBXLoader",
     "imports": [
-      "node_modules/three/build/three.module.js"
+      "../../../node_modules/three/build/three.module.js"
     ]
   },
   "__commonjsHelpers-CqkleIqs.js": {
@@ -55,14 +61,8 @@
     "file": "assets/voyages-CO9zikju.js",
     "name": "voyages"
   },
-  "node_modules/three/build/three.module.js": {
-    "file": "assets/three.module-CpB-wl7P.js",
-    "name": "three.module",
-    "src": "node_modules/three/build/three.module.js",
-    "isDynamicEntry": true
-  },
   "resources/css/app.css": {
-    "file": "assets/app-CATKslWj.css",
+    "file": "assets/app-PX09Q0aB.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -71,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-CEs2IhVc.js",
+    "file": "assets/app-2K3BFFeM.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -84,7 +84,7 @@
     ],
     "dynamicImports": [
       "resources/js/scene/index.js",
-      "node_modules/three/build/three.module.js"
+      "../../../node_modules/three/build/three.module.js"
     ],
     "css": [
       "assets/app-AEfMPvIN.css"
@@ -106,7 +106,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js"
     ]
   },
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-BQImqeLJ.js",
+    "file": "assets/lesson-player-DHiVw_pZ.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -152,7 +152,7 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-CawwmaDX.js",
+    "file": "assets/ArtworkOverlay-CUVCkuwU.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true,
@@ -199,12 +199,12 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-Dlm8Cqjm.js",
+    "file": "assets/index-BqjaPCY-.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../node_modules/three/build/three.module.js",
       "resources/js/scene/QuizOverlay.js",
       "resources/js/scene/TextOverlayLayer.js",
       "resources/js/scene/ArtworkOverlay.js",
@@ -243,7 +243,7 @@
     "src": "resources/js/timemap/voyage-ships.js",
     "isDynamicEntry": true,
     "imports": [
-      "node_modules/three/build/three.module.js",
+      "../../../node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js",
       "_voyages-CO9zikju.js"
     ]
@@ -262,7 +262,7 @@
       "resources/js/timemap/voyage-ships.js",
       "__commonjsHelpers-CqkleIqs.js",
       "_map-imagery-BT2azzOK.js",
-      "node_modules/three/build/three.module.js",
+      "../../../node_modules/three/build/three.module.js",
       "_FBXLoader-DYOGQobv.js"
     ]
   }
