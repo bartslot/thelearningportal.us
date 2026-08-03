@@ -72,7 +72,13 @@
                             wire:key="icon-{{ $icon->id }}"
                             x-on:dragstart="$event.dataTransfer.setData('application/x-lp-icon', '{{ $icon->id }}');
                                             $event.dataTransfer.effectAllowed = 'copy'"
-                            wire:click="place({{ $icon->id }})"
+                            {{-- The canvas decides WHERE, because only it knows the stage box and
+                                 the map under it — the same call the drop handler makes, minus a
+                                 point. It falls back to the server placement if the editor's
+                                 script has not booted. --}}
+                            x-on:click="window.__placeIcon
+                                ? window.__placeIcon({{ $icon->id }})
+                                : $wire.place({{ $icon->id }})"
                             data-tooltip="{{ $icon->title }}"
                             class="flex aspect-square cursor-grab items-center justify-center rounded-lg p-2
                                    transition-colors hover:bg-slate-700/60 active:cursor-grabbing"

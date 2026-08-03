@@ -420,22 +420,21 @@
         // the stage either way — that is the box the layer's own x/y is a percentage of.
         const ICON_DND_TYPE = 'application/x-lp-icon'
         const carriesIcon = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes(ICON_DND_TYPE)
-        const onIconDragOver = (e) => {
-            if (!carriesIcon(e)) return
-            e.preventDefault()                     // without this the browser refuses the drop
-            e.dataTransfer.dropEffect = 'copy'
-        }
-        const onIconDrop = (e) => {
-            if (!carriesIcon(e)) return
-            e.preventDefault()
-            const assetId = Number(e.dataTransfer.getData(ICON_DND_TYPE))
+
+        /**
+         * Put an icon on the scene at a point on the stage, or — with no point — at the spot a
+         * figure reads best. THE one placement path: clicking an icon in the panel and dragging
+         * one onto the canvas differ only in where the point comes from, so an icon put on a map
+         * is pinned to a place either way.
+         */
+        window.__placeIcon = (assetId, clientX = null, clientY = null) => {
             const stage = document.getElementById('lesson-canvas-root')
             const r = stage ? stage.getBoundingClientRect() : null
             if (!assetId || !r || !r.width || !r.height) return
 
-            const x = ((e.clientX - r.left) / r.width) * 100
-            const y = ((e.clientY - r.top) / r.height) * 100
-            // Over a live map the icon belongs to the PLACE under the cursor, not to the pixel,
+            const x = clientX === null ? 50 : ((clientX - r.left) / r.width) * 100
+            const y = clientY === null ? 58 : ((clientY - r.top) / r.height) * 100
+            // Over a live map the icon belongs to the PLACE under that point, not to the pixel,
             // so it stays on it through every pan and zoom.
             const artHost = voyageArtHost()
             const ll = (inst && artHost && typeof inst.textProjector === 'function')
@@ -445,6 +444,17 @@
             window.Livewire.dispatch('svg-asset:attach', {
                 assetId, x, y, lng: ll ? ll.lng : null, lat: ll ? ll.lat : null,
             })
+        }
+
+        const onIconDragOver = (e) => {
+            if (!carriesIcon(e)) return
+            e.preventDefault()                     // without this the browser refuses the drop
+            e.dataTransfer.dropEffect = 'copy'
+        }
+        const onIconDrop = (e) => {
+            if (!carriesIcon(e)) return
+            e.preventDefault()
+            window.__placeIcon(Number(e.dataTransfer.getData(ICON_DND_TYPE)), e.clientX, e.clientY)
         }
         for (const el of [document.getElementById('lesson-canvas-root'), host]) {
             if (!el || el.__iconDropBound) continue
