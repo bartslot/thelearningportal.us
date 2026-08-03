@@ -72,6 +72,29 @@ class ImportIconLibraryTest extends TestCase
         $this->assertSame('T rex', $rex->title);
     }
 
+    public function test_the_set_is_recorded_as_royalty_free_with_no_credit_line_owed(): void
+    {
+        $this->import()->assertSuccessful();
+
+        $icon = SvgAsset::bundled()->firstOrFail();
+
+        // The set we bought is ours to use commercially and asks for no attribution. Recording a
+        // CC licence here would put a credit line on the app that nothing actually requires.
+        $this->assertSame('Royalty-free (commercial)', $icon->license);
+        $this->assertNull($icon->attribution);
+        $this->assertSame('Royalty-free (commercial)', $icon->credit());
+    }
+
+    public function test_a_set_with_different_terms_can_say_so(): void
+    {
+        $this->import('--license="CC BY 4.0" --attribution="Jane Roe"')->assertSuccessful();
+
+        $icon = SvgAsset::bundled()->firstOrFail();
+
+        $this->assertSame('CC BY 4.0', $icon->license);
+        $this->assertSame('Jane Roe — CC BY 4.0', $icon->credit());
+    }
+
     public function test_a_flat_collection_has_no_category_pills(): void
     {
         $this->import()->assertSuccessful();

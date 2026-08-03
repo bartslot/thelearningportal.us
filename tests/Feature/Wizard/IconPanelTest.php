@@ -74,7 +74,7 @@ class IconPanelTest extends TestCase
             'subcategory' => $subcategory,
             'source_url' => '',
             'title' => $title,
-            'license' => 'CC BY 3.0',
+            'license' => 'Royalty-free (commercial)',
             'svg_path' => 'svg-assets/library/'.$collection.'/'.str($title)->slug().'.svg',
         ]);
     }

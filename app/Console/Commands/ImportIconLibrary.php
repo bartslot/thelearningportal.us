@@ -25,14 +25,18 @@ use Symfony\Component\Finder\Finder;
  *
  * Re-running is safe: each file is keyed on its path, so an edited icon is replaced in
  * place and the scenes already using it keep pointing at the same asset id.
+ *
+ * The licence defaults describe the set we bought: royalty-free for commercial use, no credit
+ * line owed. Pass --license / --attribution for a set that comes with different terms, so what
+ * is recorded against an icon is what its licence actually says rather than the last set's.
  */
 class ImportIconLibrary extends Command
 {
     protected $signature = 'icons:import
         {--path= : the icon set to publish (default: resources/icons)}
         {--collection=* : only these collections (default: every folder under the path)}
-        {--license=CC BY 3.0 : licence recorded on every icon imported this run}
-        {--attribution=The Noun Project : credit line recorded on every icon imported this run}
+        {--license=Royalty-free (commercial) : licence recorded on every icon imported this run}
+        {--attribution= : credit line, when the licence asks for one}
         {--prune : delete library icons whose source file has gone}';
 
     protected $description = 'Publish resources/icons into the shared icon library used by the Icons panel';
