@@ -7,13 +7,25 @@ const layer = (extra = {}) => ({ asset_id: 1, url: '/a.png', x: 50, y: 58, scale
 describe('ArtworkOverlay — resize handles', () => {
   const chrome = (el, id = 'art_1') => el.querySelector(`[data-layer-chrome="${id}"]`)
 
-  it('gives a layer four corner handles, hidden until it is selected', () => {
+  it('gives a layer eight handles — four corners and four edges — hidden until selected', () => {
     const el = host()
     const overlay = new ArtworkOverlay(el)
     overlay.setLayers([layer()])
 
-    expect(el.querySelectorAll('[data-scale-handle]')).toHaveLength(4)
+    expect(el.querySelectorAll('[data-scale-handle]')).toHaveLength(8)
     expect(chrome(el).style.display).toBe('none')
+  })
+
+  // An edge is the obvious thing to grab, and grabbing one used to do nothing at all.
+  it('offers an axis cursor on the edges and a diagonal one on the corners', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer()])
+
+    const cursors = [...chrome(el).querySelectorAll('[data-scale-handle]')].map(h => h.style.cursor)
+    expect(cursors.filter(c => c === 'ns-resize')).toHaveLength(2)
+    expect(cursors.filter(c => c === 'ew-resize')).toHaveLength(2)
+    expect(cursors.filter(c => c.endsWith('wse-resize') || c.endsWith('esw-resize'))).toHaveLength(4)
   })
 
   it('shows the handles on select and hides them again on deselect', () => {
@@ -95,7 +107,7 @@ describe('ArtworkOverlay — blend mode', () => {
     const ch = el.querySelector('[data-layer-chrome="art_1"]')
     expect(ch.parentElement).toBe(el)                 // sibling of the node, not a child
     expect(ch.style.mixBlendMode).toBe('')
-    expect(ch.querySelectorAll('[data-scale-handle]')).toHaveLength(4)
+    expect(ch.querySelectorAll('[data-scale-handle]')).toHaveLength(8)
   })
 
   it('blends in playback too, or the editor would be lying about the result', () => {
