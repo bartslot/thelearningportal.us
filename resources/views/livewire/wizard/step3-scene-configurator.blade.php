@@ -281,10 +281,30 @@
             })
             return artOverlay
         }
+        // Set while we wait for the scene bundle, so a burst of scene:load events queues one load.
+        let artPending = false
         const showMapArt = (p) => {
             const overlay = ensureArtOverlay()
             const h = voyageArtHost()
-            if (!overlay || !h) return
+            if (!overlay || !h) {
+                // The scene bundle (three.js + the overlays) is imported on demand, so on a COLD
+                // load of a voyage/map scene it usually isn't here yet. Nothing re-fires scene:load
+                // for a voyage that is already mounted, so without this retry the teacher's layers
+                // never appear at all until they click a different scene and back.
+                if (!artPending && window.loadLessonScene) {
+                    artPending = true
+                    window.loadLessonScene()
+                        .then(() => {
+                            artPending = false
+                            // Only paint if this scene is still the one on screen — the teacher may
+                            // have moved on while the bundle downloaded.
+                            if (p.sceneId === currentSceneId) showMapArt(p)
+                        })
+                        .catch(() => { artPending = false })
+                }
+
+                return
+            }
             const layers = ((p.shots || [])[0]?.layers || []).filter((l) => l && (l.url || l.embed) && l.asset_id != null)
             const onTop = !!(p.config || {}).clipart_on_top
             overlay.setOnTop(onTop)
@@ -2024,7 +2044,10 @@
             {{-- Filters on one line; search collapses to an icon on the right that opens an overlay. --}}
             <div class="relative mb-5" x-data="{ searching: @entangle('searchOpen').live }">
                 <div class="flex items-center gap-2">
-                    @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans')] as $kindVal => $kindLabel)
+                    {{-- "Library" is our own imagery: this lesson's pictures plus our Cloudinary
+                         collection. It is also what the grid falls back to when the corpus and
+                         Commons find nothing, so the teacher is never left with an empty modal. --}}
+                    @foreach (['' => __('Everything'), 'painting' => __('Paintings'), 'city_map' => __('City plans'), 'library' => __('Library')] as $kindVal => $kindLabel)
                         <button type="button" wire:click="$set('paintingKind', '{{ $kindVal }}')"
                                 class="btn btn-xs flex-none {{ $paintingKind === $kindVal ? 'bg-amber-500 text-slate-950 border-0 hover:bg-amber-400' : 'btn-outline border-slate-600 text-slate-400 hover:border-amber-400 hover:text-amber-300' }}">
                             {{ $kindLabel }}
