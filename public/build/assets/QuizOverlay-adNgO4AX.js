@@ -1,0 +1,88 @@
+import{S as E}from"./sfx-CmqJVBmD.js";const A=["A","B","C","D"],L=["bg-error text-error-content","bg-info text-info-content","bg-warning text-warning-content","bg-success text-success-content"],N=10,j=5,S=3,k=["Nice!","Great!","Perfect!","Brilliant!","On fire!"],C=["Almost!","Good try!","Keep going!"],y="absolute inset-0 flex items-center justify-center bg-base-100/80 backdrop-blur-md",$="qz-card card bg-base-200 border border-base-300 rounded-box shadow-2xl text-base-content",z=1600,U=45,R=7e3,T=5;class b{constructor(t){this.host=t,this._questions=[],this._index=0,this._answered=new Map,this._score=0,this._streak=0,this._onComplete=null,this._display=[],this._gateUntil=new Map,this._openedAt=new Map,this._responses=[],this._focusDrops=0,this._gateTimer=null,this._advanceTimer=null,this._countdownTimer=null,this._onVisibility=null}static _shuffledIndices(t){const s=Array.from({length:t},(e,c)=>c);for(let e=s.length-1;e>0;e--){const c=Math.floor(Math.random()*(e+1));[s[e],s[c]]=[s[c],s[e]]}return s}static _seededShuffle(t,s){let e=s>>>0;const c=()=>{e=e+1831565813>>>0;let n=Math.imul(e^e>>>15,1|e);return n=n+Math.imul(n^n>>>7,61|n)^n,((n^n>>>14)>>>0)/4294967296},a=Array.from({length:t},(n,i)=>i);for(let n=a.length-1;n>0;n--){const i=Math.floor(c()*(n+1));[a[n],a[i]]=[a[i],a[n]]}return a}static _readGateMs(t){const s=String(t.question||"")+(t.options||[]).join("");return Math.min(7e3,2e3+Math.round(s.length*55/10))}get isVisible(){return this._questions.length>0}show({questions:t,onComplete:s=null,submitUrl:e=null,leaderboardUrl:c=null,hasClassroom:a=!1,shuffleMode:n="per_player"}){if(this._questions=Array.isArray(t)?t.filter(i=>i?.question):[],this._index=0,this._answered=new Map,this._score=0,this._streak=0,this._onComplete=s,this._submitUrl=e,this._leaderboardUrl=c,this._hasClassroom=a,this._classCode=(()=>{try{return localStorage.getItem("lp_class_code")||""}catch{return""}})(),!this._questions.length){this.hide();return}this._shuffleSalt=(t?.[0]?.question||"").split("").reduce((i,r)=>i*31+r.charCodeAt(0)>>>0,7),this._display=this._questions.map((i,r)=>{const o=(i.options||[]).length||4;return n==="off"?Array.from({length:o},(l,m)=>m):n==="once"?b._seededShuffle(o,r+1+this._shuffleSalt):b._shuffledIndices(o)}),this._gateUntil=new Map,this._openedAt=new Map,this._responses=[],this._focusDrops=0,this._onVisibility=()=>{document.hidden&&this.isVisible&&this._showFocusVeil()},document.addEventListener("visibilitychange",this._onVisibility),this.host.style.pointerEvents="auto",this._render()}hide(){this._questions=[],this.host.innerHTML="",this.host.style.pointerEvents="none",this._gateTimer&&(clearTimeout(this._gateTimer),this._gateTimer=null),this._advanceTimer&&(clearTimeout(this._advanceTimer),this._advanceTimer=null),this._countdownTimer&&(clearInterval(this._countdownTimer),this._countdownTimer=null),this._onVisibility&&(document.removeEventListener("visibilitychange",this._onVisibility),this._onVisibility=null)}_showFocusVeil(){if(this._focusDrops++,this.host.querySelector("[data-focus-veil]"))return;const t=document.createElement("div");t.dataset.focusVeil="1",t.className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-3.5 bg-base-100/95 text-base-content",t.innerHTML=`
+      <div class="text-5xl">&#128064;</div>
+      <div class="text-[22px] font-extrabold">Quiz paused</div>
+      <div class="text-[15px] text-base-content/60">Stay with the story — tap to continue.</div>`,t.addEventListener("click",()=>t.remove()),this.host.firstElementChild?.appendChild(t)||this.host.appendChild(t)}_integritySummary(){const t=this._responses.map(i=>i.ms).filter(i=>i>=0),s=t.length?Math.round(t.reduce((i,r)=>i+r,0)/t.length):0,e=t.filter(i=>i<2e3).length;let c=0,a=0,n=null;for(const i of this._responses)a=i.displayIndex===n?a+1:1,n=i.displayIndex,c=Math.max(c,a);return{avg_ms:s,rapid_guesses:e,same_letter_streak:c,focus_drops:this._focusDrops}}_correctCount(){let t=0;return this._answered.forEach((s,e)=>{(this._display[e]||[])[s]===Number(this._questions[e]?.correct_index)&&t++}),t}_render(t=null){const s=this._questions[this._index];if(!s)return;const e=this._questions.length,c=this._answered.get(this._index),a=c!==void 0,n=this._display[this._index]||(s.options||[]).map((d,h)=>h),i=a&&n[c]===Number(s.correct_index);!a&&!this._gateUntil.has(this._index)&&this._gateUntil.set(this._index,performance.now()+b._readGateMs(s));const r=a?0:Math.max(0,(this._gateUntil.get(this._index)??0)-performance.now()),o=r>50;!o&&!a&&!this._openedAt.has(this._index)&&this._openedAt.set(this._index,performance.now()),o&&(this._gateTimer&&clearTimeout(this._gateTimer),this._gateTimer=setTimeout(()=>this._gateTick(),Math.min(r+30,250)));const m=n.map(d=>(s.options||[])[d]).slice(0,4).map((d,h)=>{const x=n[h]===Number(s.correct_index);let u="bg-base-300/50 border-base-300 hover:border-primary/60 hover:bg-base-300",p="";return a&&x?(u="bg-success/25 border-success",p=t?.kind?"qz-correct":""):a&&h===c&&!x&&(u="bg-error/20 border-error",t?.kind==="wrong"&&(p="qz-wrong")),`
+        <button data-opt="${h}" ${a||o?"disabled":""}
+                class="${p} ${u} ${a?"cursor-default":o?"cursor-wait opacity-45":"cursor-pointer active:scale-[0.985]"} flex w-full items-center gap-3 rounded-box border px-4 py-3
+                       text-left text-[17px] transition-[background-color,border-color,transform,opacity] duration-150">
+          <span class="${L[h]} inline-flex h-7 w-7 shrink-0 items-center justify-center
+                       rounded-lg text-[13px] font-bold">${A[h]}</span>
+          <span>${this._escape(d)}</span>
+        </button>`}).join("");let _="";if(a){const d=t?.word??(i?s.asks_ahead?"You already knew this!":k[this._index%k.length]:s.asks_ahead?"No worries — you'll hear this later in the story!":C[this._index%C.length]);_=`
+        <div class="qz-rise mt-3.5">
+          <span class="text-base font-extrabold ${i?"text-success":"text-warning"}">${d}</span>
+          ${s.explanation?`<span class="ml-2 text-sm leading-relaxed text-base-content/60">${this._escape(s.explanation)}</span>`:""}
+        </div>`}const g=this._streak>=S?`<span class="qz-streak mr-2.5 text-sm font-extrabold text-secondary" title="${this._streak} in a row">▲ ${this._streak} streak</span>`:"";this.host.innerHTML=`
+      <div class="${y}">
+        <div class="${$} relative mx-4 w-full max-w-2xl p-8">
+          <div class="mb-5 text-2xl sm:text-3xl font-semibold leading-snug">${this._escape(s.question)}</div>
+          ${o?`<div data-gate-note class="mb-2.5 flex items-center gap-2 text-[13px] text-base-content/60">
+              <span class="loading loading-ring loading-xs text-primary"></span>
+              Read the question&hellip; answers unlock in <span data-gate-secs>${Math.ceil(r/1e3)}</span>s</div>`:""}
+          <div class="flex flex-col gap-2.5">${m}</div>
+          ${_}
+          <div class="mt-6 flex items-center justify-center gap-1.5">
+            ${this._questions.map((d,h)=>{const x=this._answered.has(h),u=this._display[h]||[],p=x&&u[this._answered.get(h)]===Number(this._questions[h].correct_index);return`<span class="${h===this._index?"bg-primary":x?p?"bg-success":"bg-base-content/40":"bg-base-content/15"} h-2 w-2 rounded-full transition-colors"></span>`}).join("")}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center text-[13px] text-base-content/60">
+              ${g}
+              <span data-score class="mr-3.5 inline-flex items-center gap-1.5 text-[15px] font-extrabold text-warning">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-[15px] w-[15px]"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>
+                <span data-score-value>${this._score}</span>
+              </span>
+              <span data-pager>${this._index+1} / ${e}</span>
+            </span>
+          </div>
+        </div>
+      </div>`,this.host.querySelectorAll("[data-opt]").forEach(d=>{d.addEventListener("click",()=>this._answer(Number(d.dataset.opt),d))}),t?.kind==="correct"&&this._playCorrectEffects(t)}_gateTick(){if(this._gateTimer=null,!this.isVisible||this._answered.has(this._index))return;const t=Math.max(0,(this._gateUntil.get(this._index)??0)-performance.now()),s=this.host.querySelector("[data-gate-note]");if(t>50){const e=s?.querySelector("[data-gate-secs]");e&&(e.textContent=Math.ceil(t/1e3)),this._gateTimer=setTimeout(()=>this._gateTick(),Math.min(t+30,250));return}this._openedAt.has(this._index)||this._openedAt.set(this._index,performance.now()),s?.remove(),this.host.querySelectorAll("[data-opt]").forEach(e=>{e.disabled=!1,e.classList.remove("cursor-wait","opacity-45"),e.classList.add("cursor-pointer","active:scale-[0.985]")})}_answer(t,s){if(this._answered.has(this._index)||(this._gateUntil.get(this._index)??0)>performance.now()+50)return;const e=this._questions[this._index],c=this._display[this._index]||(e.options||[]).map((i,r)=>r),a=c[t]===Number(e.correct_index);this._answered.set(this._index,t);const n=this._openedAt.get(this._index);if(this._responses.push({ms:n!==void 0?Math.round(performance.now()-n):-1,displayIndex:t,snapshot:{question_order:this._index+1,question_text:String(e.question||""),chosen_text:String((e.options||[])[c[t]]??""),correct_text:String((e.options||[])[Number(e.correct_index)]??""),was_correct:a,response_ms:n!==void 0?Math.round(performance.now()-n):null,asks_ahead:!!e.asks_ahead}}),a){this._streak++;const i=this._streak>=S?j:0,r=N+i,o=this._score;this._score+=r;const l=s.getBoundingClientRect();this._render({kind:"correct",gained:r,from:o,at:{x:l.left+l.width/2,y:l.top}})}else e.asks_ahead||(this._streak=0),this._render({kind:"wrong"});this._scheduleAdvance(e)}_scheduleAdvance(t){this._advanceTimer&&clearTimeout(this._advanceTimer);const s=String(t?.explanation||""),e=Math.min(R,z+s.length*U);this._advanceTimer=setTimeout(()=>{this._advanceTimer=null,this.isVisible&&(this._index<this._questions.length-1?(this._index++,this._render()):this._renderScoreScreen())},e)}_playCorrectEffects({gained:t,from:s,at:e}){E.play("correct");const c=this.host.querySelector("[data-score]"),a=this.host.querySelector("[data-score-value]");if(c&&a){c.classList.add("qz-score-bump");const r=this._score,o=performance.now(),l=m=>{const _=Math.min(1,(m-o)/500);a.textContent=Math.round(s+(r-s)*(1-Math.pow(1-_,3))),_<1&&requestAnimationFrame(l)};requestAnimationFrame(l)}const n=document.createElement("div");n.textContent=`+${t}`,n.className="pointer-events-none fixed z-90 -translate-x-1/2 text-[26px] font-black text-warning drop-shadow-lg",n.style.cssText=`left:${e.x}px; top:${e.y}px; animation: qz-float-up 0.9s ease-out forwards;`,document.body.appendChild(n),setTimeout(()=>n.remove(),950);const i=["bg-warning","bg-success","bg-info","bg-primary"];for(let r=0;r<10;r++){const o=document.createElement("div"),l=Math.PI*2*r/10+Math.random()*.5,m=46+Math.random()*34;o.className=`pointer-events-none fixed z-89 h-2 w-2 rounded-full ${i[r%i.length]}`,o.style.cssText=`left:${e.x}px; top:${e.y}px;
+        --dx:${Math.cos(l)*m}px; --dy:${Math.sin(l)*m-20}px;
+        animation: qz-burst 0.65s ease-out forwards;`,document.body.appendChild(o),setTimeout(()=>o.remove(),700)}}_renderScoreScreen(){const t=this._questions.length,s=this._correctCount(),e=t?s/t:0,c=e>=.9?3:e>=.6?2:1,a=[0,1,2].map(u=>`
+      <svg viewBox="0 0 24 24" class="qz-star h-14 w-14 ${u<c?"fill-warning":"fill-base-content/10"}"
+           style="animation-delay:${.15+u*.22}s;">
+        <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/>
+      </svg>`).join(""),n=(()=>{try{return localStorage.getItem("lp_quiz_nickname")||""}catch{return""}})(),i=this._submitUrl?`
+      <div data-join class="qz-rise mb-6" style="animation-delay:0.6s;">
+        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">Join the leaderboard</div>
+        ${this._hasClassroom?`
+        <div class="mb-2 flex justify-center gap-2">
+          <input data-class-code type="text" maxlength="8" placeholder="Class code…"
+                 class="input input-bordered w-32 bg-base-300 text-center uppercase" />
+        </div>`:""}
+        <div class="flex justify-center gap-2">
+          <input data-nickname type="text" maxlength="24" placeholder="Your name…"
+                 class="input input-bordered w-52 bg-base-300" />
+          <button data-submit class="btn btn-primary">Submit</button>
+        </div>
+        <div data-join-error class="mt-1.5 min-h-4 text-xs text-error"></div>
+      </div>`:"";this.host.innerHTML=`
+      <div class="${y}">
+        <div class="${$} mx-4 w-full max-w-lg p-10 text-center">
+          <div class="mb-4 flex justify-center gap-2.5">${a}</div>
+          <div class="mb-1.5 text-[15px] uppercase tracking-[0.15em] text-base-content/60">
+            ${s} / ${t} correct
+          </div>
+          <div data-final-score class="mb-6 text-6xl font-black text-warning">0</div>
+          ${i}
+          ${this._submitUrl?'<button data-done class="btn btn-ghost btn-lg">Skip ›</button>':`<div data-countdown class="text-[15px] text-base-content/60">Lesson starts in <span class="font-bold text-primary">${T}</span></div>`}
+        </div>
+      </div>`;const r=this.host.querySelector("[data-nickname]");r&&(r.value=n);const o=this.host.querySelector("[data-class-code]");o&&(o.value=this._classCode);const l=this.host.querySelector("[data-final-score]"),m=performance.now(),_=this._score,g=u=>{const p=Math.min(1,(u-m)/900);l.textContent=Math.round(_*(1-Math.pow(1-p,3))),p<1&&requestAnimationFrame(g)};requestAnimationFrame(g),this.host.querySelector("[data-done]")?.addEventListener("click",()=>this._finish()),this._submitUrl||this._startAutoContinue();const d=this.host.querySelector("[data-submit]"),h=this.host.querySelector("[data-nickname]"),x=async()=>{const u=this.host.querySelector("[data-class-code]");this._classCode=(u?.value||"").trim().toUpperCase();try{this._classCode&&localStorage.setItem("lp_class_code",this._classCode)}catch{}const p=(h?.value||"").trim(),f=this.host.querySelector("[data-join-error]");if(p.length<2){f&&(f.textContent="Pick a name (at least 2 letters).");return}try{localStorage.setItem("lp_quiz_nickname",p)}catch{}d.disabled=!0,d.textContent="…";try{const v=document.querySelector('meta[name="csrf-token"]')?.content||"",w=await fetch(this._submitUrl,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN":v,Accept:"application/json"},body:JSON.stringify({nickname:p,score:this._score,correct:s,total:t,integrity:this._integritySummary(),answers:this._responses.map(M=>M.snapshot).filter(Boolean),class_code:this._classCode||null,member_name:this._classCode?p:null})});if(!w.ok)throw new Error(`HTTP ${w.status}`);const q=await w.json();this._renderLeaderboard(q,p)}catch(v){d.disabled=!1,d.textContent="Submit",f&&(f.textContent=v?.message==="HTTP 422"?"Check the class code — ask your teacher.":"Could not submit — try again.")}};d?.addEventListener("click",x),h?.addEventListener("keydown",u=>{u.key==="Enter"&&x()})}_renderLeaderboard({top:t=[],players:s=0,rank:e=null},c=""){const a=["bg-warning text-warning-content","bg-base-content text-base-100","bg-secondary text-secondary-content"],n=t.map((r,o)=>{const l=e!==null&&o===e-1&&r.nickname===c,m=o<3?`<span class="${a[o]} inline-flex h-6.5 w-6.5 items-center justify-center rounded-full text-[13px] font-black">${o+1}</span>`:`<span class="w-6.5 text-center text-[13px] font-bold text-base-content/50">${o+1}</span>`;return`
+        <div class="qz-rise ${l?"bg-primary/15 border-primary/50":o%2?"bg-base-content/5 border-transparent":"border-transparent"} flex items-center gap-3 rounded-box border px-3.5 py-2.5"
+             style="animation-delay:${(.08*o).toFixed(2)}s;">
+          ${m}
+          <span class="flex-1 truncate text-left text-[15px] ${o<3||l?"font-bold":"font-medium"}">
+            ${this._escape(r.nickname)}${l?" · you":""}
+          </span>
+          <span class="text-[15px] font-extrabold text-warning">${r.score}</span>
+        </div>`}).join(""),i=e!==null&&e>t.length?`<div class="mt-2.5 text-sm font-bold text-warning">You're #${e} of ${s} — keep climbing!</div>`:"";this.host.innerHTML=`
+      <div class="${y}">
+        <div class="${$} mx-4 max-h-[calc(100vh-60px)] w-full max-w-lg overflow-y-auto p-8 text-center">
+          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">Leaderboard</div>
+          <div class="mb-4 text-[13px] text-base-content/50">${s} player${s===1?"":"s"}</div>
+          <div class="flex flex-col gap-1 text-left">${n||'<span class="text-base-content/50">No scores yet — you could be first!</span>'}</div>
+          ${i}
+          <div data-countdown class="mt-6 text-[15px] text-base-content/60">
+            Lesson starts in <span class="font-bold text-primary">${T}</span>
+          </div>
+        </div>
+      </div>`,this._startAutoContinue()}_finish(){const t=this._onComplete;this.hide(),t?.()}_startAutoContinue(t=T){const s=this.host.querySelector("[data-countdown] span");if(!s)return;let e=t;this.host.querySelector(".qz-card")?.addEventListener("click",()=>this._finish()),this._countdownTimer&&clearInterval(this._countdownTimer),this._countdownTimer=setInterval(()=>{if(e-=1,e>0){s.textContent=String(e);return}clearInterval(this._countdownTimer),this._countdownTimer=null,this._finish()},1e3)}_escape(t){const s=document.createElement("div");return s.textContent=String(t??""),s.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;")}}export{b as QuizOverlay};
