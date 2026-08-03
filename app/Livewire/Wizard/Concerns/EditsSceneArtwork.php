@@ -335,7 +335,7 @@ trait EditsSceneArtwork
         // Whitelist allowed fields with clamps.
         $whitelist = [
             'depth' => [0, 3],
-            'scale' => [0.2, 3],
+            'scale' => [0.2, 6],   // 6x: big enough to fill the stage with one detail
             'height' => [5, 100],
             'wobble' => [0, 2],
             'opacity' => [0.05, 1],
@@ -527,7 +527,7 @@ trait EditsSceneArtwork
 
         $x = max(0.0, min(100.0, $x));
         $y = max(0.0, min(100.0, $y));
-        $scale = max(0.2, min(3.0, $scale));
+        $scale = max(0.2, min(6.0, $scale));   // keep in step with the Size slider + MAX_SCALE
 
         // A pinned layer's PLACE is what has to survive; x/y is only where the current camera
         // puts it. A pin is only accepted with real coordinates, so a projector that failed to

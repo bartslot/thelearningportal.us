@@ -22,7 +22,10 @@ import { playEntrance } from './animations.js'
 
 const DRAG_THRESHOLD_PX = 4
 const MIN_SCALE = 0.2
-const MAX_SCALE = 3
+// A layer may be blown up to 6x its base height — a teacher zooming into one detail of a
+// painting, or filling the stage with a single figure. The cap only exists to stop a runaway
+// drag, not because anything breaks above it.
+const MAX_SCALE = 6
 
 // Corner resize handles. Dragging one keeps the OPPOSITE corner anchored, like other editors.
 const CORNERS = [
