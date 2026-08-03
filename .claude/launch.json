@@ -2,9 +2,19 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "//": "Attach-only (url, no command): connects to the `composer dev` server already on :8000 instead of racing it for the port. The port is NOT interchangeable, so autoPort must stay off — APP_URL is pinned to http://localhost:8000 and every asset('storage/...') URL the player loads is absolute against it, so a reassigned port would break lesson media and session cookies.",
+      "//": "Attach-only (url, no command): connects to the `composer dev` server already on :8000 instead of racing it for the port. The port is NOT interchangeable, so autoPort must stay off \u2014 APP_URL is pinned to http://localhost:8000 and every asset('storage/...') URL the player loads is absolute against it, so a reassigned port would break lesson media and session cookies.",
       "name": "serve",
       "url": "http://localhost:8000",
+      "port": 8000
+    },
+    {
+      "//": "Fallback for when `composer dev` is not running (e.g. a long test run took it down). Same pinned port for the same reason as above: APP_URL and every asset() URL are absolute against :8000. PHP_INI_SCAN_DIR lifts PHP's 2 MB upload ceiling to the 8 MB the image picker offers — this machine loads no php.ini, so without it the compiled defaults apply. See build/php-ini/.",
+      "name": "serve-standalone",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "PHP_INI_SCAN_DIR=$PWD/build/php-ini php artisan serve --host=127.0.0.1 --port=8000"
+      ],
       "port": 8000
     }
   ]

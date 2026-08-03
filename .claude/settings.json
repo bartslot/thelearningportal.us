@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(scp:*)", "Bash(rsync:*)",
       "Bash(php /Users/bartslot/Projects/thelearningportal.us/artisan make:migration add_details_and_update_tone_title_in_lessons_table)",
       "Read(//Users/bartslot/SadTalker/**)",
       "Bash(brew install:*)",
