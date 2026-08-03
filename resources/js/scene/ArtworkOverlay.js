@@ -22,12 +22,24 @@ const MIN_SCALE = 0.2
 // drag, not because anything breaks above it.
 const MAX_SCALE = 6
 
-// Corner resize handles. Dragging one keeps the OPPOSITE corner anchored, like other editors.
-const CORNERS = [
-  { name: 'tl', pos: 'top:-5px; left:-5px;', cursor: 'nwse-resize' },
-  { name: 'tr', pos: 'top:-5px; right:-5px;', cursor: 'nesw-resize' },
-  { name: 'bl', pos: 'bottom:-5px; left:-5px;', cursor: 'nesw-resize' },
-  { name: 'br', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
+/**
+ * Resize handles: four corners and four edges. Dragging any of them keeps the OPPOSITE side
+ * anchored, so the layer grows toward the hand rather than about its centre.
+ *
+ * `axis` is which measurement drives the new size. A layer stores ONE size (scale, applied to its
+ * height) and takes its width from the image's aspect, so every handle resizes proportionally —
+ * an edge cannot stretch one side without a second stored dimension, and stretching a painting
+ * out of shape isn't something to offer a teacher by accident.
+ */
+const HANDLES = [
+  { name: 'tl', axis: 'both', pos: 'top:-5px; left:-5px;', cursor: 'nwse-resize' },
+  { name: 'tr', axis: 'both', pos: 'top:-5px; right:-5px;', cursor: 'nesw-resize' },
+  { name: 'bl', axis: 'both', pos: 'bottom:-5px; left:-5px;', cursor: 'nesw-resize' },
+  { name: 'br', axis: 'both', pos: 'bottom:-5px; right:-5px;', cursor: 'nwse-resize' },
+  { name: 'n', axis: 'y', pos: 'top:-5px; left:calc(50% - 5px);', cursor: 'ns-resize' },
+  { name: 's', axis: 'y', pos: 'bottom:-5px; left:calc(50% - 5px);', cursor: 'ns-resize' },
+  { name: 'w', axis: 'x', pos: 'left:-5px; top:calc(50% - 5px);', cursor: 'ew-resize' },
+  { name: 'e', axis: 'x', pos: 'right:-5px; top:calc(50% - 5px);', cursor: 'ew-resize' },
 ]
 
 // Object-list / selection id namespace so artwork ids never collide with text-box ids.
@@ -285,7 +297,7 @@ export class ArtworkOverlay {
       transform-origin:center; box-shadow:0 0 0 2px #38bdf8; z-index:${this._zTop + 1};`
 
     const node = this._nodeEl(item)
-    for (const c of CORNERS) {
+    for (const c of HANDLES) {
       const handle = document.createElement('div')
       handle.dataset.scaleHandle = '1'
       handle.setAttribute('data-tooltip', 'Drag to resize')
@@ -293,7 +305,7 @@ export class ArtworkOverlay {
         border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:${c.cursor};
         box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none;`
       chrome.appendChild(handle)
-      if (node) this._wireScale(item, node, handle, c.name)
+      if (node) this._wireScale(item, node, handle, c)
     }
 
     return chrome
@@ -448,9 +460,16 @@ export class ArtworkOverlay {
     })
   }
 
-  // Corner handle → resize with the OPPOSITE corner anchored (grows toward the dragged corner,
-  // like other editors), moving x/y so that corner stays put. `corner` = tl|tr|bl|br.
-  _wireScale(item, node, handle, corner) {
+  /**
+   * Resize by dragging a handle, with the OPPOSITE side anchored so the layer grows toward the
+   * hand instead of about its centre.
+   *
+   * A corner measures the diagonal; an edge measures only its own axis. Either way the result is
+   * a single `scale`, because the layer takes its width from the image's aspect — so an edge drag
+   * resizes proportionally rather than stretching the artwork out of shape.
+   */
+  _wireScale(item, node, handle, spec) {
+    const { name, axis } = spec
     handle.addEventListener('pointerdown', (e) => {
       e.stopPropagation()
       e.preventDefault()
@@ -459,21 +478,33 @@ export class ArtworkOverlay {
       node.style.transform = this._transform(item)   // drop any parallax offset first
       const r = node.getBoundingClientRect()
       const startScale = item.scale
-      const startDiag = Math.hypot(r.width, r.height) || 1
-      // Anchor = opposite corner (client px); sx/sy point from the anchor toward the centre.
+      // What the drag is measured against, and where the layer is pinned while it happens.
+      // sx/sy point from the anchor back toward the centre.
       const A = {
         tl: { ax: r.right, ay: r.bottom, sx: -1, sy: -1 },
         tr: { ax: r.left,  ay: r.bottom, sx: 1,  sy: -1 },
         bl: { ax: r.right, ay: r.top,    sx: -1, sy: 1 },
         br: { ax: r.left,  ay: r.top,    sx: 1,  sy: 1 },
-      }[corner] || { ax: r.left, ay: r.top, sx: 1, sy: 1 }
+        n:  { ax: r.left,  ay: r.bottom, sx: 0,  sy: -1 },
+        s:  { ax: r.left,  ay: r.top,    sx: 0,  sy: 1 },
+        w:  { ax: r.right, ay: r.top,    sx: -1, sy: 0 },
+        e:  { ax: r.left,  ay: r.top,    sx: 1,  sy: 0 },
+      }[name] || { ax: r.left, ay: r.top, sx: 1, sy: 1 }
+      const startSpan = axis === 'y' ? (r.height || 1)
+        : axis === 'x' ? (r.width || 1)
+        : (Math.hypot(r.width, r.height) || 1)
+      // An edge keeps the centre on its other axis exactly where it was.
+      const cxFixed = r.left + r.width / 2
+      const cyFixed = r.top + r.height / 2
 
       const onMove = (ev) => {
-        const dist = Math.hypot(ev.clientX - A.ax, ev.clientY - A.ay)
-        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale * (dist / startDiag)))
+        const span = axis === 'y' ? Math.abs(ev.clientY - A.ay)
+          : axis === 'x' ? Math.abs(ev.clientX - A.ax)
+          : Math.hypot(ev.clientX - A.ax, ev.clientY - A.ay)
+        const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale * (span / startSpan)))
         const f = s / startScale
-        const cxClient = A.ax + A.sx * (r.width * f) / 2      // new centre keeps the anchor fixed
-        const cyClient = A.ay + A.sy * (r.height * f) / 2
+        const cxClient = A.sx === 0 ? cxFixed : A.ax + A.sx * (r.width * f) / 2
+        const cyClient = A.sy === 0 ? cyFixed : A.ay + A.sy * (r.height * f) / 2
         const host = this.host.getBoundingClientRect()
         item.scale = s
         item.x = (cxClient - host.left) / host.width * 100
