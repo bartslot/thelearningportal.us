@@ -1,7 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  ENTRANCES, SCENE_TRANSITIONS, EASINGS,
-  easingBezier, easingCurve, entranceFrames, playEntrance, sceneTransitionFrames,
+  ENTRANCES,
+  SCENE_TRANSITIONS,
+  EASINGS,
+  easingBezier,
+  easingCurve,
+  entranceFrames,
+  playEntrance,
+  sceneTransitionFrames,
+  playExit,
+  EXITS,
 } from '../animations.js'
 
 describe('animation vocabulary', () => {
@@ -114,5 +122,37 @@ describe('scene transitions', () => {
   it('leaves crossfade and cut to opacity alone', () => {
     expect(sceneTransitionFrames('crossfade')).toBeNull()
     expect(sceneTransitionFrames('cut')).toBeNull()
+  })
+})
+
+describe('exits — Keynote\'s Build Out', () => {
+  const el = () => ({ animate: (frames, opts) => ({ frames, opts, cancel() {} }) })
+
+  it('mirrors the entrance so in-from-left and out-to-left are one movement', () => {
+    const a = playExit(el(), { anim: 'slide-left', duration: 400 })
+
+    // Reversed: it starts AT rest and ends where the entrance would have begun.
+    expect(a.frames[0].opacity).toBe(1)
+    expect(a.frames[1].opacity).toBe(0)
+    expect(a.frames[1].transform).toContain('-12%')
+  })
+
+  it('holds the layer gone once it has left', () => {
+    expect(playExit(el(), { anim: 'fade' }).opts.fill).toBe('forwards')
+  })
+
+  it('honours the duration and delay it is given', () => {
+    const a = playExit(el(), { anim: 'fade', duration: 1500, delay: 2 })
+
+    expect(a.opts.duration).toBe(1500)
+    expect(a.opts.delay).toBe(2000)
+  })
+
+  it('does nothing for a layer that should stay', () => {
+    expect(playExit(el(), { anim: 'none' })).toBeNull()
+  })
+
+  it('offers an exit for every entrance, so the two lists stay in step', () => {
+    expect(EXITS.map(e => e.key)).toEqual(ENTRANCES.map(e => e.key))
   })
 })

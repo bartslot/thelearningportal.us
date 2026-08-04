@@ -44,16 +44,49 @@
     ];
 
     $aid = $isLayer ? (int) ($layer['asset_id'] ?? 0) : 0;
+    // Keynote's Build In / Build Out. Only a layer has two halves; a scene transition is one thing.
+    $exits = [
+        'none' => __('Stay'),
+        'fade' => __('Fade out'),
+        'slide-left' => __('Out to left'),
+        'slide-right' => __('Out to right'),
+        'slide-up' => __('Out upwards'),
+        'slide-down' => __('Out downwards'),
+        'zoom' => __('Zoom out'),
+        'pop' => __('Pop out'),
+    ];
     $current = $isLayer
-        ? ['anim' => $layer['anim'] ?? 'none', 'delay' => (float) ($layer['anim_delay'] ?? 0), 'ease' => $layer['anim_ease'] ?? 'enter']
-        : ['anim' => $transition['type'], 'delay' => (float) $transition['duration'], 'ease' => $transition['ease']];
+        ? ['anim' => $layer['anim'] ?? 'none', 'delay' => (float) ($layer['anim_delay'] ?? 0), 'ease' => $layer['anim_ease'] ?? 'enter', 'duration' => (int) ($layer['anim_duration'] ?? 600)]
+        : ['anim' => $transition['type'], 'delay' => (float) $transition['duration'], 'ease' => $transition['ease'], 'duration' => 600];
+    $out = [
+        'anim' => $layer['anim_out'] ?? 'none',
+        'delay' => (float) ($layer['anim_out_delay'] ?? 0),
+        'ease' => $layer['anim_out_ease'] ?? 'exit',
+        'duration' => (int) ($layer['anim_out_duration'] ?? 600),
+    ];
 @endphp
 
-<div class="space-y-3">
+<div class="space-y-3" @if ($isLayer) x-data="{ build: 'in' }" @endif>
+    @if ($isLayer)
+        {{-- Build In / Build Out, the two halves of a layer's life on the scene. --}}
+        <div role="tablist" class="flex rounded-lg bg-slate-900/70 p-0.5 text-[11px]">
+            @foreach (['in' => __('In'), 'out' => __('Out')] as $key => $label)
+                <button type="button" role="tab" @click="build = '{{ $key }}'"
+                        :class="build === '{{ $key }}'
+                            ? 'bg-slate-700 text-amber-300'
+                            : 'text-slate-400 hover:text-slate-200'"
+                        class="flex-1 rounded-md px-2 py-1 font-medium transition">{{ $label }}</button>
+            @endforeach
+        </div>
+    @endif
+
     <p class="text-[11px] leading-tight text-slate-500">
-        {{ $isLayer
-            ? __('How this layer arrives when the scene starts.')
-            : __('How this scene replaces the one before it.') }}
+        @if ($isLayer)
+            <span x-show="build === 'in'">{{ __('How this layer arrives when the scene starts.') }}</span>
+            <span x-show="build === 'out'" x-cloak>{{ __('How this layer leaves at the end of the scene.') }}</span>
+        @else
+            {{ __('How this scene replaces the one before it.') }}
+        @endif
     </p>
 
     @if ($isOverview)
@@ -96,34 +129,63 @@
         <span class="block text-[10px] uppercase tracking-wide text-slate-500">
             {{ $isLayer ? __('Appear') : __('Transition') }}
         </span>
-        <select @class(['select select-xs select-bordered w-full border-slate-700 bg-slate-900 text-slate-300'])
-                @if ($isLayer)
-                    wire:change="updateArtworkLayer({{ $aid }}, 'anim', $event.target.value)"
-                @else
-                    wire:change="setSceneTransition('type', $event.target.value)"
-                @endif>
-            @foreach (($isLayer ? $entrances : $transitions) as $value => $label)
-                <option value="{{ $value }}" @selected($current['anim'] === $value)>{{ $label }}</option>
-            @endforeach
-        </select>
+        @if ($isLayer)
+            <select x-show="build === 'in'"
+                    class="select select-xs select-bordered w-full border-slate-700 bg-slate-900 text-slate-300"
+                    wire:change="updateArtworkLayer({{ $aid }}, 'anim', $event.target.value)">
+                @foreach ($entrances as $value => $label)
+                    <option value="{{ $value }}" @selected($current['anim'] === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+            <select x-show="build === 'out'" x-cloak
+                    class="select select-xs select-bordered w-full border-slate-700 bg-slate-900 text-slate-300"
+                    wire:change="updateArtworkLayer({{ $aid }}, 'anim_out', $event.target.value)">
+                @foreach ($exits as $value => $label)
+                    <option value="{{ $value }}" @selected($out['anim'] === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+        @else
+            <select class="select select-xs select-bordered w-full border-slate-700 bg-slate-900 text-slate-300"
+                    wire:change="setSceneTransition('type', $event.target.value)">
+                @foreach ($transitions as $value => $label)
+                    <option value="{{ $value }}" @selected($current['anim'] === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+        @endif
     </label>
 
-    {{-- Delay (layer) or duration (scene) --}}
-    <label class="flex items-center gap-2">
-        <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">
-            {{ $isLayer ? __('Delay') : __('Time') }}
-        </span>
-        <input type="range"
-               min="0" max="{{ $isLayer ? 10 : 3 }}" step="{{ $isLayer ? 0.1 : 0.1 }}"
-               value="{{ $current['delay'] }}"
-               @if ($isLayer)
-                   wire:change="updateArtworkLayer({{ $aid }}, 'anim_delay', $event.target.value)"
-               @else
+    {{-- Delay: how long the layer waits before it moves. --}}
+    @if ($isLayer)
+        @foreach ([['in', $current, 'anim_delay'], ['out', $out, 'anim_out_delay']] as [$half, $vals, $field])
+            <label class="flex items-center gap-2" x-show="build === '{{ $half }}'" @if ($half === 'out') x-cloak @endif>
+                <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Delay') }}</span>
+                <input type="range" min="0" max="10" step="0.1" value="{{ $vals['delay'] }}"
+                       wire:change="updateArtworkLayer({{ $aid }}, '{{ $field }}', $event.target.value)"
+                       class="range range-xs flex-1" />
+                <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format($vals['delay'], 1), '0'), '.') ?: '0' }}s</span>
+            </label>
+        @endforeach
+
+        {{-- Duration — the industry term for how long the movement itself takes (Keynote, After
+             Effects, CSS all call it that). Stored in ms to match the Web Animations API. --}}
+        @foreach ([['in', $current, 'anim_duration'], ['out', $out, 'anim_out_duration']] as [$half, $vals, $field])
+            <label class="flex items-center gap-2" x-show="build === '{{ $half }}'" @if ($half === 'out') x-cloak @endif>
+                <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Duration') }}</span>
+                <input type="range" min="100" max="5000" step="50" value="{{ $vals['duration'] }}"
+                       wire:change="updateArtworkLayer({{ $aid }}, '{{ $field }}', $event.target.value)"
+                       class="range range-xs flex-1" />
+                <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format($vals['duration'] / 1000, 2), '0'), '.') }}s</span>
+            </label>
+        @endforeach
+    @else
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Duration') }}</span>
+            <input type="range" min="0" max="3" step="0.1" value="{{ $current['delay'] }}"
                    wire:change="setSceneTransition('duration', $event.target.value)"
-               @endif
-               class="range range-xs flex-1" />
-        <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format($current['delay'], 1), '0'), '.') ?: '0' }}s</span>
-    </label>
+                   class="range range-xs flex-1" />
+            <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format($current['delay'], 1), '0'), '.') ?: '0' }}s</span>
+        </label>
+    @endif
 
     {{-- Easing, chosen from live curves rather than a list of names --}}
     <div class="space-y-1.5" wire:ignore>
@@ -134,7 +196,7 @@
              class="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(4rem,1fr))]">
             <template x-for="opt in options" :key="opt.key">
                 <button type="button"
-                        @click="choose(opt.key, (k) => $wire.{{ $isLayer ? "updateArtworkLayer($aid, 'anim_ease', k)" : "setSceneTransition('ease', k)" }})"
+                        @click="choose(opt.key, (k) => $wire.{{ $isLayer ? "updateArtworkLayer($aid, build === 'out' ? 'anim_out_ease' : 'anim_ease', k)" : "setSceneTransition('ease', k)" }})"
                         :class="selected === opt.key
                             ? 'border-amber-400 bg-slate-900 text-amber-300'
                             : 'border-slate-700 bg-slate-900/60 text-slate-400 hover:border-slate-500'"

@@ -348,6 +348,13 @@ trait EditsSceneArtwork
             // Colour treatment. white_key is how much of the top of the luminance range becomes
             // transparent — 0.04 is the 4% that clears scanned paper without eating light greys.
             'white_key' => [0, 0.5],
+            // Build In / Build Out. Duration is the industry term (Keynote, After Effects, CSS),
+            // and it is milliseconds here to match WAAPI rather than converting at every call.
+            'anim_duration' => [100, 5000],
+            'anim_out' => ['none', 'fade', 'slide-left', 'slide-right', 'slide-up', 'slide-down', 'zoom', 'pop'],
+            'anim_out_delay' => [0, 10],
+            'anim_out_ease' => ['enter', 'move', 'exit', 'pop', 'linear'],
+            'anim_out_duration' => [100, 5000],
             'grayscale' => null,   // boolean
             'tint' => null,        // #rrggbb or '' to clear
             // Animate tab: how the layer arrives, how long it waits first, and on which curve.

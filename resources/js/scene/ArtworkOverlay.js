@@ -18,7 +18,7 @@
  * (setProjector / refreshPositions), so an icon dropped on Cairo stays on Cairo through every
  * pan and zoom instead of sliding off it.
  */
-import { playEntrance } from './animations.js'
+import { playEntrance, playExit } from './animations.js'
 import { applyLayerFilter } from './layer-filters.js'
 
 const DRAG_THRESHOLD_PX = 4
@@ -70,7 +70,8 @@ export function layersSignature(layers) {
     l.x, l.y, l.scale, l.height, l.depth,
     l.blur, l.opacity, l.blend,
     l.white_key, l.grayscale, l.tint,
-    l.anim, l.anim_delay, l.anim_ease,
+    l.anim, l.anim_delay, l.anim_ease, l.anim_duration,
+    l.anim_out, l.anim_out_delay, l.anim_out_ease, l.anim_out_duration,
     l.kind,
     l.anchor, l.lng, l.lat,
     l.embed ? JSON.stringify(l.embed.opts || null) : null,
@@ -130,6 +131,12 @@ export class ArtworkOverlay {
         anim: l.anim || 'none',
         anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
         anim_ease: l.anim_ease || 'enter',
+        anim_duration: Number.isFinite(l.anim_duration) ? l.anim_duration : 600,
+        // Build Out: how the layer leaves at the end of the scene.
+        anim_out: l.anim_out || 'none',
+        anim_out_delay: Number.isFinite(l.anim_out_delay) ? l.anim_out_delay : 0,
+        anim_out_ease: l.anim_out_ease || 'exit',
+        anim_out_duration: Number.isFinite(l.anim_out_duration) ? l.anim_out_duration : 600,
         kind: l.kind || 'figure',
         // 'map' pins the layer to lng/lat and lets the projector place it; 'screen' (default)
         // keeps it at its x/y on the stage.
@@ -268,10 +275,42 @@ export class ArtworkOverlay {
         anim: item.anim,
         delay: item.anim_delay,
         ease: item.anim_ease,
+        duration: item.anim_duration,
         baseTransform: this._transform(item),
       })
       if (anim) this._entrances.push(anim)
     }
+  }
+
+  /**
+   * Run every layer's exit — the Build Out, at the end of the scene.
+   *
+   * Returns how long the longest one takes, so a caller that wants the scene to WAIT for the
+   * layers to leave knows how much time to allow rather than guessing.
+   *
+   * @returns {number} milliseconds until the last layer has gone
+   */
+  playExits() {
+    this.cancelEntrances()
+    let longest = 0
+    for (const item of this._layers) {
+      if (!item.anim_out || item.anim_out === 'none') continue
+      const el = this.host.querySelector(`[data-layer-id="${artObjId(item.asset_id)}"]`)
+      if (!el) continue
+      const anim = playExit(el, {
+        anim: item.anim_out,
+        delay: item.anim_out_delay,
+        ease: item.anim_out_ease,
+        duration: item.anim_out_duration,
+        baseTransform: this._transform(item),
+      })
+      if (anim) {
+        this._entrances.push(anim)
+        longest = Math.max(longest, (item.anim_out_delay || 0) * 1000 + (item.anim_out_duration || 0))
+      }
+    }
+
+    return longest
   }
 
   /**

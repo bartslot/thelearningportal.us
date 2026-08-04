@@ -20,6 +20,23 @@ export const ENTRANCES = [
   { key: 'pop', label: 'Pop' },
 ]
 
+/**
+ * How a layer LEAVES, at the end of the scene — Keynote's Build Out.
+ *
+ * Deliberately mirrored from ENTRANCES so "in from left / out to left" reads as one movement
+ * continuing, not two unrelated effects.
+ */
+export const EXITS = [
+  { key: 'none', label: 'Stay' },
+  { key: 'fade', label: 'Fade out' },
+  { key: 'slide-left', label: 'Out to left' },
+  { key: 'slide-right', label: 'Out to right' },
+  { key: 'slide-up', label: 'Out upwards' },
+  { key: 'slide-down', label: 'Out downwards' },
+  { key: 'zoom', label: 'Zoom out' },
+  { key: 'pop', label: 'Pop out' },
+]
+
 /** How one scene becomes the next. */
 export const SCENE_TRANSITIONS = [
   { key: 'crossfade', label: 'Crossfade' },
@@ -54,6 +71,8 @@ export const DEFAULT_ENTRANCE = 'none'
 export const DEFAULT_EASE = 'enter'
 export const DEFAULT_DURATION_MS = 600
 export const MAX_DELAY_S = 10
+export const MIN_DURATION_MS = 100
+export const MAX_DURATION_MS = 5000
 
 export function easingBezier(key) {
   return (EASINGS.find(e => e.key === key) ?? EASINGS[0]).bezier
@@ -124,3 +143,30 @@ export function sceneTransitionFrames(type) {
 }
 
 export { BEZIER, EASE }
+
+/**
+ * Play a layer's exit — the same movement as its entrance, run backwards.
+ *
+ * `fill: 'forwards'` because the layer must STAY gone once it has left; without it the layer
+ * snaps back to full opacity for the last moments of the scene.
+ *
+ * @returns {?Animation}
+ */
+export function playExit(el, { anim = 'none', delay = 0, ease = DEFAULT_EASE, duration = DEFAULT_DURATION_MS, baseTransform = '' } = {}) {
+  const frames = entranceFrames(anim)
+  if (!el || !frames || typeof el.animate !== 'function') return null
+
+  const compose = (f) => ({
+    opacity: f.opacity,
+    transform: `${baseTransform} translate(${f.offset}) scale(${f.scale})`.trim(),
+  })
+
+  // to → from: the entrance in reverse. An exit eases the other way round too, so a layer
+  // accelerates away rather than creeping off.
+  return el.animate([compose(frames.to), compose(frames.from)], {
+    duration: Math.max(0, duration),
+    delay: Math.max(0, delay) * 1000,
+    easing: ease === DEFAULT_EASE ? easingBezier('exit') : easingBezier(ease),
+    fill: 'forwards',
+  })
+}
