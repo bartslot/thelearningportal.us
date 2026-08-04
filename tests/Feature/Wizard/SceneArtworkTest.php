@@ -353,6 +353,28 @@ class SceneArtworkTest extends TestCase
         $this->assertSame(0.5, (float) $this->attachedLayer()['white_key']);
     }
 
+    /**
+     * Format, Settings and Publish all act on THIS lesson. Help leaves it — a new tab, the help
+     * centre — so it sits past Publish behind a divider rather than reading as a fourth thing you
+     * do to the lesson.
+     */
+    public function test_help_sits_after_publish_in_the_toolbar(): void
+    {
+        $html = Livewire::actingAs($this->teacher)
+            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
+            ->html();
+
+        $format = strpos($html, 'aria-label="Format"');
+        $settings = strpos($html, 'aria-label="Settings"');
+        $help = strpos($html, 'aria-label="Help"');
+
+        $this->assertNotFalse($format);
+        $this->assertNotFalse($settings);
+        $this->assertNotFalse($help);
+        $this->assertLessThan($settings, $format, 'Format comes first');
+        $this->assertLessThan($help, $settings, 'Help must not sit between Format and Settings');
+    }
+
     public function test_detaching_the_last_clipart_from_a_voyage_scene_collapses_shots_to_null(): void
     {
         // A layer-only voyage shot carries nothing once its clipart is removed — it must not
