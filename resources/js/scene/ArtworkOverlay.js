@@ -304,10 +304,10 @@ export class ArtworkOverlay {
         duration: item.anim_out_duration,
         baseTransform: this._transform(item),
       })
-      if (anim) {
-        this._entrances.push(anim)
-        longest = Math.max(longest, (item.anim_out_delay || 0) * 1000 + (item.anim_out_duration || 0))
-      }
+      if (anim) this._entrances.push(anim)
+      // Measured from what the teacher ASKED for, not from whether an Animation object came back:
+      // the scene's pacing must be the same every time, not a function of the browser's WAAPI.
+      longest = Math.max(longest, (item.anim_out_delay || 0) * 1000 + (item.anim_out_duration || 0))
     }
 
     return longest

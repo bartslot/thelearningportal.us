@@ -71,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-CPJmkgIx.js",
+    "file": "assets/app-CFodLYSn.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-I8CSDegx.js",
+    "file": "assets/lesson-player-Dy0065Uy.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -152,7 +152,7 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-CrwfMxgl.js",
+    "file": "assets/ArtworkOverlay-CkGvDNHp.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true,
@@ -199,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-CmPC-rgg.js",
+    "file": "assets/index-DUsdkH6X.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

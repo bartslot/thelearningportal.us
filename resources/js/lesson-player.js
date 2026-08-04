@@ -44,6 +44,10 @@ const AVATAR_POSITIONS = {
 
 const DEFAULT_POSITION = 'bottom-right'
 
+// Longest a scene will wait for its layers to animate out. A layer may carry a 10s delay, and a
+// class must not sit on a finished scene that long because one icon leaves late.
+const MAX_EXIT_WAIT_MS = 4000
+
 // ── Ken Burns helper ──────────────────────────────────────────────────────────
 // Ken Burns: scale from 110% → 105% while panning corner-to-corner.
 // Using CSS scale() + translate() so background-size stays 'cover' (no black bars).
@@ -534,6 +538,9 @@ Alpine.data('lessonGame', (lesson) => ({
       bg.appendChild(b)
       this._bgLayerB = b
     },
+
+    // Longest a scene will wait for its layers to animate out before moving on.
+    _exitTimer: null,
 
     // Per-scene motion settings, set by _playScene before each _showFlatScene call.
     _kbAnimated: true,
@@ -1168,8 +1175,11 @@ Alpine.data('lessonGame', (lesson) => ({
     _stopAudio () {
       const a = this._audio
       this._audio = null
-      // A pending no-audio scene hold is the same kind of stale timer — cancel it too.
+      // A pending no-audio scene hold is the same kind of stale timer — cancel it too, along with
+      // a scene waiting on its layers to leave: if the student jumps, that wait is now for a scene
+      // nobody is looking at, and letting it fire would advance them a second time.
       clearTimeout(this._noAudioHold)
+      clearTimeout(this._exitTimer)
       if (!a) return
       try {
         a.pause()
@@ -1578,12 +1588,36 @@ Alpine.data('lessonGame', (lesson) => ({
     },
 
     _advanceFromMap (index) {
-      this._teardownStageScene()
-      this._advanceScene(index)
+      // Exits BEFORE the teardown: tearing the stage down first removes the very layers that are
+      // supposed to be leaving, so the teacher's Build Out would never be seen on a map scene.
+      this._afterExits(() => {
+        this._teardownStageScene()
+        this._advanceSceneNow(index)
+      })
     },
 
-    // Advance to the next queued scene, or end the run.
+    /**
+     * Let this scene's layers leave, then carry on.
+     *
+     * Runs `done` immediately when nothing is animating out, so an undecorated lesson keeps its
+     * current pacing exactly. The wait is capped: a teacher can set a 10s delay on a layer, and a
+     * class should not sit looking at a finished scene for that long because one icon is late.
+     */
+    _afterExits (done) {
+      let wait = 0
+      try { wait = this._artLayer?.playExits?.() || 0 } catch (_) { wait = 0 }
+
+      clearTimeout(this._exitTimer)
+      if (wait <= 0) { done(); return }
+      this._exitTimer = setTimeout(done, Math.min(wait, MAX_EXIT_WAIT_MS))
+    },
+
+    // Advance to the next queued scene, or end the run — after the layers have left.
     _advanceScene (index) {
+      this._afterExits(() => this._advanceSceneNow(index))
+    },
+
+    _advanceSceneNow (index) {
       const next = index + 1
       if (next < _sceneQueue.length) {
         this._sceneIndex = next
