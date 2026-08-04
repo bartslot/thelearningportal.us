@@ -240,6 +240,56 @@ export class ArtworkOverlay {
   }
 
   /**
+   * Set one property on one layer and repaint it, without a server round-trip.
+   *
+   * The Format panel saves on `change`, which for a colour picker means "when the picker closes"
+   * and for a slider means "on release" — so dragging a hue or a slider showed nothing until the
+   * teacher let go. This is the live half: the canvas follows the drag, and `change` still
+   * persists the final value. Nothing is saved here, so an abandoned drag leaves no trace.
+   *
+   * Deliberately NOT a re-render: that would rebuild the nodes and drop the selection, the chrome
+   * and any drag in progress.
+   */
+  setLayerProp(assetId, key, value) {
+    const item = this._layers.find(l => String(l.asset_id) === String(assetId))
+    const node = item && this._nodeEl(item)
+    if (!item || !node) return
+
+    const NUMERIC = ['x', 'y', 'scale', 'height', 'opacity', 'blur', 'white_key', 'depth']
+    item[key] = NUMERIC.includes(key) ? Number(value) : (key === 'grayscale' ? !!value : value)
+
+    switch (key) {
+      case 'tint':
+      case 'white_key':
+      case 'grayscale':
+      case 'blur': {
+        const img = node.querySelector('img')
+        if (img) img.style.filter = applyLayerFilter(this.host, item)
+        break
+      }
+      case 'opacity': {
+        const target = node.querySelector('img') || node.querySelector('iframe')
+        if (target) target.style.opacity = String(Math.max(0.05, item.opacity))
+        break
+      }
+      case 'blend':
+        node.style.mixBlendMode = item.blend && item.blend !== 'normal' ? item.blend : ''
+        break
+      case 'scale':
+      case 'height':
+        node.style.height = `${this._heightPct(item)}%`
+        this._syncChrome(item)
+        break
+      case 'x':
+      case 'y':
+        node.style.left = `${item.x}%`
+        node.style.top = `${item.y}%`
+        this._syncChrome(item)
+        break
+    }
+  }
+
+  /**
    * Parallax drift for the editor preview: offset each layer by its depth × the camera pan,
    * synced to the same progress the background uses. progress 0 = rest (layer at its x/y).
    * The layer being dragged is skipped so editing isn't fought. progress≈0 resets to base.

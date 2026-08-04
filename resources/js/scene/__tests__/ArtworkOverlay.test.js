@@ -218,3 +218,64 @@ describe('ArtworkOverlay — pinned to the map', () => {
   })
 })
 
+
+// The Format panel saves on `change` — which for a colour picker means "when the picker closes"
+// and for a slider means "on release". These keep the canvas following the drag itself.
+describe('ArtworkOverlay — live preview while dragging a control', () => {
+  const node = (el, id = 'art_1') => el.querySelector(`[data-layer-id="${id}"]`)
+
+  it('repaints the tint without waiting for the picker to close', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer({ white_key: 0.04, tint: '#ff0000' })])
+
+    overlay.setLayerProp(1, 'tint', '#00ff00')
+
+    expect(el.querySelector('filter').innerHTML).toContain('#00ff00')
+  })
+
+  it('applies a blend change immediately', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer()])
+
+    overlay.setLayerProp(1, 'blend', 'multiply')
+    expect(node(el).style.mixBlendMode).toBe('multiply')
+
+    overlay.setLayerProp(1, 'blend', 'normal')
+    expect(node(el).style.mixBlendMode).toBe('')
+  })
+
+  it('moves and resizes live, keeping the chrome on the layer', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer()])
+
+    overlay.setLayerProp(1, 'x', 20)
+    overlay.setLayerProp(1, 'scale', 2)
+
+    expect(node(el).style.left).toBe('20%')
+    expect(node(el).style.height).toBe('80%')   // height 40 × scale 2
+  })
+
+  // It previews only. Persisting is the panel's `change` handler, so letting go of a control
+  // without committing must not have written anything.
+  it('never saves — that is the change handler is job', () => {
+    const el = host()
+    const saved = []
+    const overlay = new ArtworkOverlay(el, { onChange: (id, t) => saved.push([id, t]) })
+    overlay.setLayers([layer()])
+
+    overlay.setLayerProp(1, 'x', 20)
+
+    expect(saved).toHaveLength(0)
+  })
+
+  it('ignores a layer that is not on the scene', () => {
+    const el = host()
+    const overlay = new ArtworkOverlay(el)
+    overlay.setLayers([layer()])
+
+    expect(() => overlay.setLayerProp(999, 'tint', '#000000')).not.toThrow()
+  })
+})

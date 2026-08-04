@@ -75,7 +75,7 @@
     <div class="flex items-center gap-2">
         <img src="{{ $layer['url'] }}" alt="{{ $layer['title'] ?? '' }}"
              class="h-9 w-9 shrink-0 rounded bg-base-100 object-contain" />
-        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Clipart') }}</h3>
+        <h3 class="min-w-0 flex-1 truncate font-semibold text-amber-300">{{ $layer['title'] ?? __('Icon') }}</h3>
         <button type="button" wire:click="detachArtwork({{ $aid }})"
                 class="btn btn-ghost btn-xs btn-square text-slate-500 hover:text-rose-400"
                 aria-label="{{ __('Remove layer') }}">
@@ -102,6 +102,7 @@
             <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ $label }}</span>
             <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
                    value="{{ $layer[$field] ?? $default }}"
+                   x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, '{{ $field }}', $event.target.value)"
                    wire:change="updateArtworkLayer({{ $aid }}, '{{ $field }}', $event.target.value)"
                    class="range range-xs flex-1" />
             <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ rtrim(rtrim(number_format((float) ($layer[$field] ?? $default), 2), '0'), '.') }}</span>
@@ -113,7 +114,8 @@
          scene instead of in a box on top of it. --}}
     <label class="flex items-center gap-2">
         <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Blend') }}</span>
-        <select wire:change="updateArtworkLayer({{ $aid }}, 'blend', $event.target.value)"
+        <select x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, 'blend', $event.target.value)"
+                wire:change="updateArtworkLayer({{ $aid }}, 'blend', $event.target.value)"
                 class="select select-xs select-bordered flex-1 border-slate-700 bg-slate-900 text-slate-300">
             @foreach ([
                 'normal' => __('None'),
@@ -136,6 +138,7 @@
             <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Drop white') }}</span>
             <input type="range" min="0" max="0.5" step="0.01"
                    value="{{ $layer['white_key'] ?? 0 }}"
+                   x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, 'white_key', $event.target.value)"
                    wire:change="updateArtworkLayer({{ $aid }}, 'white_key', $event.target.value)"
                    class="range range-xs flex-1" />
             <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ round(((float) ($layer['white_key'] ?? 0)) * 100) }}%</span>
@@ -144,13 +147,18 @@
         <label class="flex items-center justify-between gap-2">
             <span class="text-[11px] text-slate-300">{{ __('Grayscale') }}</span>
             <input type="checkbox" @checked($layer['grayscale'] ?? false)
+                   x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, 'grayscale', $event.target.checked)"
                    wire:change="updateArtworkLayer({{ $aid }}, 'grayscale', $event.target.checked)"
                    class="toggle toggle-sm toggle-warning shrink-0" />
         </label>
 
         <label class="flex items-center gap-2">
             <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Tint') }}</span>
+            {{-- `input` fires on every move of the hue; `change` only when the picker closes. The
+                 canvas follows the drag locally, and only the value the teacher settles on is
+                 saved — one round-trip instead of hundreds. --}}
             <input type="color" value="{{ $layer['tint'] ?? '#38bdf8' }}"
+                   x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, 'tint', $event.target.value)"
                    wire:change="updateArtworkLayer({{ $aid }}, 'tint', $event.target.value)"
                    class="h-6 w-10 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-900" />
             <button type="button" wire:click="updateArtworkLayer({{ $aid }}, 'tint', '')"
