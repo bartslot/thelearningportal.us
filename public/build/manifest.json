@@ -25,8 +25,8 @@
     "file": "assets/index-DDlvirwQ.js",
     "name": "index"
   },
-  "_layer-filters-CtZ4_t63.js": {
-    "file": "assets/layer-filters-CtZ4_t63.js",
+  "_layer-filters-Dlw3KxFY.js": {
+    "file": "assets/layer-filters-Dlw3KxFY.js",
     "name": "layer-filters"
   },
   "_map-imagery-BT2azzOK.js": {
@@ -62,7 +62,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-CYoyLZN5.css",
+    "file": "assets/app-BlijIRG7.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -71,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-DA0ffNsq.js",
+    "file": "assets/app-B5GESJW4.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-C_4S-l6I.js",
+    "file": "assets/lesson-player-lhr6zcYx.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -152,13 +152,13 @@
     ]
   },
   "resources/js/scene/ArtworkOverlay.js": {
-    "file": "assets/ArtworkOverlay-DIz_c0v3.js",
+    "file": "assets/ArtworkOverlay-viDWT9lv.js",
     "name": "ArtworkOverlay",
     "src": "resources/js/scene/ArtworkOverlay.js",
     "isDynamicEntry": true,
     "imports": [
       "_animations-gLnxhqbs.js",
-      "_layer-filters-CtZ4_t63.js",
+      "_layer-filters-Dlw3KxFY.js",
       "_easing-CafrHVyY.js"
     ]
   },
@@ -169,12 +169,12 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/ParallaxScene.js": {
-    "file": "assets/ParallaxScene-BYnzlU4-.js",
+    "file": "assets/ParallaxScene-XyCafuro.js",
     "name": "ParallaxScene",
     "src": "resources/js/scene/ParallaxScene.js",
     "isDynamicEntry": true,
     "imports": [
-      "_layer-filters-CtZ4_t63.js"
+      "_layer-filters-Dlw3KxFY.js"
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
@@ -199,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-D-_n_HKv.js",
+    "file": "assets/index-Dv23MN9W.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -213,7 +213,7 @@
       "_sfx-CmqJVBmD.js",
       "_animations-gLnxhqbs.js",
       "_easing-CafrHVyY.js",
-      "_layer-filters-CtZ4_t63.js",
+      "_layer-filters-Dlw3KxFY.js",
       "_FBXLoader-DYOGQobv.js"
     ],
     "dynamicImports": [

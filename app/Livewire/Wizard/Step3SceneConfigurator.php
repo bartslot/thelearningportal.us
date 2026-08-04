@@ -213,6 +213,8 @@ class Step3SceneConfigurator extends Component
                 // Tint reaches a line-art icon too: it floods INTO the source's alpha, which for
                 // an icon is the strokes, so it is also what rescues black ink on a night scene.
                 'white_key' => isset($l['white_key']) ? (float) $l['white_key'] : null,
+                'tint_opacity' => isset($l['tint_opacity']) ? (float) $l['tint_opacity'] : null,
+                'rotation' => isset($l['rotation']) ? (float) $l['rotation'] : null,
                 'anim_duration' => isset($l['anim_duration']) ? (int) $l['anim_duration'] : null,
                 'anim_out' => $l['anim_out'] ?? null,
                 'anim_out_delay' => isset($l['anim_out_delay']) ? (float) $l['anim_out_delay'] : null,

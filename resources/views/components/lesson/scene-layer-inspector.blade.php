@@ -94,6 +94,7 @@
             ['x', __('Horizontal'), 0, 100, 1, 50],
             ['y', __('Vertical'), 0, 100, 1, 58],
             ['scale', __('Size'), 0.2, 6, 0.05, 1.0],
+            ['rotation', __('Rotate'), -180, 180, 1, 0],
             ['opacity', __('Opacity'), 0.05, 1, 0.05, 1.0],
             ['blur', __('Blur'), 0, 2.5, 0.1, 0],
         ]
@@ -166,7 +167,15 @@
                 {{ __('No tint') }}
             </button>
         </label>
-        <p class="text-[10px] leading-tight text-slate-500">{{ __('Tint recolours what survives the white key, so drop the white first.') }}</p>
+        <label class="flex items-center gap-2">
+            <span class="w-12 shrink-0 text-[10px] uppercase tracking-wide text-slate-500">{{ __('Strength') }}</span>
+            <input type="range" min="0" max="1" step="0.05" value="{{ $layer['tint_opacity'] ?? 1 }}"
+                   x-on:input="window.__lessonArtworkLayer?.setLayerProp?.({{ $aid }}, 'tint_opacity', $event.target.value)"
+                   wire:change="updateArtworkLayer({{ $aid }}, 'tint_opacity', $event.target.value)"
+                   class="range range-xs flex-1" />
+            <span class="w-9 text-right font-mono text-[10px] text-slate-400">{{ round(((float) ($layer['tint_opacity'] ?? 1)) * 100) }}%</span>
+        </label>
+        <p class="text-[10px] leading-tight text-slate-500">{{ __('A photograph keeps its own colours until you raise the strength.') }}</p>
         {{-- A line-art icon is black ink on nothing: there is no paper to key out, so Tint alone
              is what rescues it from a night scene. It reaches the ink either way — the flood is
              composited INTO the source's alpha, which for an icon is the strokes themselves. --}}

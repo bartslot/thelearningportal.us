@@ -29,18 +29,33 @@ describe('layer colour treatment', () => {
     expect(svg.indexOf('saturate')).toBeLessThan(svg.indexOf('feComponentTransfer'))
   })
 
-  it('floods the tint through the surviving alpha, not over the whole image', () => {
-    const svg = filterMarkup({ white_key: 0.04, tint: '#38bdf8' })
+  // A DUOTONE, not a flood. Flooding the colour through the alpha painted the whole layer one
+  // flat block — a photograph is opaque everywhere, so the artwork simply vanished.
+  it('maps luminance onto the colour so the artwork keeps its detail', () => {
+    const svg = filterMarkup({ tint: '#ff0000' })
 
-    expect(svg).toContain('flood-color="#38bdf8"')
-    expect(svg).toContain('operator="in"')
-    // With a key in play the flood must ride the KEYED alpha — compositing against SourceGraphic
-    // would paint the paper back in.
-    expect(svg).not.toContain('in2="SourceGraphic"')
+    expect(svg).not.toContain('feFlood')
+    expect(svg).toContain('type="saturate" values="0"')      // to luminance first
+    expect(svg).toContain('1 0 0 0 0 0 0 0 0 0 0 0 0 0 0')   // then scaled by pure red
   })
 
-  it('tints an unkeyed layer against the source', () => {
-    expect(filterMarkup({ tint: '#ff0000' })).toContain('in2="SourceGraphic"')
+  it('keeps the keyed transparency when a tint is applied on top of it', () => {
+    const svg = filterMarkup({ white_key: 0.04, tint: '#38bdf8' })
+
+    // The alpha row from the key survives, and the tint only rewrites RGB — the alpha column of
+    // the tint matrix is left as identity, so the paper stays gone.
+    expect(svg).toContain('-0.2126 -0.7152 -0.0722 0 1')
+    expect(svg.trimEnd().endsWith('0 0 0 1 0"/>')).toBe(true)
+  })
+
+  it('blends the tint back over the original at partial strength', () => {
+    const full = filterMarkup({ tint: '#ff0000' })
+    const half = filterMarkup({ tint: '#ff0000', tint_opacity: 0.5 })
+
+    expect(full).not.toContain('arithmetic')
+    expect(half).toContain('operator="arithmetic"')
+    expect(half).toContain('k2="0.5"')
+    expect(half).toContain('k3="0.500"')
   })
 })
 

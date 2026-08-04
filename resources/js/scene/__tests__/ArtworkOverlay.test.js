@@ -231,7 +231,9 @@ describe('ArtworkOverlay — live preview while dragging a control', () => {
 
     overlay.setLayerProp(1, 'tint', '#00ff00')
 
-    expect(el.querySelector('filter').innerHTML).toContain('#00ff00')
+    // A duotone carries the colour as matrix coefficients, not as a hex literal: pure green is
+    // red 0, green 1, blue 0.
+    expect(el.querySelector('filter').innerHTML).toContain('0 0 0 0 0 0 1 0 0 0 0 0 0 0 0')
   })
 
   it('applies a blend change immediately', () => {

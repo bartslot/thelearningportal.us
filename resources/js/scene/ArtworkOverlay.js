@@ -67,9 +67,9 @@ export function layersSignature(layers) {
   return JSON.stringify((Array.isArray(layers) ? layers : []).map(l => [
     l.asset_id,
     String(l.url || (l.embed && l.embed.src) || '').split('?')[0],
-    l.x, l.y, l.scale, l.height, l.depth,
+    l.x, l.y, l.scale, l.height, l.depth, l.rotation,
     l.blur, l.opacity, l.blend,
-    l.white_key, l.grayscale, l.tint,
+    l.white_key, l.grayscale, l.tint, l.tint_opacity,
     l.anim, l.anim_delay, l.anim_ease, l.anim_duration,
     l.anim_out, l.anim_out_delay, l.anim_out_ease, l.anim_out_duration,
     l.kind,
@@ -127,6 +127,7 @@ export class ArtworkOverlay {
         white_key: Number.isFinite(l.white_key) ? l.white_key : 0,
         grayscale: !!l.grayscale,
         tint: l.tint || null,
+        tint_opacity: Number.isFinite(l.tint_opacity) ? l.tint_opacity : 1,
         // Animate tab: how this layer arrives, after how long, on which curve.
         anim: l.anim || 'none',
         anim_delay: Number.isFinite(l.anim_delay) ? l.anim_delay : 0,
@@ -137,6 +138,7 @@ export class ArtworkOverlay {
         anim_out_delay: Number.isFinite(l.anim_out_delay) ? l.anim_out_delay : 0,
         anim_out_ease: l.anim_out_ease || 'exit',
         anim_out_duration: Number.isFinite(l.anim_out_duration) ? l.anim_out_duration : 600,
+        rotation: Number.isFinite(l.rotation) ? l.rotation : 0,   // degrees, clockwise
         kind: l.kind || 'figure',
         // 'map' pins the layer to lng/lat and lets the projector place it; 'screen' (default)
         // keeps it at its x/y on the stage.
@@ -231,7 +233,11 @@ export class ArtworkOverlay {
   // The layer's *scale* is applied to the node HEIGHT, not here — so the node's border-box
   // equals the on-screen image box and the selection ring never scales with it.
   _transform(item, dx = 0, dy = 0) {
-    return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
+    // Rotation AFTER the centring translate, so the layer turns about its own middle rather than
+    // swinging around the stage origin.
+    const spin = item.rotation ? ` rotate(${item.rotation}deg)` : ''
+
+    return `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))${spin}`
   }
 
   // On-screen height of the node = base height × user scale, as a % of the stage.
@@ -255,13 +261,14 @@ export class ArtworkOverlay {
     const node = item && this._nodeEl(item)
     if (!item || !node) return
 
-    const NUMERIC = ['x', 'y', 'scale', 'height', 'opacity', 'blur', 'white_key', 'depth']
+    const NUMERIC = ['x', 'y', 'scale', 'height', 'opacity', 'blur', 'white_key', 'depth', 'rotation', 'tint_opacity']
     item[key] = NUMERIC.includes(key) ? Number(value) : (key === 'grayscale' ? !!value : value)
 
     switch (key) {
       case 'tint':
       case 'white_key':
       case 'grayscale':
+      case 'tint_opacity':
       case 'blur': {
         const img = node.querySelector('img')
         if (img) img.style.filter = applyLayerFilter(this.host, item)
@@ -278,6 +285,10 @@ export class ArtworkOverlay {
       case 'scale':
       case 'height':
         node.style.height = `${this._heightPct(item)}%`
+        this._syncChrome(item)
+        break
+      case 'rotation':
+        node.style.transform = this._transform(item)
         this._syncChrome(item)
         break
       case 'x':
@@ -485,6 +496,23 @@ export class ArtworkOverlay {
       transform-origin:center; box-shadow:0 0 0 2px #38bdf8; z-index:${this._zTop + 1};`
 
     const node = this._nodeEl(item)
+
+    // Rotate grip, held off the top edge on a short stem — the convention every design tool uses,
+    // and it keeps the grip clear of the corner handle it would otherwise sit on.
+    const stem = document.createElement('div')
+    stem.style.cssText = `position:absolute; left:calc(50% - 1px); top:-22px; width:2px; height:18px;
+      background:#38bdf8; pointer-events:none;`
+    chrome.appendChild(stem)
+
+    const spin = document.createElement('div')
+    spin.dataset.rotateHandle = '1'
+    spin.setAttribute('data-tooltip', 'Drag to rotate · hold Shift for 15°')
+    spin.style.cssText = `position:absolute; left:calc(50% - 6px); top:-34px; width:12px; height:12px;
+      border-radius:50%; background:#fff; border:1px solid rgba(15,23,42,0.55); cursor:grab;
+      box-shadow:0 1px 3px rgba(0,0,0,0.4); touch-action:none; pointer-events:auto;`
+    chrome.appendChild(spin)
+    if (node) this._wireRotate(item, node, spin)
+
     for (const c of HANDLES) {
       const handle = document.createElement('div')
       handle.dataset.scaleHandle = '1'
@@ -598,7 +626,7 @@ export class ArtworkOverlay {
   // Drag anywhere on the layer to move it; a press that doesn't move just selects.
   _wireDrag(item, node) {
     node.addEventListener('pointerdown', (e) => {
-      if (e.target.dataset && e.target.dataset.scaleHandle) return   // corner handles resize, not drag
+      if (e.target.dataset && (e.target.dataset.scaleHandle || e.target.dataset.rotateHandle)) return   // handles resize/rotate, not drag
       this.select(artObjId(item.asset_id))
       const startX = e.clientX, startY = e.clientY
       const rect = this.host.getBoundingClientRect()
@@ -725,6 +753,46 @@ export class ArtworkOverlay {
    * camera happens to put it, so the final screen position is turned back into a lng/lat here.
    * Do that before the save and an icon dropped on a city is still on that city after a pan.
    */
+  /**
+   * Drag the grip to turn the layer about its centre.
+   *
+   * The angle is simply where the pointer is relative to the layer's middle, offset so the grip
+   * follows the hand rather than jumping to it. Shift snaps to 15°, which is how a teacher gets a
+   * clean 45° or back to level without nudging at it.
+   */
+  _wireRotate(item, node, handle) {
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation()
+      e.preventDefault()
+      this.select(artObjId(item.asset_id))
+      this._dragNode = node
+
+      const r = node.getBoundingClientRect()
+      const cx = r.left + r.width / 2
+      const cy = r.top + r.height / 2
+      const angleAt = (ev) => Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI
+      const grabbed = angleAt(e) - (item.rotation || 0)
+
+      const onMove = (ev) => {
+        let deg = angleAt(ev) - grabbed
+        if (ev.shiftKey) deg = Math.round(deg / 15) * 15
+        // Keep it in -180..180 so the saved value stays readable and the slider agrees with it.
+        item.rotation = Math.round(((deg + 540) % 360 - 180) * 10) / 10
+        node.style.transform = this._transform(item)
+        this._syncChrome(item)
+      }
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        this._dragNode = null
+        this._emit(item)
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      try { handle.setPointerCapture(e.pointerId) } catch (_) { /* synthetic pointers */ }
+    })
+  }
+
   _emit(item) {
     if (item.anchor === 'map' && this._projector) {
       const ll = this._projector.unproject(item.x, item.y)

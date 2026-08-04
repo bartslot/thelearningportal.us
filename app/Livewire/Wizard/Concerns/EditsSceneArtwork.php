@@ -348,6 +348,8 @@ trait EditsSceneArtwork
             // Colour treatment. white_key is how much of the top of the luminance range becomes
             // transparent — 0.04 is the 4% that clears scanned paper without eating light greys.
             'white_key' => [0, 0.5],
+            'tint_opacity' => [0, 1],   // how strongly the tint replaces the artwork's own colour
+            'rotation' => [-180, 180],
             // Build In / Build Out. Duration is the industry term (Keynote, After Effects, CSS),
             // and it is milliseconds here to match WAAPI rather than converting at every call.
             'anim_duration' => [100, 5000],
