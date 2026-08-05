@@ -208,6 +208,10 @@ trait EditsQuizQuestions
      */
     public function regenerateAllQuizQuestions(): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         try {
             (new \App\Jobs\GenerateLessonQuiz($this->lesson->id))
                 ->handle(app(\App\Services\OpenAiLlmService::class));
@@ -229,6 +233,10 @@ trait EditsQuizQuestions
      */
     public function generateQuizQuestion(int $index): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         if (! array_key_exists($index, $this->quizDraft)) {
             return;
         }
