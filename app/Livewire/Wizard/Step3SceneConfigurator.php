@@ -113,7 +113,14 @@ class Step3SceneConfigurator extends Component
     {
         abort_unless(auth()->user()?->canManage($lesson), 403);
         $this->lesson = $lesson;
-        $this->lesson->update(['status' => LessonStatus::Configuring, 'wizard_step' => 4]);
+        // Editing is not unpublishing. This used to set Configuring unconditionally, so a teacher
+        // who opened a PUBLISHED lesson merely to look at it took it off the air — silently, on a
+        // GET — and every student link for it stopped resolving. A live lesson comes down when the
+        // teacher says so, not when they open the editor.
+        $this->lesson->update([
+            ...($this->lesson->status === LessonStatus::Published ? [] : ['status' => LessonStatus::Configuring]),
+            'wizard_step' => 4,
+        ]);
 
         // Repair legacy lessons where two voyage scenes shared one leg (older "add leg" reused the
         // last catalog leg) — so editing one leg's destination no longer drags another's.
@@ -4201,6 +4208,10 @@ class Step3SceneConfigurator extends Component
      */
     public function summarizeScriptToList(int $sceneId): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         $scene = $this->lesson->scenes()->findOrFail($sceneId);
         $script = trim((string) $scene->script_segment);
         if ($script === '') {
@@ -4866,6 +4877,10 @@ class Step3SceneConfigurator extends Component
     #[On('scene:regenerate-paragraph')]
     public function regenerateScriptParagraph(int $sceneId, string $text, string $prompt = ''): void
     {
+        if ($this->guestDemoCannotGenerate()) {
+            return;
+        }
+
         if ($sceneId !== $this->selectedSceneId) {
             return;   // stale request from a scene we already left
         }
