@@ -7,8 +7,8 @@
  *
  *   { type: 'focus', lng: <float>, lat: <float>, label: <string> }
  *
- * A focus city reuses the map's calligraphy (Eagle Lake) style but BIGGER, with a drop
- * shadow and a small centred dot — no dark chip, no offset DOM marker. It's drawn with
+ * A focus city reuses the map's calligraphy (Eagle Lake) style but BIGGER, with a small centred
+ * dot — no dark chip, no offset DOM marker. It's drawn with
  * native MapLibre symbol/circle layers (a GeoJSON source `focus-src`), so it aligns to the
  * point exactly and the host can suppress the normal duplicate label for that city.
  *
@@ -19,16 +19,16 @@
  *   anno.beginAddFocus(); anno.update(newArray); anno.getFocusNames(); anno.destroy()
  */
 
+import { placeLabelLayout, placeLabelPaint, PLACE_LABEL } from './map-place-label.js'
+
 // Focus-city styling. Kept as constants so the calligraphy look stays consistent and tweakable.
 const FOCUS_SRC = 'focus-src'
-const FOCUS_SHADOW_LAYER = 'focus-shadow'
 const FOCUS_LABEL_LAYER = 'focus-label'
 const FOCUS_DOT_LAYER = 'focus-dot'
 // Same Tolkien-style calligraphy as the map's city labels. It is the STARTING hand only: the host
 // map re-fonts these two layers per style (lesson-map.js applyStyle), so Satellite and Night get
 // the modern sans instead.
 const FOCUS_FONT = ['Eagle Lake']
-const FOCUS_SHADOW_COLOR = '#1c140b'     // near-black ink, offset = drop shadow
 const FOCUS_LABEL_COLOR = '#7a1f12'      // deep historical red
 const FOCUS_HALO_COLOR = '#f3ead6'       // parchment halo
 const FOCUS_DOT_RING = '#f3ead6'         // parchment ring around the dot
@@ -37,7 +37,17 @@ const FOCUS_LABEL_PLACEHOLDER = 'New place'
 const LABEL_MAX_LENGTH = 80
 
 // Zoom-interpolated label size — bigger than the normal city label so the focus city reads as primary.
-const FOCUS_TEXT_SIZE = ['interpolate', ['linear'], ['zoom'], 2, 15, 6, 22]
+// Annotations are read from the back of a classroom, but they are notes ON a map, not headlines
+// over it: at the old 13–20 four of them covered the province they were describing. Small enough to
+// sit inside the coastline they belong to, large enough to project.
+const FOCUS_TEXT_SIZE = PLACE_LABEL.size
+// The note under a place name — always the app sans, whatever hand the map is written in. A place
+// is a NAME and gets the map's own lettering; what happened there is an annotation, and annotations
+// are set in type. On the drawn atlases that reads as a caption pencilled under a hand-written
+// name; it also keeps the small line legible, where calligraphy at 8px turns to mush.
+const NOTE_FONT = ['inter']
+const NOTE_SCALE = 0.78
+
 // Zoom-interpolated dot radius — a small centred marker, not the old oversized DOM dot.
 const FOCUS_DOT_RADIUS = ['interpolate', ['linear'], ['zoom'], 2, 3, 6, 5]
 
@@ -46,7 +56,9 @@ const FOCUS_DOT_RADIUS = ['interpolate', ['linear'], ['zoom'], 2, 3, 6, 5]
  * (historical name big, "(modern)" smaller) — otherwise just the single label.
  * @returns {Array} a MapLibre `text-field` expression
  */
-const focusTextField = () => ['case',
+const NOTE_SEPARATOR = ' — '
+
+const focusTextField = (font = FOCUS_FONT) => ['case',
   ['has', 'historical'],
   ['format',
     ['get', 'historical'], { 'font-scale': 1 },
@@ -54,8 +66,36 @@ const focusTextField = () => ['case',
     ['get', 'label'], {},
     ')', { 'font-scale': 0.72 },
   ],
+  // "Leiden — relieved by flood, 1574" is two different things: a PLACE, and a note about it. Set
+  // as one run of text they carry equal weight, so four annotations read as four paragraphs and the
+  // map fills with prose. Split at the dash: the place name keeps full size and the note drops
+  // behind it. The class scans four names; the detail is there when they look closer — and the
+  // smaller second line is also what lets four labels fit around a crowded Holland at all.
+  ['>', ['index-of', NOTE_SEPARATOR, ['get', 'label']], 0],
+  ['format',
+    ['slice', ['get', 'label'], 0, ['index-of', NOTE_SEPARATOR, ['get', 'label']]],
+    { 'font-scale': 1, 'text-font': ['literal', font] },
+    '\n', {},
+    ['slice', ['get', 'label'], ['+', ['index-of', NOTE_SEPARATOR, ['get', 'label']], 3]],
+    { 'font-scale': NOTE_SCALE, 'text-font': ['literal', NOTE_FONT] },
+  ],
   ['get', 'label'],
 ]
+
+/**
+ * A focus label is a place label like any other — the SHARED one (map-place-label.js): a light pill
+ * with dark ink, the same object the voyage itinerary pins. It used to be deep-red calligraphy with
+ * a parchment halo, which meant a teacher met three different-looking labels across three screens
+ * that all mean "this place, named".
+ *
+ * What stays local to focus cities is what is written (place + note) and who wins when the map is
+ * crowded (a capital outranks an ordinary stop).
+ */
+export const focusLabelLayout = (font = FOCUS_FONT) => placeLabelLayout({
+  font,
+  textField: focusTextField(font),
+  sortKey: ['case', ['boolean', ['get', 'capital'], false], 0, 1],
+})
 
 /**
  * Coerce one focus annotation into a clean shape; returns null for anything malformed.
@@ -123,46 +163,19 @@ export function renderAnnotations (map, annotations, { editable = false, onChang
     if (typeof onFocusNames === 'function') onFocusNames(focusNames.slice())
   }
 
-  // Add the three focus layers ONCE (guarded). `focus-shadow` is the offset dark copy (drop
-  // shadow), `focus-label` the deep-red calligraphy on top, `focus-dot` a small centred marker
+  // Add the two focus layers ONCE (guarded): `focus-label` is the name, `focus-dot` a small centred
+  // marker
   // (circle layers auto-centre on the point, which fixes the old DOM-dot misalignment).
   const ensureLayers = () => {
     if (!map.getSource(FOCUS_SRC)) {
       map.addSource(FOCUS_SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
     }
 
-    if (!map.getLayer(FOCUS_SHADOW_LAYER)) {
-      map.addLayer({
-        id: FOCUS_SHADOW_LAYER, type: 'symbol', source: FOCUS_SRC,
-        layout: {
-          'text-field': focusTextField(),
-          'text-font': FOCUS_FONT,
-          'text-size': FOCUS_TEXT_SIZE,
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-        },
-        paint: {
-          'text-color': FOCUS_SHADOW_COLOR,
-          'text-translate': [1.6, 1.6],
-        },
-      })
-    }
-
     if (!map.getLayer(FOCUS_LABEL_LAYER)) {
       map.addLayer({
         id: FOCUS_LABEL_LAYER, type: 'symbol', source: FOCUS_SRC,
-        layout: {
-          'text-field': focusTextField(),
-          'text-font': FOCUS_FONT,
-          'text-size': FOCUS_TEXT_SIZE,
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-        },
-        paint: {
-          'text-color': FOCUS_LABEL_COLOR,
-          'text-halo-color': FOCUS_HALO_COLOR,
-          'text-halo-width': 1.6,
-        },
+        layout: focusLabelLayout(),
+        paint: placeLabelPaint({ color: FOCUS_LABEL_COLOR, halo: FOCUS_HALO_COLOR }),
       })
     }
 
@@ -233,7 +246,7 @@ export function renderAnnotations (map, annotations, { editable = false, onChang
 
     /** Remove the focus layers + source (call before discarding the map). */
     destroy () {
-      [FOCUS_DOT_LAYER, FOCUS_LABEL_LAYER, FOCUS_SHADOW_LAYER].forEach((id) => {
+      [FOCUS_DOT_LAYER, FOCUS_LABEL_LAYER].forEach((id) => {
         try { if (map.getLayer(id)) map.removeLayer(id) } catch (_) {}
       })
       try { if (map.getSource(FOCUS_SRC)) map.removeSource(FOCUS_SRC) } catch (_) {}

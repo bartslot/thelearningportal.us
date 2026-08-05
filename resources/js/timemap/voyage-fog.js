@@ -36,6 +36,43 @@ const FEATHER = [
 // frame so Pacific/antimeridian voyages, e.g. Tonga ≈ 184.8°E, stay contiguous).
 const boxRing = (b) => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]];
 
+/**
+ * Bring a polygon back into the route's unwrapped longitude frame.
+ *
+ * Everything here lives in that frame (see boxRing) — but turf does not. turfBuffer projects
+ * through a wrapped [-180,180] frame, so a corridor sailed past the antimeridian comes back on the
+ * far side of the world from the route that made it: Tasman's leg to Tonga (184.8°E) buffers to
+ * -175.2°, the difference then cuts its hole half a globe away, and the ship sits under intact fog
+ * — a black void where the Pacific should be. Map-queried coastlines arrive wrapped for the same
+ * reason.
+ *
+ * Each ring is walked in order, every point placed in the same 360° window as the one before it, so
+ * a ring that crosses the seam mid-way stays contiguous instead of folding in half. The first point
+ * is seeded next to `lng0` (the route's own centre). A no-op on geometry that is already in frame,
+ * which is why it is safe to run over authored rings too.
+ */
+export const unwrapTo = (feature, lng0) => {
+  if (!feature || !Number.isFinite(lng0)) return feature;
+  const g = feature.geometry;
+  if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) return feature;
+  const unwrapRing = (ring) => {
+    let prev = null;
+    return ring.map((pos) => {
+      const lng = pos[0] + 360 * Math.round(((prev === null ? lng0 : prev) - pos[0]) / 360);
+      prev = lng;
+      return [lng, pos[1]];
+    });
+  };
+  const unwrapPoly = (poly) => poly.map(unwrapRing);
+  const coordinates = g.type === 'MultiPolygon' ? g.coordinates.map(unwrapPoly) : unwrapPoly(g.coordinates);
+  return { ...feature, geometry: { ...g, coordinates } };
+};
+
+/** Mean longitude of a set of [lng,lat] positions — the frame every reveal is seeded into. */
+const meanLng = (positions) => (positions.length
+  ? positions.reduce((sum, p) => sum + p[0], 0) / positions.length
+  : 0);
+
 export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, auto = false, knownBoxes = [], worldBox = null }) {
   // Always build the layer — even with zero regions — so a teacher can paint fog from scratch (or
   // after erasing everything) and setRegions() has a live source to update. Regions now come from
@@ -101,10 +138,20 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
     try { landfallReveals = landfallReveals ? (turfUnion(featureCollection([landfallReveals, poly])) || landfallReveals) : poly; } catch (_) { /* keep prior */ }
   };
 
+  // The frame every reveal is unwrapped into: the sailed route's own centre longitude. Seeded from
+  // the full route (f = 1) so it does not drift as the corridor grows leg by leg.
+  let routeLng0 = null;
+  const routeFrame = () => {
+    if (routeLng0 === null) routeLng0 = meanLng(corridorLine(1).geometry.coordinates);
+    return routeLng0;
+  };
+
   const fogAt = (f) => {
     let revealed = null;
     try {
-      revealed = turfBuffer(corridorLine(f), CORRIDOR_KM, { units: 'kilometers' });
+      const line = corridorLine(f);
+      // …then back into the route's frame: turfBuffer wraps at the antimeridian (see unwrapTo).
+      revealed = unwrapTo(turfBuffer(line, CORRIDOR_KM, { units: 'kilometers' }), meanLng(line.geometry.coordinates));
     } catch (_) { /* fall through — no reveal is safer than no fog */ }
     if (landfallReveals) {
       try { revealed = revealed ? turfUnion(featureCollection([revealed, landfallReveals])) : landfallReveals; } catch (_) { /* keep corridor only */ }
@@ -180,6 +227,9 @@ export function addVoyageFog(map, { unknown, samplePoint, beforeId, waterColor, 
         let poly = turfPolygon([closed]);
         try { poly = turfSimplify(poly, { tolerance: 0.03, highQuality: false }) || poly; } catch (_) { /* use full ring */ }
         try { poly = rewind(poly, { reverse: false }) || poly; } catch (_) { /* winding as-is */ }
+        // A coastline queried from the map is wrapped to [-180,180]; the fog is not. Without this a
+        // reached Pacific island un-fogs a patch of empty ocean on the other side of the world.
+        poly = unwrapTo(poly, routeFrame());
         addLandfall(poly);
         current = fogAt(lastF < 0 ? 0 : lastF);
         const src = map.getSource(FOG_SRC);

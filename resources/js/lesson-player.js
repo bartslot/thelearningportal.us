@@ -18,6 +18,7 @@ import QRCode from 'qrcode'
 import { resolveAnchorTime, pickShotIndex } from './scene/shot-sync.js'
 import { renderGallery } from './gallery-scene.js'
 import { isTopAnchored, normalizeFit, PORTRAIT_TOP_CSS } from './scene/background-fit.js'
+import { mountEmbedBg } from './scene/embed-bg.js'
 import { sameOriginMediaUrl } from './media-url.js'
 import { sceneTransitionFrames, easingBezier, EASINGS } from './scene/animations.js'
 
@@ -148,6 +149,13 @@ Alpine.data('lessonGame', (lesson) => ({
     canResumeAfterGame: false,  // shows the "Continue the lesson" button on the TIME_UP screen
     lesson: lesson,             // exposed to templates (title screen meta, etc.)
     prevPhase: null,            // phase before INTEL_DROP, to return to
+
+    // Can the lesson start yet? Narration is still being made for a fresh lesson, but a scene that
+    // carries itself — a map, a voyage leg, a gallery, a film — needs no audio to be playable.
+    get canStart () {
+      return !!(lesson.audio_url || (lesson.scenes || []).some(s =>
+        s.audio_url || ['map', 'voyage', 'gallery', 'video'].includes(s.kind)))
+    },
 
     // Location/Year overlay
     lessonYear:     '',
@@ -545,48 +553,18 @@ Alpine.data('lessonGame', (lesson) => ({
     // Per-scene motion settings, set by _playScene before each _showFlatScene call.
     _kbAnimated: true,
     _kbNamedDirection: null,
-    _embedBg: null,   // Sketchfab-3D / video iframe used as a scene background
-    _embedRO: null,   // ResizeObserver keeping a 'cover' video sized to the stage
+    _embedBg: null,   // mounted Sketchfab-3D / video background (see scene/embed-bg.js)
 
     _hideEmbedBg () {
-      if (this._embedRO) { try { this._embedRO.disconnect() } catch (_) { /* gone */ } this._embedRO = null }
-      if (this._embedBg) { this._embedBg.remove(); this._embedBg = null }
+      if (this._embedBg) { this._embedBg.destroy(); this._embedBg = null }
     },
 
     // A Sketchfab 3D model or a video (YouTube/Vimeo/…) as the full-bleed scene background.
     _showEmbedBg (embed) {
       const bg = document.getElementById('background-layer')
-      if (!bg || !embed || !embed.src) return
+      if (!bg) return
       this._hideEmbedBg()
-      const wrap = document.createElement('div')
-      wrap.id = 'lesson-embed-bg'
-      wrap.className = 'absolute inset-0 overflow-hidden'
-      wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;z-index:1;'
-      const iframe = document.createElement('iframe')
-      iframe.src = embed.src
-      iframe.title = embed.kind === 'sketchfab' ? '3D background' : 'Video background'
-      iframe.setAttribute('allow', 'autoplay; fullscreen; xr-spatial-tracking; encrypted-media; picture-in-picture')
-      iframe.setAttribute('allowfullscreen', 'true')
-      iframe.style.border = '0'
-      iframe.style.position = 'absolute'
-      const coverVideo = embed.kind === 'video' && (embed.fit || 'cover') === 'cover'
-      if (!coverVideo) {
-        // Sketchfab fills; a 'fit' video letterboxes inside a full-bleed iframe.
-        iframe.style.inset = '0'; iframe.style.width = '100%'; iframe.style.height = '100%'
-      } else {
-        // Cover a 16:9 video: overflow the shorter axis + centre; keep sized on resize.
-        iframe.style.left = '50%'; iframe.style.top = '50%'; iframe.style.transform = 'translate(-50%,-50%)'
-        const fit = () => {
-          const cw = wrap.clientWidth || 1, ch = wrap.clientHeight || 1, a = 16 / 9
-          if (cw / ch > a) { iframe.style.width = cw + 'px'; iframe.style.height = (cw / a) + 'px' }
-          else { iframe.style.height = ch + 'px'; iframe.style.width = (ch * a) + 'px' }
-        }
-        fit()
-        try { this._embedRO = new ResizeObserver(fit); this._embedRO.observe(wrap) } catch (_) { /* no RO */ }
-      }
-      wrap.appendChild(iframe)
-      bg.appendChild(wrap)
-      this._embedBg = wrap
+      this._embedBg = mountEmbedBg(bg, embed)
     },
 
     _showBgImage (img, layer) {
@@ -1280,6 +1258,8 @@ Alpine.data('lessonGame', (lesson) => ({
       // Voyage tour leg / image gallery — audio-less slides driven by Next/Previous only.
       if (scene.kind === 'voyage') { this._playVoyageScene(index, scene); return }
       if (scene.kind === 'gallery') { this._playGalleryScene(index, scene); return }
+      // Video scene — the film IS the scene, so nothing times it out from under the class.
+      if (scene.kind === 'video') { this._playVideoScene(index, scene); return }
       // Game scene (quiz / strategy / debate) — may or may not have a narrated intro.
       if (scene.kind === 'game') { this._playGameScene(index, scene); return }
 
@@ -1554,6 +1534,16 @@ Alpine.data('lessonGame', (lesson) => ({
       stage.style.display = 'block'
       stage.innerHTML = ''
       _galleryInstance = renderGallery(stage, cfg)
+      this.showMapContinue = true
+    },
+
+    // A whole scene that is one film. The embed is already full-bleed on the stage (see the
+    // bg_embed block in _playScene), so all that is left is to stop any narration still running
+    // and hand the pacing to the class: a video runs as long as it runs, and Continue moves on.
+    _playVideoScene (index, scene) {
+      if (this._audio && !this._audio.paused) { this._audio.pause(); this.audioPlaying = false }
+      this._teardownStageScene()   // a map/gallery stage from the scene before would cover the film
+      if (!scene.config?.bg_embed?.src) { this._showFlatColor(scene.background_color) }
       this.showMapContinue = true
     },
 

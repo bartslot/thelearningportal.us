@@ -6,6 +6,7 @@ import { midpointAlong, nearestPointOnPolyline, splitByWaypoints } from './timem
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { prefetchRouteTiles } from './timemap/tile-prefetch.js';
+import { PLACE_LABEL } from './map-place-label.js';
 import { SATELLITE_SOURCE, DEM_SOURCE } from './map-imagery.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
 import { mapTextProjector } from './map-text-projector.js';
@@ -1441,8 +1442,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       // Numbered dot + name, so the class can read the itinerary in order.
       pin.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-          ${s.name ? `<span style="white-space:nowrap;font-size:11px;font-weight:600;color:#0f172a;
-              background:rgba(255,255,255,0.88);border-radius:9999px;padding:1px 7px;
+          ${s.name ? `<span style="white-space:nowrap;font-size:11px;font-weight:${PLACE_LABEL.weight};color:${PLACE_LABEL.ink};
+              background:${PLACE_LABEL.fill};border-radius:9999px;padding:${PLACE_LABEL.padY}px ${PLACE_LABEL.padX}px;
               box-shadow:0 1px 3px rgba(0,0,0,0.25)"></span>` : ''}
           ${numbers[i] === null ? '' : `<span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;
               border-radius:9999px;font-size:10px;font-weight:700;color:#fff;

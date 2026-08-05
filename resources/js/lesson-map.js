@@ -14,7 +14,8 @@ import { addMountainLayer } from './map-mountains.js'
 import { addForestLayer } from './map-forests.js'
 import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
-import { renderAnnotations } from './map-annotations.js'
+import { renderAnnotations, focusLabelLayout } from './map-annotations.js'
+import { placeLabelLayout, placeLabelPaint } from './map-place-label.js'
 import { mapTextProjector } from './map-text-projector.js'
 import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
 import { boxView, openingView } from './map-view.js'
@@ -40,17 +41,17 @@ const PALETTE = {
 const CALLIGRAPHY_FONT = ['Eagle Lake']
 const MODERN_FONT = ['inter']
 // Every label layer whose hand follows the style (the atlas's own labels + the teacher's).
-const LABEL_LAYERS = ['city-labels', 'hcity-label', 'lesson-labels', 'focus-label', 'focus-shadow']
+const LABEL_LAYERS = ['city-labels', 'hcity-label', 'lesson-labels', 'focus-label']
 
 // Focus cities (the teacher's own pins) per style. They used to be deep-red ink on a thick
 // parchment halo in every style, which shouted — a cream slab behind red lettering, laid over
 // satellite photography or a night ground it had nothing to do with. They stay primary through
-// size and their dot instead: the ink and halo come from the ground they sit on, the halo is
-// thinner, and the drop shadow is a hint rather than a second copy of the word (`shadow` is its
-// opacity; on the dark Night ground a dark shadow does nothing, so it is off).
-const FOCUS_INK = { color: '#7a1f12', haloWidth: 1, shadow: 0.3 }   // historical red on parchment
-const FOCUS_PHOTO = { color: '#fbe9dd', halo: 'rgba(12,9,6,0.55)', haloWidth: 1.2, shadow: 0.4 }
-const FOCUS_NIGHT = { color: '#f0b3a5', halo: '#10151f', haloWidth: 1, shadow: 0 }
+// size and their dot instead: the ink and halo come from the ground they sit on. Contrast is the
+// halo's job alone now — the offset dark copy that used to sit behind each word is gone, because a
+// word cannot collide-avoid against a second copy of itself (see map-annotations.js).
+const FOCUS_INK = { color: '#7a1f12', haloWidth: 1 }   // historical red on parchment
+const FOCUS_PHOTO = { color: '#fbe9dd', halo: 'rgba(12,9,6,0.55)', haloWidth: 1.2 }
+const FOCUS_NIGHT = { color: '#f0b3a5', halo: '#10151f', haloWidth: 1 }
 
 // Map styles — the same five the Time-Map's palette offers (window.__applyMapStyle), reduced to
 // the layers the lesson map actually has. `terrain` hides the ink hill/forest glyphs on the dark
@@ -245,20 +246,18 @@ export function renderLessonMap (el, opts = {}) {
         // Teacher-authored place labels — above the atlas labels, same Tolkien calligraphy but
         // bolder (these are the point of a voyage map). Coloured by applyStyle().
         {
+          // A landfall name is a place label like the focus cities and the itinerary's own pins —
+          // the same pill, from the same module. It keeps `allow-overlap`, though: on a voyage the
+          // landfall name IS the scene, and one dropped mid-sail would leave the ship arriving
+          // nowhere in particular.
           id: 'lesson-labels', type: 'symbol', source: 'lesson-labels',
           layout: {
-            'text-field': ['get', 'name'],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 12, 6, 17],
-            'text-font': ['Eagle Lake'],
-            'text-anchor': 'center',
-            'text-letter-spacing': 0.03,
-            'text-allow-overlap': true,   // it's THE point of a voyage map — never let it collide away
+            ...placeLabelLayout({ font: ['inter'], textField: ['get', 'name'] }),
+            'text-allow-overlap': true,
             'text-ignore-placement': true,
           },
           paint: {
-            'text-color': PALETTE.city,
-            'text-halo-color': PALETTE.cityHalo,
-            'text-halo-width': 2,
+            ...placeLabelPaint(),
             // Hidden until "arrived at" (feature-state shown), then fades in.
             'text-opacity': ['case', ['boolean', ['feature-state', 'shown'], false], 1, 0],
             'text-opacity-transition': { duration: 650, delay: 0 },
@@ -649,12 +648,19 @@ export function renderLessonMap (el, opts = {}) {
     // last two layers are added later, hence the getLayer guard inside `font`.
     const font = (layer) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'text-font', s.font || CALLIGRAPHY_FONT) } catch (_) {} } }
     LABEL_LAYERS.forEach(font)
-    // Focus cities: ink and halo from the ground they sit on, halo thinner, shadow a hint.
+    // A focus label writes the PLACE in the map's hand and its note in the app sans, so the hand is
+    // baked into the text-field's own sections, not just the layer font — re-set it with the style.
+    if (map.getLayer('focus-label')) {
+      try { map.setLayoutProperty('focus-label', 'text-field', focusLabelLayout(s.font || CALLIGRAPHY_FONT)['text-field']) } catch (_) {}
+    }
+    // Focus cities: ink and halo from the ground they sit on. The halo does the work the offset
+    // shadow copy used to do — that copy is gone, because two copies of a word collide with each
+    // other and forced collision detection off for the whole layer (see map-annotations).
     const f = s.focus || FOCUS_INK
     paint('focus-label', 'text-color', f.color)
     paint('focus-label', 'text-halo-color', f.halo || s.halo)
-    paint('focus-label', 'text-halo-width', f.haloWidth)
-    paint('focus-shadow', 'text-opacity', f.shadow)
+    paint('focus-label', 'text-halo-width', f.haloWidth + 0.6)
+    paint('focus-label', 'text-halo-blur', 0.4)
     // Ink hill/forest glyphs are dark drawings — hide them on the dark Night ground.
     for (const t of ['land-scatter', 'forests', 'mountains', 'volcanoes']) {
       if (map.getLayer(t)) { try { map.setLayoutProperty(t, 'visibility', s.terrain ? 'visible' : 'none') } catch (_) {} }
