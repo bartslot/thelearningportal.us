@@ -47,8 +47,8 @@
     "file": "assets/preload-helper-DIdkKO6w.js",
     "name": "preload-helper"
   },
-  "_sfx-CmqJVBmD.js": {
-    "file": "assets/sfx-CmqJVBmD.js",
+  "_sfx-CaxChlpJ.js": {
+    "file": "assets/sfx-CaxChlpJ.js",
     "name": "sfx"
   },
   "_voyages-CO9zikju.js": {
@@ -62,7 +62,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BlijIRG7.css",
+    "file": "assets/app-Dcsnc3ER.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -71,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-B5GESJW4.js",
+    "file": "assets/app-q2WhZOGf.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -117,7 +117,7 @@
     "isEntry": true
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-BNI_VtEo.js",
+    "file": "assets/lesson-map-DOw8TB1R.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-lhr6zcYx.js",
+    "file": "assets/lesson-player-T1clgzBC.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -136,7 +136,7 @@
       "_preload-helper-DIdkKO6w.js",
       "__commonjsHelpers-CqkleIqs.js",
       "resources/js/gallery-scene.js",
-      "_sfx-CmqJVBmD.js",
+      "_sfx-CaxChlpJ.js",
       "_animations-gLnxhqbs.js",
       "_easing-CafrHVyY.js"
     ],
@@ -178,12 +178,12 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-    "file": "assets/QuizOverlay-DMlBfN5R.js",
+    "file": "assets/QuizOverlay-DCZBAad4.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true,
     "imports": [
-      "_sfx-CmqJVBmD.js"
+      "_sfx-CaxChlpJ.js"
     ]
   },
   "resources/js/scene/StoryGameEngine.js": {
@@ -199,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-Dv23MN9W.js",
+    "file": "assets/index-CM4cEQP7.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -210,7 +210,7 @@
       "resources/js/scene/ArtworkOverlay.js",
       "_preload-helper-DIdkKO6w.js",
       "resources/js/avatar-3d.js",
-      "_sfx-CmqJVBmD.js",
+      "_sfx-CaxChlpJ.js",
       "_animations-gLnxhqbs.js",
       "_easing-CafrHVyY.js",
       "_layer-filters-Dlw3KxFY.js",
@@ -249,7 +249,7 @@
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-D1n_LFkt.js",
+    "file": "assets/voyage-tour-DYGJXHWN.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,
