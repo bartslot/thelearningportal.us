@@ -15,6 +15,7 @@
  * Shared by the student player, wizard Preview and the Configure canvas.
  */
 import { Sfx } from './sfx.js'
+import { t } from '../i18n.js'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 // The four answer letters keep their Kahoot-style colour coding, drawn from the theme's
@@ -28,8 +29,10 @@ const LETTER_CLASSES = [
 const POINTS_CORRECT = 10
 const STREAK_BONUS = 5
 const STREAK_FROM = 3
-const PRAISE = ['Nice!', 'Great!', 'Perfect!', 'Brilliant!', 'On fire!']
-const ENCOURAGE = ['Almost!', 'Good try!', 'Keep going!']
+// Built on use, not at module load: the language dictionary is published by Blade in the page,
+// and a module-level constant would capture the English before it arrived.
+const PRAISE = () => [t('Nice!'), t('Great!'), t('Perfect!'), t('Brilliant!'), t('On fire!')]
+const ENCOURAGE = () => [t('Almost!'), t('Good try!'), t('Keep going!')]
 
 // Shared chrome. `qz-card` carries the entrance animation (app.css).
 const SCRIM = 'absolute inset-0 flex items-center justify-center bg-base-100/80 backdrop-blur-md'
@@ -147,7 +150,7 @@ export class QuizOverlay {
     veil.className = 'absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-3.5 bg-base-100/95 text-base-content'
     veil.innerHTML = `
       <div class="text-5xl">&#128064;</div>
-      <div class="text-[22px] font-extrabold">Quiz paused</div>
+      <div class="text-[22px] font-extrabold">${t('Quiz paused')}</div>
       <div class="text-[15px] text-base-content/60">Stay with the story — tap to continue.</div>`
     veil.addEventListener('click', () => veil.remove())
     this.host.firstElementChild?.appendChild(veil) || this.host.appendChild(veil)
@@ -229,10 +232,12 @@ export class QuizOverlay {
     // Feedback strip under the options: praise or encouragement + explanation.
     let feedback = ''
     if (answered) {
+      const praise = PRAISE()
+      const encourage = ENCOURAGE()
       const word = effects?.word
         ?? (wasCorrect
-          ? (q.asks_ahead ? 'You already knew this!' : PRAISE[this._index % PRAISE.length])
-          : (q.asks_ahead ? "No worries — you'll hear this later in the story!" : ENCOURAGE[this._index % ENCOURAGE.length]))
+          ? (q.asks_ahead ? t('You already knew this!') : praise[this._index % praise.length])
+          : (q.asks_ahead ? t('No worries, you will hear this later in the story!') : encourage[this._index % encourage.length]))
       feedback = `
         <div class="qz-rise mt-3.5">
           <span class="text-base font-extrabold ${wasCorrect ? 'text-success' : 'text-warning'}">${word}</span>
@@ -250,7 +255,7 @@ export class QuizOverlay {
           <div class="mb-5 text-2xl sm:text-3xl font-semibold leading-snug">${this._escape(q.question)}</div>
           ${gated ? `<div data-gate-note class="mb-2.5 flex items-center gap-2 text-[13px] text-base-content/60">
               <span class="loading loading-ring loading-xs text-primary"></span>
-              Read the question&hellip; answers unlock in <span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s</div>` : ''}
+              ${t('Read the question… answers unlock in :count', { count: `<span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s` })}</div>` : ''}
           <div class="flex flex-col gap-2.5">${optionsHtml}</div>
           ${feedback}
           <div class="mt-6 flex items-center justify-center gap-1.5">
@@ -431,13 +436,13 @@ export class QuizOverlay {
         <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">Join the leaderboard</div>
         ${this._hasClassroom ? `
         <div class="mb-2 flex justify-center gap-2">
-          <input data-class-code type="text" maxlength="8" placeholder="Class code…"
+          <input data-class-code type="text" maxlength="8" placeholder="${t('Class code…')}"
                  class="input input-bordered w-32 bg-base-300 text-center uppercase" />
         </div>` : ''}
         <div class="flex justify-center gap-2">
-          <input data-nickname type="text" maxlength="24" placeholder="Your name…"
+          <input data-nickname type="text" maxlength="24" placeholder="${t('Your name…')}"
                  class="input input-bordered w-52 bg-base-300" />
-          <button data-submit class="btn btn-primary">Submit</button>
+          <button data-submit class="btn btn-primary">${t('Submit')}</button>
         </div>
         <div data-join-error class="mt-1.5 min-h-4 text-xs text-error"></div>
       </div>` : ''
@@ -488,7 +493,7 @@ export class QuizOverlay {
       try { if (this._classCode) localStorage.setItem('lp_class_code', this._classCode) } catch { /* private mode */ }
       const nickname = (nicknameEl?.value || '').trim()
       const errorEl = this.host.querySelector('[data-join-error]')
-      if (nickname.length < 2) { if (errorEl) errorEl.textContent = 'Pick a name (at least 2 letters).'; return }
+      if (nickname.length < 2) { if (errorEl) errorEl.textContent = t('Pick a name (at least 2 letters).'); return }
       try { localStorage.setItem('lp_quiz_nickname', nickname) } catch { /* private mode */ }
       submitBtn.disabled = true
       submitBtn.textContent = '…'
@@ -512,8 +517,8 @@ export class QuizOverlay {
         submitBtn.disabled = false
         submitBtn.textContent = 'Submit'
         if (errorEl) errorEl.textContent = err?.message === 'HTTP 422'
-          ? 'Check the class code — ask your teacher.'
-          : 'Could not submit — try again.'
+          ? t('Check the class code, ask your teacher.')
+          : t('Could not submit, try again.')
       }
     }
     submitBtn?.addEventListener('click', submit)

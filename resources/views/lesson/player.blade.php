@@ -9,6 +9,7 @@
          lesson-player.js only when a lesson actually contains a map scene. --}}
     @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/lesson-player.js'])
     <x-audio-manifest />
+    <x-js-lang />
 </head>
 <body class="h-full overflow-hidden bg-[#020617]">
 
@@ -347,7 +348,7 @@
                  :class="(readingOverlay || (isPlaying && !zoneHover && !zoneFlash && !chaptersOpen)) ? 'opacity-0 pointer-events-none' : 'opacity-100'"
                  style="z-index:48">
                 <div class="pointer-events-none absolute inset-x-0 top-0 h-36 bg-linear-to-b from-black/70 to-transparent"></div>
-                <div class="relative flex items-center gap-2.5 p-4 sm:px-12">
+                <div class="relative flex items-center gap-2.5 p-3.5 sm:px-16">
                     @if ($canEdit)
                         {{-- No back arrow here on purpose. The wizard already draws one in this exact
                              corner, so the two stacked into a confusing double control. "Edit scene"
@@ -687,24 +688,24 @@
 
                     {{-- CTA --}}
                     <div class="mt-6 sm:mt-8">
-                        <template x-if="lesson.audio_url || (lesson.scenes && lesson.scenes.some(s => s.audio_url || s.kind === 'map' || s.kind === 'voyage' || s.kind === 'gallery'))">
-                            <button
+                        <template x-if="canStart">
+                            <button role="button"
                                 @click="startLesson()"
-                                class="group flex items-center gap-3 rounded-full bg-amber-500 px-6 py-3 sm:px-8 sm:py-3.5
+                                class="group flex items-center gap-3 rounded-full bg-white px-6 py-3 sm:px-8 sm:py-3.5
                                        text-sm sm:text-base font-bold text-slate-950
-                                       shadow-[0_0_48px_rgba(245,158,11,0.35)]
                                        transition duration-150 hover:bg-amber-400 hover:shadow-[0_0_64px_rgba(245,158,11,0.5)]
                                        active:scale-95"
-                            >
-                                <svg width="21" height="23" class="w-4 h-4 fill-current text-slate-950" viewBox="0 0 21 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path fill-rule="evenodd" clip-rule="evenodd" d="M0 2.52873C0 0.608107 2.05916 -0.609418 3.74205 0.316169L19.2842 8.86436C21.0285 9.82373 21.0285 12.3301 19.2842 13.2895L3.74205 21.8377C2.05916 22.7633 0 21.5457 0 19.6251V2.52873Z"/>
+                            > 
+                                <svg width="16" height="17" class="w-4 h-4 fill-none stroke-current text-slate-950" viewBox="0 0 16 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M0.75 1.87758C0.75 1.0219 1.6674 0.479469 2.41716 0.891836L13.9577 7.23916C14.7349 7.66657 14.7349 8.78322 13.9577 9.21064L2.41716 15.558C1.6674 15.9703 0.75 15.4279 0.75 14.5722V1.87758Z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
+
 
 
                                 <span>Start lesson</span>
                             </button>
                         </template>
-                        <template x-if="!lesson.audio_url && !(lesson.scenes && lesson.scenes.some(s => s.audio_url || s.kind === 'map' || s.kind === 'voyage' || s.kind === 'gallery'))">
+                        <template x-if="!canStart">
                             <div class="flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 text-sm text-slate-400">
                                 <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                                 <span>Audio generating…</span>
