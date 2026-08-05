@@ -589,7 +589,7 @@
             @if($lesson->avatar?->name || $lesson->historical_figure)
                 <div class="absolute bottom-10 right-8 sm:right-12 hidden sm:flex items-center gap-4" style="z-index:20">
                     <div class="flex flex-col items-end gap-0.5 text-right">
-                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">Narrated by</p>
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">{{ __('Narrated by') }}</p>
                         <p class="font-history text-2xl font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
                             {{ $lesson->avatar?->name ?? $lesson->historical_figure }}
                         </p>
@@ -629,7 +629,7 @@
                     <p class="font-mono font-black tracking-[0.35em] text-white uppercase"
                        style="font-size: 2.5rem;"
                        x-text="lesson.lesson_code"></p>
-                    <p class="text-xs text-white/40 tracking-widest uppercase">Scan to join the lesson</p>
+                    <p class="text-xs text-white/40 tracking-widest uppercase">{{ __('Scan to join the lesson') }}</p>
                 </div>
                 <form method="dialog" class="modal-backdrop"><button>close</button></form>
             </dialog>
@@ -702,13 +702,13 @@
 
 
 
-                                <span>Start lesson</span>
+                                <span>{{ __('Start lesson') }}</span>
                             </button>
                         </template>
                         <template x-if="!canStart">
                             <div class="flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 text-sm text-slate-400">
                                 <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                                <span>Audio generating…</span>
+                                <span>{{ __('Audio generating…') }}</span>
                             </div>
                         </template>
                     </div>
@@ -726,7 +726,7 @@
             class="absolute inset-0 flex items-center justify-center bg-slate-950/92 backdrop-blur-md pointer-events-auto px-5 py-8 overflow-y-auto"
         >
             <div class="w-full max-w-2xl rounded-3xl border border-amber-500/40 bg-slate-950/95 p-7 sm:p-9 shadow-2xl">
-                <p class="text-amber-400 text-[11px] font-semibold uppercase tracking-[0.3em] mb-3">Your Challenge</p>
+                <p class="text-amber-400 text-[11px] font-semibold uppercase tracking-[0.3em] mb-3">{{ __('Your Challenge') }}</p>
                 <h2 x-text="lesson.game_title || 'Strategy Challenge'"
                     class="font-history text-2xl sm:text-4xl font-bold text-[#E1EEF4] leading-tight mb-5 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"></h2>
                 <div x-text="lesson.game_instructions || 'Work in your teams to decide your strategy, then present it to the class.'"
@@ -744,7 +744,7 @@
                 <button @click="beginGame()"
                     class="mt-7 flex w-full items-center justify-center gap-3 rounded-full bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-[0_0_48px_rgba(245,158,11,0.35)] transition hover:bg-amber-400 active:scale-95 sm:w-auto">
                     <svg class="h-5 w-5 fill-slate-950" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    <span>Begin the challenge</span>
+                    <span>{{ __('Begin the challenge') }}</span>
                 </button>
             </div>
         </div>
@@ -791,10 +791,10 @@
                 <p class="font-history text-8xl font-bold text-amber-400 drop-shadow-[0_8px_16px_rgba(0,0,0,0.9)] animate-pulse">
                     TIME'S UP
                 </p>
-                <p class="text-slate-300 text-xl mt-4">Present your strategy to the class.</p>
+                <p class="text-slate-300 text-xl mt-4">{{ __('Present your strategy to the class.') }}</p>
                 <button @click="resumeAfterGame()" x-show="canResumeAfterGame"
                     class="mt-8 inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition hover:bg-amber-500/20 active:scale-95">
-                    <span>Continue the lesson</span>
+                    <span>{{ __('Continue the lesson') }}</span>
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                 </button>
             </div>
@@ -809,7 +809,7 @@
             class="absolute bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 pointer-events-none"
         >
             <div class="rounded-2xl border border-amber-500/40 bg-slate-900/90 backdrop-blur-sm px-6 py-4 shadow-2xl">
-                <p class="text-amber-400 text-sm font-semibold uppercase tracking-widest mb-1">New Intelligence</p>
+                <p class="text-amber-400 text-sm font-semibold uppercase tracking-widest mb-1">{{ __('New Intelligence') }}</p>
                 <p x-text="intelDropMessage" class="text-[#E1EEF4] text-base leading-relaxed"></p>
             </div>
         </div>
