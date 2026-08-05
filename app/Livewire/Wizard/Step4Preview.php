@@ -122,6 +122,9 @@ class Step4Preview extends Component
             'sceneView' => (string) ($scene->scene_view ?? 'skybox'),
             'kbAnimated' => (bool) ($scene->kb_animated ?? true),
             'kbDirection' => $scene->kb_direction,
+            // Per-scene flags the stage reads straight off the config (background focus/fit, and
+            // the video / 3D embed background).
+            'config' => $scene->config,
             // Teacher text annotations — read-only here (editing lives in Configure).
             'textsReadonly' => (array) (($scene->config ?? [])['texts'] ?? []),
             // Quiz scenes preview their questions on the canvas, same as Configure.

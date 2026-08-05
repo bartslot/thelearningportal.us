@@ -1,12 +1,13 @@
 @props(['kind' => 'narration', 'gameType' => null])
 @php
-    // narration | quiz | strategy | debate | story_game | branch | map | voyage | gallery
+    // narration | quiz | strategy | debate | story_game | branch | map | voyage | gallery | video
     $key = $kind === 'game' ? ($gameType ?? 'quiz') : $kind;
     // Per-type accent colour (the icons inherit currentColor).
     $tint = [
         'narration' => 'text-amber-300', 'quiz' => 'text-amber-300', 'strategy' => 'text-teal-300',
         'debate' => 'text-teal-300', 'story_game' => 'text-teal-300', 'branch' => 'text-teal-300',
         'map' => 'text-sky-300', 'voyage' => 'text-indigo-300', 'gallery' => 'text-violet-300',
+        'video' => 'text-indigo-300',
     ][$key] ?? 'text-slate-300';
 @endphp
 <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-base-100 ring-1 ring-slate-700/60 {{ $tint }}">
@@ -19,6 +20,7 @@
         @case('map') <x-lesson.icon-map class="h-9 w-auto opacity-90" /> @break
         @case('voyage') <x-lesson.icon-voyage class="h-9 w-auto opacity-90" /> @break
         @case('gallery') <x-lesson.icon-slideshow class="h-8 w-auto opacity-90" /> @break
+        @case('video') <x-lesson.icon-video class="h-9 w-auto opacity-90" /> @break
         @default
             {{-- Quiz — a checklist glyph (no bespoke icon supplied). --}}
             <!-- <svg class="h-8 w-8 opacity-90" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m-9 8h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg> -->

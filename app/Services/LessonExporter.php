@@ -40,6 +40,7 @@ class LessonExporter
      */
     private const COMPOSED_CONFIG_KEYS = [
         'narration' => ['image_credit', 'image_source_url', 'background_focus', 'bg_embed'],
+        'video' => ['bg_embed'],
         'gallery' => ['title', 'date_label', 'story', 'fit', 'images'],
         'map' => ['qid', 'year', 'projection', 'map_style', 'playback_mode', 'annotations'],
         'voyage' => ['voyage', 'leg', 'view', 'intro', 'stop_images', 'gallery'],
@@ -121,7 +122,9 @@ class LessonExporter
             $scene->kind === 'gallery' => $this->gallery($scene, $config),
             $scene->kind === 'map' => $this->map($scene, $config),
             $scene->kind === 'voyage' => $this->voyage($scene, $config),
-            isset($config['bg_embed']) => $this->embed($scene, $config),
+            // A video scene with no link yet still exports as a video scene — losing the slot on a
+            // rebuild would silently drop it out of the running order.
+            $scene->kind === 'video', isset($config['bg_embed']) => $this->embed($scene, $config),
             default => $this->story($scene, $config),
         };
 
@@ -222,7 +225,7 @@ class LessonExporter
     /** @return array<string,mixed> */
     private function embed(Scene $scene, array $config): array
     {
-        $embed = (array) $config['bg_embed'];
+        $embed = (array) ($config['bg_embed'] ?? []);
         $id = (string) ($embed['id'] ?? '');
 
         $spec = array_filter([

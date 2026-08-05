@@ -29,7 +29,7 @@
      :style="`left:var(--rail-w,11rem);right:var(--work-right,16rem);height:${panelH}px`">
 
     {{-- Top edge = resize handle. Drag up/down to resize; drag it small to hide. --}}
-    <div class="relative flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-t border-slate-700/60 pb-2"
+    <div class="relative flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-t border-slate-700/60 pb-1"
          x-on:pointerdown="dragStart($event)"
          x-on:pointermove.window="dragMove($event)"
          x-on:pointerup.window="dragEnd($event)"
@@ -40,7 +40,7 @@
 
     {{-- Which tab the dock is showing. Lives in $store.view alongside the panel toggles, so it
          survives a scene change (this component is rebuilt per scene) and a reload. --}}
-    <div role="tablist" class="tabs tabs-bordered tabs-sm shrink-0 justify-start px-2">
+    <div role="tablist" class="tabs tabs-boxed tabs-sm">
         <button type="button" role="tab" x-on:click="$store.view.showTab('icons')"
                 :aria-selected="$store.view.bottomTab === 'icons'"
                 :class="$store.view.bottomTab === 'icons' ? 'tab-active' : ''"
@@ -72,9 +72,13 @@
         </p>
         <button type="button" x-on:click="addNarration()"
                 class="flex items-center gap-1.5 rounded-lg border border-slate-600/70 px-3 py-1.5 text-[12px] font-medium text-slate-200 transition hover:border-amber-400 hover:text-amber-200">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+            <!-- <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"/>
+            </svg> -->
+            <svg width="21" height="20" class="h-4 w-4" viewBox="0 0 21 20" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 6H15M6 9H10.5M0.75 10.5093C0.75 12.1104 1.87341 13.504 3.45746 13.737C4.58596 13.9029 5.72724 14.0296 6.87985 14.1155C7.23004 14.1416 7.55017 14.3253 7.74496 14.6174L10.5 18.75L13.255 14.6175C13.4498 14.3253 13.7699 14.1417 14.1201 14.1156C15.2727 14.0296 16.414 13.903 17.5425 13.7371C19.1266 13.5042 20.25 12.1106 20.25 10.5095V4.49056C20.25 2.88946 19.1266 1.49583 17.5425 1.26293C15.244 0.925013 12.8926 0.75 10.5003 0.75C8.10776 0.75 5.75612 0.925044 3.45747 1.26302C1.87342 1.49593 0.75 2.88956 0.75 4.49064V10.5093Z" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
+
             {{ __('Add narration') }}
         </button>
     </div>

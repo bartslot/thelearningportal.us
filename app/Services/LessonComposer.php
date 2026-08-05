@@ -361,8 +361,8 @@ class LessonComposer
     }
 
     /**
-     * Narrated scene whose background is a Sketchfab model or a video, using the same
-     * EmbedParser the teacher-facing paste box uses.
+     * A video scene (the film IS the scene) or a narrated scene backed by a Sketchfab model,
+     * using the same EmbedParser the teacher-facing paste box uses.
      *
      * @param  array<string,mixed>  $s
      */
@@ -409,7 +409,8 @@ class LessonComposer
 
         return $lesson->scenes()->create([
             'order' => $order,
-            'kind' => 'narration',
+            // A film is its own scene type; a 3D model stays a background behind a narrated scene.
+            'kind' => $type === 'video' ? 'video' : 'narration',
             'scene_view' => 'embed',
             'location' => $s['location'] ?? null,
             'chapter_name' => $s['chapter'] ?? null,

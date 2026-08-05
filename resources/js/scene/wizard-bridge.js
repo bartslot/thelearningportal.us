@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { Avatar3DPlayer } from '../avatar-3d.js'
 import { isTopAnchored, normalizeFit, PORTRAIT_TOP_BIAS } from './background-fit.js'
+import { mountEmbedBg, embedBgSignature } from './embed-bg.js'
 
 /**
  * Push every alignment entry earlier by VISEME_LEAD_SECONDS. The avatar player
@@ -88,6 +89,15 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         // Once DB confirms the clicked tab, clear the pending guard.
         if (_pendingView && _pendingView === dbView) _pendingView = null
 
+        // Video / 3D embed background — the editor stage shows exactly what the player will show.
+        // map/voyage own their whole stage, so they skip it (mirrors lesson-player._playScene).
+        const bgEmbed = payload.config?.bg_embed
+        if (bgEmbed?.src && payload.kind !== 'map' && payload.kind !== 'voyage') {
+            showEmbedBg(bgEmbed)
+        } else {
+            hideEmbedBg()
+        }
+
         // While a tab click hasn't been confirmed by the DB yet, skip ALL Three.js
         // work — the lesson:scene:view handler already applied the correct view with
         // the correct payload. Running applyScene with a stale payload causes the
@@ -95,7 +105,15 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         if (playerReady && !_pendingView) {
             const view = dbView
             try {
-                if (view === 'slideshow') {
+                if (payload.kind === 'video') {
+                    // The film owns the stage: clear whatever the scene before left on the canvas, so
+                    // a video scene with no link yet reads as black rather than the last picture.
+                    applySlideshowCameraMode(activePlayer)
+                    await applySlideshowBackground(null, payload.sceneId ?? 0, 0, {
+                        backgroundColor: payload.backgroundColor || '#000000',
+                        isCurrent,
+                    })
+                } else if (view === 'slideshow') {
                     applySlideshowCameraMode(activePlayer)
                     const firstShot = (payload.shots && payload.shots.length) ? payload.shots[0] : null
                     await applySlideshowBackground(payload.imageUrl, payload.sceneId ?? 0, payload.duration ?? 10, {
@@ -869,6 +887,32 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
         return host
     }
 
+    // ── Embed background (Sketchfab 3D / video) ───────────────────────────────────────────
+    // The student player paints these behind the scene (lesson-player._showEmbedBg). The editor
+    // left the stage black, so a teacher who pasted a video link saw nothing where the class will
+    // see the film. Same host pattern as the parallax layer, at z-2: above the flat/parallax
+    // background, below the grain (z-3), the map preview (z-5) and the text/clipart overlays.
+    let _embedBg = null
+    let _embedSig = null
+
+    function hideEmbedBg() {
+        if (_embedBg) { _embedBg.destroy(); _embedBg = null }
+        _embedSig = null
+    }
+
+    function showEmbedBg(embed) {
+        const parent = canvasEl.parentElement
+        if (!parent) return
+        // scene:load re-fires on every 3s status poll and on every unrelated edit. Rebuilding the
+        // iframe there would restart the video every three seconds, so only a real change remounts.
+        const sig = embedBgSignature(embed)
+        if (_embedBg && sig === _embedSig) return
+        hideEmbedBg()
+        if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative'
+        _embedBg = mountEmbedBg(parent, embed, { zIndex: 2 })
+        _embedSig = _embedBg ? sig : null
+    }
+
     function destroyWizardLayers() {
         if (_wizardLayeredRaf) { cancelAnimationFrame(_wizardLayeredRaf); _wizardLayeredRaf = 0 }
         if (_wizardLayeredScene) {
@@ -1174,6 +1218,9 @@ export async function mountWizardScene({ canvasEl, overlayEl, timerEl, scenes, c
                 kbDirection: scene?.kb_direction,
                 focus: scene?.config?.background_focus,
                 fit: scene?.config?.background_fit,
+                // The whole config rides along so a video/3D background plays in Step-4 playback
+                // too — without it every scene change here tore the embed back down.
+                config: scene?.config ?? null,
                 textsReadonly: scene?.config?.texts || [],
             }),
         },

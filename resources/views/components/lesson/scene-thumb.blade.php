@@ -90,6 +90,11 @@
                 <span class="text-[9px] opacity-70 truncate max-w-[90%]">{{ $scene->location ?? '—' }}</span>
             @endif
         </div>
+    @elseif ($scene->kind === 'video')
+        <div class="w-full h-full bg-indigo-900/30 border border-indigo-500/30 flex flex-col items-center justify-center text-white gap-1">
+            <x-lesson.icon-video class="h-7 w-auto opacity-90" />
+            <span class="text-[9px] font-bold uppercase tracking-widest">{{ __('Video') }}</span>
+        </div>
     @elseif ($scene->kind === 'gallery')
         <div class="w-full h-full bg-violet-800/30 border border-violet-500/30 flex flex-col items-center justify-center text-white gap-1">
             <x-lesson.icon-slideshow class="h-7 w-7 opacity-90" />

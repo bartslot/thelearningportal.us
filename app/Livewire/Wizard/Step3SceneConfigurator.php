@@ -3263,7 +3263,9 @@ class Step3SceneConfigurator extends Component
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
         $cfg = $scene->config ?? [];
         unset($cfg['bg_embed']);
-        $scene->update(['config' => $cfg, 'scene_view' => null]);
+        // A video scene stays a video scene with its link cleared — it has no other stage to fall
+        // back to. Any other scene goes back to a plain/image background.
+        $scene->update(['config' => $cfg, 'scene_view' => $scene->kind === 'video' ? 'embed' : null]);
         $this->selectSceneInternal($scene->id);
     }
 
@@ -4326,7 +4328,9 @@ class Step3SceneConfigurator extends Component
         if ($wantsOverview) {
             $kind = 'voyage';
         }
-        $allowed = $isVoyageLesson ? ['game', 'map', 'voyage', 'gallery'] : ['game', 'map', 'gallery', 'branch'];
+        $allowed = $isVoyageLesson
+            ? ['game', 'map', 'voyage', 'gallery', 'video']
+            : ['game', 'map', 'gallery', 'branch', 'video'];
         $kind = in_array($kind, $allowed, true) ? $kind : 'narration';
         if ($wantsOverview && $kind === 'voyage') {
             $this->addVoyageOverviewScene();
@@ -4349,11 +4353,25 @@ class Step3SceneConfigurator extends Component
             'order' => $next,
             'kind' => $kind,
             'image_style' => $this->lesson->image_style,
-            // map/voyage/gallery generate nothing — their content is authored by hand — so they are
-            // born ready. Creating them 'pending' would make them permanent publish blockers: the
+            // map/voyage/gallery/video generate nothing — their content is authored by hand — so they
+            // are born ready. Creating them 'pending' would make them permanent publish blockers: the
             // publish gate demands every scene be ready, and there is no "generate" button to press.
-            'status' => in_array($kind, ['map', 'voyage', 'gallery'], true) ? 'ready' : 'pending',
+            'status' => in_array($kind, ['map', 'voyage', 'gallery', 'video'], true) ? 'ready' : 'pending',
         ];
+
+        // A video scene IS the film: the stage is the embed, so it starts black and empty and the
+        // teacher pastes the link in the inspector.
+        if ($kind === 'video') {
+            $payload += [
+                'scene_view' => 'embed',
+                'background_color' => '#000000',
+            ];
+            $scene = Scene::create($payload);
+            $this->placeSceneAfterSelected($scene, $insertAfterSceneId);
+            $this->selectSceneInternal($scene->id);
+
+            return;
+        }
 
         if ($kind === 'voyage') {
             // Append a REAL new leg to the lesson's editable voyage copy: it sails from the previous

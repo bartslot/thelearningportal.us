@@ -854,7 +854,7 @@
                  switching tabs never costs a round trip; keyed per layer so selecting a different
                  one starts on Format rather than inheriting the last layer's tab. --}}
             <div x-data="{ tab: 'format' }" wire:key="layer-tabs-{{ $al['asset_id'] ?? 0 }}" class="space-y-3">
-                <div role="tablist" class="tabs tabs-boxed tabs-xs bg-base-100/60">
+                <div role="tablist" class="tabs tabs-boxed tabs-xs">
                     <button type="button" role="tab" @click="tab = 'format'"
                             :class="tab === 'format' ? 'tab-active' : ''" class="tab">{{ __('Format') }}</button>
                     <button type="button" role="tab" @click="tab = 'animate'"
@@ -880,7 +880,7 @@
                 {{-- Same two tabs as a layer, for the same reason: what the scene looks like, and
                      how it arrives. Every scene kind gets Animate — a map or a gallery replaces the
                      scene before it just as a narration scene does. --}}
-                <div role="tablist" class="tabs tabs-boxed tabs-xs bg-base-100/60">
+                <div role="tablist" class="tabs tabs-boxed tabs-sm">
                     <button type="button" role="tab" @click="tab = 'format'"
                             :class="tab === 'format' ? 'tab-active' : ''" class="tab">{{ __('Format') }}</button>
                     <button type="button" role="tab" @click="tab = 'animate'"
@@ -908,6 +908,8 @@
                     <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" :stops="$this->voyageStops()" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
+                @elseif ($sceneModel->kind === 'video')
+                    <x-lesson.scene-inspector-video :scene="$sceneModel" />
                 @else
                     <x-lesson.scene-inspector-narration :scene="$sceneModel" />
                 @endif
@@ -2078,6 +2080,11 @@
                         class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
                     <x-lesson.scene-type-thumb kind="gallery" />
                     <span class="text-sm font-medium text-slate-200">Gallery</span>
+                </button>
+                <button type="button" wire:click="addScene('video')"
+                        class="group flex flex-col gap-2 rounded-box border border-slate-700/70 bg-base-200/60 p-2 text-left transition hover:border-amber-400">
+                    <x-lesson.scene-type-thumb kind="video" />
+                    <span class="text-sm font-medium text-slate-200">{{ __('Video') }}</span>
                 </button>
                 {{-- Branching is meaningless on a voyage lesson, whose spine is the route. --}}
                 @if (($lesson->game_type ?? null) !== 'voyage')
