@@ -109,8 +109,11 @@ const setReadingOverlayOpen = (open) => {
 };
 
 export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, style = null, relief = 0, overviewAnim = null } = {}) {
-  // Prefer the lesson's editable copy (game_config.voyage_def); fall back to the shared catalog.
-  const route = def || voyageRoutes().find((v) => v.id === voyage);
+  // Prefer the lesson's editable copy, but ONLY when it belongs to this voyage. A lesson can hold
+  // scenes from more than one voyage (Abel Tasman sailed twice), and an unguarded `def` would draw
+  // the edited route under every voyage scene — the 1644 legs rendered as the 1642 route.
+  const mine = def && (!def.id || def.id === voyage) ? def : null;
+  const route = mine || voyageRoutes().find((v) => v.id === voyage);
   const pack = TOUR_PACKS[`./timemap/${voyage}-tour.json`]?.default
     || TOUR_PACKS[`./timemap/${voyage}-tour.json`] || {};
   if (!route || !route.legs || !route.legs.length) {

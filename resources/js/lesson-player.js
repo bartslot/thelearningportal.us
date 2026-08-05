@@ -1468,7 +1468,11 @@ Alpine.data('lessonGame', (lesson) => ({
           }))
         _voyageInstance = window.renderVoyageTour(inner, {
           voyage: cfg.voyage,
-          def: lesson.game_config?.voyage_def || null,       // lesson's editable copy wins over the catalog
+          // The editable copy for THIS scene's voyage. A lesson can hold several voyages, so the
+          // per-voyage store is asked first; the older single copy is only good for its own id.
+          def: lesson.game_config?.voyage_defs?.[cfg.voyage]
+            || lesson.game_config?.voyage_def
+            || null,
           view: cfg.view || 'globe',
           routeLine: lesson.game_config?.route_line || null, // styled/animated trail (lesson-wide)
           mapOptions: lesson.game_config?.voyage_map || null, // hide cities/borders, show place labels

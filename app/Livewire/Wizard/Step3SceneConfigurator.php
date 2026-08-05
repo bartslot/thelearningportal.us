@@ -330,7 +330,9 @@ class Step3SceneConfigurator extends Component
             // Voyage scenes preview against the lesson's editable route copy (falls back to the
             // shared catalog until the first edit clones it) — the wizard overlay passes this to
             // renderVoyageTour as `def`.
-            'voyage_def' => $scene->kind === 'voyage' ? $this->voyageDef() : null,
+            'voyage_def' => $scene->kind === 'voyage'
+                ? $this->voyageDefFor(($scene->config['voyage'] ?? null) ?: null)
+                : null,
             'route_line' => $scene->kind === 'voyage' ? $this->routeLine() : null,
             // Lesson-wide voyage-map detail (hide cities/borders, show place labels) + the landfall
             // labels themselves, derived from every voyage scene's location.
@@ -1246,14 +1248,68 @@ class Step3SceneConfigurator extends Component
      * @return array<string,mixed>|null
      */
     #[Computed]
+    /**
+     * Which voyage the SELECTED scene belongs to.
+     *
+     * A lesson is a sequence of scenes, and the scene carries the voyage — Abel Tasman sailed
+     * twice, so one lesson holds tasman-1642 and tasman-1644 scenes side by side. The lesson-level
+     * key is only a hint for the single-voyage lessons that set it.
+     */
+    private function selectedVoyageId(): ?string
+    {
+        $id = $this->selectedScene['config']['voyage']
+            ?? ($this->lesson->game_config['voyage'] ?? null);
+
+        return is_string($id) && $id !== '' ? $id : null;
+    }
+
     public function voyageDef(): ?array
     {
+        return $this->voyageDefFor($this->selectedVoyageId());
+    }
+
+    /**
+     * The editable route copy for ONE voyage, falling back to the shared catalogue.
+     *
+     * Takes the voyage explicitly because the scene payload is built per scene: asking for "the"
+     * lesson's copy would hand every voyage scene whichever route happened to be selected.
+     */
+    private function voyageDefFor(?string $id): ?array
+    {
         $gc = $this->lesson->game_config ?? [];
-        if (isset($gc['voyage_def']['legs'])) {
-            return $gc['voyage_def'];
+
+        // The per-voyage store is the source of truth.
+        if ($id && isset($gc['voyage_defs'][$id]['legs'])) {
+            return $gc['voyage_defs'][$id];
         }
 
-        return isset($gc['voyage']) ? $this->catalogVoyage((string) $gc['voyage']) : null;
+        // A lesson edited before the store existed keeps one copy — good only for its own voyage.
+        $legacy = $gc['voyage_def'] ?? null;
+        if (isset($legacy['legs'])) {
+            $legacyId = $legacy['id'] ?? ($gc['voyage'] ?? null);
+            if (! $id || ! $legacyId || $legacyId === $id) {
+                return $legacy;
+            }
+        }
+
+        return $id ? $this->catalogVoyage($id) : null;
+    }
+
+    /**
+     * Save game_config, keeping the per-voyage store in step with the working copy.
+     *
+     * Every writer edits `voyage_def` — the copy for whichever voyage is selected — so this is the
+     * one place that files it under its own id. Without the funnel, a lesson holding two voyages
+     * would overwrite one route with the other's legs.
+     */
+    private function saveGameConfig(array $gc): void
+    {
+        $id = $gc['voyage_def']['id'] ?? $this->selectedVoyageId();
+        if ($id && isset($gc['voyage_def']['legs'])) {
+            $gc['voyage_defs'][$id] = $gc['voyage_def'];
+        }
+
+        $this->lesson->update(['game_config' => $gc]);
     }
 
     /** Look up one voyage entry in the shared catalog by id. */
@@ -1275,14 +1331,34 @@ class Step3SceneConfigurator extends Component
     private function ensureVoyageDef(): array
     {
         $gc = $this->lesson->game_config ?? [];
-        if (isset($gc['voyage_def']['legs'])) {
+        $id = $this->selectedVoyageId();
+        if (! $id) {
             return $gc;
         }
-        $entry = isset($gc['voyage']) ? $this->catalogVoyage((string) $gc['voyage']) : null;
+
+        // Already the working copy for this voyage — nothing to swap.
+        if (($gc['voyage_def']['id'] ?? null) === $id && isset($gc['voyage_def']['legs'])) {
+            return $gc;
+        }
+
+        // File the outgoing voyage before loading this one, so a teacher moving between the 1642
+        // and 1644 scenes does not leave the first voyage's edits behind in a discarded copy.
+        $outgoing = $gc['voyage_def']['id'] ?? null;
+        if ($outgoing && isset($gc['voyage_def']['legs'])) {
+            $gc['voyage_defs'][$outgoing] = $gc['voyage_def'];
+        }
+
+        $entry = $gc['voyage_defs'][$id]
+            ?? (($gc['voyage_def']['legs'] ?? null) && (($gc['voyage_def']['id'] ?? $gc['voyage'] ?? null) === $id)
+                ? $gc['voyage_def']                       // adopt the pre-store copy
+                : $this->catalogVoyage($id));
         if (! $entry) {
             return $gc;
         }
+
+        $entry['id'] = $id;                               // so the funnel knows where to file it
         $gc['voyage_def'] = $entry;
+        $gc['voyage_defs'][$id] = $entry;
         $this->lesson->update(['game_config' => $gc]);
         $this->lesson->refresh();
         unset($this->voyageDef);   // bust the computed cache
@@ -1357,7 +1433,7 @@ class Step3SceneConfigurator extends Component
 
         $gc['voyage_def']['waypoints'] = $wps;
         $gc['voyage_def']['legs'] = $legs;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
     }
@@ -1397,7 +1473,7 @@ class Step3SceneConfigurator extends Component
 
         $gc = $this->lesson->game_config ?? [];
         $gc['route_line'] = array_merge($this->routeLine(), [$key => $coerced]);
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->routeLine);
 
@@ -1461,7 +1537,7 @@ class Step3SceneConfigurator extends Component
 
         $gc = $this->lesson->game_config ?? [];
         $gc['voyage_map'] = array_merge($this->voyageMap(), [$key => $coerced]);
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageMap);
 
@@ -1516,7 +1592,7 @@ class Step3SceneConfigurator extends Component
 
         $gc = $this->lesson->game_config ?? [];
         $gc['voyage_fog'] = array_values($fog);
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageFog);
     }
@@ -1563,7 +1639,7 @@ class Step3SceneConfigurator extends Component
         } else {
             $gc['voyage_fog'] = array_values($clean);
         }
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageFog);
     }
@@ -1583,7 +1659,7 @@ class Step3SceneConfigurator extends Component
         } else {
             $gc['voyage_fog'] = array_values($fog);
         }
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageFog);
     }
@@ -1618,7 +1694,7 @@ class Step3SceneConfigurator extends Component
         }
 
         $gc['voyage_undo'] = $stack;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
     }
 
@@ -1650,7 +1726,7 @@ class Step3SceneConfigurator extends Component
             $gc['voyage_undo'] = $stack;
         }
 
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->canUndoVoyage);
 
@@ -1674,7 +1750,7 @@ class Step3SceneConfigurator extends Component
         } else {
             $gc['voyage_fog'] = array_values($fog);
         }
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageFog);
 
@@ -1688,7 +1764,7 @@ class Step3SceneConfigurator extends Component
     {
         $gc = $this->lesson->game_config ?? [];
         unset($gc['voyage_fog']);
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageFog);
 
@@ -1986,7 +2062,7 @@ class Step3SceneConfigurator extends Component
         $def['waypoints'] = $rebuiltPoints;
         $def['legs'] = $rebuiltLegs;
         $gc['voyage_def'] = $def;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
 
@@ -2049,7 +2125,7 @@ class Step3SceneConfigurator extends Component
     {
         $gc = $this->lesson->game_config ?? [];
         $gc['voyage_view'] = in_array($view, ['flat', 'globe'], true) ? $view : 'flat';
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         // Re-fire scene:load so the running tour applies the new projection in place (no re-mount).
         $this->selectSceneInternal($this->selectedSceneId);
@@ -2123,7 +2199,7 @@ class Step3SceneConfigurator extends Component
             $this->dispatch('toast', message: __('Arrival is on or before departure. Check the dates.'), type: 'warning');
         }
 
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);   // repaint the voyage preview
@@ -2147,7 +2223,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $gc['voyage_def']['legs'][$leg]['title'] = $title;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         // Keep the landfall name in sync on the scene itself → map place labels + rail update.
         $this->lesson->scenes()->whereKey($this->selectedSceneId)->update(['location' => $title !== '' ? $title : null]);
         $this->lesson->refresh();
@@ -2259,7 +2335,7 @@ class Step3SceneConfigurator extends Component
      */
     private function persistVoyageDef(array $gc): void
     {
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal((int) $this->selectedSceneId);
@@ -2297,7 +2373,7 @@ class Step3SceneConfigurator extends Component
         $ref = $gc['voyage_def']['waypoints'][$idx - 1][0] ?? ($gc['voyage_def']['waypoints'][$idx + 1][0] ?? null);
         $lng = self::unwrapLngNear($lng, $ref === null ? null : (float) $ref);
         $gc['voyage_def']['waypoints'][$idx] = [round($lng, 3), round($lat, 3)];
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);   // re-render the route to the new landfall
@@ -2337,7 +2413,7 @@ class Step3SceneConfigurator extends Component
 
         $gc = $this->lesson->game_config ?? [];
         unset($gc['voyage_def']);
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         if ($this->selectedSceneId) {
@@ -2373,7 +2449,7 @@ class Step3SceneConfigurator extends Component
         $ref = $gc['voyage_def']['waypoints'][$wpIndex - 1][0] ?? ($gc['voyage_def']['waypoints'][$wpIndex + 1][0] ?? null);
         $lng = self::unwrapLngNear($lng, $ref === null ? null : (float) $ref);
         $gc['voyage_def']['waypoints'][$wpIndex] = [round($lng, 3), round($lat, 3)];
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);
@@ -2421,7 +2497,7 @@ class Step3SceneConfigurator extends Component
 
         $gc['voyage_def']['waypoints'] = $wps;
         $gc['voyage_def']['legs'] = $legs;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);
@@ -2463,7 +2539,7 @@ class Step3SceneConfigurator extends Component
 
         $gc['voyage_def']['waypoints'] = $wps;
         $gc['voyage_def']['legs'] = $legs;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);
@@ -2506,7 +2582,7 @@ class Step3SceneConfigurator extends Component
 
         $gc['voyage_def']['waypoints'] = $wps;
         $gc['voyage_def']['legs'] = $legs;
-        $this->lesson->update(['game_config' => $gc]);
+        $this->saveGameConfig($gc);
         $this->lesson->refresh();
         unset($this->voyageDef);
         $this->selectSceneInternal($this->selectedSceneId);
@@ -4412,7 +4488,7 @@ class Step3SceneConfigurator extends Component
             $def['waypoints'] = $wps;
             $def['legs'] = $legs;
             $gc['voyage_def'] = $def;
-            $this->lesson->update(['game_config' => $gc]);
+            $this->saveGameConfig($gc);
             $this->lesson->refresh();
             unset($this->voyageDef);
 
