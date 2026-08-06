@@ -57,6 +57,7 @@ class Lesson extends Model
         'wikipedia_source',
         'script',
         'status',
+        'is_public',
         'scheduled_publish_at',
         'error_message',
         'generation_attempts',
@@ -140,6 +141,7 @@ class Lesson extends Model
     {
         return [
             'status' => LessonStatus::class,
+            'is_public' => 'boolean',
             'scheduled_publish_at' => 'datetime',
             'narrative_framework' => NarrativeFramework::class,
             'generation_attempts' => 'integer',

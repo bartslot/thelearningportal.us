@@ -1516,6 +1516,21 @@
             <span class="text-[10px] font-medium">{{ __('Sign up') }}</span>
         </a>
         @else
+        {{-- Share with other teachers. Next to Publish because they are the pair of visibility
+             decisions, but deliberately separate: Publish decides whether a CLASS can play this,
+             Share decides whether other TEACHERS can find and copy it. Heroicons outline, 24x24,
+             stroke 1.5 — the house standard. --}}
+        <button type="button" wire:click="toggleSharing"
+                class="flex w-14 flex-col items-center gap-1 rounded-xl px-1 py-1.5 transition hover:bg-slate-800 {{ $lesson->is_public ? 'text-amber-300' : 'text-slate-300 hover:text-amber-300' }}"
+                data-tooltip="{{ $lesson->is_public ? __('Shared with every teacher. Click to make private.') : __('Share with every teacher') }}"
+                aria-pressed="{{ $lesson->is_public ? 'true' : 'false' }}"
+                aria-label="{{ __('Share with every teacher') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-6 w-6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+            </svg>
+            <span class="text-[0.6rem] leading-none">{{ $lesson->is_public ? __('Shared') : __('Share') }}</span>
+        </button>
+
         {{-- Publish — now, or schedule for later (every scene must be ready) --}}
         <div x-data="{ open: false, when: '' }" class="relative" @click.outside="open = false" @keydown.escape.window="open = false">
             <button type="button" @click="open = !open"

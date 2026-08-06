@@ -5065,6 +5065,34 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
+     * Share this lesson with every teacher, or take it back.
+     *
+     * Separate from publishing on purpose: publishing decides whether a CLASS can play it, sharing
+     * decides whether other TEACHERS can find and copy it. A lesson can sensibly be one without the
+     * other — a draft shared with a colleague for a second opinion, or a published lesson a school
+     * keeps to itself.
+     *
+     * The rules live in LessonSharing, which the library page uses too, so there is one answer to
+     * "who may share this" rather than one per screen.
+     */
+    public function toggleSharing(): void
+    {
+        try {
+            app(\App\Services\LessonSharing::class)
+                ->setPublic($this->lesson, auth()->user(), ! $this->lesson->is_public);
+        } catch (\RuntimeException $e) {
+            $this->dispatch('toast', message: $e->getMessage(), type: 'error');
+
+            return;
+        }
+
+        $this->lesson->refresh();
+        $this->dispatch('toast', message: $this->lesson->is_public
+            ? __('Shared. Other teachers can now find and copy this lesson.')
+            : __('No longer shared. Only you can see this lesson.'));
+    }
+
+    /**
      * Publish the lesson from the toolbar. Gate: every scene must be "ready".
      * NOTE: public-visibility moderation (abuse/adult-content screening) is a
      * separate gate still to be built — see the lesson-publishing plan.

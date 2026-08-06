@@ -63,16 +63,16 @@
                                 {{-- Shadow fading in over the image — the only backdrop the title gets. --}}
                                 <div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-950 via-slate-950/55 to-transparent"></div>
 
-                                <div class="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-slate-950/80 px-2.5 py-1 backdrop-blur-sm">
+                                <div class="absolute left-3 top-3 opacity-0 flex items-center gap-1.5 rounded-full bg-slate-950/80 px-2.5 py-1 backdrop-blur-sm group-hover:opacity-100 transition duration-300">
                                     <span class="h-1.5 w-1.5 rounded-full {{ $statusClass }} {{ $isGenerating ? 'animate-pulse' : '' }}"></span>
                                     <span class="text-[0.65rem] text-slate-300">{{ $lesson->status->label() }}</span>
                                 </div>
 
-                                <h4 class="absolute inset-x-0 bottom-0 p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
+                                <h4 class="absolute inset-x-0 bottom-0 group-hover:translate-y-[-2em] p-4 text-base font-semibold leading-snug text-slate-100 drop-shadow group-hover:opacity-100 transition-transform">
                                     {{ $lesson->title ?: $lesson->topic }}
                                 </h4>
-                                <p class="absolute inset-x-0 top-6 right-0 p-4 text-sm leading-snug text-slate-100 drop-shadow group-hover:text-amber-300">
-                                    Grade {{ $lesson->grade ?: $lesson->grade_level ?: __(' ') }}
+                                <p class="absolute opacity-0 left-3 bottom-3 rounded-full border border-white/20 px-2 py-1 text-xs text-white bg-white/20 backdrop-blur-sm group-hover:opacity-100 transition-opacity">
+                                    {{ __('Grade :grade', ['grade' => $lesson->grade ?: $lesson->grade_level ?: '—']) }}
                                 </p>
                             </a>
                         @endforeach
@@ -88,3 +88,45 @@
         @endif
     @endif
 </div>
+
+{{-- Shared by other teachers. Its own shelf, not mixed into the theme groups above: a shared
+     lesson behaves differently — it opens and it copies, it does not edit. --}}
+@if(!empty($sharedLessons) && count($sharedLessons))
+    <section aria-label="{{ __('Shared by other teachers') }}" class="mt-10">
+        <h2 class="mb-1 font-history text-xl font-light text-slate-100">{{ __('Shared by other teachers') }}</h2>
+        <p class="mb-4 text-sm text-slate-400">
+            {{ __('Take a copy to change one for your own class. The original stays with its author.') }}
+        </p>
+
+        <div class="relative overflow-hidden rounded-[2rem]">
+            <x-carousel aria-label="{{ __('Shared by other teachers') }}">
+                @foreach($sharedLessons as $lesson)
+                    <div class="group relative block aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 sm:w-44">
+                        <a href="{{ route('lesson.play', ['lessonCode' => $lesson->lesson_code]) }}"
+                           class="absolute inset-0"
+                           aria-label="{{ $lesson->title ?: $lesson->topic }}">
+                            @if($lesson->cardImageUrl())
+                                <img src="{{ $lesson->cardImageUrl() }}" alt=""
+                                     class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+                            @endif
+                            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent p-3 pt-10">
+                                <p class="line-clamp-2 text-sm font-semibold text-slate-100">{{ $lesson->title ?: $lesson->topic }}</p>
+                                <p class="mt-0.5 text-[0.65rem] text-slate-400">{{ $lesson->teacher?->name }}</p>
+                            </div>
+                        </a>
+
+                        {{-- Sits ABOVE the card link, so copying never opens the player by accident. --}}
+                        <form method="POST" action="{{ route('teacher.lessons.copy', $lesson) }}"
+                              class="absolute right-2 top-2 z-10">
+                            @csrf
+                            <button type="submit" class="btn btn-xs btn-primary"
+                                    data-tooltip="{{ __('Copy to my lessons') }}">
+                                {{ __('Copy') }}
+                            </button>
+                        </form>
+                    </div>
+                @endforeach
+            </x-carousel>
+        </div>
+    </section>
+@endif
