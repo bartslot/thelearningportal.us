@@ -47,6 +47,11 @@ rsync -az --delete $DRY --stats \
   --exclude='public/storage' \
   `# ^ the symlink to storage/app/public. Excluded, never deleted. See the header.` \
   --exclude='storage/' \
+  --exclude='bootstrap/cache/' \
+  `# ^ Laravel's compiled package/service manifests. Git tracks only the .gitignore in here, so` \
+  `# --delete treats the compiled files as removed and takes them. They do regenerate on the next` \
+  `# request, but that leaves the first visitor after a deploy paying for package discovery, and` \
+  `# a half-written manifest under concurrent requests is a 500 nobody can reproduce afterwards.` \
   --exclude='vendor/' --exclude='node_modules/' --exclude='.git/' \
   --exclude='tests/' --exclude='.claude/' \
   -e "ssh -p $PORT -i $KEY" \
