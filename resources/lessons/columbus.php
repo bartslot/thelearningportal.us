@@ -7,6 +7,7 @@ return [
     'key' => 'Columbus and the crossing of 1492',
     'title' => 'Columbus and the Crossing of 1492',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

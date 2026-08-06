@@ -7,6 +7,7 @@ return [
     'key' => 'The Hunebedden: the oldest monuments in the Netherlands',
     'title' => 'The Hunebedden: the oldest monuments in the Netherlands',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

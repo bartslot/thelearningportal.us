@@ -23,6 +23,7 @@ return [
     'key' => 'La Révolution française',
     'title' => 'La Révolution française et l\'ascension de Napoléon',
     'subject' => 'histoire',
+    'language' => 'fr',
     'grade_level' => '10',
     'tone' => 'storytelling',
     'map_style' => 'satellite',

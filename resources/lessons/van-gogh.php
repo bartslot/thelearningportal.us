@@ -7,6 +7,7 @@ return [
     'key' => 'Vincent van Gogh',
     'title' => 'Vincent van Gogh: a life in ten years',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

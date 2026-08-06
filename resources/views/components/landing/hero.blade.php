@@ -16,12 +16,17 @@
     // title so a rebuilt Canon lesson keeps working — see App\Support\DemoLesson.
     $demoLesson = \App\Support\DemoLesson::resolve();
 
-    // What the demo types. Kept here, not in JS, so it is translatable and indexable.
+    // What the demo types. Kept here, not in JS, so it is indexable.
     //
-    // The typed goal has to describe the lesson the buttons below actually open. The scripted
-    // line is written for the configured demo lesson, so when DemoLesson falls back to a
-    // different one, the demo types THAT lesson's title instead of promising the wrong thing.
-    $demoGoal = __(\App\Support\DemoLesson::goal());
+    // The typed goal has to describe the lesson the buttons below actually open. The scripted line
+    // is written for the configured demo lesson, so when DemoLesson falls back to a different one,
+    // the demo types THAT lesson's title instead of promising the wrong thing.
+    //
+    // NOT wrapped in __(). The goal is already written in the lesson's own language (each entry in
+    // config('demo.by_language') carries its own), and running it through the translator would let
+    // a French line get "translated" into the visitor's UI language — which is the exact mixing
+    // this whole path exists to prevent.
+    $demoGoal = \App\Support\DemoLesson::goal();
 
     // This lesson's own artwork, packed into one small sheet by `lessons:build-warp-atlas`.
     // With it the tunnel is made of Tasman's fleet and the Golden Bay encounter rather than

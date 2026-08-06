@@ -7,6 +7,7 @@ return [
     'key' => 'Michiel de Ruyter and the wars at sea',
     'title' => 'Michiel de Ruyter and the Wars at Sea',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

@@ -14,6 +14,7 @@ return [
     'key' => 'The VOC: the world\'s first multinational',
     'title' => 'The VOC: the world\'s first multinational',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

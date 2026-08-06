@@ -17,6 +17,7 @@ return [
     'key' => 'The Punic Wars',
     'title' => 'The Punic Wars',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '7',
     'map_style' => 'satellite',
 

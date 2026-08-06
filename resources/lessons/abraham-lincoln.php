@@ -19,6 +19,7 @@ return [
     'key' => 'Abraham Lincoln',
     'title' => 'Abraham Lincoln',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '7',
     'map_style' => 'satellite',
 

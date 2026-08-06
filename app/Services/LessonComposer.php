@@ -70,6 +70,10 @@ class LessonComposer
             'title' => (string) ($spec['title'] ?? $key),
             'topic' => $key,
             'subject' => (string) ($spec['subject'] ?? 'history'),
+            // The language the scripts are written in. A spec that does not say is English, which
+            // is what every spec was before this key existed. Nothing infers it from the text: a
+            // guess here means a Dutch class gets an English lesson, so it has to be declared.
+            'language' => (string) ($spec['language'] ?? 'en'),
             'grade_level' => (string) ($spec['grade_level'] ?? '6'),
             'tone' => (string) ($spec['tone'] ?? 'storytelling'),
             'map_style' => (string) ($spec['map_style'] ?? 'antique'),

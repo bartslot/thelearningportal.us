@@ -17,6 +17,7 @@ return [
     'key' => 'The Silk Road',
     'title' => 'The Silk Road',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '7',
     'map_style' => 'satellite',
 

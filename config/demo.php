@@ -37,44 +37,62 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Which lesson each country sees
+    | Which lesson each LANGUAGE sees
     |--------------------------------------------------------------------------
     |
-    | A German teacher should meet a lesson from their own curriculum, not a Dutch
-    | one. Keyed by ISO-3166 alpha-2 (App\Support\VisitorCountry); anything not
-    | listed gets `lesson_title` above. Matched on title, like the default, so a
-    | rebuilt lesson keeps working — and an entry naming a lesson that does not
-    | exist yet simply falls through, which is what makes it safe to list a
-    | country before its lesson has been written.
+    | Keyed by language, not by country, because language is the thing that must
+    | never be wrong. A Dutch teacher opening the landing page and being handed an
+    | English lesson is not a slightly worse demo — it is the wrong product. So the
+    | rule is strict: a visitor is only ever offered a lesson in their own
+    | language, or the English one. Never a third language.
     |
-    | The hero's animation tiles always come from whichever lesson wins here:
+    | Matched on title so a rebuild (which changes id and lesson_code) keeps
+    | working, and DemoLesson checks the winning lesson's `language` column really
+    | does match before it hands it over — a title can be edited, a column cannot
+    | drift by accident.
+    |
+    | An entry naming a lesson nobody has written yet costs nothing: it falls
+    | through to English, which is the documented behaviour rather than an
+    | accident. That is what 'de' and 'it' are doing here.
+    |
+    | English is deliberately NOT listed here. It comes from `lesson_title` and
+    | `lesson_goal` above, so DEMO_LESSON_TITLE stays the one env var that pins
+    | the default demo, and English has a single source of truth.
+    |
+    | The hero's animation tiles come from whichever lesson wins:
     | run `lessons:build-warp-atlas --all` after changing this map.
     |
     */
 
-    'by_country' => [
-        // Dutch Canon.
-        // Dutch-speaking: the Dutch edition (lessons:make-tasman-voyage, WMDIF8).
-        'NL' => ['title' => 'De reis van Abel Tasman', 'goal' => 'Abel Tasman en de reis van 1642', 'footage' => 'public/lessons/tasman/animation'],
-        'BE' => ['title' => 'De reis van Abel Tasman', 'goal' => 'Abel Tasman en de reis van 1642', 'footage' => 'public/lessons/tasman/animation'],
+    'by_language' => [
+        'nl' => ['title' => 'De reis van Abel Tasman', 'goal' => 'Abel Tasman en de reis van 1642', 'footage' => 'public/lessons/tasman/animation'],
+        'fr' => ['title' => 'La Révolution française et l\'ascension de Napoléon', 'goal' => 'La Révolution française, et comment Bonaparte a pris le pouvoir'],
 
-        // English-speaking: the narrated English edition covering BOTH voyages.
-        'GB' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
-        'IE' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
-        'US' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
-        'CA' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
-        'AU' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
-        'NZ' => ['title' => 'Abel Tasman: two voyages to the unknown south', 'goal' => 'Abel Tasman, and the two voyages that mapped the south', 'footage' => 'public/lessons/tasman/animation'],
+        // No German or Italian lesson exists yet. Listed so the intent is visible and so writing
+        // one is a content job, not a code change — until then both fall through to English.
+        'de' => ['title' => null, 'goal' => null],
+        'it' => ['title' => null, 'goal' => null],
+    ],
 
-        // German-speaking. Anne Frank is a placeholder: it is squarely on the German
-        // curriculum, but a lesson written FOR that curriculum should replace it.
-        'DE' => ['title' => 'Anne Frank and the Secret Annex', 'goal' => 'Anne Frank and the years in hiding'],
-        'AT' => ['title' => 'Anne Frank and the Secret Annex', 'goal' => 'Anne Frank and the years in hiding'],
-        'CH' => ['title' => 'Anne Frank and the Secret Annex', 'goal' => 'Anne Frank and the years in hiding'],
+    /*
+    |--------------------------------------------------------------------------
+    | What language a country implies
+    |--------------------------------------------------------------------------
+    |
+    | Only consulted when the browser did not ask for one of our languages. A
+    | teacher in Amsterdam whose laptop is set to English still teaches in Dutch,
+    | so the country gets them the Dutch lesson; a French visitor is matched on
+    | EITHER signal, which is what "in France, or with a French browser" means.
+    |
+    | Anything not listed is English.
+    |
+    */
 
-        'FR' => ['title' => 'La Révolution française et l\'ascension de Napoléon', 'goal' => 'La Révolution française, et comment Bonaparte a pris le pouvoir'],
-
-        'IT' => ['title' => 'The Colosseum', 'goal' => 'The Colosseum, and the Rome that filled it'],
+    'country_language' => [
+        'NL' => 'nl', 'BE' => 'nl',
+        'FR' => 'fr',
+        'DE' => 'de', 'AT' => 'de', 'CH' => 'de',
+        'IT' => 'it',
     ],
 
     /*

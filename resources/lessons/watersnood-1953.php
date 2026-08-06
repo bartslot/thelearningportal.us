@@ -7,6 +7,7 @@ return [
     'key' => 'The Flood of 1953 and the Delta Works',
     'title' => 'The Flood of 1953 and the Delta Works',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

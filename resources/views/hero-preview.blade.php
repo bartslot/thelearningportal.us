@@ -30,7 +30,7 @@
     // The typed goal has to describe the lesson the buttons below actually open. The scripted
     // line is written for the configured demo lesson, so when DemoLesson falls back to a
     // different one, the demo types THAT lesson's title instead of promising the wrong thing.
-    $demoGoal = __(\App\Support\DemoLesson::goal());
+    $demoGoal = \App\Support\DemoLesson::goal();
 
     // This lesson's own artwork, packed into one small sheet by `lessons:build-warp-atlas`.
     // With it the tunnel is made of Tasman's fleet and the Golden Bay encounter rather than

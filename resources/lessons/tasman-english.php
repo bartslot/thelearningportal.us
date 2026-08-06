@@ -28,6 +28,7 @@ return [
     'key' => 'Abel Tasman (English)',
     'title' => 'Abel Tasman: two voyages to the unknown south',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '9',
     'tone' => 'storytelling',
     'map_style' => 'satellite',

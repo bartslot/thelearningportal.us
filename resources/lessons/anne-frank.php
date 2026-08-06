@@ -13,6 +13,7 @@ return [
     'key' => 'Anne Frank and the Secret Annex',
     'title' => 'Anne Frank and the Secret Annex',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

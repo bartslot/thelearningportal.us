@@ -37,6 +37,7 @@ class Lesson extends Model
         'strategy_game',
         'strategy_game_id',
         'title',
+        'language',
         'topic',
         'topic_id',
         'story_id',

@@ -13,6 +13,7 @@ return [
     'key' => 'Dutch slavery and the West India Company',
     'title' => 'Dutch Slavery: the trade, the resistance, the reckoning',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

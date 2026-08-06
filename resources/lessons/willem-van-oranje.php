@@ -7,6 +7,7 @@ return [
     'key' => 'William of Orange and the Dutch Revolt',
     'title' => 'William of Orange and the Dutch Revolt',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

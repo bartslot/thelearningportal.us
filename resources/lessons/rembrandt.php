@@ -7,6 +7,7 @@ return [
     'key' => 'Rembrandt and the Dutch Golden Age',
     'title' => 'Rembrandt and the Dutch Golden Age',
     'subject' => 'history',
+    'language' => 'en',
     'grade_level' => '6',
     'map_style' => 'satellite',
 

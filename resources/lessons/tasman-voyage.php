@@ -7,6 +7,7 @@ return [
     'key' => 'De reis van Abel Tasman (1642-1643)',
     'title' => 'De reis van Abel Tasman',
     'subject' => 'history',
+    'language' => 'nl',
     'grade_level' => 'K-7',
     'tone' => 'adventurous',
     'map_style' => 'satellite',
