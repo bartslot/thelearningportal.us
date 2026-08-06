@@ -49,11 +49,19 @@ class GenerateSceneAudioTest extends TestCase
             $mock->shouldReceive('prepareSpeechText')->andReturn('Hello world.');
             $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
                 function ($text, $voiceId, $speed, $provider, &$timing) {
-                    $timing = ['character_timings' => [['character' => 'H', 'start' => 0.0, 'end' => 0.1]]];
+                    // The shape ElevenLabsService really returns. This fixture used to say
+                    // `start`/`end`, keys no provider ever produced, which is exactly why the
+                    // duration bug below stayed green for months.
+                    $timing = ['character_timings' => [
+                        ['character' => 'H', 'start_time' => 0.0, 'end_time' => 0.1],
+                        ['character' => 'i', 'start_time' => 0.1, 'end_time' => 7.4],
+                    ]];
+
                     return 'BINARYMP3';
                 }
             );
             $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn('elevenlabs');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
@@ -63,9 +71,90 @@ class GenerateSceneAudioTest extends TestCase
             '#^lessons/' . $lesson->id . '/scenes/' . $scene->id . '/narration\.mp3$#',
             (string) $scene->audio_path,
         );
-        $this->assertIsArray($scene->audio_alignment);
         $this->assertSame(sha1('Hello world.'), $scene->audio_script_hash);
         $this->assertSame('ready', $scene->status);
+
+        // The timings survive the round trip in the canonical shape. (Loose comparison: the JSON
+        // column brings 0.0 back as int 0 — NarrationTiming casts it, consumers never see that.)
+        $this->assertEquals(
+            ['character' => 'H', 'start_time' => 0.0, 'end_time' => 0.1],
+            $scene->audio_alignment[0],
+        );
+        // ...and the duration comes from the last end_time (7.4 -> 8), NOT the two-word
+        // count estimate that the old `$last['end']` lookup silently fell back to.
+        $this->assertSame(8, $scene->duration_seconds);
+    }
+
+    public function test_records_the_provider_that_actually_produced_the_audio(): void
+    {
+        $scene = $this->sceneWithElevenLabsNarrator('napoleon-3');
+
+        $this->mock(TtsService::class, function ($mock): void {
+            $mock->shouldReceive('prepareSpeechText')->andReturn('Hello world.');
+            $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
+                function ($text, $voiceId, $speed, $provider, &$timing) {
+                    $timing = ['character_timings' => [['character' => 'H', 'start_time' => 0.0, 'end_time' => 4.0]]];
+
+                    return 'BINARYMP3';
+                }
+            );
+            $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn('elevenlabs');
+        });
+
+        (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
+
+        $scene->refresh();
+        $this->assertSame('elevenlabs', $scene->audio_provider);
+        $this->assertSame('voice-x', $scene->audio_voice);
+        $this->assertNull($scene->error_message);
+        $this->assertFalse($scene->narrationWasDowngraded());
+    }
+
+    public function test_flags_the_scene_when_the_chain_falls_through_to_another_provider(): void
+    {
+        // The lesson names an ElevenLabs narrator, but every rung above macOS `say` failed.
+        // Before this, that produced a robot-voiced scene marked 'ready' with nothing to show
+        // for it — the failure this whole fix exists to make impossible.
+        $scene = $this->sceneWithElevenLabsNarrator('napoleon-4');
+
+        $this->mock(TtsService::class, function ($mock): void {
+            $mock->shouldReceive('prepareSpeechText')->andReturn('Hello world.');
+            $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
+                function ($text, $voiceId, $speed, $provider, &$timing) {
+                    $timing = null;   // `say` has no timings
+
+                    return 'BINARYM4A';
+                }
+            );
+            $mock->shouldReceive('lastExtension')->andReturn('m4a');
+            $mock->shouldReceive('lastProvider')->andReturn('macos_say');
+        });
+
+        (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
+
+        $scene->refresh();
+        $this->assertSame('macos_say', $scene->audio_provider);
+        $this->assertTrue($scene->narrationWasDowngraded());
+        $this->assertStringContainsString('macos_say', (string) $scene->error_message);
+    }
+
+    private function sceneWithElevenLabsNarrator(string $slug): Scene
+    {
+        $avatar = Avatar::create([
+            'name' => 'Napoleon', 'slug' => $slug, 'gender' => 'male',
+            'voice_provider' => 'elevenlabs', 'voice_id' => 'voice-x',
+            'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
+        ]);
+        $lesson = Lesson::create([
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => $avatar->id,
+            'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
+        ]);
+
+        return Scene::create([
+            'lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Hello world.', 'image_path' => 'x.png', 'status' => 'generating',
+        ]);
     }
 
     public function test_tts_override_forces_backup_provider_and_voice_over_avatar(): void
@@ -99,6 +188,7 @@ class GenerateSceneAudioTest extends TestCase
                 }
             );
             $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn('azure');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
@@ -106,5 +196,12 @@ class GenerateSceneAudioTest extends TestCase
         // The avatar is ElevenLabs, but the override routes to Azure with an Azure-native voice.
         $this->assertSame('azure', $captured['provider']);
         $this->assertSame('en-US-GuyNeural', $captured['voiceId']);
+
+        // Azure delivering what the override asked for is not a downgrade — the override IS the
+        // instruction, so no scene gets flagged just for honouring it.
+        $scene->refresh();
+        $this->assertSame('azure', $scene->audio_provider);
+        $this->assertFalse($scene->narrationWasDowngraded());
+        $this->assertNull($scene->error_message);
     }
 }

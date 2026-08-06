@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Services\Support\NarrationTiming;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -11,6 +12,9 @@ use Illuminate\Support\Facades\Storage;
 class TtsService
 {
     private ?string $generatedAudioExtension = null;
+
+    /** Which rung of the fallback chain actually produced the last audio. */
+    private ?string $generatedProvider = null;
 
     private function lessonDisk()
     {
@@ -70,15 +74,29 @@ class TtsService
         return $this->generatedAudioExtension ?? 'mp3';
     }
 
+    /**
+     * Which provider actually produced the last audio — 'elevenlabs', 'azure', 'piper',
+     * 'pocket_tts', 'edge_tts', 'macos_say', 'openai' — or null if nothing did.
+     *
+     * The chain falls through silently by design, so the requested provider says nothing about
+     * what the listener will hear. Callers that care (narration attributed to a named voice)
+     * must compare this against what they asked for. See GenerateSceneAudio.
+     */
+    public function lastProvider(): ?string
+    {
+        return $this->generatedProvider;
+    }
+
     public function generateAudioRaw(string $text, string $voiceId, float $speed = 1.0, string $provider = 'auto', ?array &$timingData = null): ?string
     {
         $this->generatedAudioExtension = 'mp3'; // default; overridden by tryMacosTts
+        $this->generatedProvider = null;
         $text = $this->prepareSpeechText($text);
         $timingData = null;
 
         if ($provider === 'azure') {
             return $this->tryAzure($text, $voiceId, $speed)
-                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed)
                 ?? $this->tryMacosTts($text);
         }
 
@@ -86,13 +104,13 @@ class TtsService
             return $this->tryElevenLabs($text, $voiceId, $timingData)
                 ?? $this->tryAzure($text, $voiceId, $speed)
                 ?? $this->tryPocketTts($text, $voiceId)
-                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed)
                 ?? $this->tryMacosTts($text);
         }
 
         if ($provider === 'pocket_tts') {
             return $this->tryPocketTts($text, $voiceId)
-                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed)
                 ?? $this->tryMacosTts($text);
         }
 
@@ -101,12 +119,12 @@ class TtsService
         if ($provider === 'piper') {
             return $this->tryPiper($text, $voiceId)
                 ?? $this->tryAzure($text, $voiceId, $speed)
-                ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+                ?? $this->tryEdgeTts($text, $voiceId, $speed)
                 ?? $this->tryMacosTts($text);
         }
 
         if ($provider === 'edge_tts') {
-            return $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+            return $this->tryEdgeTts($text, $voiceId, $speed)
                 ?? $this->tryPocketTts($text, $voiceId)
                 ?? $this->tryMacosTts($text);
         }
@@ -115,7 +133,7 @@ class TtsService
         return $this->tryElevenLabs($text, $voiceId, $timingData)
             ?? $this->tryAzure($text, $voiceId, $speed)
             ?? $this->tryPocketTts($text, $voiceId)
-            ?? $this->tryEdgeTts($text, $voiceId, $speed, true, $timingData)
+            ?? $this->tryEdgeTts($text, $voiceId, $speed)
             ?? $this->tryMacosTts($text);
     }
 
@@ -171,6 +189,7 @@ SSML;
             }
 
             $this->generatedAudioExtension = 'mp3';
+            $this->generatedProvider = 'azure';
             return $response->body();
         } catch (\Throwable $e) {
             Log::error('[Azure TTS] exception: ' . $e->getMessage());
@@ -186,6 +205,7 @@ SSML;
     {
         $text = $this->prepareSpeechText($text);
         $this->generatedAudioExtension = 'mp3';
+        $this->generatedProvider = null;
         $timingData = null;
 
         // If the avatar explicitly chose edge_tts, try it first
@@ -223,6 +243,7 @@ SSML;
         }
 
         $timingData = ['character_timings' => $result['alignment']];
+        $this->generatedProvider = 'elevenlabs';
 
         return $result['audio'];
     }
@@ -262,9 +283,12 @@ SSML;
             }
 
             $this->generatedAudioExtension = 'mp3';   // server transcodes Piper WAV -> mp3
+            $this->generatedProvider = 'piper';
 
             return $response->body();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('[Piper TTS] failed: ' . $e->getMessage());
+
             return null;
         }
     }
@@ -295,6 +319,8 @@ SSML;
             if (! $response->successful()) {
                 return null;
             }
+
+            $this->generatedProvider = 'pocket_tts';
 
             return $response->body();
         } catch (\Throwable) {
@@ -330,11 +356,10 @@ SSML;
      *
      * Speed is converted from a multiplier (0.92) to a rate string (e.g. "-8%").
      */
-    private function tryEdgeTts(string $text, string $voice, float $speed = 1.0, bool $collectWordTimings = false, ?array &$timingData = null): ?string
+    private function tryEdgeTts(string $text, string $voice, float $speed = 1.0): ?string
     {
         // edge-tts requires Python and the edge-tts package
         $python = $this->pythonBinary();
-        $timingData = null;
 
         // Check if edge_tts module is available
         $checkCmd = escapeshellcmd($python) . ' -c "import edge_tts" 2>/dev/null';
@@ -353,7 +378,6 @@ SSML;
             $outFile = $tempDir . '/' . uniqid('edge-', true) . '.mp3';
             $errFile = $tempDir . '/' . uniqid('edge-err-', true) . '.log';
             $scriptFile = $tempDir . '/' . uniqid('edge-script-', true) . '.py';
-            $timingsFile = $tempDir . '/' . uniqid('edge-timings-', true) . '.json';
 
             // Convert speed multiplier → percentage string: 0.92 → "-8%", 1.1 → "+10%"
             $ratePercent = (int) round(($speed - 1.0) * 100);
@@ -362,18 +386,16 @@ SSML;
             $pyScript = <<<PY
 import asyncio
 import edge_tts
-import json
 
 TEXT = {$this->pythonStringLiteral($text)}
 VOICE = {$this->pythonStringLiteral($voice)}
 RATE = {$this->pythonStringLiteral($rateStr)}
 OUT_FILE = {$this->pythonStringLiteral($outFile)}
-TIMINGS_FILE = {$this->pythonStringLiteral($timingsFile)}
-COLLECT_TIMINGS = {$this->pythonStringLiteral($collectWordTimings ? '1' : '0')}
 
 # edge-tts v7 only emits 'audio' and 'SentenceBoundary'.
-# WordBoundary and VisemeEvent were dropped in v7.
-# Visemes require either ElevenLabs /with-timestamps or Azure Speech SDK.
+# WordBoundary and VisemeEvent were dropped in v7, so this rung returns audio and no
+# timings at all — a scene narrated here gets even-split subtitles. Character timings
+# need ElevenLabs /with-timestamps or the Azure Speech SDK.
 
 async def main():
     communicate = edge_tts.Communicate(TEXT, VOICE, rate=RATE)
@@ -387,9 +409,19 @@ PY;
 
             file_put_contents($scriptFile, $pyScript);
 
-            $timeoutBin = PHP_OS_FAMILY === 'Darwin' ? 'gtimeout' : 'timeout';
+            // `timeout` is GNU coreutils and ships on Linux but not on macOS, where it is
+            // `gtimeout` and only if coreutils is installed — which it usually is not. Hard-coding
+            // it made this whole rung dead on every Mac: the shell answered "gtimeout: command not
+            // found", `|| true` swallowed that, and the chain fell through to macOS `say`. Run
+            // unwrapped when there is no timeout binary; the queue job's own timeout is the
+            // backstop for a hung synthesis.
             $wrappedPython = escapeshellcmd($python);
-            $cmd = "({$timeoutBin} 55 {$wrappedPython} " . escapeshellarg($scriptFile) . ' 2>' . escapeshellarg($errFile) . ') || true';
+            $timeoutBin = collect(['timeout', 'gtimeout'])->first(fn (string $bin) => $this->commandExists($bin));
+            if ($timeoutBin === null) {
+                Log::info('TtsService: no timeout binary (install coreutils for gtimeout); running edge-tts unwrapped.');
+            }
+            $runner = $timeoutBin !== null ? "{$timeoutBin} 55 {$wrappedPython}" : $wrappedPython;
+            $cmd = "({$runner} " . escapeshellarg($scriptFile) . ' 2>' . escapeshellarg($errFile) . ') || true';
             exec($cmd, $output, $exitCode);
             $stderr = file_exists($errFile) ? trim((string) file_get_contents($errFile)) : '';
             @unlink($scriptFile);
@@ -405,33 +437,11 @@ PY;
                 return null;
             }
 
-            if ($collectWordTimings && file_exists($timingsFile)) {
-                $decoded = json_decode((string) file_get_contents($timingsFile), true);
-                if (is_array($decoded)) {
-                    $timingData = array_values(array_filter(array_map(function ($item) {
-                        if (! is_array($item)) {
-                            return null;
-                        }
-                        $text = trim((string) ($item['text'] ?? ''));
-                        $start = (float) ($item['start'] ?? 0);
-                        $end = (float) ($item['end'] ?? $start);
-                        if ($text === '') {
-                            return null;
-                        }
-                        return [
-                            'text' => $text,
-                            'start' => max(0, $start),
-                            'end' => max($start, $end),
-                        ];
-                    }, $decoded)));
-                }
-                @unlink($timingsFile);
-            }
-
             $content = file_get_contents($outFile);
             @unlink($outFile);
 
             $this->generatedAudioExtension = 'mp3';
+            $this->generatedProvider = 'edge_tts';
 
             Log::info("TtsService: edge-tts succeeded with voice {$voice}");
             return is_string($content) && strlen($content) > 100 ? $content : null;
@@ -500,7 +510,17 @@ PY;
 
             @unlink($m4aPath);
 
-            return is_string($audioContent) && $audioContent !== '' ? $audioContent : null;
+            if (! is_string($audioContent) || $audioContent === '') {
+                return null;
+            }
+
+            // Last rung. Everything above it failed, and the listener is about to hear the
+            // machine voice instead of whichever narrator the lesson names — loudly, because
+            // this is exactly the downgrade that went unnoticed for months.
+            Log::warning('[TTS] FELL BACK TO macOS `say` — the lesson narrator\'s voice was NOT used.');
+            $this->generatedProvider = 'macos_say';
+
+            return $audioContent;
         } catch (\Throwable $e) {
             Log::error('TtsService::tryMacosTts failed: ' . $e->getMessage());
         }
@@ -523,6 +543,8 @@ PY;
                 ]);
 
             if ($response->successful()) {
+                $this->generatedProvider = 'openai';
+
                 return $response->body();
             }
 

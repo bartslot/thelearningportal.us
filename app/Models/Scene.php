@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\Support\NarrationTiming;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -22,6 +23,7 @@ class Scene extends Model
         'skybox_blur', 'skybox_opacity', 'background_color', 'kb_animated', 'kb_direction', 'scene_view',
         'animation_clip_id',
         'audio_path', 'audio_alignment', 'audio_script_hash', 'audio_locale',
+        'audio_provider', 'audio_voice',
         'duration_seconds', 'game_segment_index',
         'branch_group', 'branch_role', 'branch_choice_label',
         'status', 'upscale_status', 'error_message',
@@ -338,16 +340,33 @@ class Scene extends Model
     /** Start time (s) for a character offset — from alignment, else proportional to duration. */
     private function timeAtChar(array $align, int $charOffset, float $duration, int $totalChars, int $index, int $count): float
     {
-        if ($align !== []) {
-            $entry = $align[min($charOffset, count($align) - 1)] ?? null;
-
-            return (float) ($entry['start_time'] ?? $entry['startTime'] ?? 0.0);
+        $timed = NarrationTiming::fromStored($align)->startAtChar($charOffset, $totalChars);
+        if ($timed !== null) {
+            return $timed;
         }
         if ($duration > 0 && $totalChars > 0) {
             return round($duration * ($charOffset / $totalChars), 2);
         }
 
         return $count > 0 ? round($index * ($duration ?: $count) / $count, 2) : 0.0;
+    }
+
+    /**
+     * True when this scene's audio was produced by something other than the narrator the lesson
+     * names — the machine voice standing in for a cloned one, say. Null-safe for the many rows
+     * generated before audio_provider existed, which are simply unknown rather than wrong.
+     */
+    public function narrationWasDowngraded(): bool
+    {
+        $provider = $this->audio_provider;
+        if ($provider === null || $this->audio_path === null) {
+            return false;
+        }
+
+        $wanted = (string) config('services.tts.provider_override', '')
+            ?: (string) ($this->lesson?->avatar?->voice_provider ?? 'elevenlabs');
+
+        return $provider !== $wanted;
     }
 
     private function formatTimecode(float $seconds): string

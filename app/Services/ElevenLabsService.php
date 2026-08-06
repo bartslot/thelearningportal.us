@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Services\Support\NarrationTiming;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class ElevenLabsService
 {
@@ -131,46 +133,43 @@ class ElevenLabsService
             );
 
             if (! $response->successful()) {
-                \Log::error('[ElevenLabs] with-timestamps HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 300));
+                Log::error('[ElevenLabs] with-timestamps HTTP ' . $response->status() . ': ' . substr($response->body(), 0, 300));
+
                 return null;
             }
 
             $data     = $response->json();
             $audioB64 = $data['audio_base64'] ?? '';
 
-            // Debug: log raw API structure so we can verify the shape in console
-            \Log::debug('[ElevenLabs] with-timestamps raw response keys: ' . implode(', ', array_keys($data)));
-            \Log::debug('[ElevenLabs] alignment keys: ' . implode(', ', array_keys($data['alignment'] ?? [])));
-            \Log::debug('[ElevenLabs] first 3 chars: ' . json_encode(array_slice($data['alignment']['characters'] ?? [], 0, 3)));
-            \Log::debug('[ElevenLabs] first 3 starts: ' . json_encode(array_slice($data['alignment']['character_start_times_seconds'] ?? [], 0, 3)));
-            \Log::debug('[ElevenLabs] first 3 ends: ' . json_encode(array_slice($data['alignment']['character_end_times_seconds'] ?? [], 0, 3)));
-
             if ($audioB64 === '') {
+                Log::error('[ElevenLabs] with-timestamps returned no audio for voice ' . $voiceId);
+
                 return null;
             }
 
-            // ElevenLabs returns parallel arrays; convert to [{character, start_time, end_time}]
-            // so JS speakWithElevenLabsAlignment can iterate directly.
-            $raw        = $data['alignment'] ?? [];
-            $chars      = $raw['characters']                    ?? [];
-            $starts     = $raw['character_start_times_seconds'] ?? [];
-            $ends       = $raw['character_end_times_seconds']   ?? [];
-            $alignment  = [];
-            foreach ($chars as $i => $char) {
-                $alignment[] = [
-                    'character'  => $char,
-                    'start_time' => $starts[$i] ?? 0.0,
-                    'end_time'   => $ends[$i]   ?? 0.0,
-                ];
-            }
+            // ElevenLabs returns three parallel arrays; NarrationTiming owns the conversion to
+            // the canonical [{character, start_time, end_time}] every consumer reads.
+            $raw = $data['alignment'] ?? [];
+            $timing = NarrationTiming::fromCharacters(
+                $raw['characters']                    ?? [],
+                $raw['character_start_times_seconds'] ?? [],
+                $raw['character_end_times_seconds']   ?? [],
+            );
 
-            \Log::debug('[ElevenLabs] built ' . count($alignment) . ' alignment entries, sample: ' . json_encode(array_slice($alignment, 0, 3)));
+            if ($timing->isEmpty()) {
+                // Audio without timings is the failure that used to be invisible: subtitles fall
+                // back to an even split and drift. Worth a line in the log even though the audio
+                // itself is fine.
+                Log::warning('[ElevenLabs] audio returned WITHOUT character alignment for voice ' . $voiceId);
+            }
 
             return [
                 'audio'     => base64_decode($audioB64),
-                'alignment' => $alignment,
+                'alignment' => $timing->toArray(),
             ];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::error('[ElevenLabs] with-timestamps threw for voice ' . $voiceId . ': ' . $e->getMessage());
+
             return null;
         }
     }

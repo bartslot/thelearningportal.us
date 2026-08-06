@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
+use App\Services\Support\NarrationTiming;
 use App\Services\Support\NarrationVoice;
 use App\Services\Support\ScriptLanguage;
 use App\Services\Support\PronunciationLexicon;
@@ -16,6 +17,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -104,17 +106,13 @@ class GenerateSceneAudio implements ShouldQueue
             $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/narration.{$ext}";
             Storage::disk('public')->put($path, $audio);
 
-            // Duration for the wizard timeline + pacing. Providers with word/character timings
-            // (ElevenLabs, edge-tts) give an exact end; Azure returns audio only, so estimate from
-            // the spoken word count (~2.6 words/sec, adjusted for the voice speed). Without this a
+            // Duration for the wizard timeline + pacing. ElevenLabs returns character timings and
+            // therefore an exact end; Azure and the rest return audio only, so estimate from the
+            // spoken word count (~2.6 words/sec, adjusted for the voice speed). Without this a
             // narration scene has duration_seconds=null → the Step-5 preview timeline is 0:00 and
             // its Play button does nothing.
-            $alignment = $timing['character_timings'] ?? [];
-            $duration = 0.0;
-            if (! empty($alignment)) {
-                $last = end($alignment);
-                $duration = (float) ($last['end'] ?? $last['time'] ?? $last['endTime'] ?? 0);
-            }
+            $narrationTiming = NarrationTiming::fromStored($timing['character_timings'] ?? []);
+            $duration = $narrationTiming->duration();
             if ($duration <= 0.0) {
                 $words = max(1, str_word_count(strip_tags($text)));
                 $speed = (float) ($avatar?->voice_speed ?? 1.0) ?: 1.0;
@@ -122,12 +120,19 @@ class GenerateSceneAudio implements ShouldQueue
             }
             $duration = max(3.0, $duration);
 
+            $actualProvider = $tts->lastProvider();
+            $this->warnIfDowngraded($scene, $provider, $actualProvider, $voiceId, $narrationTiming);
+
             $scene->update([
                 'audio_path'        => $path,
-                'audio_alignment'   => $alignment,
+                'audio_alignment'   => $narrationTiming->toArray(),
                 'audio_script_hash' => sha1($script),
                 // The language this audio is actually IN, so nothing downstream has to infer it.
                 'audio_locale'      => $locale,
+                // ...and WHO actually read it, so a silent downgrade to a robot voice is a fact on
+                // the row rather than something you have to hear to discover.
+                'audio_provider'    => $actualProvider,
+                'audio_voice'       => $voiceId !== '' ? $voiceId : null,
                 'duration_seconds'  => (int) ceil($duration),
             ]);
 
@@ -136,5 +141,48 @@ class GenerateSceneAudio implements ShouldQueue
             $scene->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
             throw $e;
         }
+    }
+
+    /**
+     * Say so — in the log and on the scene — when the audio did not come from the provider the
+     * lesson asked for.
+     *
+     * The fallback chain is deliberate: half a lesson in the wrong voice still beats a lesson
+     * that won't generate. What is NOT acceptable is that the substitution left no trace, so a
+     * lesson could be described as narrated by a cloned voice while every scene was machine-read.
+     * A downgrade is recorded as a warning the teacher can see, not a silent success.
+     */
+    private function warnIfDowngraded(
+        Scene $scene,
+        string $requested,
+        ?string $actual,
+        string $voiceId,
+        NarrationTiming $timing,
+    ): void {
+        // 'auto' asks for the top of the chain, which is ElevenLabs.
+        $wanted = $requested === 'auto' ? 'elevenlabs' : $requested;
+
+        if ($actual === null || $actual === $wanted) {
+            // The requested provider delivered. Still worth noting when a narrator that should
+            // return timings did not — that is a drifting-subtitle scene.
+            if ($actual === 'elevenlabs' && $timing->isEmpty()) {
+                Log::warning("[Narration] scene {$scene->id}: ElevenLabs audio arrived without timings; subtitles will be estimated.");
+            }
+
+            return;
+        }
+
+        Log::warning(
+            "[Narration] scene {$scene->id} DOWNGRADED: asked for {$requested}"
+            . ($voiceId !== '' ? " (voice {$voiceId})" : '')
+            . " but the audio came from {$actual}. The narrator's voice was not used."
+        );
+
+        $scene->forceFill([
+            'error_message' => __('Narrated by :actual, not the :wanted voice this lesson uses. Check the narration settings, then regenerate the audio.', [
+                'actual' => $actual,
+                'wanted' => $wanted,
+            ]),
+        ])->save();
     }
 }

@@ -5113,6 +5113,28 @@ class Step3SceneConfigurator extends Component
         }
 
         $this->lesson->update(['status' => LessonStatus::Published, 'scheduled_publish_at' => null]);
+
+        // Publishing succeeds either way — a lesson in the wrong voice still teaches, and
+        // stranding a teacher over it would be worse. But say it out loud: a scene read by the
+        // machine voice instead of the narrator the lesson names shipped unnoticed for months
+        // precisely because nothing ever mentioned it.
+        $downgraded = $this->lesson->scenes()
+            ->whereNotNull('audio_provider')
+            ->with('lesson.avatar')          // narrationWasDowngraded() reads the lesson's narrator
+            ->orderBy('order')
+            ->get(['id', 'lesson_id', 'order', 'audio_provider', 'audio_path'])
+            ->filter(fn (Scene $s): bool => $s->narrationWasDowngraded());
+
+        if ($downgraded->isNotEmpty()) {
+            $this->publishOk = false;
+            $this->publishNotice = __('Lesson published, but :count of its scenes (:list) were narrated by a stand-in voice, not the lesson\'s narrator. Regenerate their audio to fix that.', [
+                'count' => $downgraded->count(),
+                'list'  => $downgraded->map(fn (Scene $s): string => (string) $s->order)->implode(', '),
+            ]);
+
+            return;
+        }
+
         $this->publishOk = true;
         $this->publishNotice = __('Lesson published.');
     }
