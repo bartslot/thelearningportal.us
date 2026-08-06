@@ -87,6 +87,18 @@ class LessonComposer
             'status' => LessonStatus::Draft,
         ]);
 
+        // Who reads it. Named by slug so a spec survives a reseed that renumbers the narrators, and
+        // it matters more than a cosmetic credit: GenerateSceneAudio takes the provider, the voice
+        // and the speaking rate from the lesson's narrator, so a spec that does not name one is
+        // read by whoever happens to be first.
+        if (! empty($spec['avatar'])) {
+            $avatar = \App\Models\Avatar::where('slug', (string) $spec['avatar'])->first();
+            if (! $avatar) {
+                throw new \InvalidArgumentException("Spec names narrator '{$spec['avatar']}', which does not exist.");
+            }
+            $lesson->avatar_id = $avatar->id;
+        }
+
         if (isset($spec['map_relief'])) {
             $lesson->map_relief = (float) $spec['map_relief'];
         }

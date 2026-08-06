@@ -74,6 +74,7 @@ class CreateAvatarTest extends TestCase
             ->set('subject', 'history')
             ->set('portrait', UploadedFile::fake()->image('maya.webp', 600, 600))
             ->set('intro_video', UploadedFile::fake()->create('hello.mp4', 1024, 'video/mp4'))
+            ->set('voice_provider', 'edge_tts')
             ->set('voice_id', 'nl-NL-FennaNeural')
             ->set('voice_speed', 0.9)
             ->call('createAvatar')
@@ -98,5 +99,49 @@ class CreateAvatarTest extends TestCase
 
         $this->assertSame('avatars/31/welcome.mp4', $julian->intro_video_path);
         $this->assertSame(asset('avatars/31/welcome.mp4'), $julian->welcomeVideoUrl());
+    }
+
+    public function test_a_narrator_can_be_given_an_elevenlabs_voice(): void
+    {
+        // Every narrator in the catalogue is ElevenLabs, and a cloned voice cannot be offered as a
+        // list — it belongs to one account and nothing enumerates it. So the id is typed in, and
+        // this is the path that actually gets used.
+        Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Livewire::actingAs($admin)
+            ->test(CreateAvatar::class)
+            ->set('name', 'Ron Slot')
+            ->set('subject', 'history')
+            ->set('portrait', UploadedFile::fake()->image('ron.jpg', 640, 640))
+            ->set('voice_provider', 'elevenlabs')
+            ->set('elevenlabs_voice_id', 'Gwv6uO8RNVuOAN68JgUb')
+            ->set('voice_speed', 0.95)
+            ->call('createAvatar')
+            ->assertHasNoErrors()
+            ->assertRedirect();
+
+        $avatar = Avatar::where('slug', 'ron-slot')->firstOrFail();
+
+        $this->assertSame('elevenlabs', $avatar->voice_provider);
+        $this->assertSame('Gwv6uO8RNVuOAN68JgUb', $avatar->voice_id);
+    }
+
+    public function test_a_malformed_elevenlabs_voice_id_is_refused(): void
+    {
+        // A wrong id fails silently at narration time, hours later and in someone else's lesson.
+        Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Livewire::actingAs($admin)
+            ->test(CreateAvatar::class)
+            ->set('name', 'Wrong Voice')
+            ->set('subject', 'history')
+            ->set('portrait', UploadedFile::fake()->image('x.jpg', 640, 640))
+            ->set('voice_provider', 'elevenlabs')
+            ->set('elevenlabs_voice_id', 'not-a-real-id')
+            ->set('voice_speed', 0.95)
+            ->call('createAvatar')
+            ->assertHasErrors(['elevenlabs_voice_id']);
     }
 }

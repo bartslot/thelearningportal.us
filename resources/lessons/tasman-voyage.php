@@ -8,6 +8,7 @@ return [
     'title' => 'De reis van Abel Tasman',
     'subject' => 'history',
     'language' => 'nl',
+    'avatar' => 'ron-slot',
     'grade_level' => 'K-7',
     'tone' => 'adventurous',
     'map_style' => 'satellite',
@@ -176,6 +177,7 @@ return [
             'type' => 'voyage',
             'voyage' => 'tasman-1642',
             'leg' => 5,
+            'script' => 'In augustus 1642 vertrekken twee schepen uit Batavia, op Java. Aan boord staat Abel Tasman, een schipper uit Groningen. Zijn opdracht klinkt eenvoudig: zoek het Zuidland. Iedereen weet zeker dat het bestaat, ergens onder aan de wereld, maar niemand heeft het ooit gezien. Kijk mee met de route die hij gaat varen. Tien maanden lang, over water waar geen enkele kaart van bestaat.',
             'view' => 'flat',
             'extra_config' => [
                 'transition' => [
@@ -227,8 +229,9 @@ return [
             'view' => 'flat',
             'intro' => true,
             'title' => 'Verversingspost',
+            'script' => 'Eerst naar Mauritius. Dat is geen omweg, dat is noodzaak. Hier laden de schepen vers water, hout en voedsel, want hierna komt er heel lang niets meer. De mannen schrobben het dek, lappen de zeilen op en vullen de vaten. Dan zeilen ze naar het zuiden, veel verder zuidelijk dan iemand gewend is, tot de wind hen oostwaarts duwt. Het wordt er koud, nat en gevaarlijk.',
             'date_label' => '5 september 1642',
-            'story' => 'Mauritius was voor de VOC een vitale verversingspost waar schepen vers water en voedsel konden laden. Tasmans mannen werkten koortsachtig: het dek werd geschrobd, zeilen gerepareerd, vaten gevuld met water en vlees. Na twee maanden koersten ze op 8 oktober 1642 koers naar het zuiden.',
+            'story' => 'Mauritius was voor de VOC een vitale verversingspost waar schepen vers water en voedsel konden laden. Tasmans mannen werkten koortsachtig: het dek werd geschrobd, zeilen gerepareerd, vaten gevuld met water en vlees. Na twee maanden zetten ze op 8 oktober 1642 koers naar het zuiden.',
             'images' => [
                 [
                     'url' => '/lessons/tasman/mauritius-voc.jpg',
@@ -251,8 +254,9 @@ return [
             'leg' => 1,
             'view' => 'flat',
             'title' => 'Land van Van Diemen',
+            'script' => 'Vierentwintig november 1642. Na weken van niets dan golven ziet de uitkijk land: bergen, donker en bebost. Tasman noemt het naar zijn baas, gouverneur-generaal Antonio van Diemen. Ze gaan aan wal en vinden hoge bomen met inkepingen, en rook in de verte. Mensen zien ze niet. Wij noemen dit eiland nu Tasmanië, naar hem. De mensen die er toen al duizenden jaren woonden, de Palawa, noemden het anders.',
             'date_label' => '24 november 1642',
-            'story' => 'Op 24 november 1642 zagen Tasmans mannen voor het eerst een onbekend, bergachtig eiland. Ze noemden het naar gouverneur-generaal Antonio van Diemen. Terukkeerend naar boord ontdekten zij dik bos en rooksporen van vuur, maar geen mensen. Het eiland zou later \'Tasmania\' heten.',
+            'story' => 'Op 24 november 1642 zagen Tasmans mannen voor het eerst een onbekend, bergachtig eiland. Ze noemden het naar gouverneur-generaal Antonio van Diemen. Terugkerend naar boord ontdekten zij dik bos en rooksporen van vuur, maar geen mensen. Het eiland zou later \'Tasmania\' heten.',
             'images' => [
                 [
                     'url' => '/lessons/tasman/kaart-tasman-1644.jpg',
@@ -275,6 +279,7 @@ return [
             'leg' => 2,
             'view' => 'flat',
             'title' => 'Eerste contact gaat tragisch',
+            'script' => 'Dertien december. Weer land, en dit keer wonen er mensen. Kano’s komen naar de schepen toe. Er wordt geroepen en op een hoorn geblazen. De Nederlanders blazen terug, want ze denken dat het een groet is. Dat was het niet. Voor de Māori was het een waarschuwing. De volgende ochtend wordt een sloep geramd en komen vier Nederlandse matrozen om. Tasman vaart weg en zet op zijn kaart: Moordenaarsbaai. Bedenk even dat dat zijn naam is, van zijn kant van het verhaal. Tegenwoordig heet die plek Golden Bay.',
             'date_label' => '13 december 1642',
             'story' => 'Op 13 december 1642 voeren Tasmans schepen langs Nieuw-Zeeland. Twee dagen later zagen zij gekleurde kano\'s vol Māori-krijgers. Toen een sloep van Tasman probeerde contact te maken, werd zij geramd en ramde een kano erin. Vier Nederlandse matrozen verdronken. Tasman noemde dit water Moordenaarsbaai.',
             'images' => [
@@ -299,8 +304,9 @@ return [
             'leg' => 3,
             'view' => 'flat',
             'title' => 'Vriendelijk welkom',
+            'script' => 'Eenentwintig januari 1643, bij Tonga. En nu gaat alles anders. Kano’s varen naar de schepen met varkens, kokosnoten en vers fruit. Er wordt geruild: spijkers, glas en zilverdraad voor eten. Dezelfde schepen, dezelfde bemanning, een heel ander onthaal. Dat is het waard om te onthouden: hoe een ontmoeting afloopt, ligt niet alleen aan wie er aankomt.',
             'date_label' => '21 januari 1643',
-            'story' => 'Op 21 januari 1643 arriveerde Tasman in Tonga. Hier verliep alles anders: vriendelijke kano\'s vol vrouwen en mannen naderden de schepen met varkens, kokosnoten en verse vruchten. De VOC-mannen gaven spijkers, glaswerk en zilverdraad in ruil. Dit was een volkomen ander ontvangst dan Nieuw-Zeeland.',
+            'story' => 'Op 21 januari 1643 arriveerde Tasman in Tonga. Hier verliep alles anders: vriendelijke kano\'s vol vrouwen en mannen naderden de schepen met varkens, kokosnoten en verse vruchten. De VOC-mannen gaven spijkers, glaswerk en zilverdraad in ruil. Dit was een volkomen andere ontvangst dan Nieuw-Zeeland.',
             'images' => [
                 [
                     'url' => '/lessons/tasman/voc-schepen.png',
@@ -323,8 +329,9 @@ return [
             'leg' => 4,
             'view' => 'flat',
             'title' => 'Thuiskomst met geheimen',
+            'script' => 'Vijftien juni 1643 loopt Tasman Batavia weer binnen. Tien maanden gevaren, en de gouverneur-generaal is teleurgesteld. Geen goud, geen specerijen, geen nieuwe handelsroutes. Voor de VOC is de reis mislukt. Maar Tasman heeft iets anders meegebracht: kaarten. Hij is om Australië heen gevaren zonder het te zien, en hij heeft bewezen dat het Zuidland niet is wat iedereen dacht. Die kaarten bleven daarna nog jaren geheim.',
             'date_label' => '15 juni 1643',
-            'story' => 'Na nog een volle maand zeilen door onbekende wateren bereikten Tasmans twee schepen op 15 juni 1643 Batavia. De gouverneur-generaal was niet erg blij: geen goud, geen schatten, geen handelsouten. Maar Tasman had iets oneindig veel waardevollers gegeven: de eerste nauwkeurige kaarten van grote delen van de wereld.',
+            'story' => 'Na nog een volle maand zeilen door onbekende wateren bereikten Tasmans twee schepen op 15 juni 1643 Batavia. De gouverneur-generaal was niet erg blij: geen goud, geen schatten, geen handelsroutes. Maar Tasman had iets oneindig veel waardevollers gegeven: de eerste nauwkeurige kaarten van grote delen van de wereld.',
         ],
     ],
 ];
