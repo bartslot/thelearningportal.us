@@ -95,23 +95,49 @@ class Avatar extends Model
      */
     public function portraitUrl(): ?string
     {
-        if (! $this->portrait_path) {
+        return $this->mediaUrl($this->portrait_path);
+    }
+
+    /**
+     * Turn a stored media path into a URL by finding where the file actually is.
+     *
+     * A narrator's media lives in one of two places and the path alone does not say which. Assets
+     * bundled with the app sit in `public/avatars/{id}/…` and are served straight off disk; anything
+     * an admin UPLOADS is written to the public storage disk and served through the /storage link.
+     * Both are spelled `avatars/…`.
+     *
+     * This used to be decided by prefix — a path starting with `avatars/` was assumed to be a
+     * bundled asset — so every uploaded portrait 404'd. Uploading a new picture in the Studio wrote
+     * it to storage/app/public/avatars/1/portrait.jpg and then linked /avatars/1/portrait.jpg,
+     * which is a different file that does not exist. Ron Slot's portrait was broken the same way
+     * from the day he was created, since the Add-narrator form also stores under `avatars/`.
+     *
+     * So: ask the filesystem instead of guessing. Storage wins when a file is in both, because that
+     * is the freshly uploaded one and a stale bundled asset of the same name must not shadow it.
+     *
+     * Returns null rather than a URL that 404s — callers already treat null as "no picture" and
+     * render a fallback, which looks far better than a broken image.
+     */
+    private function mediaUrl(?string $path): ?string
+    {
+        if (! $path) {
             return null;
         }
 
-        // Public asset paths (avatars/* or assets/*) — served directly from public/
-        if (str_starts_with($this->portrait_path, 'avatars/') || str_starts_with($this->portrait_path, 'assets/')) {
-            return asset($this->portrait_path);
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+
+        if ($disk->exists($path)) {
+            return $disk->url($path);
         }
 
-        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->portrait_path);
+        return file_exists(public_path($path)) ? asset($path) : null;
     }
 
     public function thumbnailUrl(): ?string
     {
-        $path = public_path("avatars/{$this->id}/thumbnail.webp");
-
-        return file_exists($path) ? asset("avatars/{$this->id}/thumbnail.webp") : null;
+        // Through the same resolver, so an uploaded thumbnail is found too — this only ever looked
+        // in public/, which meant the Studio could never replace a bundled one.
+        return $this->mediaUrl("avatars/{$this->id}/thumbnail.webp");
     }
 
     /**
@@ -120,18 +146,11 @@ class Avatar extends Model
      */
     public function welcomeVideoUrl(): ?string
     {
-        if ($this->intro_video_path) {
-            if (str_starts_with($this->intro_video_path, 'avatars/') || str_starts_with($this->intro_video_path, 'assets/')) {
-                return asset($this->intro_video_path);
-            }
-
-            return \Illuminate\Support\Facades\Storage::disk('public')->url($this->intro_video_path);
-        }
-
-        // Backwards compatibility for avatars created before intro_video_path existed.
-        $path = public_path("avatars/{$this->id}/welcome.mp4");
-
-        return file_exists($path) ? asset("avatars/{$this->id}/welcome.mp4") : null;
+        // Same resolver as the portrait, and for the same reason: an uploaded introduction and a
+        // bundled one are both spelled `avatars/…`, so only the filesystem can say which this is.
+        return $this->mediaUrl($this->intro_video_path)
+            // Backwards compatibility for avatars created before intro_video_path existed.
+            ?? $this->mediaUrl("avatars/{$this->id}/welcome.mp4");
     }
 
     /**
