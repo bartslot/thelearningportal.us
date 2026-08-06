@@ -1,7 +1,9 @@
 <?php
 
 use App\Enums\LessonStatus as LessonStatusEnum;
+use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Http\Controllers\Teacher\DashboardController;
@@ -143,6 +145,23 @@ Route::get('/map/historical-cities.geojson', HistoricalCitiesController::class)-
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login']);
+
+    // Password reset. Registered here, OUTSIDE the {locale} prefix group above, for the same reason
+    // login is: a reset link is emailed and clicked days later, and a locale segment in it would
+    // make the URL depend on which language the sender happened to be using.
+    //
+    // The throttles are the reason the pair exists: the broker's own 60-second rule (config/auth.php)
+    // only stops repeat requests for ONE address, so without a per-IP limit the form is a way to
+    // send mail to arbitrary people, one address at a time.
+    Route::get('/forgot-password', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
+    Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLink'])
+        ->middleware('throttle:6,1')
+        ->name('password.email');
+
+    Route::get('/reset-password/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
+    Route::post('/reset-password', [ResetPasswordController::class, 'reset'])
+        ->middleware('throttle:6,1')
+        ->name('password.update');
 });
 
 Route::post('/logout', [LoginController::class, 'logout'])
