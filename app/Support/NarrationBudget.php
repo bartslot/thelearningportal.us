@@ -6,6 +6,8 @@ namespace App\Support;
 
 use App\Models\Lesson;
 use App\Models\User;
+use App\Services\Billing\NarrationCreditLedger;
+use Illuminate\Support\Facades\DB;
 
 /**
  * How much narration a teacher may have re-spoken on one lesson.
@@ -19,9 +21,15 @@ use App\Models\User;
  * however long the lesson is — which is why the cap is not simply "scripts must be under 1000
  * characters" (our own Tasman scenes run 350-500 characters each and would be refused).
  *
- * THE PAID TIER IS NOT BUILT YET. `creditCharacters()` returns 0 for everyone until the Stripe
- * credit ledger lands; when it does, only that one method changes and every caller keeps working.
- * Nothing else in the app should ask "can this teacher afford it" — ask here.
+ * There are two pots, and they are spent in this order:
+ *
+ *   1. The lesson's free allowance, counted in lessons.narration_edit_characters. Per lesson.
+ *   2. The teacher's bought credits, summed from the narration_credits ledger. Across all lessons.
+ *
+ * Free first, always: a teacher's own money is the last thing to be touched.
+ *
+ * This class is the ONE place the app asks "can this teacher afford it". Nothing outside it should
+ * read a balance to make that decision, and charge() is the only thing that may take the money.
  */
 final class NarrationBudget
 {
@@ -35,15 +43,14 @@ final class NarrationBudget
     public const FREE_CHARACTERS_PER_LESSON = 1000;
 
     /**
-     * Characters a teacher has bought and not yet spent.
+     * Characters a teacher has bought and not yet spent, across every lesson they own.
      *
-     * Stub. €5 buys 5000 characters, spendable across any of their lessons — see the Stripe credit
-     * ledger when it exists. Returning 0 means every teacher is on the free allowance today, which
-     * is the safe direction to be wrong in.
+     * The sum of their narration_credits rows. A guest demo account always reads 0 — it cannot buy
+     * and cannot be given credit. If this sum ever gets slow, cache it; keep the ledger as truth.
      */
     public static function creditCharacters(?User $teacher): int
     {
-        return 0;
+        return self::ledger()->balanceFor($teacher);
     }
 
     /** Everything this lesson may still spend: its free allowance plus the teacher's credits. */
@@ -52,10 +59,21 @@ final class NarrationBudget
         return self::FREE_CHARACTERS_PER_LESSON + self::creditCharacters($lesson->teacher);
     }
 
-    /** Edited characters already charged to this lesson. */
+    /**
+     * Free-allowance characters already charged to this lesson.
+     *
+     * Only the free pot. Credit spending is not counted here because it has already been taken off
+     * creditCharacters() — counting it in both places would charge the teacher twice over.
+     */
     public static function spentOn(Lesson $lesson): int
     {
         return max(0, (int) $lesson->narration_edit_characters);
+    }
+
+    /** What is left of this lesson's own free allowance, before touching any credits. */
+    public static function freeRemainingFor(Lesson $lesson): int
+    {
+        return max(0, self::FREE_CHARACTERS_PER_LESSON - self::spentOn($lesson));
     }
 
     public static function remainingFor(Lesson $lesson): int
@@ -92,22 +110,74 @@ final class NarrationBudget
         return max(1, mb_strlen($after) - $shared);
     }
 
-    /** Whether this edit fits in what the lesson has left. */
+    /**
+     * Whether this edit looks like it fits. ADVISORY ONLY — for showing a hint, never for deciding.
+     *
+     * Reads the balance without holding a lock, so by the time a caller acts on the answer another
+     * request may have spent the same characters. charge() is the only safe way to find out, and it
+     * answers the same question atomically.
+     */
     public static function canAfford(Lesson $lesson, string $before, string $after): bool
     {
         return self::costOfEdit($before, $after) <= self::remainingFor($lesson);
     }
 
     /**
-     * Charge an edit to the lesson. Call ONLY after the edit is actually saved.
+     * Take payment for an edit, free allowance first and credits after. Call BEFORE saving.
      *
-     * Uses a raw increment rather than read-modify-write: two panels autosaving the same scene at
-     * once would otherwise each read the same total and one charge would vanish.
+     * Returns false when the teacher cannot afford it, having charged nothing — the caller must
+     * then refuse the edit. Deciding and charging happen together, under a lock on the teacher's
+     * row: two panels autosaving at once would otherwise both read the same balance and both spend
+     * it, and the second edit would be narrated on money that was never there.
+     *
+     * This runs before the save rather than after because the alternative is worse. A save that
+     * fails after a successful charge costs the teacher a few characters; a charge that fails after
+     * a successful save costs us an ElevenLabs invoice with nothing recorded against it.
      */
-    public static function charge(Lesson $lesson, int $characters): void
+    public static function charge(Lesson $lesson, int $characters): bool
     {
-        if ($characters > 0) {
-            $lesson->increment('narration_edit_characters', $characters);
+        if ($characters <= 0) {
+            return true;   // an edit that changed nothing is free, and there is nothing to record
         }
+
+        $ledger = self::ledger();
+
+        $apply = static function () use ($lesson, $characters, $ledger): bool {
+            // Re-read inside the lock: whatever another request charged is now visible, and the
+            // balance this decision uses is the one that will still be true when it writes.
+            $lesson->refresh();
+
+            $fromFree = min($characters, self::freeRemainingFor($lesson));
+            $fromCredits = $characters - $fromFree;
+
+            if ($fromCredits > $ledger->balanceFor($lesson->teacher)) {
+                return false;   // not enough in either pot, so nothing is taken from either
+            }
+
+            if ($fromFree > 0) {
+                $lesson->increment('narration_edit_characters', $fromFree);
+            }
+            if ($fromCredits > 0) {
+                $ledger->recordSpend($lesson, $fromCredits);
+            }
+
+            return true;
+        };
+
+        // Lock the teacher, who owns the credits. Every charge against any of their lessons passes
+        // through the same row, so they all queue up behind each other. A lesson with no teacher
+        // has no credits either, and only its own free counter to protect.
+        return $lesson->teacher_id
+            ? (bool) $ledger->withOwnerLock((int) $lesson->teacher_id, $apply)
+            : (bool) DB::transaction(static function () use ($lesson, $apply) {
+                Lesson::whereKey($lesson->id)->lockForUpdate()->first();
+
+                return $apply();
+            });
+    }
+
+    private static function ledger(): NarrationCreditLedger
+    {
+        return app(NarrationCreditLedger::class);
     }
 }

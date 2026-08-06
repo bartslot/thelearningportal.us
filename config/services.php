@@ -122,6 +122,26 @@ return [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // ── Stripe (teachers buy narration credits) ───────────────────────────────
+    //
+    // Hosted Checkout only: no card number ever reaches this server, and Dutch teachers get iDEAL
+    // without us building it. Both keys live in .env and nowhere else — a test key starts sk_test_.
+    //
+    // The webhook secret is what makes App\Http\Controllers\Billing\StripeWebhookController trust a
+    // request at all. Without it the endpoint would credit an account for anyone who could POST to
+    // it, so it refuses to run unsigned.
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+
+        // Work the VAT out per country and show it inside the 5 euro (see NarrationCreditPack).
+        // Costs 0.5% per transaction; turning it off means calculating and filing OSS by hand.
+        'automatic_tax' => filter_var(env('STRIPE_AUTOMATIC_TAX', true), FILTER_VALIDATE_BOOLEAN),
+
+        // Let a school enter its VAT number, which reverse-charges the sale.
+        'collect_tax_id' => filter_var(env('STRIPE_COLLECT_TAX_ID', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
     // ── Image search (lesson slideshow backgrounds) ───────────────────────────
 
     'europeana' => [

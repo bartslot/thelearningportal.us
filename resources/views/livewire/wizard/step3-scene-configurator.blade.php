@@ -149,6 +149,12 @@
             const w = window.__step3Wire();
             if (w && typeof w.undoSceneDelete === 'function') { try { w.undoSceneDelete(); } catch (_) {} }
         });
+        // "Add credits" on the out-of-allowance toast. A full navigation, not wire:navigate: the
+        // teacher is leaving the editor for Stripe and comes back to a fresh page either way.
+        // The lesson travels along so the buy screen can offer the way back to it.
+        window.addEventListener('billing:buy-credits', () => {
+            window.location.href = @js(route('teacher.credits.index', ['lesson' => $lesson->id]));
+        });
         document.addEventListener('keydown', (e) => {
             if ((e.key !== 'z' && e.key !== 'Z') || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
             // Never steal the shortcut from a field the teacher is typing in.

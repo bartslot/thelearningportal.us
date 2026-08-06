@@ -14,6 +14,7 @@
         "livewire/livewire": "^3.5",
         "phpoffice/phpword": "^1.4",
         "smalot/pdfparser": "^2.12",
+        "stripe/stripe-php": "^21.1",
         "symfony/dom-crawler": "^8.0"
     },
     "require-dev": {
