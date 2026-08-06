@@ -27,7 +27,7 @@ class GenerateSceneAudioTest extends TestCase
     public function test_produces_audio_alignment_and_marks_ready_when_all_assets_present(): void
     {
         $teacher = User::factory()->create();
-        $avatar  = Avatar::create([
+        $avatar = Avatar::create([
             'name' => 'Napoleon', 'slug' => 'napoleon-1', 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'voice-x',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
@@ -37,12 +37,12 @@ class GenerateSceneAudioTest extends TestCase
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
         ]);
         $scene = Scene::create([
-            'lesson_id'      => $lesson->id,
-            'order'          => 1,
-            'kind'           => 'narration',
+            'lesson_id' => $lesson->id,
+            'order' => 1,
+            'kind' => 'narration',
             'script_segment' => 'Hello world.',
-            'image_path'     => 'x.png',
-            'status'         => 'generating',
+            'image_path' => 'x.png',
+            'status' => 'generating',
         ]);
 
         $this->mock(TtsService::class, function ($mock): void {
@@ -62,13 +62,14 @@ class GenerateSceneAudioTest extends TestCase
             );
             $mock->shouldReceive('lastExtension')->andReturn('mp3');
             $mock->shouldReceive('lastProvider')->andReturn('elevenlabs');
+            $mock->shouldReceive('lastVoice')->andReturn('voice-x');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
 
         $scene->refresh();
         $this->assertMatchesRegularExpression(
-            '#^lessons/' . $lesson->id . '/scenes/' . $scene->id . '/narration\.mp3$#',
+            '#^lessons/'.$lesson->id.'/scenes/'.$scene->id.'/narration\.mp3$#',
             (string) $scene->audio_path,
         );
         $this->assertSame(sha1('Hello world.'), $scene->audio_script_hash);
@@ -100,6 +101,7 @@ class GenerateSceneAudioTest extends TestCase
             );
             $mock->shouldReceive('lastExtension')->andReturn('mp3');
             $mock->shouldReceive('lastProvider')->andReturn('elevenlabs');
+            $mock->shouldReceive('lastVoice')->andReturn('voice-x');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
@@ -129,6 +131,7 @@ class GenerateSceneAudioTest extends TestCase
             );
             $mock->shouldReceive('lastExtension')->andReturn('m4a');
             $mock->shouldReceive('lastProvider')->andReturn('macos_say');
+            $mock->shouldReceive('lastVoice')->andReturn('say');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
@@ -137,6 +140,94 @@ class GenerateSceneAudioTest extends TestCase
         $this->assertSame('macos_say', $scene->audio_provider);
         $this->assertTrue($scene->narrationWasDowngraded());
         $this->assertStringContainsString('macos_say', (string) $scene->error_message);
+    }
+
+    public function test_a_lesson_without_a_narrator_is_read_in_its_own_language_not_american(): void
+    {
+        // A lesson with avatar_id = NULL resolves to an empty voice id. Passed down the chain it
+        // used to reach Azure's old 'en-US-GuyNeural' default, so a FRENCH lesson came back read
+        // in US English — 14 live scenes did exactly that. Narration is never US-accented.
+        $lesson = Lesson::create([
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => null,
+            'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
+        ]);
+        $scene = Scene::create([
+            'lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Le vingt-quatre novembre, les navires aperçoivent enfin une côte inconnue dans la brume.',
+            'image_path' => 'x.png', 'status' => 'generating',
+        ]);
+
+        $captured = [];
+        $this->mock(TtsService::class, function ($mock) use (&$captured): void {
+            $mock->shouldReceive('prepareSpeechText')->andReturnUsing(fn ($t) => $t);
+            $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
+                function ($text, $voiceId, $speed, $provider, &$timing) use (&$captured) {
+                    $captured = ['voiceId' => $voiceId, 'provider' => $provider];
+                    $timing = null;
+
+                    return 'BINARYMP3';
+                }
+            );
+            $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn('azure');
+            $mock->shouldReceive('lastVoice')->andReturn('fr-FR-Remy:DragonHDLatestNeural');
+        });
+
+        (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
+
+        // A French script gets the French narrator, chosen before the request leaves the job.
+        $this->assertSame('azure', $captured['provider']);
+        $this->assertSame('fr-FR-Remy:DragonHDLatestNeural', $captured['voiceId']);
+        $this->assertStringStartsNotWith('en-US-', $captured['voiceId']);
+
+        // ...and the row records the voice that actually spoke, never an empty string.
+        $scene->refresh();
+        $this->assertSame('fr', $scene->audio_locale);
+        $this->assertSame('fr-FR-Remy:DragonHDLatestNeural', $scene->audio_voice);
+    }
+
+    public function test_a_narrator_less_lesson_on_azure_is_not_called_a_downgrade(): void
+    {
+        // No avatar means no named narrator, so Azure on the native voice is the CORRECT outcome,
+        // not a substitution. Calling it a downgrade flagged 77 correctly-narrated production
+        // scenes; a warning that cries wolf is worth less than no warning.
+        $lesson = Lesson::create([
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => null,
+            'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
+        ]);
+        $scene = Scene::create([
+            'lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Hello world.', 'image_path' => 'x.png', 'status' => 'generating',
+            // A stale warning left behind by an earlier, genuinely bad run.
+            'error_message' => 'Narrated by azure, not the elevenlabs voice this lesson uses.',
+        ]);
+
+        $this->mockTts('azure', 'en-GB-Ollie:DragonHDLatestNeural');
+
+        (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
+
+        $scene->refresh();
+        $this->assertFalse($scene->narrationWasDowngraded());
+        // A successful run clears the stale warning instead of leaving it forever.
+        $this->assertNull($scene->error_message);
+    }
+
+    /** Mock TtsService to return audio from a given provider/voice with no timings. */
+    private function mockTts(string $provider, string $voice): void
+    {
+        $this->mock(TtsService::class, function ($mock) use ($provider, $voice): void {
+            $mock->shouldReceive('prepareSpeechText')->andReturnUsing(fn ($t) => $t);
+            $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
+                function ($text, $voiceId, $speed, $p, &$timing) {
+                    $timing = null;
+
+                    return 'BINARYMP3';
+                }
+            );
+            $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn($provider);
+            $mock->shouldReceive('lastVoice')->andReturn($voice);
+        });
     }
 
     private function sceneWithElevenLabsNarrator(string $slug): Scene
@@ -189,6 +280,7 @@ class GenerateSceneAudioTest extends TestCase
             );
             $mock->shouldReceive('lastExtension')->andReturn('mp3');
             $mock->shouldReceive('lastProvider')->andReturn('azure');
+            $mock->shouldReceive('lastVoice')->andReturn('en-US-GuyNeural');
         });
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));

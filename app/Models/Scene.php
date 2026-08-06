@@ -363,10 +363,18 @@ class Scene extends Model
             return false;
         }
 
-        $wanted = (string) config('services.tts.provider_override', '')
-            ?: (string) ($this->lesson?->avatar?->voice_provider ?? 'elevenlabs');
+        // A lesson that names no narrator has nothing to be downgraded FROM: it is read by the
+        // native Azure voice for its language, on purpose. Calling that a downgrade flagged 77
+        // correctly-narrated scenes and would have told teachers their lessons used a stand-in
+        // voice when they did not — a warning nobody can trust is worth less than no warning.
+        if ($this->lesson?->avatar === null) {
+            return false;
+        }
 
-        return $provider !== $wanted;
+        $wanted = (string) config('services.tts.provider_override', '')
+            ?: (string) $this->lesson->avatar->voice_provider;
+
+        return $wanted !== '' && $provider !== $wanted;
     }
 
     private function formatTimecode(float $seconds): string
