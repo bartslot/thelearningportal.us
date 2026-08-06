@@ -38,7 +38,7 @@ test.describe('lang:audit blind spot', () => {
     // stored locale other specs change. That is exactly why the assertion below is locale-blind.)
     const dict = await page.evaluate(() => (window as any).__lpLang ?? {});
     expect(Object.keys(dict).length).toBeGreaterThan(10);
-    console.log(`[blind spot] page lang=${await page.evaluate(() => document.documentElement.lang)} dict['Nice!']=${dict['Nice!']}`);
+    console.log(`[blind spot] page lang=${await page.evaluate(() => document.documentElement.lang)} dict['Quiz paused']=${dict['Quiz paused']}`);
 
     // …and the call to action next to it is English, in every language, always.
     const cta = page.getByRole('button', { name: /Start lesson/ });
@@ -58,17 +58,46 @@ test.describe('lang:audit blind spot', () => {
     await ctx.close();
   });
 
-  test('quiz-overlay chrome the JS writes is outside the dictionary too', async ({ browser }) => {
+  /**
+   * This one used to assert the blind spot: the quiz's score card rendered "Join the leaderboard"
+   * and "Leaderboard" as English literals, they reached no dictionary, and the audit counted none
+   * of them. That hole is closed, so per the note at the top of this file the old assertions have
+   * died the correct way and this is what replaces them — the guard that keeps them closed.
+   *
+   * Two conditions, because the strings need both to be worth anything:
+   *
+   *   1. the browser was handed a translation, so the card can render in the class's language, and
+   *   2. the audit COUNTS them, so a language falling behind fails the build.
+   *
+   * (2) is the one that quietly broke before. App\Support\JsTranslations used to loop over an
+   * array and translate each entry, which the extractor cannot see — the strings were translated
+   * but invisible, reported as UNUSED, and one `lang:audit --prune` from being deleted outright.
+   */
+  test('quiz-overlay chrome the JS writes is inside the dictionary, and inside the audit', async ({ browser }) => {
     const ctx = await browser.newContext({ locale: 'fr-FR', extraHTTPHeaders: { 'Accept-Language': 'fr' } });
     const page = await ctx.newPage();
     await page.goto(`/lesson/${LESSON}`);
 
     const dict = await page.evaluate(() => (window as any).__lpLang ?? {});
+    const counted = JSON.parse(
+      execFileSync('php', ['artisan', 'lang:audit', '--json'], { cwd: REPO, encoding: 'utf8' }),
+    );
 
-    // Strings QuizOverlay.js renders as literals. If they are not in the dictionary the browser
-    // was handed, no locale can ever translate them — and the audit counts none of them.
-    for (const s of ['Join the leaderboard', 'Leaderboard']) {
-      expect(Object.keys(dict)).not.toContain(s);
+    for (const s of ['Join the leaderboard', 'Leaderboard', 'Lesson starts in :count']) {
+      expect(Object.keys(dict), `"${s}" never reached the browser`).toContain(s);
+      expect(
+        counted.fr?.missing ?? [],
+        `"${s}" is missing from French — the audit should be failing`,
+      ).not.toContain(s);
+    }
+
+    // Counted, not merely present: a string the extractor cannot see is reported as UNUSED, and
+    // that is exactly the state --prune deletes.
+    for (const code of ['nl', 'de', 'fr', 'it']) {
+      expect(
+        counted[code]?.unused ?? [],
+        `the audit cannot see the quiz's JS strings in ${code} — --prune would delete them`,
+      ).not.toContain('Join the leaderboard');
     }
 
     await ctx.close();

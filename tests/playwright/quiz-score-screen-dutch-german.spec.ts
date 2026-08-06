@@ -26,6 +26,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { waitForAnswers } from './support/quiz';
 
 const SHOTS = path.resolve('tests/playwright/results-quiz-score-nl-de');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -117,11 +118,10 @@ async function playQuizPerfectly(page: Page, answers: string[]) {
   for (let i = 0; i < answers.length + 4; i++) {
     if (await page.locator('[data-final-score]').count()) break;
 
-    const gate = page.locator('[data-gate-secs]');
-    if (await gate.count()) {
-      midQuizText.push(await page.locator('[data-gate-note]').innerText().catch(() => ''));
-      await expect(gate).toHaveCount(0, { timeout: 20_000 });
-    }
+    // The gate is a counting number now, not a sentence — collect it anyway, so a language that
+    // somehow put words back on it still shows up in the English sweep below.
+    midQuizText.push(await page.locator('[data-gate-note]').innerText().catch(() => ''));
+    if (!(await waitForAnswers(overlay))) break;
 
     // Click the option whose text IS the correct answer. Options are shuffled per player, so
     // position means nothing — the text is the only stable handle.
@@ -166,6 +166,11 @@ test.describe('the quiz score screen in a Dutch and a German class', () => {
 
   for (const lang of LANGUAGES) {
     test(`the score card a ${lang.option} class sees is ${lang.option}`, async ({ page }) => {
+      // A full quiz walk got longer when the read-gate became animation-led: the answers now
+      // arrive one bar at a time, so every question costs a few seconds more
+      // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
+      // reports a timeout instead of whatever it actually found.
+      test.slow();
       await setInterfaceLanguage(page, lang.option);
       await openPlayer(page, LESSON_CODE);
 

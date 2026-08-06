@@ -5,9 +5,21 @@
  * nothing lost on a wrong answer — it's a lesson, not a test. Correct answers pop,
  * burst particles and float "+10" into the score; wrong answers wobble gently and
  * reveal the right one. Answering IS the navigation: the card moves on by itself once
- * the student has had a moment with the feedback, and the last one opens the score screen.
+ * the student has had a moment with the answer, and the last one opens the score screen.
  *
- * Styling is Tailwind + daisyUI theme tokens (base-200 card on a base-100 scrim, primary
+ * The card is animation-led, not text-led (Figma "Multiple choice questions",
+ * History-Portal-Game node 1291:1843). Nothing tells a class in words how they did:
+ *
+ *   1. the question pops in, scaling up past its size and settling
+ *   2. a big number counts down in the middle of four blank bars, which is the read-gate —
+ *      the answers are underneath, genuinely hidden, so there is nothing to read ahead
+ *   3. the number scales away and the bars lift one at a time, revealing the answers in order
+ *   4. answering pops the right one and wobbles a wrong one — no "Nice!", no "Almost!"
+ *
+ * The explanation stays: it is what the question TEACHES, not a verdict on the answer, and it is
+ * the only place a class is told why the right answer is right.
+ *
+ * Styling is Tailwind + daisyUI theme tokens (the hp-modals gradient on a base-100 scrim, primary
  * amber, success/error for right and wrong) — no hard-coded hexes, so the quiz follows the
  * `learningportal` theme like everything else. Only the keyframes live in CSS (app.css);
  * all animation is transform/opacity only.
@@ -16,6 +28,7 @@
  */
 import { Sfx } from './sfx.js'
 import { t } from '../i18n.js'
+import { mountBigCountdown, BIG_COUNTDOWN_LEAVE_MS } from '../big-countdown.js'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 // The four answer letters keep their Kahoot-style colour coding, drawn from the theme's
@@ -29,17 +42,32 @@ const LETTER_CLASSES = [
 const POINTS_CORRECT = 10
 const STREAK_BONUS = 5
 const STREAK_FROM = 3
-// Built on use, not at module load: the language dictionary is published by Blade in the page,
-// and a module-level constant would capture the English before it arrived.
-const PRAISE = () => [t('Nice!'), t('Great!'), t('Perfect!'), t('Brilliant!'), t('On fire!')]
-const ENCOURAGE = () => [t('Almost!'), t('Good try!'), t('Keep going!')]
 
-// Shared chrome. `qz-card` carries the entrance animation (app.css).
-const SCRIM = 'absolute inset-0 flex items-center justify-center bg-base-100/80 backdrop-blur-md'
-const CARD = 'qz-card card bg-base-200 border border-base-300 rounded-box shadow-2xl text-base-content'
+// Shared chrome. `qz-card` carries the entrance animation (app.css). No border: the Figma card is
+// the gradient and a shadow, and an outline drawn around it is chrome the design does not have.
+const SCRIM = 'absolute inset-0 flex items-center justify-center bg-base-100/90 backdrop-blur-md'
+const CARD = 'qz-card card hp-modals rounded-box shadow-2xl text-base-content'
 
-// How long the answered card holds before it moves on by itself: long enough for the praise,
-// plus reading time for an explanation. Same reasoning as the read-gate, in the other direction.
+// ── The read-gate, as the Figma tells it ───────────────────────────────────────────────────────
+// Blank bars stand where the answers are, a number counts down in the middle of them, and then the
+// bars lift one at a time. Timings read off the Figma timeline (10.03s loop): the bars start
+// lifting 800ms after the number leaves, ~1s apart, 800ms each.
+const REVEAL_LEAD_MS = 800
+const REVEAL_STAGGER_MS = 1000
+const REVEAL_MS = 800
+/** Long enough to read as a countdown rather than a flash — the Figma counts 3, 2, 1. */
+const MIN_COUNTDOWN_MS = 2000
+
+/** How long the bars take to lift, start to finish, for `n` answers. */
+const revealMs = (n) => REVEAL_LEAD_MS + Math.max(0, n - 1) * REVEAL_STAGGER_MS + REVEAL_MS
+
+/** A class that asked for less motion gets the answers at once, not a four-second cascade. */
+const prefersReducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// How long the answered card holds before it moves on by itself: long enough to take in which
+// answer was right, plus reading time for an explanation. Same reasoning as the read-gate, in the
+// other direction.
 const ADVANCE_MS = 1600
 const ADVANCE_MS_PER_CHAR = 45
 const ADVANCE_MS_MAX = 7000
@@ -48,6 +76,16 @@ const ADVANCE_MS_MAX = 7000
 // a dead end nobody has a reason NOT to press. The countdown says what is about to happen instead,
 // and a tap anywhere skips the wait.
 const AUTO_CONTINUE_SECONDS = 5
+
+/**
+ * "Lesson starts in 5", with the number in its own element so _startAutoContinue can tick it.
+ *
+ * The number is interpolated INTO the translation rather than glued onto the end of it: German
+ * puts the verb last and French needs "dans", so a language that cannot move the number ends up
+ * writing English word order in its own words. Both end screens render this, hence one function.
+ */
+const LESSON_STARTS_IN = (seconds) =>
+  t('Lesson starts in :count', { count: `<span class="font-bold text-primary">${seconds}</span>` })
 
 export class QuizOverlay {
   constructor(hostEl) {
@@ -68,6 +106,8 @@ export class QuizOverlay {
     this._advanceTimer = null   // answering is the navigation: the card moves on by itself
     this._countdownTimer = null // …and the last screen hands back to the lesson on its own
     this._onVisibility = null
+    this._bigCountdown = null   // the number in the middle of the bars, while the gate is shut
+    this._revealTimers = []     // one per bar, lifting the answers into view in order
   }
 
   // Fisher-Yates: each player sees the options in a different order, so a photographed
@@ -92,9 +132,24 @@ export class QuizOverlay {
 
   // Reading time before answers unlock: base 2s + ~55ms per character of question+options,
   // capped at 7s. Kills the 1-second straight-line sprint without feeling like a punishment.
+  //
+  // The bars lifting one at a time is part of that reading time, not something added after it —
+  // the last answer is not on screen until the cascade ends. So the gate is long enough to hold a
+  // countdown AND the cascade, which puts it between 6.6s and 7s rather than the old 2s to 7s.
   static _readGateMs(q) {
     const text = String(q.question || '') + (q.options || []).join('')
-    return Math.min(7000, 2000 + Math.round(text.length * 55 / 10))
+    const read = Math.min(7000, 2000 + Math.round(text.length * 55 / 10))
+    if (prefersReducedMotion()) return read
+    const options = (q.options || []).length || LETTERS.length
+    return Math.max(read, MIN_COUNTDOWN_MS + revealMs(Math.min(options, LETTERS.length)))
+  }
+
+  /** When the bars start lifting: the gate, less the time the cascade itself takes. */
+  _cascadeStartsAt(index) {
+    const deadline = this._gateUntil.get(index) ?? 0
+    if (prefersReducedMotion()) return deadline
+    const options = (this._display[index] || []).length || LETTERS.length
+    return deadline - revealMs(Math.min(options, LETTERS.length))
   }
 
   get isVisible() { return this._questions.length > 0 }
@@ -134,12 +189,27 @@ export class QuizOverlay {
 
   hide() {
     this._questions = []
+    this._clearGateMotion()
     this.host.innerHTML = ''
     this.host.style.pointerEvents = 'none'
     if (this._gateTimer) { clearTimeout(this._gateTimer); this._gateTimer = null }
     if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null }
     if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null }
     if (this._onVisibility) { document.removeEventListener('visibilitychange', this._onVisibility); this._onVisibility = null }
+  }
+
+  /**
+   * Drop the gate's countdown and its pending bar-lifts.
+   *
+   * Every rebuild of the card throws the old nodes away, so a cascade left running would be
+   * ticking against elements that are no longer on screen — and on the score screen it would be
+   * ticking against no card at all.
+   */
+  _clearGateMotion() {
+    this._revealTimers.forEach(clearTimeout)
+    this._revealTimers = []
+    this._bigCountdown?.el.remove()
+    this._bigCountdown = null
   }
 
   _showFocusVeil() {
@@ -151,7 +221,7 @@ export class QuizOverlay {
     veil.innerHTML = `
       <div class="text-5xl">&#128064;</div>
       <div class="text-[22px] font-extrabold">${t('Quiz paused')}</div>
-      <div class="text-[15px] text-base-content/60">Stay with the story — tap to continue.</div>`
+      <div class="text-[15px] text-base-content/60">${t('Stay with the story. Tap to continue.')}</div>`
     veil.addEventListener('click', () => veil.remove())
     this.host.firstElementChild?.appendChild(veil) || this.host.appendChild(veil)
   }
@@ -181,11 +251,12 @@ export class QuizOverlay {
   _render(effects = null) {
     const q = this._questions[this._index]
     if (!q) return
+    // Whatever the last card had running belongs to nodes this render is about to throw away.
+    this._clearGateMotion()
     const total = this._questions.length
     const chosen = this._answered.get(this._index)   // DISPLAY index
     const answered = chosen !== undefined
     const mapping = this._display[this._index] || (q.options || []).map((_, i) => i)
-    const wasCorrect = answered && mapping[chosen] === Number(q.correct_index)
 
     // Read-gate: answers unlock only after a reading delay (first arrival on the question).
     if (!answered && !this._gateUntil.has(this._index)) {
@@ -203,7 +274,7 @@ export class QuizOverlay {
       this._gateTimer = setTimeout(() => this._gateTick(), Math.min(gateLeft + 30, 250))
     }
 
-    const options = mapping.map(originalIndex => (q.options || [])[originalIndex]).slice(0, 4)
+    const options = mapping.map(originalIndex => (q.options || [])[originalIndex]).slice(0, LETTERS.length)
 
     const optionsHtml = options.map((opt, i) => {
       const isCorrect = mapping[i] === Number(q.correct_index)
@@ -218,32 +289,33 @@ export class QuizOverlay {
         tone = 'bg-error/20 border-error'
         if (effects?.kind === 'wrong') anim = 'qz-wrong'
       }
-      const cursor = answered ? 'cursor-default' : (gated ? 'cursor-wait opacity-45' : 'cursor-pointer active:scale-[0.985]')
+      // Nothing says "wait" while the gate is shut: the bar over the answer is the whole message.
+      const cursor = answered ? 'cursor-default' : (gated ? 'cursor-default' : 'cursor-pointer active:scale-[0.985]')
+      // The bar that hides this answer while the gate is shut. It lives INSIDE the row rather than
+      // in a stack of its own, so it covers exactly this row however many lines the answer wraps to
+      // — a separate overlay of equal-height bars let the tall ones show their text between bars.
+      // `-inset-px` swallows the row's own border, which would otherwise ring the bar in a
+      // different colour. Opaque on purpose: it hides the answer, it does not dim it.
+      const ghost = gated
+        ? `<span data-ghost="${i}" class="qz-ghost pointer-events-none absolute -inset-px rounded-xl border"></span>`
+        : ''
       return `
         <button data-opt="${i}" ${answered || gated ? 'disabled' : ''}
-                class="${anim} ${tone} ${cursor} flex w-full items-center gap-3 rounded-box border px-4 py-3
-                       text-left text-[17px] transition-[background-color,border-color,transform,opacity] duration-150">
-          <span class="${LETTER_CLASSES[i]} inline-flex h-7 w-7 shrink-0 items-center justify-center
-                       rounded-lg text-[13px] font-bold">${LETTERS[i]}</span>
+                class="${anim} ${tone} ${cursor} relative flex w-full items-center gap-4 rounded-xl border px-4 py-3
+                       text-left text-[20px] font-medium transition-[background-color,border-color,transform,opacity] duration-150">
+          <span class="${LETTER_CLASSES[i]} inline-flex h-[30px] w-9 shrink-0 items-center justify-center
+                       rounded-lg text-[15px] font-extrabold">${LETTERS[i]}</span>
           <span>${this._escape(opt)}</span>
+          ${ghost}
         </button>`
     }).join('')
 
-    // Feedback strip under the options: praise or encouragement + explanation.
-    let feedback = ''
-    if (answered) {
-      const praise = PRAISE()
-      const encourage = ENCOURAGE()
-      const word = effects?.word
-        ?? (wasCorrect
-          ? (q.asks_ahead ? t('You already knew this!') : praise[this._index % praise.length])
-          : (q.asks_ahead ? t('No worries, you will hear this later in the story!') : encourage[this._index % encourage.length]))
-      feedback = `
-        <div class="qz-rise mt-3.5">
-          <span class="text-base font-extrabold ${wasCorrect ? 'text-success' : 'text-warning'}">${word}</span>
-          ${q.explanation ? `<span class="ml-2 text-sm leading-relaxed text-base-content/60">${this._escape(q.explanation)}</span>` : ''}
-        </div>`
-    }
+    // What the question TEACHES, once it has been answered. No praise and no scolding: whether the
+    // answer was right is already said by the pop, the wobble and the colour of the row. This line
+    // is the only thing on the card that a class could not work out from the animation.
+    const explanation = answered && q.explanation
+      ? `<div class="qz-rise mt-3.5 text-sm leading-relaxed text-base-content/60">${this._escape(q.explanation)}</div>`
+      : ''
 
     const streakBadge = this._streak >= STREAK_FROM
       ? `<span class="qz-streak mr-2.5 text-sm font-extrabold text-secondary" title="${this._streak} in a row">▲ ${this._streak} streak</span>`
@@ -251,13 +323,10 @@ export class QuizOverlay {
 
     this.host.innerHTML = `
       <div class="${SCRIM}">
-        <div class="${CARD} relative mx-4 w-full max-w-2xl p-8">
-          <div class="mb-5 text-2xl sm:text-3xl font-semibold leading-snug">${this._escape(q.question)}</div>
-          ${gated ? `<div data-gate-note class="mb-2.5 flex items-center gap-2 text-[13px] text-base-content/60">
-              <span class="loading loading-ring loading-xs text-primary"></span>
-              ${t('Read the question… answers unlock in :count', { count: `<span data-gate-secs>${Math.ceil(gateLeft / 1000)}</span>s` })}</div>` : ''}
-          <div class="flex flex-col gap-2.5">${optionsHtml}</div>
-          ${feedback}
+        <div class="${CARD} relative mx-4 w-full max-w-3xl p-8 sm:px-12 sm:py-10">
+          <div class="qz-question mb-8 text-center text-2xl leading-snug font-medium drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] sm:text-4xl">${this._escape(q.question)}</div>
+          <div data-answers class="relative flex flex-col gap-2.5">${optionsHtml}</div>
+          ${explanation}
           <div class="mt-6 flex items-center justify-center gap-1.5">
             ${this._questions.map((_, i) => {
               const done = this._answered.has(i)
@@ -287,27 +356,90 @@ export class QuizOverlay {
       btn.addEventListener('click', () => this._answer(Number(btn.dataset.opt), btn))
     })
 
+    if (gated) this._startGateCountdown(gateLeft)
+
     if (effects?.kind === 'correct') this._playCorrectEffects(effects)
   }
 
-  // Read-gate countdown tick: updates the seconds label and, when the gate opens, enables
-  // the answers in place. Never re-renders the card, so its entrance animation plays once.
+  /**
+   * The big number in the middle of the bars, counting down to the moment they start lifting.
+   *
+   * `data-gate-note` / `data-gate-secs` are the same handles the sentence carried, so anything
+   * watching for "the answers are still locked" still sees it — it is a number now, not a line
+   * of text telling a class to read.
+   */
+  _startGateCountdown(gateLeft) {
+    this._clearGateMotion()
+
+    const stack = this.host.querySelector('[data-answers]')
+    if (!stack) return
+
+    const untilCascade = Math.max(0, this._cascadeStartsAt(this._index) - performance.now())
+    this._bigCountdown = mountBigCountdown(stack, {
+      text: String(Math.ceil((untilCascade || gateLeft) / 1000)),
+      digitClass: 'text-6xl text-base-content',
+    })
+    this._bigCountdown.el.dataset.gateNote = '1'
+    this._bigCountdown.digit.dataset.gateSecs = '1'
+
+    // A cascade that has already started (a re-render mid-gate) picks up where the clock says.
+    this._scheduleReveal(untilCascade)
+  }
+
+  /**
+   * Lift the bars off the answers, one at a time, and unlock the card when the last one is gone.
+   *
+   * Each bar carries its own delay rather than one timer walking the list, so the whole cascade is
+   * declared in one pass and a torn-down card cancels all of it together.
+   */
+  _scheduleReveal(delay) {
+    const ghosts = [...this.host.querySelectorAll('[data-ghost]')]
+
+    if (prefersReducedMotion()) {
+      this._revealTimers.push(setTimeout(() => {
+        ghosts.forEach(g => g.remove())
+        this._bigCountdown?.el.remove()
+      }, delay))
+      return
+    }
+
+    // The number goes first: it is standing over the bar that is about to lift.
+    this._revealTimers.push(setTimeout(() => {
+      const timer = this._bigCountdown
+      this._bigCountdown = null
+      timer?.leave()
+    }, Math.max(0, delay - BIG_COUNTDOWN_LEAVE_MS)))
+
+    ghosts.forEach((ghost, i) => {
+      this._revealTimers.push(setTimeout(() => {
+        ghost.classList.add('qz-ghost-out')
+        // Leave nothing behind: the bar is `pointer-events-none`, but an invisible node stacked
+        // over an answer is one CSS change away from swallowing the click on it.
+        this._revealTimers.push(setTimeout(() => ghost.remove(), REVEAL_MS))
+      }, delay + REVEAL_LEAD_MS + i * REVEAL_STAGGER_MS))
+    })
+  }
+
+  // Read-gate countdown tick: counts the big number down and, when the gate opens, enables the
+  // answers in place. Never re-renders the card, so its entrance animation plays once.
   _gateTick() {
     this._gateTimer = null
     if (!this.isVisible || this._answered.has(this._index)) return
     const gateLeft = Math.max(0, (this._gateUntil.get(this._index) ?? 0) - performance.now())
-    const note = this.host.querySelector('[data-gate-note]')
 
     if (gateLeft > 50) {
-      const secs = note?.querySelector('[data-gate-secs]')
-      if (secs) secs.textContent = Math.ceil(gateLeft / 1000)
+      // The number counts down to the first bar lifting, not to the unlock — from there on the
+      // bars themselves show how much is left, which is the whole point of the redesign.
+      const untilCascade = this._cascadeStartsAt(this._index) - performance.now()
+      if (untilCascade > 0) this._bigCountdown?.setText(String(Math.ceil(untilCascade / 1000)))
       this._gateTimer = setTimeout(() => this._gateTick(), Math.min(gateLeft + 30, 250))
       return
     }
 
     // Gate open — unlock the options without a rebuild.
     if (!this._openedAt.has(this._index)) this._openedAt.set(this._index, performance.now())
-    note?.remove()
+    this._clearGateMotion()
+    this.host.querySelectorAll('[data-ghost]').forEach(g => g.remove())
     this.host.querySelectorAll('[data-opt]').forEach(btn => {
       btn.disabled = false
       btn.classList.remove('cursor-wait', 'opacity-45')
@@ -347,16 +479,19 @@ export class QuizOverlay {
       this._render({ kind: 'correct', gained, from, at: { x: rect.left + rect.width / 2, y: rect.top } })
     } else {
       if (!q.asks_ahead) this._streak = 0   // guessing ahead is never punished
-      this._render({ kind: 'wrong' })
+      // …and it does not get the wobble either. A question that reaches ahead of the story is
+      // asking what a class already knows, so missing it is not a mistake to animate as one —
+      // the right answer just pops. That reassurance used to be a sentence; now it is the motion.
+      this._render({ kind: q.asks_ahead ? 'ahead' : 'wrong' })
     }
 
     this._scheduleAdvance(q)
   }
 
   /**
-   * Answering IS the navigation — there is no Next button to press. The card holds long enough
-   * to read the feedback (longer when there's an explanation), then moves to the next question,
-   * or to the score screen if that was the last one.
+   * Answering IS the navigation — there is no Next button to press. The card holds long enough to
+   * take in which answer was right (longer when there's an explanation), then moves to the next
+   * question, or to the score screen if that was the last one.
    */
   _scheduleAdvance(q) {
     if (this._advanceTimer) clearTimeout(this._advanceTimer)
@@ -415,6 +550,7 @@ export class QuizOverlay {
   }
 
   _renderScoreScreen() {
+    this._clearGateMotion()
     const total = this._questions.length
     const correct = this._correctCount()
     const ratio = total ? correct / total : 0
@@ -433,7 +569,7 @@ export class QuizOverlay {
     const savedName = (() => { try { return localStorage.getItem('lp_quiz_nickname') || '' } catch { return '' } })()
     const joinHtml = this._submitUrl ? `
       <div data-join class="qz-rise mb-6" style="animation-delay:0.6s;">
-        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">Join the leaderboard</div>
+        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">${t('Join the leaderboard')}</div>
         ${this._hasClassroom ? `
         <div class="mb-2 flex justify-center gap-2">
           <input data-class-code type="text" maxlength="8" placeholder="${t('Class code…')}"
@@ -452,13 +588,13 @@ export class QuizOverlay {
         <div class="${CARD} mx-4 w-full max-w-lg p-10 text-center">
           <div class="mb-4 flex justify-center gap-2.5">${starsHtml}</div>
           <div class="mb-1.5 text-[15px] uppercase tracking-[0.15em] text-base-content/60">
-            ${correct} / ${total} correct
+            ${t(':correct of :total correct', { correct, total })}
           </div>
           <div data-final-score class="mb-6 text-6xl font-black text-warning">0</div>
           ${joinHtml}
           ${this._submitUrl
-            ? '<button data-done class="btn btn-ghost btn-lg">Skip ›</button>'
-            : `<div data-countdown class="text-[15px] text-base-content/60">Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span></div>`}
+            ? `<button data-done class="btn btn-ghost btn-lg">${t('Skip')} ›</button>`
+            : `<div data-countdown class="text-[15px] text-base-content/60">${LESSON_STARTS_IN(AUTO_CONTINUE_SECONDS)}</div>`}
         </div>
       </div>`
 
@@ -515,7 +651,7 @@ export class QuizOverlay {
         this._renderLeaderboard(data, nickname)
       } catch (err) {
         submitBtn.disabled = false
-        submitBtn.textContent = 'Submit'
+        submitBtn.textContent = t('Submit')
         if (errorEl) errorEl.textContent = err?.message === 'HTTP 422'
           ? t('Check the class code, ask your teacher.')
           : t('Could not submit, try again.')
@@ -542,26 +678,30 @@ export class QuizOverlay {
              style="animation-delay:${(0.08 * i).toFixed(2)}s;">
           ${medal}
           <span class="flex-1 truncate text-left text-[15px] ${i < 3 || isOwn ? 'font-bold' : 'font-medium'}">
-            ${this._escape(entry.nickname)}${isOwn ? ' · you' : ''}
+            ${this._escape(entry.nickname)}${isOwn ? ` · ${t('you')}` : ''}
           </span>
           <span class="text-[15px] font-extrabold text-warning">${entry.score}</span>
         </div>`
     }).join('')
 
     const ownOutsideTop = rank !== null && rank > top.length
-      ? `<div class="mt-2.5 text-sm font-bold text-warning">You're #${rank} of ${players} — keep climbing!</div>`
+      ? `<div class="mt-2.5 text-sm font-bold text-warning">${t('You are #:rank of :players. Keep climbing!', { rank, players })}</div>`
       : ''
+
+    // Two keys rather than one with a plural marker: t() is a lookup, not Laravel's trans_choice,
+    // and a language whose singular and plural differ has to be able to say both.
+    const playerCount = players === 1
+      ? t(':count player', { count: players })
+      : t(':count players', { count: players })
 
     this.host.innerHTML = `
       <div class="${SCRIM}">
         <div class="${CARD} mx-4 max-h-[calc(100vh-60px)] w-full max-w-lg overflow-y-auto p-8 text-center">
-          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">Leaderboard</div>
-          <div class="mb-4 text-[13px] text-base-content/50">${players} player${players === 1 ? '' : 's'}</div>
-          <div class="flex flex-col gap-1 text-left">${rows || '<span class="text-base-content/50">No scores yet — you could be first!</span>'}</div>
+          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">${t('Leaderboard')}</div>
+          <div class="mb-4 text-[13px] text-base-content/50">${playerCount}</div>
+          <div class="flex flex-col gap-1 text-left">${rows || `<span class="text-base-content/50">${t('No scores yet. You could be first!')}</span>`}</div>
           ${ownOutsideTop}
-          <div data-countdown class="mt-6 text-[15px] text-base-content/60">
-            Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span>
-          </div>
+          <div data-countdown class="mt-6 text-[15px] text-base-content/60">${LESSON_STARTS_IN(AUTO_CONTINUE_SECONDS)}</div>
         </div>
       </div>`
 

@@ -61,9 +61,24 @@ describe('the question card', () => {
   it('does not label a look-ahead question as a sneak peek', () => {
     openQuiz([QUESTIONS[1]])
     expect(text()).not.toMatch(/sneak peek/i)
-    // The idea survives where it belongs: in the feedback, after answering.
+    // The idea survives, but as motion rather than words: a question that reaches ahead of the
+    // story is not answered wrongly, it is just answered early, so it never gets the wobble.
+    answer(0)
+    expect(host.querySelector('.qz-wrong')).toBeNull()
+  })
+
+  it('says how the answer went without saying anything', () => {
+    openQuiz()
     answer(1)
-    expect(text()).toMatch(/already knew this/i)
+    // No praise, no encouragement — the pop and the colour of the row carry it.
+    expect(text()).not.toMatch(/nice|great|perfect|brilliant|on fire|almost|good try|keep going/i)
+    expect(host.querySelector('.qz-correct'), 'the right answer pops').not.toBeNull()
+  })
+
+  it('keeps the explanation, because that is what the question teaches', () => {
+    openQuiz([QUESTIONS[1]])
+    answer(1)
+    expect(text()).toContain('Hannibal crossed in 218 BCE.')
   })
 
   it('moves to the next question by itself once the feedback has been read', () => {

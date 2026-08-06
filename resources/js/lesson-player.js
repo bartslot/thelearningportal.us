@@ -24,10 +24,19 @@ import { sceneTransitionFrames, easingBezier, EASINGS } from './scene/animations
 
 // Easing key → cubic-bezier, for the scene transition set in the wizard's Animate tab.
 const SCENE_EASINGS = Object.fromEntries(EASINGS.map(e => [e.key, easingBezier(e.key)]))
+
+// How long the challenge clock owns the middle of the stage before it shrinks to the corner HUD.
+const BIG_TIMER_MS = 5000
+// Two minutes left turns the clock red. `text-warning` IS amber-400, the shade the corner HUD
+// uses — the same number in the same colour, whichever of the two places it is being read in.
+const BIG_TIMER_RED_FROM_SECS = 120
+const BIG_TIMER_DIGIT = (secs) =>
+  `font-history text-[20vw] ${secs <= BIG_TIMER_RED_FROM_SECS ? 'text-error' : 'text-warning'}`
 import { buildCues, cueAt } from './scene/captions.js'
 import { createBackgroundMusic } from './scene/background-music.js'
 import { Sfx } from './scene/sfx.js'
 import { t } from './i18n.js'
+import { mountBigCountdown } from './big-countdown.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -165,7 +174,7 @@ Alpine.data('lessonGame', (lesson) => ({
     // Countdown timer
     timerSeconds:       0,
     timerDisplay:       '10:00',
-    showBigTimer:       false,
+    _bigTimer:          null,   // handle from big-countdown.js while the clock is centre-stage
     _timerInterval:     null,
     _gameDurationSecs:  600,    // 10 min default; overridden by strategy_game.duration_minutes
 
@@ -1211,7 +1220,7 @@ Alpine.data('lessonGame', (lesson) => ({
       // ENDED are terminal states the lesson has genuinely reached, not leftovers — leave those be.
       if (scene.kind !== 'game' && (this.phase === 'GAME_BRIEF' || this.phase === 'GAME_ACTIVE')) {
         this.phase = 'INTRO'
-        this.showBigTimer = false
+        this._hideBigTimer()
       }
 
       // Chapter caption + bar (Micrio serial-tour). Chapters are filtered (no games), so look the
@@ -1686,10 +1695,10 @@ Alpine.data('lessonGame', (lesson) => ({
       this._moveAvatarTo('bottom-right')
 
       this.timerSeconds = lesson.game_duration_seconds ?? this._gameDurationSecs
-      this.showBigTimer = true
+      this._showBigTimer()
 
       // Show big timer for 5 seconds then shrink to HUD
-      setTimeout(() => { this.showBigTimer = false }, 5000)
+      setTimeout(() => this._hideBigTimer(), BIG_TIMER_MS)
 
       this._startTimer()
 
@@ -1850,15 +1859,38 @@ Alpine.data('lessonGame', (lesson) => ({
           return
         }
         this.timerSeconds--
-        const m = Math.floor(this.timerSeconds / 60)
-        const s = String(this.timerSeconds % 60).padStart(2, '0')
-        this.timerDisplay = `${m}:${s}`
+        this._paintTimer()
       }, 1000)
 
-      // Set initial display
+      this._paintTimer()
+    },
+
+    /** The clock, in both places it is shown: the corner HUD and the big centre countdown. */
+    _paintTimer () {
       const m = Math.floor(this.timerSeconds / 60)
       const s = String(this.timerSeconds % 60).padStart(2, '0')
       this.timerDisplay = `${m}:${s}`
+      this._bigTimer?.setText(this.timerDisplay, BIG_TIMER_DIGIT(this.timerSeconds))
+    },
+
+    /**
+     * The remaining time, across the middle of the stage, for the opening seconds of a challenge.
+     * Shared with the quiz's read-gate — see resources/js/big-countdown.js.
+     */
+    _showBigTimer () {
+      const host = this.$refs?.bigTimer
+      if (!host || this._bigTimer) return
+      this._bigTimer = mountBigCountdown(host, {
+        text: this.timerDisplay,
+        digitClass: BIG_TIMER_DIGIT(this.timerSeconds),
+      })
+    },
+
+    /** Scale it away to the corner HUD. Safe to call when nothing is showing. */
+    _hideBigTimer () {
+      const timer = this._bigTimer
+      this._bigTimer = null
+      timer?.leave()
     },
 
     // ── Intel drop ─────────────────────────────────────────────────────

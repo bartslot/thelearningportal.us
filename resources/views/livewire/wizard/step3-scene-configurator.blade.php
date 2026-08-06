@@ -2058,7 +2058,7 @@
     <div class="modal modal-bottom sm:modal-middle {{ $addSceneOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true"
          x-data x-on:keydown.escape.window="if ($wire.addSceneOpen) $wire.set('addSceneOpen', false)">
-        <div class="modal-box max-w-lg border border-slate-700/70 bg-base-300">
+        <div class="modal-box hp-modals max-w-lg border border-slate-700/70">
             <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-slate-100">Add a scene</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"
@@ -2145,7 +2145,7 @@
          x-on:painting-picker:open.window="dismissing = false"
          x-on:keydown.escape.window="if ($wire.paintingPickerOpen) $wire.set('paintingPickerOpen', false)"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-6xl border border-slate-700/70 bg-base-300">
+        <div class="modal-box hp-modals max-w-6xl border border-slate-700/70">
             <div class="mb-3 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-slate-200">
                     @switch($paintingPickerMode)
@@ -2341,7 +2341,7 @@
          The nested Livewire component only mounts while the modal is open. --}}
     <div class="modal modal-bottom sm:modal-middle {{ $svgLibraryOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-4xl border border-slate-700/70 bg-base-300">
+        <div class="modal-box hp-modals max-w-4xl border border-slate-700/70">
             <div class="mb-3 flex items-center justify-between gap-3">
                 <h2 class="text-lg font-semibold text-slate-100">{{ __('Import icons') }}</h2>
                 <button type="button" class="btn btn-ghost btn-sm btn-circle text-slate-400"

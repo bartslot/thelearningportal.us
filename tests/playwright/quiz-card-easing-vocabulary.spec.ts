@@ -67,6 +67,20 @@ async function recordAnimations(page: Page) {
  */
 type Decl = { selector: string; curve: string; via: 'animation' | 'transition' };
 
+/**
+ * One spelling for one curve, whichever stylesheet it came out of.
+ *
+ * Whitespace is not the only difference: the dev server serves the source as written
+ * ("cubic-bezier(0.16, 1, 0.3, 1)") while a production build ships it minified
+ * ("cubic-bezier(.16,1,.3,1)"). Comparing the strings made every curve in a built bundle look
+ * absent, and this survey reported an app with 53 curves as having none. Compare the numbers.
+ */
+function normaliseCurve(curve: string): string {
+  const nums = curve.slice('cubic-bezier('.length, -1).split(',').map((n) => Number(n.trim()));
+  if (nums.length !== 4 || nums.some(Number.isNaN)) return curve.replace(/\s+/g, '');
+  return `cubic-bezier(${nums.join(', ')})`;
+}
+
 async function readDeclaredCurves(page: Page): Promise<Decl[]> {
   // HARNESS TRAP, hit on the first run of this spec: in dev, Vite serves the stylesheet from
   // port 5173 while the page is on 8000, so every sheet is cross-origin and `sheet.cssRules`
@@ -94,8 +108,7 @@ async function readDeclaredCurves(page: Page): Promise<Decl[]> {
       const via = /animation/.test(line) ? 'animation' : /transition/.test(line) ? 'transition' : null;
       if (!via) continue;
       for (const c of line.matchAll(/cubic-bezier\([^)]*\)/g)) {
-        // Normalise whitespace so "cubic-bezier(0.16,1,0.3,1)" compares equal to the spaced form.
-        out.push({ selector, curve: c[0].replace(/\s+/g, '').replace(/,/g, ', '), via: via as Decl['via'] });
+        out.push({ selector, curve: normaliseCurve(c[0]), via: via as Decl['via'] });
       }
     }
   }

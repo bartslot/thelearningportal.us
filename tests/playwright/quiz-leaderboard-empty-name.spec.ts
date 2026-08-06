@@ -33,6 +33,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { waitForAnswers } from './support/quiz';
 
 const SHOTS = path.resolve('tests/playwright/results-quiz-leaderboard-empty-name');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -101,8 +102,7 @@ async function playQuizToScoreCard(page: Page, answers: string[]) {
   for (let i = 0; i < answers.length + 4; i++) {
     if (await page.locator('[data-final-score]').count()) break;
 
-    const gate = page.locator('[data-gate-secs]');
-    if (await gate.count()) await expect(gate).toHaveCount(0, { timeout: 20_000 });
+    if (!(await waitForAnswers(overlay))) break;
 
     // Options are shuffled per player, so text is the only stable handle.
     let clicked = false;
