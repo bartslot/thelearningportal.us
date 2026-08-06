@@ -1309,8 +1309,10 @@
 .qz-streak     { animation: qz-flame 0.9s var(--ease-move) infinite; display: inline-block; }
 /* The Figma's spring on the question, said in the app's own vocabulary. */
 .qz-question   { animation: qz-question-in 0.3s var(--ease-pop) backwards; }
-/* The Figma eases a bar out in AND out, which is what "move" means here. */
-.qz-ghost-out  { animation: qz-ghost-out 0.8s var(--ease-move) forwards; }
+/* The Figma eases a bar out in AND out, which is what "move" means here. The duration comes from
+   QuizOverlay.js, which also owns the timer that removes the node — one number, set on the element
+   as --qz-reveal-ms. The fallback is only for a bar that somehow gets the class without it. */
+.qz-ghost-out  { animation: qz-ghost-out var(--qz-reveal-ms, 280ms) var(--ease-move) forwards; }
 /* Staggered entrances — the delay is data-driven, so it rides on an inline animation-delay. */
 .qz-star       { animation: qz-star-in 0.5s var(--ease-pop) backwards; }
 .qz-rise       { animation: qz-slide-in 0.3s var(--ease-enter) backwards; }

@@ -50,6 +50,61 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+/**
+ * The read-gate is a countdown followed by the answers arriving one at a time. The countdown part
+ * has to be a whole number of seconds, because a number that changes every 1000ms but appears
+ * part-way through the first one reads as a stutter: measured in a browser before this was fixed,
+ * the first number held for 600ms and the rest for 1000ms.
+ *
+ * The cascade's own length is not asserted here — it is tuning, and it moves. What must not move
+ * is that whatever it costs, the countdown in front of it still gets whole seconds.
+ */
+describe('the read-gate arithmetic', () => {
+  const CASCADE_MS = 1480   // REVEAL_LEAD + 3 × REVEAL_STAGGER + REVEAL, for four answers
+
+  const gateFor = (question, options) => QuizOverlay._readGateMs({ question, options })
+
+  it('leaves the countdown a whole number of seconds, whatever the question costs', () => {
+    // A range of lengths, so this holds for the reading estimate generally and not for one string.
+    for (const length of [10, 40, 90, 160, 240, 400, 800]) {
+      const gate = gateFor('q'.repeat(length), ['a', 'b', 'c', 'd'])
+      const countdown = gate - CASCADE_MS
+
+      expect(countdown % 1000, `a ${length}-character question leaves a ragged ${countdown}ms countdown`).toBe(0)
+    }
+  })
+
+  it('never counts down from fewer than 3, however short the question', () => {
+    const gate = gateFor('Who?', ['a', 'b', 'c', 'd'])
+
+    expect(gate - CASCADE_MS).toBeGreaterThanOrEqual(3000)
+  })
+
+  /**
+   * Whole seconds are a coarse ruler, and the 3-second floor is above what an ordinary question
+   * needs, so most of them land on the same gate. That is the cost of counting 3, 2, 1 every time
+   * and it is deliberate — but it must not go so far as to stop responding to length at all.
+   */
+  it('still gives a genuinely long question longer, even in whole seconds', () => {
+    const lengths = [10, 100, 300, 545, 800, 1500]
+    const gates = lengths.map((n) => gateFor('q'.repeat(n), ['a', 'b', 'c', 'd']))
+
+    for (let i = 1; i < gates.length; i++) {
+      expect(gates[i], `a ${lengths[i]}-character question got less than a ${lengths[i - 1]}-character one`)
+        .toBeGreaterThanOrEqual(gates[i - 1])
+    }
+    expect(gates.at(-1), 'length stopped mattering entirely').toBeGreaterThan(gates[0])
+  })
+
+  it('never holds a class longer than the reading estimate was ever allowed to ask for', () => {
+    const gate = gateFor('q'.repeat(5000), ['a'.repeat(500), 'b', 'c', 'd'])
+
+    // The estimate caps at 7s; the gate is that rounded to whole seconds, so it may land just
+    // above. What it may not do is grow with the text once the cap is reached.
+    expect(gate).toBeLessThanOrEqual(7000 + 1000)
+  })
+})
+
 describe('the question card', () => {
   it('offers no Next or Previous — the answers are the only control', () => {
     openQuiz()

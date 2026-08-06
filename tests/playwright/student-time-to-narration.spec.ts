@@ -128,8 +128,8 @@ test('student LYTVSK: the pre-narration gates are authored scenes, and the app a
     /*
      * "Nothing offers a first pressable control until 3–10 s after Start" is true and is the
      * point: QuizOverlay holds the answers behind a READ GATE (~55 ms per character of question
-     * and options, capped at 7 s and floored at 6.6 s — long enough to count down AND to lift the
-     * four bars covering the answers one at a time — "Kills the 1-second straight-line sprint
+     * and options, capped at 7 s and floored at ~4.5 s — long enough to count 3, 2, 1 AND to lift
+     * the four bars covering the answers one at a time — "Kills the 1-second straight-line sprint
      * without feeling like a punishment"). The student is not staring at an empty screen while it
      * runs; the card is up with the question, a live countdown, and answers arriving in order.
      * So the card's arrival is measured separately from the first pressable answer.

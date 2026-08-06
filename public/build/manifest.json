@@ -65,7 +65,7 @@
     "name": "voyages"
   },
   "resources/css/app.css": {
-    "file": "assets/app-CNuY2sSj.css",
+    "file": "assets/app-coBwIOyg.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -74,7 +74,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-Crg113yo.js",
+    "file": "assets/app-DkeOWNCB.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -131,7 +131,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-MFhsxg3p.js",
+    "file": "assets/lesson-player-CzKGTHJ3.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -181,7 +181,7 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-    "file": "assets/QuizOverlay-uTYkEShq.js",
+    "file": "assets/QuizOverlay-tI5voZIg.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true,
@@ -203,7 +203,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-BoF9XGRX.js",
+    "file": "assets/index-CUOaN5wp.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

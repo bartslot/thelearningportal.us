@@ -221,10 +221,9 @@ test.describe('five-language UI — French lesson, French teacher', () => {
   });
 
   test('the quiz card reads in French, gate and all', async ({ page }) => {
-    // A full quiz walk is a long test and got longer when the read-gate became animation-led:
-    // the answers now arrive one bar at a time, so every question costs a few seconds more
-    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
-    // reports a timeout instead of whatever it actually found.
+    // Answering a whole quiz honestly means sitting through the read-gate on every question, so
+    // this walk runs well past the 60s default. Without this it dies on the clock and reports a
+    // timeout instead of whatever it actually found.
     test.slow();
     await setInterfaceLanguage(page, FRENCH.locale);
     await openPlayer(page, FRENCH.code);
