@@ -133,7 +133,7 @@ class Step1SettingsTest extends TestCase
             ->assertSet('audience_age', 11);
     }
 
-    public function test_avatar_picker_exposes_teacher_greeting_audio_and_hover_zoom(): void
+    public function test_narrator_picker_exposes_teacher_greeting_audio_and_hover_zoom(): void
     {
         $path = "avatar-greetings/{$this->narrator->id}/{$this->teacher->id}.mp3";
         Storage::disk('public')->put($path, 'mp3');

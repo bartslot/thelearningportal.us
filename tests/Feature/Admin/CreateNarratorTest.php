@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Admin;
 
-use App\Livewire\Admin\CreateAvatar;
+use App\Livewire\Admin\CreateNarrator;
 use App\Models\Narrator;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-class CreateAvatarTest extends TestCase
+class CreateNarratorTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -23,7 +23,7 @@ class CreateAvatarTest extends TestCase
         $this->assertContains('webm', config('livewire.temporary_file_upload.preview_mimes'));
     }
 
-    public function test_admin_can_open_the_add_avatar_workflow(): void
+    public function test_admin_can_open_the_add_narrator_workflow(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
@@ -47,7 +47,7 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->call('nextStep')
             ->assertHasErrors(['name'])
             ->assertSet('step', 1)
@@ -59,14 +59,14 @@ class CreateAvatarTest extends TestCase
             ->assertSet('step', 2);
     }
 
-    public function test_admin_can_create_an_inactive_avatar_with_a_unique_slug(): void
+    public function test_admin_can_create_an_inactive_narrator_with_a_unique_slug(): void
     {
         Storage::fake('public');
         $admin = User::factory()->create(['role' => 'admin']);
         Narrator::factory()->create(['slug' => 'dr-maya-okafor', 'sort_order' => 4]);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Dr. Maya Okafor')
             ->set('short_name', 'Maya')
             ->set('avatar_title', 'Historian')
@@ -77,7 +77,7 @@ class CreateAvatarTest extends TestCase
             ->set('voice_provider', 'edge_tts')
             ->set('voice_id', 'nl-NL-FennaNeural')
             ->set('voice_speed', 0.9)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasNoErrors()
             ->assertRedirect();
 
@@ -110,14 +110,14 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Ron Slot')
             ->set('subject', 'history')
             ->set('portrait', UploadedFile::fake()->image('ron.jpg', 640, 640))
             ->set('voice_provider', 'elevenlabs')
             ->set('elevenlabs_voice_id', 'Gwv6uO8RNVuOAN68JgUb')
             ->set('voice_speed', 0.95)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasNoErrors()
             ->assertRedirect();
 
@@ -134,14 +134,14 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Wrong Voice')
             ->set('subject', 'history')
             ->set('portrait', UploadedFile::fake()->image('x.jpg', 640, 640))
             ->set('voice_provider', 'elevenlabs')
             ->set('elevenlabs_voice_id', 'not-a-real-id')
             ->set('voice_speed', 0.95)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasErrors(['elevenlabs_voice_id']);
     }
 }

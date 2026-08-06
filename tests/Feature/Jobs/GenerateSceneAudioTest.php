@@ -188,7 +188,7 @@ class GenerateSceneAudioTest extends TestCase
 
     public function test_a_narrator_less_lesson_on_azure_is_not_called_a_downgrade(): void
     {
-        // No avatar means no named narrator, so Azure on the native voice is the CORRECT outcome,
+        // No narrator row means no named voice, so Azure on the native voice is the CORRECT outcome,
         // not a substitution. Calling it a downgrade flagged 77 correctly-narrated production
         // scenes; a warning that cries wolf is worth less than no warning.
         $lesson = Lesson::create([

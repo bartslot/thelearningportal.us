@@ -22,7 +22,7 @@ use Tests\TestCase;
  * storage/app/public/avatars/1/portrait.jpg and then linked /avatars/1/portrait.jpg, a different
  * file that does not exist. Ron Slot's portrait had been broken since the day he was created.
  */
-class AvatarMediaUrlTest extends TestCase
+class NarratorMediaUrlTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -53,7 +53,7 @@ class AvatarMediaUrlTest extends TestCase
 
     public function test_the_add_narrator_form_shape_also_resolves(): void
     {
-        // CreateAvatar stores under avatars/portraits/… — the same prefix, the same old bug.
+        // CreateNarrator stores under avatars/portraits/… — the same prefix, the same old bug.
         Storage::disk('public')->put('avatars/portraits/ron-slot.jpg', 'jpeg-bytes');
         $narrator = $this->narrator(['portrait_path' => 'avatars/portraits/ron-slot.jpg']);
 
@@ -69,7 +69,7 @@ class AvatarMediaUrlTest extends TestCase
      * failed AvatarSeederTest, because the seeder builds its roster by scanning those folders.
      *
      * A test that writes inside a directory holding real repository files must never delete by
-     * directory. This name cannot collide with a numbered avatar folder.
+     * directory. This name cannot collide with a numbered narrator folder.
      */
     private const SCRATCH = 'avatars/__media_url_test__';
 

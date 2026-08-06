@@ -16,7 +16,7 @@
                 @endforeach
             </nav>
 
-            <form wire:submit="createAvatar" class="mt-9 min-h-[28rem]">
+            <form wire:submit="createNarrator" class="mt-9 min-h-[28rem]">
                 @if($step === 1)
                     <section wire:key="identity" class="max-w-2xl space-y-6">
                         <div><h2 class="text-2xl font-semibold text-slate-100">Who is joining the cast?</h2><p class="mt-1 text-sm text-slate-500">Give teachers enough context to choose this narrator with confidence.</p></div>
@@ -115,7 +115,7 @@
 
                 <div class="mt-10 flex items-center justify-between border-t border-slate-800 pt-5">
                     <button type="button" wire:click="previousStep" @disabled($step === 1) class="btn btn-ghost disabled:invisible">← Previous</button>
-                    @if($step < 4)<button type="button" wire:click="nextStep" class="btn btn-primary">Continue <span aria-hidden="true">→</span></button>@else<button type="submit" wire:loading.attr="disabled" class="btn btn-primary"><span wire:loading.remove wire:target="createAvatar">Create narrator</span><span wire:loading wire:target="createAvatar" class="loading loading-spinner loading-sm"></span><span wire:loading wire:target="createAvatar">Creating…</span></button>@endif
+                    @if($step < 4)<button type="button" wire:click="nextStep" class="btn btn-primary">Continue <span aria-hidden="true">→</span></button>@else<button type="submit" wire:loading.attr="disabled" class="btn btn-primary"><span wire:loading.remove wire:target="createNarrator">Create narrator</span><span wire:loading wire:target="createNarrator" class="loading loading-spinner loading-sm"></span><span wire:loading wire:target="createNarrator">Creating…</span></button>@endif
                 </div>
             </form>
         </main>

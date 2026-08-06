@@ -7,7 +7,7 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Http\Controllers\Teacher\DashboardController;
-use App\Livewire\Admin\CreateAvatar;
+use App\Livewire\Admin\CreateNarrator;
 use App\Livewire\Admin\NarratorStudio;
 use App\Livewire\LessonWizard;
 use App\Models\Lesson;
@@ -412,7 +412,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     })->name('narrators.index');
 
     // Stays above /narrators/{narrator}, or "create" binds as a narrator id.
-    Route::get('/narrators/create', CreateAvatar::class)->name('narrators.create');
+    Route::get('/narrators/create', CreateNarrator::class)->name('narrators.create');
 
     // Narrator Studio (Livewire component)
     Route::get('/narrators/{narrator}', NarratorStudio::class)->name('narrators.studio');

@@ -14,7 +14,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
-class CreateAvatar extends Component
+class CreateNarrator extends Component
 {
     use WithFileUploads;
 
@@ -152,7 +152,7 @@ class CreateAvatar extends Component
         $this->validate(array_intersect_key($rules, array_flip($fields)));
     }
 
-    public function createAvatar()
+    public function createNarrator()
     {
         $validated = $this->validate();
         $slug = $this->uniqueSlug($validated['name']);
@@ -230,7 +230,7 @@ class CreateAvatar extends Component
 
     public function render()
     {
-        return view('livewire.admin.create-avatar')
+        return view('livewire.admin.create-narrator')
             ->layout('components.layouts.app', ['title' => 'Add narrator']);
     }
 }
