@@ -20,6 +20,7 @@ class Avatar extends Model
         'slug',
         'description',
         'portrait_path',
+        'intro_video_path',
         'subject',
         'voice_provider',
         'voice_id',
@@ -47,11 +48,11 @@ class Avatar extends Model
         return [
             'voice_map' => 'array',
             'voice_settings' => 'array',
-            'voice_speed'    => 'float',
-            'voice_pitch'    => 'float',
-            'is_active'      => 'boolean',
-            'sort_order'     => 'integer',
-            'age'            => 'integer',
+            'voice_speed' => 'float',
+            'voice_pitch' => 'float',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer',
+            'age' => 'integer',
             'expressiveness' => 'float',
             'speaking_speed' => 'float',
         ];
@@ -83,8 +84,7 @@ class Avatar extends Model
 
     public function scopeForSubject($query, string $subject)
     {
-        return $query->where(fn ($q) =>
-            $q->where('subject', $subject)->orWhere('subject', 'all')
+        return $query->where(fn ($q) => $q->where('subject', $subject)->orWhere('subject', 'all')
         );
     }
 
@@ -120,6 +120,15 @@ class Avatar extends Model
      */
     public function welcomeVideoUrl(): ?string
     {
+        if ($this->intro_video_path) {
+            if (str_starts_with($this->intro_video_path, 'avatars/') || str_starts_with($this->intro_video_path, 'assets/')) {
+                return asset($this->intro_video_path);
+            }
+
+            return \Illuminate\Support\Facades\Storage::disk('public')->url($this->intro_video_path);
+        }
+
+        // Backwards compatibility for avatars created before intro_video_path existed.
         $path = public_path("avatars/{$this->id}/welcome.mp4");
 
         return file_exists($path) ? asset("avatars/{$this->id}/welcome.mp4") : null;
@@ -146,12 +155,12 @@ class Avatar extends Model
      */
     public function greetingText(string $teacherFirstName): string
     {
-        $avatarName  = $this->short_name  ?? $this->name;
+        $avatarName = $this->short_name ?? $this->name;
         $avatarTitle = $this->avatar_title ?? 'Professor';
 
         return "Hi there {$teacherFirstName}. "
-             . "I am {$avatarName}, a {$avatarTitle} here at The History Portal. "
-             . "Do you like my voice?";
+             ."I am {$avatarName}, a {$avatarTitle} here at The History Portal. "
+             .'Do you like my voice?';
     }
 
     // ── Voice config ──────────────────────────────────────────────────────────
@@ -164,8 +173,8 @@ class Avatar extends Model
         return [
             'provider' => $this->voice_provider,
             'voice_id' => $this->voice_id,
-            'speed'    => $this->voice_speed,
-            'pitch'    => $this->voice_pitch,
+            'speed' => $this->voice_speed,
+            'pitch' => $this->voice_pitch,
             'settings' => $this->voice_settings ?? [],
         ];
     }
@@ -179,8 +188,7 @@ class Avatar extends Model
      */
     public static function edgeTtsCatalog(): array
     {
-        $mk = fn (string $id, string $name, string $language, string $lang, string $gender, string $flag, string $note = ''): array =>
-            compact('id', 'name', 'language', 'lang', 'gender', 'flag', 'note');
+        $mk = fn (string $id, string $name, string $language, string $lang, string $gender, string $flag, string $note = ''): array => compact('id', 'name', 'language', 'lang', 'gender', 'flag', 'note');
 
         return [
             // ── Nederlands ──
@@ -301,38 +309,6 @@ class Avatar extends Model
     }
 
     /**
-     * Maps ElevenLabs voice label metadata to gradient class.
-     * Mirrors ElevenLabsService::gradientClass() for convenience.
-     */
-    public static function elevenlabsVoiceGradient(array $labels): string
-    {
-        $accent = strtolower($labels['accent'] ?? '');
-        $gender = strtolower($labels['gender'] ?? '');
-
-        if (str_contains($accent, 'british') && $gender === 'male') {
-            return 'vg-navy';
-        }
-
-        if (str_contains($accent, 'narration') || str_contains($accent, 'calm')) {
-            return 'vg-teal';
-        }
-
-        if (str_contains($accent, 'american') || str_contains($accent, 'neutral')) {
-            return $gender === 'female' ? 'vg-violet' : 'vg-indigo';
-        }
-
-        if ($gender === 'female') {
-            return 'vg-violet';
-        }
-
-        if ($accent !== '' && ! str_contains($accent, 'american') && ! str_contains($accent, 'british')) {
-            return 'vg-amber';
-        }
-
-        return 'vg-base';
-    }
-
-    /**
      * Edge TTS voices in card shape: [id, label, preview_url, gradient_class].
      */
     /**
@@ -353,7 +329,7 @@ class Avatar extends Model
     {
         $voices = static::edgeTtsVoices();
         $featured = static::edgeTtsFeatured();
-        $cards  = [];
+        $cards = [];
 
         foreach ($voices as $id => $label) {
             // Pre-generated audition sample (voices:samples command) — played on click,
@@ -361,11 +337,11 @@ class Avatar extends Model
             $samplePath = "voices/edge/{$id}.mp3";
 
             $cards[] = [
-                'id'             => $id,
-                'label'          => $label,
-                'preview_url'    => is_file(public_path($samplePath)) ? asset($samplePath) : '',
+                'id' => $id,
+                'label' => $label,
+                'preview_url' => is_file(public_path($samplePath)) ? asset($samplePath) : '',
                 'gradient_class' => static::edgeTtsGradientClass($id),
-                'featured'       => in_array($id, $featured, true),
+                'featured' => in_array($id, $featured, true),
             ];
         }
 

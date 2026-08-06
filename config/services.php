@@ -42,25 +42,6 @@ return [
         'model' => env('OLLAMA_MODEL', 'llama3.1:8b'),
     ],
 
-    'comfyui' => [
-        'url' => env('COMFYUI_URL', 'http://localhost:8188'),
-        'dir' => env('COMFYUI_DIR', ($_SERVER['HOME'] ?? '').'/ComfyUI'),
-        'python' => env('COMFYUI_PYTHON', 'python'),
-        'checkpoint' => env('COMFYUI_CHECKPOINT', 'flux1-schnell-Q5_K_S.gguf'),
-        'clip1' => env('COMFYUI_CLIP1', 'clip_l.safetensors'),
-        'clip2' => env('COMFYUI_CLIP2', 't5xxl_fp8_e4m3fn.safetensors'),
-        'vae' => env('COMFYUI_VAE', 'ae.safetensors'),
-        'sampler' => env('COMFYUI_SAMPLER', 'euler'),
-        'scheduler' => env('COMFYUI_SCHEDULER', 'simple'),
-        'steps' => (int) env('COMFYUI_STEPS', 4),
-        'cfg' => (float) env('COMFYUI_CFG', 1.0),
-        'scene_width' => (int) env('COMFYUI_SCENE_WIDTH', 1024),
-        'scene_height' => (int) env('COMFYUI_SCENE_HEIGHT', 512),
-        'skybox_width' => (int) env('COMFYUI_SKYBOX_WIDTH', 2048),
-        'skybox_height' => (int) env('COMFYUI_SKYBOX_HEIGHT', 1024),
-        'timeout' => (int) env('COMFYUI_TIMEOUT', 180),
-    ],
-
     // ── Production AI APIs ────────────────────────────────────────────────────
 
     // ── Imagery policy ────────────────────────────────────────────────────────
@@ -137,10 +118,6 @@ return [
         'provider_override_voice' => env('TTS_PROVIDER_OVERRIDE_VOICE'),
     ],
 
-    'rhubarb' => [
-        'binary' => env('RHUBARB_BINARY', '/Users/bartslot/bin/rhubarb'),
-    ],
-
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
@@ -151,14 +128,6 @@ return [
         'key' => env('EUROPEANA_API_KEY'),
         'base_url' => env('EUROPEANA_BASE_URL', 'https://api.europeana.eu/record/v2'),
         'timeout' => (int) env('EUROPEANA_TIMEOUT', 30),
-    ],
-
-    'unsplash' => [
-        'access_key' => env('UNSPLASH_ACCESS_KEY'),
-    ],
-
-    'pexels' => [
-        'api_key' => env('PEXELS_API_KEY'),
     ],
 
     // ── fal.ai (image upscaling for skybox panoramas) ─────────────────────────
@@ -183,24 +152,6 @@ return [
     ],
 
     // ── LM Studio (local OpenAI-compatible LLM) ───────────────────────────────
-    'lmstudio' => [
-        'url' => env('LM_STUDIO_URL', 'http://localhost:1234/v1'),
-        'model' => env('LM_STUDIO_MODEL', 'google/gemma-4-e4b'),
-    ],
-
-    // ── Automatic1111 (local Stable Diffusion image generation) ──────────────
-    'a1111' => [
-        'url' => env('A1111_URL', 'http://localhost:7860'),
-        'sampler' => env('A1111_SAMPLER', 'Euler a'),
-        'steps' => (int) env('A1111_STEPS', 20),
-        'cfg' => (float) env('A1111_CFG', 7.0),
-        'scene_width' => (int) env('A1111_SCENE_WIDTH', 1024),
-        'scene_height' => (int) env('A1111_SCENE_HEIGHT', 512),
-        'skybox_width' => (int) env('A1111_SKYBOX_WIDTH', 2048),
-        'skybox_height' => (int) env('A1111_SKYBOX_HEIGHT', 1024),
-        'timeout' => (int) env('A1111_TIMEOUT', 120),
-    ],
-
     // ── Upscayl local CLI (replaces fal.ai upscaling in dev) ─────────────────
     'upscayl' => [
         'enabled' => filter_var(env('UPSCAYL_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
@@ -213,10 +164,6 @@ return [
     ],
 
     // ── Animation tooling ─────────────────────────────────────────────────────
-
-    'fbx2gltf' => [
-        'binary' => env('FBX2GLTF_BINARY', 'fbx2gltf'),
-    ],
 
     // ── Azure Speech Service (3D avatar lip sync) ─────────────────────────────
 

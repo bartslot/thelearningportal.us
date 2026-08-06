@@ -70,7 +70,6 @@ export const voyageRoutes = () => voyagesData.voyages.map((v) => ({
 }));
 
 /** Smooth a raw-waypoint slice (used by the tour for per-leg tracks). */
-export const smoothSlice = (waypoints, from, to) => smooth(waypoints.slice(from, to + 1));
 
 // ── Where along a drawn line a traveller is ───────────────────────────────
 //

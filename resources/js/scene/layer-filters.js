@@ -27,7 +27,6 @@ export function hexToUnit(hex) {
 const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 }
 
 export const WHITE_KEY_MAX = 0.5     // 50%: past this a mid-grey starts disappearing too
-export const DEFAULT_WHITE_KEY = 0
 
 /** Stable per-layer filter id — the markup is regenerated whenever the layer re-renders. */
 export const layerFilterId = (assetId) => `lyrfx-${assetId}`

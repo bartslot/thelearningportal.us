@@ -14,7 +14,6 @@ export const COMPACT_BREAKPOINT = 640
 /** Ring drawn around the spotlighted element, a little larger than the element itself. */
 export const SPOTLIGHT_PADDING = 8
 
-export const PLACEMENTS = ['bottom', 'top', 'right', 'left', 'center']
 
 const clamp = (value, min, max) => {
     // A card taller/wider than the space available would give max < min; pinning to min keeps the

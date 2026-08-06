@@ -80,4 +80,3 @@ export function easingPreview(initial = 'enter') {
   }
 }
 
-export const PREVIEW_BOX = { W, H }

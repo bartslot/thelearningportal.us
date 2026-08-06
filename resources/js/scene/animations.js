@@ -70,9 +70,6 @@ function overshoot(t) {
 export const DEFAULT_ENTRANCE = 'none'
 export const DEFAULT_EASE = 'enter'
 export const DEFAULT_DURATION_MS = 600
-export const MAX_DELAY_S = 10
-export const MIN_DURATION_MS = 100
-export const MAX_DURATION_MS = 5000
 
 export function easingBezier(key) {
   return (EASINGS.find(e => e.key === key) ?? EASINGS[0]).bezier
