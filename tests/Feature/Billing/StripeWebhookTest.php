@@ -28,6 +28,10 @@ class StripeWebhookTest extends TestCase
     {
         parent::setUp();
         config()->set('services.stripe.webhook_secret', self::SECRET);
+        // Pinned, not inherited from whoever's .env: the controller compares an event's livemode
+        // against our key's mode, so a developer holding a live key would otherwise see every test
+        // here fail for a reason that has nothing to do with the test.
+        config()->set('services.stripe.secret', 'sk_test_for_this_suite_only');
     }
 
     /** Sign a payload the way Stripe does: t=<ts>,v1=<hmac of "ts.payload">. */
@@ -50,6 +54,7 @@ class StripeWebhookTest extends TestCase
         return [
             'id' => $eventId,
             'object' => 'event',
+            'livemode' => false,
             'type' => $overrides['type'] ?? 'checkout.session.completed',
             'data' => ['object' => array_merge([
                 'id' => 'cs_test_session_1',
@@ -129,6 +134,38 @@ class StripeWebhookTest extends TestCase
         $this->assertSame(0, NarrationCredit::count());
     }
 
+    public function test_an_event_from_the_wrong_stripe_mode_is_ignored(): void
+    {
+        // Catches our own misconfiguration, not an attacker: a test signing secret left in the
+        // production .env would verify test events happily and grant real credits for payments of
+        // imaginary money. Easy to do on the day the keys are switched over.
+        $teacher = User::factory()->create();
+        $event = $this->sessionEvent($teacher);
+        $event['livemode'] = true;                     // live event, but we hold a test key
+
+        $this->postEvent($event)->assertOk();          // still 200: nothing for Stripe to retry
+
+        $this->assertSame(0, NarrationCredit::count(), 'an event from the wrong mode granted credit');
+    }
+
+    public function test_a_failed_bank_payment_grants_nothing(): void
+    {
+        // iDEAL can complete the session while still unpaid and then fail at the bank.
+        $teacher = User::factory()->create();
+
+        $this->postEvent($this->sessionEvent($teacher, [
+            'session' => ['payment_status' => 'unpaid'],
+        ], 'evt_ideal_pending'))->assertOk();
+
+        $this->postEvent($this->sessionEvent($teacher, [
+            'type' => 'checkout.session.async_payment_failed',
+            'session' => ['payment_status' => 'unpaid'],
+        ], 'evt_ideal_failed'))->assertOk();
+
+        $this->assertSame(0, NarrationBudget::creditCharacters($teacher->fresh()));
+        $this->assertSame(0, NarrationCredit::count());
+    }
+
     public function test_a_guest_demo_account_is_never_granted_credit(): void
     {
         $guest = User::factory()->create(['is_guest_demo' => true]);
@@ -178,6 +215,7 @@ class StripeWebhookTest extends TestCase
         $this->postEvent([
             'id' => 'evt_refund_1',
             'object' => 'event',
+            'livemode' => false,
             'type' => 'charge.refunded',
             'data' => ['object' => [
                 'id' => 'ch_test_1', 'object' => 'charge',
@@ -199,6 +237,7 @@ class StripeWebhookTest extends TestCase
         $this->postEvent([
             'id' => 'evt_refund_partial',
             'object' => 'event',
+            'livemode' => false,
             'type' => 'charge.refunded',
             'data' => ['object' => [
                 'id' => 'ch_test_1', 'object' => 'charge',
@@ -217,6 +256,7 @@ class StripeWebhookTest extends TestCase
         $refund = [
             'id' => 'evt_refund_repeat',
             'object' => 'event',
+            'livemode' => false,
             'type' => 'charge.refunded',
             'data' => ['object' => [
                 'id' => 'ch_test_1', 'object' => 'charge',
@@ -239,6 +279,7 @@ class StripeWebhookTest extends TestCase
         $this->postEvent([
             'id' => 'evt_dispute_1',
             'object' => 'event',
+            'livemode' => false,
             'type' => 'charge.dispute.created',
             'data' => ['object' => [
                 'id' => 'dp_test_1', 'object' => 'dispute',
@@ -256,6 +297,7 @@ class StripeWebhookTest extends TestCase
         $this->postEvent([
             'id' => 'evt_unrelated',
             'object' => 'event',
+            'livemode' => false,
             'type' => 'customer.updated',
             'data' => ['object' => ['id' => 'cus_1', 'object' => 'customer']],
         ])->assertOk();

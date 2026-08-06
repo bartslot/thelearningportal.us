@@ -40,8 +40,12 @@
             {{ __('Your credits are ready. Head back to your lesson and keep editing.') }}
         </div>
     @elseif ($checkoutState === 'delayed')
+        {{-- Deliberately covers both endings. We genuinely do not know which this is: an iDEAL
+             transfer still clearing and one the bank refused look identical from here, and telling
+             someone whose payment failed that "your credits are on their way" is worse than saying
+             nothing. --}}
         <div class="alert alert-warning mt-6 text-sm" role="status">
-            {{ __('Your payment is taking longer than usual to confirm. Your credits will arrive on their own, so there is no need to pay again. Refresh this page in a few minutes.') }}
+            {{ __('We have not had confirmation of your payment yet. If the money left your account, your credits appear here by themselves and you should not pay again. If your bank turned the payment down, nothing was taken and you can try once more.') }}
         </div>
     @endif
 

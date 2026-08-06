@@ -56,11 +56,23 @@ final class StripeWebhookController
             return response('Invalid signature.', 400);
         }
 
+        if (! $this->modeMatchesOurKey($event)) {
+            return response('', 200);
+        }
+
         match ($event->type) {
             // Paid immediately (card). For iDEAL and other delayed methods this can arrive still
             // unpaid, and the money is confirmed by the async event below instead.
             'checkout.session.completed',
             'checkout.session.async_payment_succeeded' => $this->grantFromSession($event),
+
+            // The bank said no. Nothing to reverse, because nothing was ever granted, but it is
+            // worth a line in the log: the teacher is sitting on a screen waiting for credit that
+            // is never coming, and this is the only record of why.
+            'checkout.session.async_payment_failed' => Log::info('Stripe checkout payment failed.', [
+                'session_id' => $event->data->object->id ?? null,
+                'teacher_id' => $event->data->object->client_reference_id ?? null,
+            ]),
 
             'charge.refunded' => $this->reverse($event, NarrationCreditReason::Refund),
             'charge.dispute.created' => $this->reverse($event, NarrationCreditReason::Chargeback),
@@ -241,6 +253,35 @@ final class StripeWebhookController
         return $reason === NarrationCreditReason::Chargeback
             ? (int) ($object->amount ?? $fallback)
             : (int) ($object->amount_refunded ?? $fallback);
+    }
+
+    /**
+     * Does this event come from the same Stripe mode as the key we are configured with?
+     *
+     * Signature verification already makes a forged event impossible, because a test endpoint and a
+     * live endpoint have different signing secrets. What this catches is our own misconfiguration:
+     * a test `whsec_` left in the production .env would verify test events perfectly happily and
+     * grant real credits for payments of imaginary money. That is an easy mistake to make on the
+     * day you switch a key over, which is exactly when it would go unnoticed.
+     *
+     * Compared against OUR key's mode rather than app()->isProduction(), because running test keys
+     * against production is a normal thing to do while rolling a payment integration out.
+     */
+    private function modeMatchesOurKey(Event $event): bool
+    {
+        $ourModeIsLive = str_starts_with((string) config('services.stripe.secret'), 'sk_live_');
+
+        if ((bool) $event->livemode === $ourModeIsLive) {
+            return true;
+        }
+
+        Log::warning('Ignored a Stripe event from the wrong mode. Check which keys this environment holds.', [
+            'event_id' => $event->id,
+            'event_livemode' => $event->livemode,
+            'our_key_is_live' => $ourModeIsLive,
+        ]);
+
+        return false;
     }
 
     /** Stripe hands the id back as a string, or as an expanded object when something expanded it. */
