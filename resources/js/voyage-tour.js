@@ -139,7 +139,12 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   // Map detail options (lesson-wide): hide anachronistic cities/borders, and pin period place labels
   // resolved from the landfalls (legLabels: [{text, leg}] → the leg's arrival waypoint coordinate).
   // Mutable so a map-setting change applies LIVE (setMapOptions) instead of rebuilding the whole tour.
-  let MO = Object.assign({ cities: true, borders: true, labels: true }, mapOptions || {});
+  // Cities OFF by default. A voyage is a historical scene by definition — Tasman leaves Batavia in
+  // 1642 and the atlas answered with Mogadishu, Kampala, Meru and Victoria in white sans across the
+  // Indian Ocean. The voyage pins the places it actually visits (`labels`), and those are what the
+  // class should be reading. A teacher who wants the modern atlas back still has the toggle; this
+  // only changes what a voyage opens as.
+  let MO = Object.assign({ cities: false, borders: true, labels: true }, mapOptions || {});
   let LL = Array.isArray(legLabels) ? legLabels : [];
   let PAINTED = Array.isArray(paintedFog) ? paintedFog : [];   // teacher-painted "undiscovered" rings
   const resolveLabels = () => {
