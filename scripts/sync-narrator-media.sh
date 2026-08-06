@@ -32,6 +32,9 @@ for dir in avatars/portraits avatar-introductions; do
     continue
   fi
   echo "▸ $dir"
+  # rsync will not create a MISSING PARENT on the receiver (only the final directory), and a fresh
+  # server has never had avatars/ at all — the first run failed on exactly that. mkdir -p first.
+  [[ -z "$DRY" ]] && ssh -p "$PORT" -i "$KEY" "$HOST" "mkdir -p '$DEST/$dir'"
   rsync -az $DRY --itemize-changes \
     -e "ssh -p $PORT -i $KEY" \
     "storage/app/public/$dir/" "$HOST:$DEST/$dir/"
