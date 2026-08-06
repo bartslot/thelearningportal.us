@@ -6,8 +6,10 @@ namespace App\Services\Billing;
 
 use App\Models\User;
 use App\Support\NarrationCreditPack;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Stripe\Checkout\Session;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\StripeClient;
 
 /**
@@ -55,10 +57,33 @@ final class StripeCheckout
             throw new RuntimeException('A demo guest cannot buy narration credits.');
         }
         if (! $this->isConfigured()) {
-            throw new RuntimeException('Stripe is not configured: set STRIPE_SECRET in .env.');
+            throw new RuntimeException('Stripe is not configured: set STRIPE_SECRET_KEY in .env.');
         }
 
-        $session = $this->client()->checkout->sessions->create($this->sessionPayload($teacher, $successUrl, $cancelUrl));
+        $customers = app(StripeCustomers::class);
+
+        try {
+            $session = $this->client()->checkout->sessions->create(
+                $this->sessionPayload($teacher, $customers->idFor($teacher), $successUrl, $cancelUrl)
+            );
+        } catch (InvalidRequestException $e) {
+            // The id on file no longer exists at Stripe: deleted in the dashboard, or the account's
+            // test data was wiped. Throw it away and mint a new one rather than leaving a teacher
+            // who can never buy anything again.
+            if (! str_contains(strtolower((string) $e->getMessage()), 'no such customer')) {
+                throw $e;
+            }
+
+            Log::info('Stripe no longer knows this customer, making a new one.', [
+                'teacher_id' => $teacher->id,
+                'stale_customer' => $teacher->stripe_customer_id,
+            ]);
+            $customers->forget($teacher);
+
+            $session = $this->client()->checkout->sessions->create(
+                $this->sessionPayload($teacher, $customers->idFor($teacher->refresh()), $successUrl, $cancelUrl)
+            );
+        }
 
         $url = $session instanceof Session ? $session->url : null;
         if (! is_string($url) || $url === '') {
@@ -68,8 +93,16 @@ final class StripeCheckout
         return $url;
     }
 
-    /** @return array<string, mixed> */
-    private function sessionPayload(User $teacher, string $successUrl, string $cancelUrl): array
+    /**
+     * The exact payload sent to Stripe.
+     *
+     * Public so a test can assert the contract without a network call — this is the one place the
+     * price, the tax behaviour and the customer wiring are decided, and all three are things you
+     * find out you got wrong by losing money.
+     *
+     * @return array<string, mixed>
+     */
+    public function sessionPayload(User $teacher, string $customerId, string $successUrl, string $cancelUrl): array
     {
         // Both sides of the sale, carried so the webhook can act without trusting anything the
         // browser sends back. client_reference_id is the teacher; the character count is pinned at
@@ -82,8 +115,14 @@ final class StripeCheckout
         $payload = [
             'mode' => 'payment',
             'client_reference_id' => (string) $teacher->id,
-            'customer_email' => $teacher->email,
-            'customer_creation' => 'always',
+            // The teacher's ONE Customer, reused for every purchase — see StripeCustomers. Passing
+            // `customer` rules out `customer_email` and `customer_creation`, which is the point:
+            // those are what made a new Customer per payment.
+            'customer' => $customerId,
+            // Let Checkout write the billing address and name it collects back onto the Customer.
+            // Stripe REQUIRES address=auto when automatic_tax runs against an existing customer, and
+            // without it the session is refused outright.
+            'customer_update' => ['address' => 'auto', 'name' => 'auto'],
             'locale' => $this->stripeLocale($teacher),
             'metadata' => $metadata,
             // Repeated onto the PaymentIntent so a refund or a dispute, which arrive as charge
@@ -97,6 +136,9 @@ final class StripeCheckout
                     // The 5 euro already contains the VAT — see NarrationCreditPack.
                     'tax_behavior' => 'inclusive',
                     'product_data' => [
+                        // What Stripe Tax thinks this is, and therefore the VAT rate. Required:
+                        // Stripe refuses the session outright without it. See config/billing.php.
+                        'tax_code' => NarrationCreditPack::taxCode(),
                         'name' => __(':count characters of script editing', [
                             'count' => number_format(NarrationCreditPack::characters()),
                         ]),

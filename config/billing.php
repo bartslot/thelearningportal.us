@@ -41,6 +41,31 @@ return [
 
         'currency' => env('NARRATION_CREDIT_CURRENCY', 'eur'),
 
+        /*
+         * What Stripe Tax thinks we are selling. This decides the VAT rate.
+         *
+         * Stripe REQUIRES a tax code on the line item (Managed Payments refuses a session without
+         * one), so this is not optional, and the default here is a real tax determination rather
+         * than a placeholder. WORTH CONFIRMING WITH AN ACCOUNTANT alongside the expiry question.
+         *
+         * txcd_10000000, "General - Electronically Supplied Services", is the honest description:
+         * the teacher is buying capacity inside our authoring tool, delivered electronically. It
+         * maps onto the EU's own "electronically supplied services" category, which is what the
+         * OSS rules are written around.
+         *
+         * Deliberately NOT one of the education codes. txcd_20060052 (Educational Services) is for
+         * academic classes run by an education establishment, and the online-course codes
+         * (txcd_20060158 and friends) are for selling pre-recorded instruction. We sell neither: we
+         * sell the tool a teacher makes their own lesson with. Claiming an education code we do not
+         * qualify for would understate VAT in countries that treat education favourably, and the
+         * bill for that lands on us, not on the teacher.
+         *
+         * Alternatives if that turns out to be wrong: txcd_10103000 (SaaS, personal use) and
+         * txcd_10103001 (SaaS, business use). Stripe takes one code per line item, so a single
+         * consumer-leaning code is the practical choice while individual teachers are most buyers.
+         */
+        'tax_code' => env('NARRATION_CREDIT_TAX_CODE', 'txcd_10000000'),
+
         /**
          * How long bought credit lasts, in days from the moment it was bought.
          *

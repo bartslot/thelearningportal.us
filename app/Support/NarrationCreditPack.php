@@ -41,6 +41,16 @@ final class NarrationCreditPack
         return strtolower((string) config('billing.credit_pack.currency', 'eur'));
     }
 
+    /**
+     * The Stripe tax code that decides our VAT rate. See config/billing.php for the reasoning.
+     *
+     * Not optional: Stripe refuses a Checkout session whose line item has no tax code.
+     */
+    public static function taxCode(): string
+    {
+        return (string) config('billing.credit_pack.tax_code', 'txcd_10000000');
+    }
+
     /** Days bought credit lasts. Zero means it never expires. */
     public static function expiryDays(): int
     {
