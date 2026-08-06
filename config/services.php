@@ -152,6 +152,14 @@ return [
     ],
 
     // ── LM Studio (local OpenAI-compatible LLM) ───────────────────────────────
+    // ── ffmpeg (video transcoding: uploads become 720p H.264) ────────────────
+    // Present on both machines but at different paths — Homebrew puts it in /opt/homebrew/bin,
+    // SiteGround in /usr/local/bin — so it is resolved from PATH by default and pinnable per host.
+    'ffmpeg' => [
+        'path' => env('FFMPEG_PATH', 'ffmpeg'),
+        'probe_path' => env('FFPROBE_PATH', 'ffprobe'),
+    ],
+
     // ── Upscayl local CLI (replaces fal.ai upscaling in dev) ─────────────────
     'upscayl' => [
         'enabled' => filter_var(env('UPSCAYL_ENABLED', true), FILTER_VALIDATE_BOOLEAN),

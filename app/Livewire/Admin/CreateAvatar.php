@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Admin;
 
 use App\Models\Avatar;
+use App\Services\VideoTranscoder;
 use App\Support\UploadLimit;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -178,12 +179,15 @@ class CreateAvatar extends Component
             ]);
 
             if ($this->intro_video) {
-                $extension = strtolower($this->intro_video->getClientOriginalExtension()) ?: 'mp4';
+                // Always .mp4: whatever arrives (MOV from a phone, WebM from a screen recorder)
+                // leaves here as 720p H.264 in an MP4, so the stored extension would otherwise be a
+                // lie. VideoTranscoder keeps the original bytes untouched if it cannot do that.
                 $introVideoPath = $this->intro_video->storeAs(
                     "avatar-introductions/{$avatar->id}",
-                    "introduction.{$extension}",
+                    'introduction.mp4',
                     'public'
                 );
+                VideoTranscoder::make()->transcodeStored($introVideoPath);
                 $avatar->update(['intro_video_path' => $introVideoPath]);
             }
         } catch (\Throwable $exception) {
