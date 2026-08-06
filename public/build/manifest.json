@@ -21,6 +21,10 @@
     "file": "assets/easing-CafrHVyY.js",
     "name": "easing"
   },
+  "_i18n-0bXLNV4B.js": {
+    "file": "assets/i18n-0bXLNV4B.js",
+    "name": "i18n"
+  },
   "_index-DDlvirwQ.js": {
     "file": "assets/index-DDlvirwQ.js",
     "name": "index"
@@ -47,10 +51,6 @@
     "file": "assets/preload-helper-DIdkKO6w.js",
     "name": "preload-helper"
   },
-  "_sfx-CaxChlpJ.js": {
-    "file": "assets/sfx-CaxChlpJ.js",
-    "name": "sfx"
-  },
   "_voyages-CO9zikju.js": {
     "file": "assets/voyages-CO9zikju.js",
     "name": "voyages"
@@ -62,7 +62,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BmkpW4IT.css",
+    "file": "assets/app-DPCp0uVG.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -71,7 +71,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-CcHEXe28.js",
+    "file": "assets/app-C07Svtai.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -128,7 +128,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-Bt6MwiI5.js",
+    "file": "assets/lesson-player-BQod88lA.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -136,7 +136,7 @@
       "_preload-helper-DIdkKO6w.js",
       "__commonjsHelpers-CqkleIqs.js",
       "resources/js/gallery-scene.js",
-      "_sfx-CaxChlpJ.js",
+      "_i18n-0bXLNV4B.js",
       "_animations-gLnxhqbs.js",
       "_easing-CafrHVyY.js"
     ],
@@ -178,12 +178,12 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-    "file": "assets/QuizOverlay-DCZBAad4.js",
+    "file": "assets/QuizOverlay-BXik4rCu.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true,
     "imports": [
-      "_sfx-CaxChlpJ.js"
+      "_i18n-0bXLNV4B.js"
     ]
   },
   "resources/js/scene/StoryGameEngine.js": {
@@ -199,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-Cjyg-lka.js",
+    "file": "assets/index-mBACb9sM.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -209,7 +209,7 @@
       "resources/js/scene/ArtworkOverlay.js",
       "_preload-helper-DIdkKO6w.js",
       "resources/js/avatar-3d.js",
-      "_sfx-CaxChlpJ.js",
+      "_i18n-0bXLNV4B.js",
       "node_modules/three/build/three.module.js",
       "_animations-gLnxhqbs.js",
       "_easing-CafrHVyY.js",

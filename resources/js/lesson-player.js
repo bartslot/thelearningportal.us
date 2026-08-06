@@ -27,6 +27,7 @@ const SCENE_EASINGS = Object.fromEntries(EASINGS.map(e => [e.key, easingBezier(e
 import { buildCues, cueAt } from './scene/captions.js'
 import { createBackgroundMusic } from './scene/background-music.js'
 import { Sfx } from './scene/sfx.js'
+import { t } from './i18n.js'
 
 // The 3D avatar CHARACTER is retired — the narrator is a flat 2D portrait badge (player.blade.php).
 // The 3D SKYBOX background stays an OPT-IN: a lesson with any scene_view:'skybox' scene lazy-loads
@@ -984,7 +985,7 @@ Alpine.data('lessonGame', (lesson) => ({
       // progress + click still map to _sceneIndex.
       this.chapters = _sceneQueue
         .map((s, i) => ({
-          name: s.chapter_name || ('Chapter ' + (i + 1)),
+          name: s.chapter_name || t('Chapter :number', { number: i + 1 }),
           dur:  Number(s.duration_seconds) || 0,
           index: i,
           kind: s.kind,

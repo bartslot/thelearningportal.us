@@ -69,6 +69,9 @@ final class JsTranslations
         return self::translate([
             'Quiz paused',
             'Tap to continue',
+            // The chapter list's fallback for a scene with no name of its own. On a Dutch lesson
+            // this was the one English phrase on screen.
+            'Chapter :number',
         ]);
     }
 

@@ -220,7 +220,9 @@ class Scene extends Model
             return trim((string) $this->location);
         }
 
-        return 'Chapter '.($this->order ?? '');
+        // Translated: this is what a class reads on the chapter list when a scene has no name of
+        // its own, and on a Dutch lesson "Chapter 1" is the one English word on the screen.
+        return __('Chapter :number', ['number' => $this->order ?? '']);
     }
 
     /**
