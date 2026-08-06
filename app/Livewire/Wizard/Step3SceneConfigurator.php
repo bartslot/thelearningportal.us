@@ -23,6 +23,7 @@ use App\Models\StrategyGame;
 use App\Support\PolityCapitals;
 use App\Support\PortraitFocus;
 use App\Support\SafeOutboundUrl;
+use App\Support\NarrationBudget;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -4926,8 +4927,28 @@ class Step3SceneConfigurator extends Component
         if (trim($text) === '') {
             return;   // inline editing never clears all narration (delete the scene instead)
         }
-        $this->selectedScene['script_segment'] = trim($text);
+
+        // Editing narration is the one keystroke in this app that becomes an ElevenLabs invoice, so
+        // a lesson has an allowance for it — see App\Support\NarrationBudget. Only the CHANGE is
+        // charged: fixing a typo costs about a character, not the length of the paragraph.
+        $scene = $this->lesson->scenes()->find($this->selectedSceneId);
+        $before = (string) ($scene?->script_segment ?? '');
+        $after = trim($text);
+        $cost = NarrationBudget::costOfEdit($before, $after);
+
+        if (! NarrationBudget::canAfford($this->lesson, $before, $after)) {
+            $this->dispatch('toast', type: 'warning', message: __(
+                'You have used this lesson\'s :total characters of script editing. Add credits to keep editing.',
+                ['total' => NarrationBudget::allowanceFor($this->lesson)],
+            ));
+
+            return;   // the edit is refused, so nothing is charged and nothing is re-narrated
+        }
+
+        $this->selectedScene['script_segment'] = $after;
         $this->saveSelected();
+        // Charged only once the save has gone through — a refused or failed save costs nothing.
+        NarrationBudget::charge($this->lesson, $cost);
     }
 
     /**
