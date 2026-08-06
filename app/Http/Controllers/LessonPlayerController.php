@@ -19,7 +19,7 @@ class LessonPlayerController extends Controller
         $playableStatuses = array_column([LessonStatus::Published, LessonStatus::Previewable], 'value');
 
         // Published lessons are static content. Cache the heavy eager-loaded payload
-        // (scenes + strategyGame + avatar + source) for 30 min against the remote Supabase DB —
+        // (scenes + strategyGame + narrator + source) for 30 min against the remote Supabase DB —
         // this is what takes the player from ~3s to ~40ms per open. The key is busted on any
         // Lesson save (see Lesson::booted). Only a *found* lesson is cached: Cache::remember
         // treats a null return as a miss, so unpublished/invalid codes fall through every time.
@@ -29,7 +29,7 @@ class LessonPlayerController extends Controller
                 // Same rule as the catalogue: no scenes, nothing to play. Without this the player
                 // renders its whole chrome around an empty stage and the class sits looking at it.
                 ->has('scenes')
-                ->with(['strategyGame', 'avatar', 'source', 'scenes'])
+                ->with(['strategyGame', 'narrator', 'source', 'scenes'])
                 ->first();
 
             if (! $lesson) {
@@ -54,7 +54,7 @@ class LessonPlayerController extends Controller
         if (! $lesson) {
             $lesson = Lesson::where('lesson_code', $code)
                 ->ownedByCurrentUser()
-                ->with(['strategyGame', 'avatar', 'source', 'scenes'])
+                ->with(['strategyGame', 'narrator', 'source', 'scenes'])
                 ->first();
         }
 

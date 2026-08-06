@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\Process;
@@ -12,7 +12,7 @@ use Symfony\Component\Process\Process;
 /**
  * Pre-generates one audition sample per edge-tts voice into public/voices/edge/.
  *
- * The Avatar Studio plays these on click — no runtime TTS calls, no waiting.
+ * The Narrator Studio plays these on click — no runtime TTS calls, no waiting.
  * The files are committed (≈100 KB each) and served as static assets, so the
  * host CDN caches them. Idempotent: existing files are skipped unless --force.
  */
@@ -52,7 +52,7 @@ class GenerateVoiceSamples extends Command
         $made = 0;
         $skipped = 0;
         $failed = 0;
-        foreach (array_keys(Avatar::edgeTtsVoices()) as $voiceId) {
+        foreach (array_keys(Narrator::edgeTtsVoices()) as $voiceId) {
             $out = "{$dir}/{$voiceId}.mp3";
             if (! $this->option('force') && is_file($out)) {
                 $skipped++;

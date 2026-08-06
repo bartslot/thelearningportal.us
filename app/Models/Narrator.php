@@ -9,9 +9,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Avatar extends Model
+class Narrator extends Model
 {
     use HasFactory, SoftDeletes;
+
+    // The class is Narrator, the table is still `avatars`. Renaming the table (and the
+    // `lessons.avatar_id` column that points at it) is a migration against live data, so
+    // it is deliberately not part of the vocabulary rename.
+    protected $table = 'avatars';
 
     protected $fillable = [
         'name',
@@ -62,17 +67,17 @@ class Avatar extends Model
 
     public function lessons(): HasMany
     {
-        return $this->hasMany(Lesson::class);
+        return $this->hasMany(Lesson::class, 'avatar_id');
     }
 
     public function voiceSamples(): HasMany
     {
-        return $this->hasMany(AvatarVoiceSample::class)->latest();
+        return $this->hasMany(NarratorVoiceSample::class, 'avatar_id')->latest();
     }
 
     public function teacherFeedback(): HasMany
     {
-        return $this->hasMany(AvatarTeacherFeedback::class);
+        return $this->hasMany(NarratorTeacherFeedback::class, 'avatar_id');
     }
 
     // ── Scopes ────────────────────────────────────────────────────────────────
@@ -141,8 +146,8 @@ class Avatar extends Model
     }
 
     /**
-     * URL for the narrator welcome video (talking-avatar intro that plays once,
-     * full-screen, before the first lesson block). Null when the avatar has none.
+     * URL for the narrator welcome video (talking-narrator intro that plays once,
+     * full-screen, before the first lesson block). Null when the narrator has none.
      */
     public function welcomeVideoUrl(): ?string
     {
@@ -174,11 +179,11 @@ class Avatar extends Model
      */
     public function greetingText(string $teacherFirstName): string
     {
-        $avatarName = $this->short_name ?? $this->name;
-        $avatarTitle = $this->avatar_title ?? 'Professor';
+        $narratorName = $this->short_name ?? $this->name;
+        $narratorTitle = $this->avatar_title ?? 'Professor';
 
         return "Hi there {$teacherFirstName}. "
-             ."I am {$avatarName}, a {$avatarTitle} here at The History Portal. "
+             ."I am {$narratorName}, a {$narratorTitle} here at The History Portal. "
              .'Do you like my voice?';
     }
 
@@ -311,7 +316,7 @@ class Avatar extends Model
 
     /**
      * Preferred narration voice for a lesson language: the ticked per-language
-     * voice when it matches the avatar's provider, else the avatar's base voice.
+     * voice when it matches the narrator's provider, else the narrator's base voice.
      */
     public function voiceFor(?string $locale): string
     {

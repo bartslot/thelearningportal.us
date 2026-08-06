@@ -209,9 +209,9 @@ class Lesson extends Model
 
     // ── Relationships ───────────────────────────────────────────────────────
 
-    public function avatar(): BelongsTo
+    public function narrator(): BelongsTo
     {
-        return $this->belongsTo(Avatar::class);
+        return $this->belongsTo(Narrator::class, 'avatar_id');
     }
 
     /** Curated catalog story this lesson is grounded in (null for free-topic lessons). */
@@ -438,7 +438,7 @@ class Lesson extends Model
     /**
      * Best available card/cover image for the lesson, in priority order:
      *   1. worldhistory.org hero image (colorful, editorial quality)
-     *   2. Avatar portrait
+     *   2. Narrator portrait
      *   3. Generic placeholder
      */
     /** Flag of the lesson's territory (polity), if the catalog flag was downloaded. */
@@ -557,7 +557,7 @@ class Lesson extends Model
      * Best SCENIC cover for the lesson, in priority order. Never a flag or a bare map: the
      * Wikipedia title image (which is a flag/map for some empires) sits below the protagonist
      * portrait, the generated scene, and the editorial hero — so person-led empire lessons show
-     * the person. The pre-filtered slideshow art is a safety net before the avatar headshot.
+     * the person. The pre-filtered slideshow art is a safety net before the narrator headshot.
      */
     public function cardImageUrl(): ?string
     {
@@ -578,7 +578,7 @@ class Lesson extends Model
      * rendered from, and what a card shows until one exists.
      *
      * Public because app:generate-lesson-covers needs exactly this: it used to keep its own copy
-     * of the chain, which silently drifted (it was missing the slideshow art and avatar portrait
+     * of the chain, which silently drifted (it was missing the slideshow art and narrator portrait
      * steps), so lessons whose only image came from those reported "no source image available"
      * and their cards went on serving multi-megabyte originals for ever.
      */
@@ -625,7 +625,7 @@ class Lesson extends Model
             }
         }
 
-        // 6. Avatar portrait — last resort headshot.
+        // 6. Narrator portrait — last resort headshot.
         if ($this->portrait_path) {
             return $this->publicMediaUrl($this->portrait_path);
         }

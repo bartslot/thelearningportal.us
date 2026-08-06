@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\LessonStatus;
-use App\Models\Avatar;
 use App\Models\Lesson;
+use App\Models\Narrator;
 use App\Models\StrategyGame;
 use Illuminate\Database\Seeder;
 
@@ -26,13 +26,13 @@ class FrenchRevolutionDemoSeeder extends Seeder
             ]
         );
 
-        $avatar = Avatar::active()->first();
+        $narrator = Narrator::active()->first();
 
         Lesson::updateOrCreate(
             ['lesson_code' => 'FRREV9'],
             [
                 'teacher_id'         => $teacher->id,
-                'avatar_id'          => $avatar?->id,
+                'avatar_id'          => $narrator?->id,
                 'strategy_game_id'   => $game?->id,
                 'title'              => 'The French Revolution & Napoleon\'s Rise',
                 'topic'              => 'French Revolution',

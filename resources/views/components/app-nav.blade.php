@@ -20,8 +20,8 @@
         ];
         $adminItems[] = [
             'label' => 'Narrator Studio',
-            'route' => 'admin.avatars.index',
-            'pattern' => 'admin.avatars.*',
+            'route' => 'admin.narrators.index',
+            'pattern' => 'admin.narrators.*',
         ];
         $adminItems[] = [
             'label' => 'Story review',

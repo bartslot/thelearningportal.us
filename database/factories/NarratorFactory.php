@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Avatar>
+ * @extends Factory<Narrator>
  */
-class AvatarFactory extends Factory
+class NarratorFactory extends Factory
 {
-    protected $model = Avatar::class;
+    protected $model = Narrator::class;
 
     public function definition(): array
     {

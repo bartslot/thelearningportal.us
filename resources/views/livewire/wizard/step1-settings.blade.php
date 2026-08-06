@@ -731,17 +731,17 @@
         </div>
     </div>
 
-    {{-- Avatar --}}
+    {{-- Narrator --}}
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
             <span class="font-medium text-white text-sm">{{ __('Narrator') }}</span>
             <span class="text-slate-400 text-xs">
-                {{ $this->avatars->firstWhere('id', $avatar_id)?->name ?? __('None selected') }}
+                {{ $this->narrators->firstWhere('id', $avatar_id)?->name ?? __('None selected') }}
             </span>
         </div>
         <div class="collapse-content pt-2">
-            <x-wizard.avatar-picker :avatars="$this->avatars" :selected-id="$avatar_id" />
+            <x-wizard.narrator-picker :narrators="$this->narrators" :selected-id="$avatar_id" />
             @error('avatar_id') <span class="text-rose-400 text-xs">{{ $message }}</span> @enderror
         </div>
     </div>

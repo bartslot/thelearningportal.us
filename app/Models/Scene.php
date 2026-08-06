@@ -367,12 +367,12 @@ class Scene extends Model
         // native Azure voice for its language, on purpose. Calling that a downgrade flagged 77
         // correctly-narrated scenes and would have told teachers their lessons used a stand-in
         // voice when they did not — a warning nobody can trust is worth less than no warning.
-        if ($this->lesson?->avatar === null) {
+        if ($this->lesson?->narrator === null) {
             return false;
         }
 
         $wanted = (string) config('services.tts.provider_override', '')
-            ?: (string) $this->lesson->avatar->voice_provider;
+            ?: (string) $this->lesson->narrator->voice_provider;
 
         return $wanted !== '' && $provider !== $wanted;
     }

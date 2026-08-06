@@ -112,7 +112,7 @@ class HelpCenterTest extends TestCase
             ->test(Help::class)
             ->set('search', 'avatar');
 
-        $this->assertContains('admin.avatars.index', array_column($admin->instance()->shortcuts(), 'route'));
+        $this->assertContains('admin.narrators.index', array_column($admin->instance()->shortcuts(), 'route'));
     }
 
     public function test_a_search_with_no_hits_says_so(): void

@@ -7,9 +7,9 @@ namespace Tests\Feature\Wizard;
 use App\Enums\LessonStatus;
 use App\Jobs\BuildLessonOutline;
 use App\Livewire\Wizard\Step1Settings;
-use App\Models\Avatar;
 use App\Models\Lesson;
 use App\Models\LessonSource;
+use App\Models\Narrator;
 use App\Models\StrategyGame;
 use App\Models\User;
 use App\Services\WikipediaService;
@@ -28,7 +28,7 @@ class Step1SettingsTest extends TestCase
 
     private User $teacher;
 
-    private Avatar $avatar;
+    private Narrator $narrator;
 
     private StrategyGame $game;
 
@@ -39,7 +39,7 @@ class Step1SettingsTest extends TestCase
         $this->seedCatalog();
 
         $this->teacher = User::factory()->create();
-        $this->avatar = Avatar::create([
+        $this->narrator = Narrator::create([
             'name' => 'Test', 'slug' => 'test-1', 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'v',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
@@ -71,7 +71,7 @@ class Step1SettingsTest extends TestCase
             ->set('grade_level', '7th grade')
             ->set('source_mode', 'internet')
             ->set('image_style', 'painted')
-            ->set('avatar_id', $this->avatar->id)
+            ->set('avatar_id', $this->narrator->id)
             ->call('saveDraft')
             ->assertHasNoErrors();
 
@@ -135,14 +135,14 @@ class Step1SettingsTest extends TestCase
 
     public function test_avatar_picker_exposes_teacher_greeting_audio_and_hover_zoom(): void
     {
-        $path = "avatar-greetings/{$this->avatar->id}/{$this->teacher->id}.mp3";
+        $path = "avatar-greetings/{$this->narrator->id}/{$this->teacher->id}.mp3";
         Storage::disk('public')->put($path, 'mp3');
 
         Livewire::actingAs($this->teacher)
             ->test(Step1Settings::class, ['lesson' => null])
             ->assertSee("/storage/{$path}", false)
-            ->assertSee('data-avatar-sound-url', false)
-            ->assertSee('playAvatar', false)
+            ->assertSee('data-narrator-sound-url', false)
+            ->assertSee('playNarrator', false)
             ->assertSee('overflow-x-auto', false)
             ->assertSee('group-hover:scale-110', false);
     }
@@ -156,7 +156,7 @@ class Step1SettingsTest extends TestCase
             ->set('grade_level', '7th grade')
             ->set('source_mode', 'internet')
             ->set('image_style', 'painted')
-            ->set('avatar_id', $this->avatar->id)
+            ->set('avatar_id', $this->narrator->id)
             ->set('strategy_game_id', $this->game->id)
             ->set('team_count', 2)
             ->set('game_split_count', 1)
@@ -189,7 +189,7 @@ class Step1SettingsTest extends TestCase
             ->set('source_mode', 'local')
             ->set('sourceUpload', $file)
             ->set('image_style', 'cinematic')
-            ->set('avatar_id', $this->avatar->id)
+            ->set('avatar_id', $this->narrator->id)
             ->set('game_split_count', 1)
             ->call('saveDraft')
             ->assertHasNoErrors();
@@ -214,7 +214,7 @@ class Step1SettingsTest extends TestCase
             ->set('grade_level', '7th grade')
             ->set('source_mode', 'internet')
             ->set('image_style', 'painted')
-            ->set('avatar_id', $this->avatar->id)
+            ->set('avatar_id', $this->narrator->id)
             ->set('game_split_count', 1)
             ->call('generate')
             ->assertHasNoErrors();
@@ -233,7 +233,7 @@ class Step1SettingsTest extends TestCase
             ->set('source_mode', 'local')
             ->set('sourceUpload', null)
             ->set('image_style', 'painted')
-            ->set('avatar_id', $this->avatar->id)
+            ->set('avatar_id', $this->narrator->id)
             ->set('game_split_count', 1)
             ->call('saveDraft')
             ->assertHasErrors(['sourceUpload']);

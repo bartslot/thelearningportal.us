@@ -7,11 +7,11 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Http\Controllers\Teacher\DashboardController;
-use App\Livewire\Admin\AvatarStudio;
 use App\Livewire\Admin\CreateAvatar;
+use App\Livewire\Admin\NarratorStudio;
 use App\Livewire\LessonWizard;
-use App\Models\Avatar;
 use App\Models\Lesson;
+use App\Models\Narrator;
 use Illuminate\Support\Facades\Route;
 
 // {lesson} is a bigint primary key. Constrain it to digits app-wide so a stray non-numeric
@@ -400,30 +400,31 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     Route::get('/dashboard', function () {
         return view('admin.dashboard', [
-            'avatarCount' => Avatar::count(),
+            'narratorCount' => Narrator::count(),
         ]);
     })->name('dashboard');
 
-    // Avatar list
-    Route::get('/avatars', function () {
-        $avatars = Avatar::withCount('lessons')->orderBy('sort_order')->get();
+    // Narrator list
+    Route::get('/narrators', function () {
+        $narrators = Narrator::withCount('lessons')->orderBy('sort_order')->get();
 
-        return view('admin.avatars.index', compact('avatars'));
-    })->name('avatars.index');
+        return view('admin.narrators.index', compact('narrators'));
+    })->name('narrators.index');
 
-    Route::get('/avatars/create', CreateAvatar::class)->name('avatars.create');
+    // Stays above /narrators/{narrator}, or "create" binds as a narrator id.
+    Route::get('/narrators/create', CreateAvatar::class)->name('narrators.create');
 
-    // Avatar Studio (Livewire component)
-    Route::get('/avatars/{avatar}', AvatarStudio::class)->name('avatars.studio');
+    // Narrator Studio (Livewire component)
+    Route::get('/narrators/{narrator}', NarratorStudio::class)->name('narrators.studio');
 
     // Story catalog review queue (draft → reviewed → published)
     Route::get('/stories', \App\Livewire\Admin\StoryReview::class)->name('stories.review');
 
     // Toggle active status
-    Route::patch('/avatars/{avatar}/toggle', function (Avatar $avatar) {
-        $avatar->update(['is_active' => ! $avatar->is_active]);
+    Route::patch('/narrators/{narrator}/toggle', function (Narrator $narrator) {
+        $narrator->update(['is_active' => ! $narrator->is_active]);
 
-        return back()->with('success', $avatar->name.' is now '.($avatar->is_active ? 'active' : 'inactive').'.');
-    })->name('avatars.toggle');
+        return back()->with('success', $narrator->name.' is now '.($narrator->is_active ? 'active' : 'inactive').'.');
+    })->name('narrators.toggle');
 
 });

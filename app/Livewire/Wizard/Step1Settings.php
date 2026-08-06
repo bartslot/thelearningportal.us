@@ -6,8 +6,8 @@ namespace App\Livewire\Wizard;
 
 use App\Enums\LessonStatus;
 use App\Http\Requests\StoreWizardSettingsRequest;
-use App\Models\Avatar;
 use App\Models\Lesson;
+use App\Models\Narrator;
 use App\Models\StrategyGame;
 use App\Services\DocumentExtractor;
 use App\Services\Support\GradeBandStyleRecommender;
@@ -145,7 +145,7 @@ class Step1Settings extends Component
         } else {
             $this->lesson_code = strtoupper(Str::random(6));
             $this->image_style = GradeBandStyleRecommender::recommend($this->grade_level)[0];
-            $this->avatar_id = Avatar::where('is_active', true)->orderBy('sort_order')->value('id');
+            $this->avatar_id = Narrator::where('is_active', true)->orderBy('sort_order')->value('id');
             $this->tone = 'storytelling';
         }
 
@@ -433,9 +433,9 @@ class Step1Settings extends Component
     }
 
     #[Computed]
-    public function avatars()
+    public function narrators()
     {
-        return Avatar::where('is_active', true)->orderBy('sort_order')->get();
+        return Narrator::where('is_active', true)->orderBy('sort_order')->get();
     }
 
     #[Computed]

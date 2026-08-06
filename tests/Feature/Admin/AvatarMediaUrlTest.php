@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Admin;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -26,9 +26,9 @@ class AvatarMediaUrlTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function avatar(array $attributes = []): Avatar
+    private function narrator(array $attributes = []): Narrator
     {
-        return Avatar::create($attributes + [
+        return Narrator::create($attributes + [
             'name' => 'Test Narrator',
             'slug' => 'test-narrator-'.uniqid(),
             'voice_provider' => 'azure',
@@ -40,13 +40,13 @@ class AvatarMediaUrlTest extends TestCase
 
     public function test_an_uploaded_portrait_resolves_to_the_storage_url(): void
     {
-        // The exact shape AvatarStudio writes: the public DISK, under an `avatars/` path.
+        // The exact shape NarratorStudio writes: the public DISK, under an `avatars/` path.
         Storage::disk('public')->put('avatars/1/portrait.jpg', 'jpeg-bytes');
-        $avatar = $this->avatar(['portrait_path' => 'avatars/1/portrait.jpg']);
+        $narrator = $this->narrator(['portrait_path' => 'avatars/1/portrait.jpg']);
 
         $this->assertStringContainsString(
             '/storage/avatars/1/portrait.jpg',
-            (string) $avatar->portraitUrl(),
+            (string) $narrator->portraitUrl(),
             'an uploaded portrait was linked as a bundled asset, which 404s',
         );
     }
@@ -55,9 +55,9 @@ class AvatarMediaUrlTest extends TestCase
     {
         // CreateAvatar stores under avatars/portraits/… — the same prefix, the same old bug.
         Storage::disk('public')->put('avatars/portraits/ron-slot.jpg', 'jpeg-bytes');
-        $avatar = $this->avatar(['portrait_path' => 'avatars/portraits/ron-slot.jpg']);
+        $narrator = $this->narrator(['portrait_path' => 'avatars/portraits/ron-slot.jpg']);
 
-        $this->assertStringContainsString('/storage/avatars/portraits/ron-slot.jpg', (string) $avatar->portraitUrl());
+        $this->assertStringContainsString('/storage/avatars/portraits/ron-slot.jpg', (string) $narrator->portraitUrl());
     }
 
     /**
@@ -86,9 +86,9 @@ class AvatarMediaUrlTest extends TestCase
         File::ensureDirectoryExists(public_path(self::SCRATCH));
         File::put(public_path($relative), 'webp-bytes');
 
-        $avatar = $this->avatar(['portrait_path' => $relative]);
+        $narrator = $this->narrator(['portrait_path' => $relative]);
 
-        $url = (string) $avatar->portraitUrl();
+        $url = (string) $narrator->portraitUrl();
         $this->assertStringContainsString($relative, $url);
         $this->assertStringNotContainsString('/storage/', $url, 'a bundled asset was sent through /storage');
     }
@@ -101,32 +101,32 @@ class AvatarMediaUrlTest extends TestCase
         File::put(public_path($relative), 'old-bundled-bytes');
         Storage::disk('public')->put($relative, 'freshly-uploaded-bytes');
 
-        $avatar = $this->avatar(['portrait_path' => $relative]);
+        $narrator = $this->narrator(['portrait_path' => $relative]);
 
-        $this->assertStringContainsString('/storage/', (string) $avatar->portraitUrl(), 'the stale bundled file shadowed the upload');
+        $this->assertStringContainsString('/storage/', (string) $narrator->portraitUrl(), 'the stale bundled file shadowed the upload');
     }
 
     public function test_a_missing_file_returns_null_rather_than_a_url_that_404s(): void
     {
         // Callers render a fallback for null. A broken image is worse than no image.
-        $avatar = $this->avatar(['portrait_path' => 'avatars/999/nothing-here.jpg']);
+        $narrator = $this->narrator(['portrait_path' => 'avatars/999/nothing-here.jpg']);
 
-        $this->assertNull($avatar->portraitUrl());
+        $this->assertNull($narrator->portraitUrl());
     }
 
     public function test_no_portrait_at_all_is_null(): void
     {
-        $this->assertNull($this->avatar(['portrait_path' => null])->portraitUrl());
+        $this->assertNull($this->narrator(['portrait_path' => null])->portraitUrl());
     }
 
     public function test_an_uploaded_introduction_video_resolves_to_storage(): void
     {
         Storage::disk('public')->put('avatar-introductions/ron-slot/introduction.mp4', 'mp4-bytes');
-        $avatar = $this->avatar(['intro_video_path' => 'avatar-introductions/ron-slot/introduction.mp4']);
+        $narrator = $this->narrator(['intro_video_path' => 'avatar-introductions/ron-slot/introduction.mp4']);
 
         $this->assertStringContainsString(
             '/storage/avatar-introductions/ron-slot/introduction.mp4',
-            (string) $avatar->welcomeVideoUrl(),
+            (string) $narrator->welcomeVideoUrl(),
         );
     }
 }

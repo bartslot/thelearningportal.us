@@ -293,7 +293,7 @@ final class HelpGuide
                 'link' => ['label' => __('Open the admin dashboard'), 'route' => 'admin.dashboard'],
             ],
             [
-                'id' => 'admin-avatars',
+                'id' => 'admin-narrators',
                 'audience' => 'admin',
                 'title' => __('The Narrator Studio'),
                 'icon' => 'user-circle',
@@ -310,7 +310,7 @@ final class HelpGuide
                         'steps' => [],
                     ],
                 ],
-                'link' => ['label' => __('Open the Narrator Studio'), 'route' => 'admin.avatars.index'],
+                'link' => ['label' => __('Open the Narrator Studio'), 'route' => 'admin.narrators.index'],
             ],
             [
                 'id' => 'admin-stories',
@@ -389,7 +389,7 @@ final class HelpGuide
             [
                 'label' => __('Narrator Studio'),
                 'description' => __('The narrators teachers can pick, their portraits and voices.'),
-                'route' => 'admin.avatars.index',
+                'route' => 'admin.narrators.index',
                 'icon' => 'user-circle',
                 'keywords' => __('narrator voice portrait avatar figure admin'),
                 'audience' => 'admin',

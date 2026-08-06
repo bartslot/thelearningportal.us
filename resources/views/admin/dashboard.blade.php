@@ -7,13 +7,13 @@
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <a href="{{ route('admin.avatars.index') }}"
+        <a href="{{ route('admin.narrators.index') }}"
            class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 hover:border-amber-600/50 transition-colors group">
             <div class="mb-3">
                 <x-icons.user-circle class="w-8 h-8 text-slate-500" />
             </div>
             <h2 class="font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">Narrators</h2>
-            <p class="text-sm text-slate-500 mt-1">{{ $avatarCount }} configured</p>
+            <p class="text-sm text-slate-500 mt-1">{{ $narratorCount }} configured</p>
         </a>
 
         <a href="{{ route('teacher.dashboard') }}"

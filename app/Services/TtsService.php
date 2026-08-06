@@ -241,7 +241,7 @@ SSML;
         $this->generatedVoice = null;
         $timingData = null;
 
-        // If the avatar explicitly chose edge_tts, try it first
+        // If the narrator explicitly chose edge_tts, try it first
         if (str_starts_with($voice, 'es-') || str_starts_with($voice, 'en-GB-') || str_starts_with($voice, 'en-US-')) {
             $audioContent = $this->tryEdgeTts($text, $voice, $speed)
                 ?? $this->tryPocketTts($text)
@@ -286,7 +286,7 @@ SSML;
 
     /**
      * Self-hosted Piper TTS (Oracle Always-Free box). JSON API: POST /tts {text, voice} -> WAV.
-     * The voice is server-side config (nl_NL-pim-medium) — the app's avatar voiceId is ElevenLabs-
+     * The voice is server-side config (nl_NL-pim-medium) — the app's narrator voiceId is ElevenLabs-
      * shaped and irrelevant here, so we don't pass it. Returns null on any failure to fall through.
      */
     private function tryPiper(string $text, string $voiceId = ''): ?string

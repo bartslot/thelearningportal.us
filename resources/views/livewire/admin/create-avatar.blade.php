@@ -1,5 +1,5 @@
 <div class="mx-auto max-w-6xl" x-data>
-    <a href="{{ route('admin.avatars.index') }}" class="btn btn-ghost btn-sm px-0">← Back to narrators</a>
+    <a href="{{ route('admin.narrators.index') }}" class="btn btn-ghost btn-sm px-0">← Back to narrators</a>
 
     <div class="mt-7 grid gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <main>

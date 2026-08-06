@@ -21,24 +21,24 @@
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="flex items-center gap-5">
             <img
-                src="{{ $avatar->portraitUrl() }}"
-                alt="{{ $avatar->name }}"
+                src="{{ $narrator->portraitUrl() }}"
+                alt="{{ $narrator->name }}"
                 class="h-20 w-20 rounded-2xl object-cover border-2 border-amber-500/30"
             >
             <div>
                 <p class="text-xs uppercase tracking-widest text-amber-400">Narrator Studio · Admin</p>
-                <h1 class="mt-1 text-3xl font-semibold text-slate-100">{{ $avatar->name }}</h1>
-                <p class="mt-1 text-sm text-slate-400">{{ $avatar->description }}</p>
+                <h1 class="mt-1 text-3xl font-semibold text-slate-100">{{ $narrator->name }}</h1>
+                <p class="mt-1 text-sm text-slate-400">{{ $narrator->description }}</p>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
             <span class="rounded-full px-3 py-1 text-xs font-medium border
-                {{ $avatar->is_active ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-500' }}">
-                {{ $avatar->is_active ? 'Active' : 'Inactive' }}
+                {{ $narrator->is_active ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-500' }}">
+                {{ $narrator->is_active ? 'Active' : 'Inactive' }}
             </span>
             <span class="text-xs text-slate-600">·</span>
-            <span class="text-xs text-slate-500 capitalize">{{ $avatar->subject === 'all' ? 'All subjects' : $avatar->subject }}</span>
+            <span class="text-xs text-slate-500 capitalize">{{ $narrator->subject === 'all' ? 'All subjects' : $narrator->subject }}</span>
         </div>
     </div>
     
@@ -70,11 +70,11 @@
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div class="h-[66vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
-        {{-- TAB: Image — static avatar picture (avatars are image + ElevenLabs voice) --}}
+        {{-- TAB: Image — static narrator portrait (a narrator is an image plus an ElevenLabs voice) --}}
         {{-- ══════════════════════════════════════════════════════════════════════ --}}
         <div x-show="activeTab === 'image'" x-cloak class="space-y-6">
             <div class="flex items-start gap-6">
-                <img src="{{ $avatar->portraitUrl() }}" alt="{{ $avatar->name }}"
+                <img src="{{ $narrator->portraitUrl() }}" alt="{{ $narrator->name }}"
                      class="h-32 w-32 rounded-2xl object-cover border-2 border-amber-500/30">
                 <div class="space-y-1">
                     <p class="text-sm font-medium text-slate-200">Current image</p>
@@ -107,15 +107,15 @@
                  (a wholesale content swap around Alpine-managed trees) expelled the previous
                  render's DOM below the page — a full render per provider kills that bug class. --}}
             <div class="join mb-3">
-                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'elevenlabs']) }}"
+                <a href="{{ route('admin.narrators.studio', ['narrator' => $narrator, 'provider' => 'elevenlabs']) }}"
                    class="btn btn-sm join-item {{ $previewProvider === 'elevenlabs' ? 'btn-primary' : 'btn-ghost' }}">
                     ★ ElevenLabs
                 </a>
-                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'edge_tts']) }}"
+                <a href="{{ route('admin.narrators.studio', ['narrator' => $narrator, 'provider' => 'edge_tts']) }}"
                    class="btn btn-sm join-item {{ $previewProvider === 'edge_tts' ? 'btn-primary' : 'btn-ghost' }}">
                     edge-tts (free)
                 </a>
-                <a href="{{ route('admin.avatars.studio', ['avatar' => $avatar, 'provider' => 'pocket_tts']) }}"
+                <a href="{{ route('admin.narrators.studio', ['narrator' => $narrator, 'provider' => 'pocket_tts']) }}"
                    class="btn btn-sm join-item {{ $previewProvider === 'pocket_tts' ? 'btn-primary' : 'btn-ghost' }}">
                     Pocket TTS
                 </a>
@@ -207,14 +207,14 @@
                                     <td class="whitespace-nowrap">{{ $row['flag'] }} {{ $row['language'] }}</td>
                                     <td>{{ $row['gender'] }}</td>
                                     {{-- USED: the single voice-selection control — sets this voice as the
-                                         narrator for its language AND the avatar's active base voice. --}}
+                                         narrator for its language AND the narrator's active base voice. --}}
                                     <td x-on:click.stop class="text-right">
                                         @if($previewProvider === 'edge_tts')
                                             {{-- Edge voice: tick = use for ITS language --}}
-                                            <label class="flex items-center justify-end gap-1.5 cursor-pointer text-xs {{ ($avatar->voice_map[$row['lang']] ?? null) === $row['id'] ? 'text-amber-300 font-medium' : 'text-slate-400' }}">
+                                            <label class="flex items-center justify-end gap-1.5 cursor-pointer text-xs {{ ($narrator->voice_map[$row['lang']] ?? null) === $row['id'] ? 'text-amber-300 font-medium' : 'text-slate-400' }}">
                                                 <input type="checkbox" class="checkbox checkbox-xs checkbox-warning"
                                                        wire:click="useVoice('{{ $row['lang'] }}', '{{ $row['id'] }}')"
-                                                       @checked(($avatar->voice_map[$row['lang']] ?? null) === $row['id'])>
+                                                       @checked(($narrator->voice_map[$row['lang']] ?? null) === $row['id'])>
                                                 {{ __('Use for') }} {{ strtoupper($row['lang']) }}
                                             </label>
                                         @else
@@ -223,8 +223,8 @@
                                                     class="select select-xs select-bordered bg-slate-900 w-32">
                                                 <option value="">{{ __('Use for…') }}</option>
                                                 @foreach(['nl' => 'Nederlands', 'en' => 'English', 'de' => 'Deutsch', 'fr' => 'Français', 'it' => 'Italiano', 'es' => 'Español'] as $c => $l)
-                                                    <option value="{{ $c }}" @selected(($avatar->voice_map[$c] ?? null) === $row['id'])>
-                                                        {{ $l }}{{ ($avatar->voice_map[$c] ?? null) === $row['id'] ? ' ✓' : '' }}
+                                                    <option value="{{ $c }}" @selected(($narrator->voice_map[$c] ?? null) === $row['id'])>
+                                                        {{ $l }}{{ ($narrator->voice_map[$c] ?? null) === $row['id'] ? ' ✓' : '' }}
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -259,7 +259,7 @@
 
                 {{-- Standard phrases removed: auditioning uses PRE-GENERATED samples
                      (voices:samples), played instantly on card click — no runtime TTS.
-                     The custom phrase below stays for hearing avatar-specific lines. --}}
+                     The custom phrase below stays for hearing narrator-specific lines. --}}
 
                 {{-- Custom phrase --}}
                 <div class="border-t border-slate-800 pt-5 space-y-3">
@@ -284,7 +284,7 @@
 
             </div>
 
-            {{-- Recent samples for this avatar ---------------------------------------------- --}}
+            {{-- Recent samples for this narrator ---------------------------------------------- --}}
             @if($this->voiceSamples->isNotEmpty())
                 <div class="space-y-3">
                     <h2 class="text-sm font-semibold text-slate-200">Generated samples</h2>
@@ -299,7 +299,7 @@
                                     <p class="text-sm text-slate-300 mt-0.5 truncate">{{ $sample->phrase }}</p>
                                 </div>
                                 <div class="flex items-center gap-2 flex-shrink-0">
-                                    @if($sample->voice_id === $avatar->voice_id && round($sample->voice_speed, 2) === round($avatar->voice_speed, 2))
+                                    @if($sample->voice_id === $narrator->voice_id && round($sample->voice_speed, 2) === round($narrator->voice_speed, 2))
                                         <span class="text-xs text-amber-400 font-medium">● Active</span>
                                     @else
                                         <button
@@ -350,7 +350,7 @@
                         <label class="text-xs text-slate-400 mb-1 block">Greeting script</label>
                         <textarea wire:model="greetingScript" rows="3"
                                   class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:border-indigo-500 focus:outline-none"
-                                  placeholder="Hello, I am {{ $avatar->short_name ?? 'your guide' }}…"></textarea>
+                                  placeholder="Hello, I am {{ $narrator->short_name ?? 'your guide' }}…"></textarea>
                     </div>
                     <div class="flex gap-2">
                         <div class="flex-1">
@@ -500,7 +500,7 @@
                                     <p class="text-xs text-slate-600 mt-1">{{ $sample->created_at->diffForHumans() }}</p>
                                 </div>
                                 <div class="flex gap-2 flex-shrink-0">
-                                    @if($sample->voice_id !== $avatar->voice_id || round($sample->voice_speed, 2) !== round($avatar->voice_speed, 2))
+                                    @if($sample->voice_id !== $narrator->voice_id || round($sample->voice_speed, 2) !== round($narrator->voice_speed, 2))
                                         <button wire:click="applyVoice({{ $sample->id }})"
                                                 class="rounded-lg border border-emerald-700 px-3 py-1 text-xs text-emerald-400 hover:bg-emerald-950/40 transition-colors">
                                             Use voice

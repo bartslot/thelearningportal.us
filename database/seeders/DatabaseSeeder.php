@@ -49,8 +49,8 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // ── Avatars ───────────────────────────────────────────────────────────
-        $this->call(AvatarSeeder::class);
+        // ── Narrators ───────────────────────────────────────────────────────────
+        $this->call(DemoNarratorSeeder::class);
 
         // ── Strategy games ────────────────────────────────────────────────────
         $this->call(StrategyGameSeeder::class);

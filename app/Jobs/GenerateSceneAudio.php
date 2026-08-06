@@ -38,23 +38,23 @@ class GenerateSceneAudio implements ShouldQueue
 
     public function handle(TtsService $tts): void
     {
-        $scene = Scene::with('lesson.avatar')->findOrFail($this->sceneId);
+        $scene = Scene::with('lesson.narrator')->findOrFail($this->sceneId);
 
         try {
-            $avatar = $scene->lesson->avatar;
+            $narrator = $scene->lesson->narrator;
             $script = (string) ($scene->script_segment ?? '');
             $text = $tts->prepareSpeechText($script);
             // Spoken-form fixes only ("limes" → "liemes" for Dutch voices) — the on-screen
             // script keeps the correct written form.
             $text = PronunciationLexicon::apply($text, $scene->lesson->teacher?->locale);
 
-            // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
-            // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so the
+            // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the narrator's
+            // provider. A non-ElevenLabs backup can't use the narrator's ElevenLabs voice_id, so the
             // voice follows the lesson's CONTENT language (see the precedence below): native
             // narrator per language, multilingual fallback otherwise. TTS_PROVIDER_OVERRIDE_VOICE,
             // when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
-            $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
+            $provider = $override !== '' ? $override : ($narrator?->voice_provider ?? 'elevenlabs');
 
             // A demo guest never spends ElevenLabs credits, whatever narrator the lesson names.
             //
@@ -69,6 +69,7 @@ class GenerateSceneAudio implements ShouldQueue
             if ($provider === 'elevenlabs' && $scene->lesson->teacher?->isGuestDemo()) {
                 $provider = 'azure';
             }
+
             // For NARRATION the script itself is the authority: these are the actual words being
             // read aloud, and an English sentence read by a Dutch voice is wrong no matter what the
             // teacher's settings say. The teaching language (and then the interface locale) is only
@@ -86,9 +87,9 @@ class GenerateSceneAudio implements ShouldQueue
                 $override !== '' && $override !== 'elevenlabs' => NarrationVoice::azure(
                     $locale, (string) config('services.tts.provider_override_voice', ''),
                 ),
-                // Avatar-driven: the studio's per-language preferred voice (voice_map)
-                // wins for the lesson's language; falls back to the avatar's base voice.
-                default => $avatar?->voiceFor($locale) ?? '',
+                // Narrator-driven: the studio's per-language preferred voice (voice_map)
+                // wins for the lesson's language; falls back to the narrator's base voice.
+                default => $narrator?->voiceFor($locale) ?? '',
             };
 
             // A lesson with no narrator at all resolves to an empty voice id. Sent down the chain
@@ -106,7 +107,7 @@ class GenerateSceneAudio implements ShouldQueue
             $audio = $tts->generateAudioRaw(
                 $text,
                 $voiceId,
-                (float) ($avatar?->voice_speed ?? 1.0),
+                (float) ($narrator?->voice_speed ?? 1.0),
                 $provider,
                 $timing,
             );
@@ -127,7 +128,7 @@ class GenerateSceneAudio implements ShouldQueue
             $duration = $narrationTiming->duration();
             if ($duration <= 0.0) {
                 $words = max(1, str_word_count(strip_tags($text)));
-                $speed = (float) ($avatar?->voice_speed ?? 1.0) ?: 1.0;
+                $speed = (float) ($narrator?->voice_speed ?? 1.0) ?: 1.0;
                 $duration = round($words / (2.6 * $speed), 1);
             }
             $duration = max(3.0, $duration);

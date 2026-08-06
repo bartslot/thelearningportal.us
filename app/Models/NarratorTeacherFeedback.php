@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
-class AvatarTeacherFeedback extends Model
+class NarratorTeacherFeedback extends Model
 {
     protected $table = 'avatar_teacher_feedback';
 
@@ -26,9 +26,9 @@ class AvatarTeacherFeedback extends Model
         ];
     }
 
-    public function avatar(): BelongsTo
+    public function narrator(): BelongsTo
     {
-        return $this->belongsTo(Avatar::class);
+        return $this->belongsTo(Narrator::class, 'avatar_id');
     }
 
     public function teacher(): BelongsTo

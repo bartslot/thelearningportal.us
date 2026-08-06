@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-class AvatarSeeder extends Seeder
+/**
+ * The bundled demo cast, built by scanning public/avatars/{1..99}/avatarinfo.json.
+ *
+ * This is what fills the narrator picker on a fresh development database. It is NOT the seeder for
+ * the narrators we actually ship: that is NarratorSeeder, which is keyed on slug and idempotent.
+ *
+ * Never run this against production. The first thing it does is DELETE FROM avatars, which takes
+ * the real narrators with it, soft-deleted rows included.
+ */
+class DemoNarratorSeeder extends Seeder
 {
     public function run(): void
     {
-        // Hard-delete all existing avatars (including soft-deleted)
+        // Hard-delete every existing narrator (including soft-deleted)
         DB::statement('DELETE FROM avatars');
         // Reset the auto-increment counter — sqlite_sequence is SQLite-only and errors on Postgres.
         if (DB::getDriverName() === 'sqlite') {
@@ -23,11 +32,11 @@ class AvatarSeeder extends Seeder
         $avatarDir = public_path('avatars');
         $inserted = 0;
 
-        // Only these avatars are offered for lesson creation; the rest are seeded but inactive.
+        // Only these narrators are offered for lesson creation; the rest are seeded but inactive.
         $activeIds = [31, 1, 4]; // Julian (default), Napoleon, Joan of Arc
 
         // Julian is the default narrator: force the lowest sort_order so he sorts first
-        // everywhere active avatars are ordered (wizard pre-selection, picker, narrator card).
+        // everywhere active narrators are ordered (wizard pre-selection, picker, narrator card).
         $sortOverrides = [31 => 0];
 
         // Scan numbered subfolders 1–99 for avatarinfo.json
@@ -44,18 +53,18 @@ class AvatarSeeder extends Seeder
                 continue;
             }
 
-            $name = $info['name'] ?? "Avatar {$i}";
+            $name = $info['name'] ?? "Narrator {$i}";
             $slug = Str::slug($name) ?: "avatar-{$i}";
 
             // Ensure slug uniqueness
             $baseSlug = $slug;
             $suffix = 1;
-            while (Avatar::withTrashed()->where('slug', $slug)->exists()) {
+            while (Narrator::withTrashed()->where('slug', $slug)->exists()) {
                 $slug = "{$baseSlug}-{$suffix}";
                 $suffix++;
             }
 
-            Avatar::create([
+            Narrator::create([
                 'id' => $i,
                 'name' => $name,
                 'slug' => $slug,
@@ -88,12 +97,12 @@ class AvatarSeeder extends Seeder
             $inserted++;
         }
 
-        // Avatars were inserted with explicit ids; advance the Postgres sequence so future
-        // auto-increment inserts (admin Avatar Lab) don't collide.
+        // Narrators were inserted with explicit ids; advance the Postgres sequence so future
+        // auto-increment inserts (admin Narrator Lab) don't collide.
         if (DB::getDriverName() === 'pgsql' && $inserted > 0) {
             DB::statement("SELECT setval(pg_get_serial_sequence('avatars', 'id'), (SELECT MAX(id) FROM avatars))");
         }
 
-        $this->command?->info("Seeded {$inserted} avatars.");
+        $this->command?->info("Seeded {$inserted} narrators.");
     }
 }

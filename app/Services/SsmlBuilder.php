@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 
 class SsmlBuilder
 {
@@ -12,13 +12,13 @@ class SsmlBuilder
         'serious', 'cheerful', 'excited', 'empathetic', 'whispering', 'narrative',
     ];
 
-    public function build(string $script, Avatar $avatar): string
+    public function build(string $script, Narrator $narrator): string
     {
-        $voice = $this->resolveVoice($avatar);
-        $rate  = number_format((float) $avatar->speaking_speed, 2);
-        $inner = $avatar->emotion_style === 'auto'
-            ? $this->parseEmotionTags($script, (float) $avatar->expressiveness)
-            : $this->wrapEntire($script, $avatar->emotion_style, (float) $avatar->expressiveness);
+        $voice = $this->resolveVoice($narrator);
+        $rate  = number_format((float) $narrator->speaking_speed, 2);
+        $inner = $narrator->emotion_style === 'auto'
+            ? $this->parseEmotionTags($script, (float) $narrator->expressiveness)
+            : $this->wrapEntire($script, $narrator->emotion_style, (float) $narrator->expressiveness);
 
         return implode('', [
             '<speak version="1.0"',
@@ -66,10 +66,10 @@ class SsmlBuilder
         return $output;
     }
 
-    private function resolveVoice(Avatar $avatar): string
+    private function resolveVoice(Narrator $narrator): string
     {
-        $age    = (int) $avatar->age;
-        $gender = $avatar->gender;
+        $age    = (int) $narrator->age;
+        $gender = $narrator->gender;
 
         if ($gender === 'female') {
             return match (true) {
