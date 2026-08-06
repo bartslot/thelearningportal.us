@@ -14,20 +14,36 @@ use Illuminate\Support\Facades\Http;
  * Natural Earth import never ran) from their Wikidata item's coordinate (P625). A stub city breaks
  * the wizard map block: its focus pin lands at (0,0) in the Gulf of Guinea and drags the camera
  * fit there.
+ *
+ * `--refresh` re-resolves every curated stub, coordinates or not. A stub's coordinate is only ever
+ * as good as its QID, and the QIDs have been corrected since: production carried Q221413 for
+ * Hillah where the curated data now says Q243846, so a plain backfill there resolved Babylon to a
+ * point in Romania, Merv to Canberra and Cahokia to Slovakia — each a real Wikidata item with a
+ * real coordinate, and none of them the city. Re-seed the names first, then run with --refresh, and
+ * the corrected QID wins over whatever the old one resolved to.
  */
 class BackfillCityCoords extends Command
 {
-    protected $signature = 'cities:backfill-coords {--dry-run : Show what would change without writing}';
+    /** Written to `country` by HistoricalCityNamesSeeder on rows it creates. Mirrors that constant. */
+    private const STUB_NOTE = 'curated stub (no coordinates)';
+
+    protected $signature = 'cities:backfill-coords
+        {--dry-run : Show what would change without writing}
+        {--refresh : Re-resolve every curated stub, not only the ones still at 0,0}';
 
     protected $description = 'Backfill zero/missing city coordinates from Wikidata P625';
 
     public function handle(): int
     {
         $stubs = City::query()
-            ->where(fn ($w) => $w->where(fn ($z) => $z->where('lat', 0)->where('lng', 0))
-                ->orWhereNull('lat')->orWhereNull('lng'))
+            ->when(
+                $this->option('refresh'),
+                fn ($q) => $q->where('country', self::STUB_NOTE),
+                fn ($q) => $q->where(fn ($w) => $w->where(fn ($z) => $z->where('lat', 0)->where('lng', 0))
+                    ->orWhereNull('lat')->orWhereNull('lng')),
+            )
             ->whereNotNull('wikidata_qid')
-            ->get(['id', 'name', 'wikidata_qid']);
+            ->get(['id', 'name', 'wikidata_qid', 'lat', 'lng']);
 
         if ($stubs->isEmpty()) {
             $this->info('No stub cities — nothing to backfill.');

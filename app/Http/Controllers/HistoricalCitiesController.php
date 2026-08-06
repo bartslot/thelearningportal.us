@@ -25,7 +25,14 @@ final class HistoricalCitiesController extends Controller
             now()->addDay(),
             fn (): array => [
                 'type' => 'FeatureCollection',
+                // A city whose coordinate never resolved is stored at 0,0, and 0,0 is a real place on
+                // a map: the Gulf of Guinea. Every unresolved city therefore drew as a labelled dot
+                // off the coast of Nigeria — for a while that included Constantinople. Skip them
+                // here rather than downstream, so no amount of bad seed data can put a city in the
+                // sea again. A city genuinely at Null Island does not exist.
                 'features' => City::whereNotNull('historical_name')
+                    ->whereNotNull('lat')->whereNotNull('lng')
+                    ->whereNot(fn ($q) => $q->where('lat', 0)->where('lng', 0))
                     ->get(['name', 'lat', 'lng', 'scalerank', 'historical_name', 'historical_period'])
                     ->map(function (City $city): array {
                         // The curated period is prose ("330–1453 CE", "Roman era"); the map needs two
