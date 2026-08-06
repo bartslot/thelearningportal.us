@@ -6,7 +6,7 @@ import { midpointAlong, nearestPointOnPolyline, splitByWaypoints } from './timem
 import { addVoyageShips } from './timemap/voyage-ships.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { prefetchRouteTiles } from './timemap/tile-prefetch.js';
-import { PLACE_LABEL } from './map-place-label.js';
+import { renderItineraryPins } from './map-itinerary.js';
 import { SATELLITE_SOURCE, DEM_SOURCE } from './map-imagery.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
 import { mapTextProjector } from './map-text-projector.js';
@@ -1379,8 +1379,10 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   // ── Overview: the whole voyage on one screen ──────────────────────────────
   // Everything here is DERIVED from the route, never authored, so adding a leg or dragging a
   // waypoint updates the itinerary automatically.
-  let overviewPins = [];
-  let overviewMove = null;
+  // The numbered stops are drawn by the shared itinerary module — the same one a plain map block
+  // uses (resources/js/map-itinerary.js). A voyage adds the route line between them; the pins,
+  // their placement and their reveal are identical, so they live in one place.
+  let overviewItinerary = null;
   let overviewRaf = null;   // the route-drawing animation, so leaving the scene stops it
 
   /**
@@ -1414,9 +1416,8 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
   const clearOverview = () => {
     if (overviewRaf) { cancelAnimationFrame(overviewRaf); overviewRaf = null; }
-    if (overviewMove) { map.off('move', overviewMove); overviewMove = null; }
-    overviewPins.forEach((p) => { try { p.remove(); } catch (_) { /* gone */ } });
-    overviewPins = [];
+    try { overviewItinerary?.destroy(); } catch (_) { /* already gone */ }
+    overviewItinerary = null;
   };
 
   const renderOverview = ({ animate = true } = {}) => {
@@ -1441,32 +1442,16 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     const drawing = !editable && anim.route === 'draw' && Number(anim.duration) > 0;
     updateTrail(drawing ? 0 : 1);
 
+    // While the route draws, a stop waits until the line reaches it — the itinerary should read
+    // like a story, not arrive as a finished tangle. `hidden` starts them invisible; the rAF loop
+    // below reveals each as the ink passes it.
     const numbers = stopNumbers(stops);
-    stops.forEach((s, i) => {
-      const pin = document.createElement('div');
-      pin.className = 'absolute -translate-x-1/2 -translate-y-full';
-      pin.style.cssText = 'pointer-events:none;z-index:30;';
-      const last = i === stops.length - 1;
-      // Numbered dot + name, so the class can read the itinerary in order.
-      pin.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-          ${s.name ? `<span style="white-space:nowrap;font-size:11px;font-weight:${PLACE_LABEL.weight};color:${PLACE_LABEL.ink};
-              background:${PLACE_LABEL.fill};border-radius:9999px;padding:${PLACE_LABEL.padY}px ${PLACE_LABEL.padX}px;
-              box-shadow:0 1px 3px rgba(0,0,0,0.25)"></span>` : ''}
-          ${numbers[i] === null ? '' : `<span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;
-              border-radius:9999px;font-size:10px;font-weight:700;color:#fff;
-              background:${last ? '#b45309' : '#7c2d12'};box-shadow:0 1px 4px rgba(0,0,0,0.4);
-              border:2px solid rgba(255,255,255,0.9)">${numbers[i]}</span>`}
-        </div>`;
-      // Names are teacher-authored: set as text, never interpolated into the markup above.
-      const label = pin.querySelector('span');
-      if (s.name && label) label.textContent = s.name;
-      // While the route draws, a stop waits until the line reaches it — the itinerary should read
-      // like a story, not arrive as a finished tangle.
-      if (drawing && anim.stops) pin.style.opacity = '0';
-      hud.appendChild(pin);
-      overviewPins.push(pin);
-    });
+    overviewItinerary = renderItineraryPins(
+      map,
+      hud,
+      stops.map((s, i) => ({ lng: s.lng, lat: s.lat, name: s.name, number: numbers[i] })),
+      { hidden: drawing && anim.stops },
+    );
 
     if (drawing) {
       // Where each stop sits along the DRAWN line, so a pin lands exactly as the ink passes it.
@@ -1481,32 +1466,15 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
         // this curve; a rAF loop needs the numeric one.
         const f = EASING.easeInCubic(p);
         updateTrail(f);
+        // reveal() is idempotent, so re-calling it for an already-shown stop costs nothing and the
+        // loop needs no bookkeeping of its own.
         if (anim.stops) {
-          overviewPins.forEach((pin, i) => {
-            if (pin.style.opacity !== '0') return;
-            if (f + 1e-6 >= marks[i]) {
-              pin.style.opacity = '1';
-              pin.animate([{ transform: 'scale(0.4)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
-                { duration: 320, easing: EASE.pop, fill: 'backwards' });
-            }
-          });
+          marks.forEach((mark, i) => { if (f + 1e-6 >= mark) overviewItinerary?.reveal(i); });
         }
         overviewRaf = p < 1 ? requestAnimationFrame(step) : null;
       };
       overviewRaf = requestAnimationFrame(step);
     }
-
-    overviewMove = () => {
-      stops.forEach((s, i) => {
-        const el = overviewPins[i];
-        if (!el) return;
-        const pt = map.project([s.lng, s.lat]);
-        el.style.left = `${pt.x}px`;
-        el.style.top = `${pt.y}px`;
-      });
-    };
-    map.on('move', overviewMove);
-    overviewMove();
 
     // Fit the CAMERA to the whole trip: flat on, no pitch — this is an itinerary, not a sail.
     const lngs = stops.map((s) => s.lng);

@@ -15,7 +15,7 @@ import { test, expect, Page } from '@playwright/test';
  */
 
 /** A published lesson whose map scene pins two or more focus cities, found the way the fixtures do. */
-async function findMapLesson(page: Page): Promise<{ code: string; sceneIndex: number; stops: number } | null> {
+async function findMapLesson(page: Page): Promise<{ code: string; sceneIndex: number; stops: number; last: { lng: number; lat: number } } | null> {
   const res = await page.request.get('/api/v1/catalog/manifest');
   if (!res.ok()) return null;
   const lessons: Array<{ code: string; status: string }> = (await res.json()).lessons ?? [];
@@ -32,14 +32,15 @@ async function findMapLesson(page: Page): Promise<{ code: string; sceneIndex: nu
     }
     if (end === -1) continue;
 
-    let scenes: Array<{ kind: string; config?: { annotations?: Array<{ type: string }> } }>;
+    let scenes: Array<{ kind: string; config?: { annotations?: Array<{ type: string; lng: number; lat: number }> } }>;
     try { scenes = JSON.parse(html.slice(html.indexOf('[', start), end)); } catch { continue; }
 
     const idx = scenes.findIndex((s) =>
       s.kind === 'map' && (s.config?.annotations ?? []).filter((a) => a?.type === 'focus').length >= 2);
     if (idx !== -1) {
-      const stops = (scenes[idx].config?.annotations ?? []).filter((a) => a?.type === 'focus').length;
-      return { code: l.code, sceneIndex: idx, stops };
+      const focus = (scenes[idx].config?.annotations ?? []).filter((a) => a?.type === 'focus');
+      const last = focus[focus.length - 1];
+      return { code: l.code, sceneIndex: idx, stops: focus.length, last: { lng: last.lng, lat: last.lat } };
     }
   }
   return null;
@@ -94,12 +95,6 @@ test('a map block visits its focus cities in order, numbered, with no route draw
   expect(early[0]).toBe('1');
   expect(early[early.length - 1]).toBe('0');
 
-  // The camera actually moves, and it ends up somewhere different from where it opened.
-  const opening = await page.evaluate(() => {
-    const m = (window as any).__lessonMap;
-    return m ? { lng: m.getCenter().lng, zoom: m.getZoom() } : null;
-  });
-
   // Wait for the last stop to be revealed, i.e. the tour ran to the end.
   await page.waitForFunction(
     () => {
@@ -109,13 +104,13 @@ test('a map block visits its focus cities in order, numbered, with no route draw
     { timeout: 40_000 },
   );
 
-  if (opening) {
-    const arrived = await page.evaluate(() => {
-      const m = (window as any).__lessonMap;
-      return { lng: m.getCenter().lng, zoom: m.getZoom() };
-    });
-    expect(Math.abs(arrived.lng - opening.lng) + Math.abs(arrived.zoom - opening.zoom)).toBeGreaterThan(1);
-  }
+  // The camera ends ON the last city. Deliberately NOT "it moved from where it started": this
+  // scene has no narration, so the tour runs at its natural pace and can reach the end before a
+  // first sample is even taken — two readings are then legitimately identical and the test fails
+  // for a reason that has nothing to do with the feature. A fixed target cannot race.
+  await expect
+    .poll(async () => page.evaluate(() => (window as any).__lessonMap.getCenter().lng), { timeout: 20_000 })
+    .toBeCloseTo(fixture!.last.lng, 0);
 
   // No route line. A voyage draws one; a map block of focus cities must not.
   const routeLayers = await page.evaluate(() => {
