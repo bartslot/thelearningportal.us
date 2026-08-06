@@ -8,7 +8,7 @@ return [
     'title' => 'Rembrandt and the Dutch Golden Age',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

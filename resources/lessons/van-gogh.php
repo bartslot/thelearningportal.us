@@ -8,7 +8,7 @@ return [
     'title' => 'Vincent van Gogh: a life in ten years',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'soft-atlas',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

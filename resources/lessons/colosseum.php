@@ -17,7 +17,7 @@ return [
     'title' => 'The Colosseum',
     'subject' => 'history',
     'grade_level' => '7',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

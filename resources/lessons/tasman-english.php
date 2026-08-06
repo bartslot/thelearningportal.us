@@ -30,7 +30,7 @@ return [
     'subject' => 'history',
     'grade_level' => '9',
     'tone' => 'storytelling',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

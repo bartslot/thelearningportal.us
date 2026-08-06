@@ -8,7 +8,7 @@ return [
     'title' => 'Michiel de Ruyter and the Wars at Sea',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

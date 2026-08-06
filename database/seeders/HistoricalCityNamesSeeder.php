@@ -67,5 +67,17 @@ class HistoricalCityNamesSeeder extends Seeder
         $this->command?->info(
             "Historical names: {$matched} matched existing cities, {$created} created as stubs."
         );
+
+        // A stub has no coordinates, so it draws at (0,0) — in the Gulf of Guinea. Left unresolved,
+        // all 53 curated cities piled up on Null Island and every history map carried a
+        // "Constantinople (Istanbul)" label off the coast of Nigeria.
+        //
+        // cities:backfill-coords existed for exactly this and nothing ever called it, so a fresh
+        // install reproduced the bug every time. Run it here: every curated row carries a Wikidata
+        // QID, and the command is a no-op once there are no stubs left.
+        if ($created > 0) {
+            $this->command?->info('Resolving stub coordinates from Wikidata…');
+            $this->command?->call('cities:backfill-coords');
+        }
     }
 }

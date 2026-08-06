@@ -103,7 +103,11 @@ export function placeLabelLayout ({ font = ['inter'], textField, size = PLACE_LA
     'text-size': size,
     // NO pill on the map layers yet — see the note at the top of this file. Placement wins for now.
     'text-variable-anchor': ['left', 'right', 'top-left', 'bottom-left', 'top-right', 'bottom-right', 'top', 'bottom'],
-    'text-radial-offset': 1.05,
+    // Close enough that the name is unmistakably ITS dot's. At 1.05 a label placed on the far side
+    // could land beside a neighbour's name — Samarkand's red dot read as belonging to Bukhārā, two
+    // labels away. The dot is ~5px; 0.6em at a 14px label clears it by a couple of pixels and no
+    // more.
+    'text-radial-offset': 0.6,
     'text-justify': 'auto',
     'text-max-width': 9,
     'text-line-height': 1.15,

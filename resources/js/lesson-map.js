@@ -19,6 +19,8 @@ import { placeLabelLayout, placeLabelPaint } from './map-place-label.js'
 import { mapTextProjector } from './map-text-projector.js'
 import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
 import { boxView, openingView } from './map-view.js'
+import { itineraryTour } from './map-itinerary.js'
+import { cityPriority, cityTextSize, cityDotRadius } from './map-city-scale.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -75,12 +77,26 @@ const MAP_STYLES = {
   // edge. Black instead — undiscovered means nothing is there, not "shallower water here".
   'satellite': { focus: FOCUS_PHOTO, imagery: true, fog: '#000000', land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false, font: MODERN_FONT },
 }
-const DEFAULT_STYLE = 'soft-atlas'
+// Satellite is the house style: real ground, no invented cartography, and nothing anachronistic —
+// a drawn atlas of 1271 still draws a coastline the way 2026 knows it, and the ink hills and
+// hand-lettering read as decoration a class has to see past. The other four styles stay available
+// for a teacher who wants them; this is only what a map opens as.
+const DEFAULT_STYLE = 'satellite'
 
 // Cities valid at `year` (gazetteer entries carry valid_from/valid_to; missing = always valid).
 const cityFilter = (year) => ['all',
   ['<=', ['to-number', ['coalesce', ['get', 'valid_from'], -99999]], year],
   ['>=', ['to-number', ['coalesce', ['get', 'valid_to'], 99999]], year],
+]
+
+// A curated historical name is only true for its own period: Constantinople from 330 to 1453,
+// Stalingrad from 1925 to 1961. Drawn unfiltered — as this overlay was — a single map showed
+// Persepolis, Vindobona, Stalingrad and Bombay together, which tells a class they coexisted.
+// `from`/`to` are parsed server-side from the curated prose (App\Support\HistoricalPeriod); a
+// period nobody could parse arrives as ±99999 and stays visible, rather than disappearing.
+const historicalCityFilter = (year) => ['all',
+  ['<=', ['to-number', ['coalesce', ['get', 'from'], -99999]], year],
+  ['>=', ['to-number', ['coalesce', ['get', 'to'], 99999]], year],
 ]
 
 // Cliopatria polities valid at `year` (Type=POLITY, skip composite "(…)" names, within lifespan).
@@ -101,7 +117,17 @@ export function renderLessonMap (el, opts = {}) {
   const { qid = null, interactive = true, annotations = [], editable = false, onAnnotationsChange = null, onPolityClick = null, projection = 'mercator', style = DEFAULT_STYLE, terrain = true, relief = 0 } = opts
   // Voyage maps can hide anachronistic detail (modern city dots/labels + political borders that
   // didn't exist yet) and pin their own period place labels. Defaults keep the normal atlas.
-  const { showCities = true, showBorders = true } = opts
+  //
+  // A block that pins its OWN cities is making the same statement a voyage does — these places, and
+  // not the atlas's. The Silk Road map named four (Venice, Constantinople, Samarkand, Chang'an) and
+  // the atlas answered with Berlin, Brussels, Frankfurt, Munich, Zürich and Kyiv on a map of 1271;
+  // the four that carried the lesson were four labels among thirty. Year-filtering does not help,
+  // because those cities really did exist — they are simply not what the scene is about.
+  //
+  // So the atlas steps back once a block names two or more cities of its own. An explicit
+  // showCities from the caller still wins, and a block that pins nothing keeps the full atlas.
+  const focusCount = (Array.isArray(annotations) ? annotations : []).filter((a) => a && a.type === 'focus').length
+  const { showCities = focusCount < 2, showBorders = true } = opts
   // A voyage knows where it is going, and the student cannot pan away from it. Bounding the imagery
   // and elevation sources to the route's box means MapLibre never asks for a tile the lesson will
   // not show — no requests for the far side of the world when the camera dips wide, and no 404s
@@ -220,7 +246,7 @@ export function renderLessonMap (el, opts = {}) {
           id: 'city-dots', type: 'circle', source: 'cities', 'source-layer': 'cities',
           filter: cityFilter(year),
           paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 1.6, 6, 3.5],
+            'circle-radius': cityDotRadius(),
             'circle-color': PALETTE.city,
             'circle-stroke-color': PALETTE.cityHalo,
             'circle-stroke-width': 1,
@@ -232,7 +258,9 @@ export function renderLessonMap (el, opts = {}) {
           filter: cityFilter(year),
           layout: {
             'text-field': ['get', 'name'],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 9, 6, 13],
+            // Size AND collision priority both come from the city's importance — see map-city-scale.
+            'text-size': cityTextSize(),
+            'symbol-sort-key': cityPriority(),
             'text-anchor': 'left', 'text-offset': [0.6, 0], 'text-optional': true,
             'text-font': ['Eagle Lake'], // Tolkien-style calligraphy for city names
             'text-letter-spacing': 0.02,
@@ -440,6 +468,20 @@ export function renderLessonMap (el, opts = {}) {
   // with no satellite ground under a voyage. Idempotent, so the 'load' pass below still runs.
   map.once('styledata', () => { applyStyle(activeStyle); applyRelief(activeRelief) })
 
+  // Anything that wants to move the CAMERA has to wait for the style — MapLibre silently drops an
+  // easeTo issued before it, which is a nasty failure mode because every timer still fires on
+  // schedule and nothing throws. 'styledata' rather than 'load' for the same reason as above: the
+  // camera needs the style parsed, not every tile fetched.
+  //
+  // A flag, not a bare `once('load')` at the call site: by the time a caller asks, the event may
+  // already have come and gone, and `once` on a past event never fires at all.
+  let styleReady = false
+  map.once('styledata', () => { styleReady = true })
+  const whenStyleReady = (fn) => {
+    if (styleReady || map.isStyleLoaded()) fn()
+    else map.once('styledata', fn)
+  }
+
   map.on('load', () => {
     setYear(year)
     applyStyle(activeStyle) // colour the base layers now (avoids a flash of the default palette)
@@ -492,6 +534,7 @@ export function renderLessonMap (el, opts = {}) {
       map.addSource('hcities', { type: 'geojson', data })
       map.addLayer({
         id: 'hcity-dot', type: 'circle', source: 'hcities',
+        filter: historicalCityFilter(year),
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2.6, 6, 4.5],
           'circle-color': '#7a1f12',          // deep historical red
@@ -501,6 +544,7 @@ export function renderLessonMap (el, opts = {}) {
       })
       map.addLayer({
         id: 'hcity-label', type: 'symbol', source: 'hcities',
+        filter: historicalCityFilter(year),
         layout: {
           // Historical name in calligraphy (a touch smaller), then the modern name MUCH smaller and
           // in the app sans (Inter) on the line below, so the two read as distinct registers.
@@ -568,6 +612,21 @@ export function renderLessonMap (el, opts = {}) {
   }
 
   // Last names handed to us — re-applied to layers that load after the annotations (e.g. hcity-label).
+  // The numbered-stop itinerary (map-itinerary.js), and the layer it draws its pins on. The host is
+  // created lazily: most map blocks never run a tour, and an empty absolutely-positioned div over
+  // the canvas is still a div that MapLibre has to composite.
+  let itinerary = null
+  let itineraryHostEl = null
+  const itineraryHost = () => {
+    if (itineraryHostEl) return itineraryHostEl
+    const host = document.createElement('div')
+    host.className = 'lp-map-itinerary'
+    host.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden'
+    el.appendChild(host)
+    itineraryHostEl = host
+    return host
+  }
+
   let lastFocusNames = []
   const onFocusNames = (names) => {
     lastFocusNames = Array.isArray(names) ? names : []
@@ -603,6 +662,12 @@ export function renderLessonMap (el, opts = {}) {
       // so a focus city's small duplicate label stays suppressed across year changes.
       baseFilters['city-labels'] = cityFilter(year)
       applyFocusExclusion('city-labels', lastFocusNames)
+    }
+    // The historical names move with the year too — the whole point of the overlay.
+    if (map.getLayer('hcity-dot')) map.setFilter('hcity-dot', historicalCityFilter(year))
+    if (map.getLayer('hcity-label')) {
+      baseFilters['hcity-label'] = historicalCityFilter(year)
+      applyFocusExclusion('hcity-label', lastFocusNames)
     }
   }
 
@@ -696,7 +761,11 @@ export function renderLessonMap (el, opts = {}) {
   // borders = the political outlines + red fill. Voyages hide these so the map reads as period-blank.
   function applyLayerToggles () {
     const vis = (layer, on) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none') } catch (_) {} } }
-    for (const l of ['city-dots', 'city-labels', 'hcity-label']) vis(l, layerToggles.cities)
+    // `hcity-dot` belongs in this list as much as its label does. Left out, hiding the cities took
+    // away every historical NAME and left the deep-red dots behind — anonymous marks a class has no
+    // way to read, one of which sat in the Gulf of Guinea back when the curated cities had no
+    // coordinates.
+    for (const l of ['city-dots', 'city-labels', 'hcity-dot', 'hcity-label']) vis(l, layerToggles.cities)
     for (const l of ['boundaries-line', 'boundaries-fill']) vis(l, layerToggles.borders)
   }
 
@@ -764,7 +833,38 @@ export function renderLessonMap (el, opts = {}) {
     revealAllLabels: () => { revealAll = true; applyLabelReveal() },
     setProjection: (type) => { try { map.setProjection({ type }) } catch (_) {} },
     beginAddFocus: () => anno?.beginAddFocus(),
-    destroy: () => { try { anno?.destroy() } catch (_) {} try { map.remove() } catch (_) {} },
+
+    /**
+     * Visit the focus cities in order, the way a voyage visits its stops — see map-itinerary.js.
+     *
+     * A map block's script names its cities in order ("on the left, Venice … then Constantinople
+     * …"), and until now the camera sat on the whole continent for the entire scene while the class
+     * hunted for whichever one was being described. This walks the camera along the same list the
+     * teacher pinned, numbering each city as it arrives.
+     *
+     * The names themselves stay where they were — the focus-label layer already draws them, in the
+     * map's own hand. The pin adds ONLY the number, so a city never wears its name twice.
+     *
+     * @param {{ totalMs?: number|null }} [o] narration duration to pace against
+     */
+    startItinerary: ({ totalMs = null } = {}) => {
+      itinerary?.destroy()
+      const stops = (annotations || [])
+        .filter((a) => a && a.type === 'focus')
+        .map((a, i) => ({ lng: Number(a.lng), lat: Number(a.lat), number: i + 1 }))
+      if (stops.length < 2) return null   // one city is not an itinerary; the opening view is enough
+      itinerary = itineraryTour(map, stops, { hostEl: itineraryHost(), totalMs })
+      whenStyleReady(() => itinerary?.start())
+      return itinerary
+    },
+    pauseItinerary: () => itinerary?.pause(),
+    resumeItinerary: () => itinerary?.resume(),
+
+    destroy: () => {
+      try { itinerary?.destroy() } catch (_) {}
+      try { anno?.destroy() } catch (_) {}
+      try { map.remove() } catch (_) {}
+    },
   }
 }
 

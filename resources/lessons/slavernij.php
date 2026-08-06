@@ -14,7 +14,7 @@ return [
     'title' => 'Dutch Slavery: the trade, the resistance, the reckoning',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

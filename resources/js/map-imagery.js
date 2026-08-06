@@ -6,11 +6,17 @@
  *
  * Both services are keyless and free — no account, no token, no per-tile bill:
  *
- *  - Imagery: NASA GIBS "Blue Marble, shaded relief + bathymetry". Satellite-derived land cover with
- *    terrain relief AND ocean-floor depth, in the public domain (courtesy NASA EOSDIS GIBS). It is
- *    cloud-free, label-free and road-free, which is exactly what a history map wants: a 1642 voyage
- *    over modern motorways and city sprawl would be absurd. Levels 0–8 (~500 m/px), and our maps
- *    cap at zoom 6–7, so it never runs out of detail.
+ *  - Imagery: NASA GIBS "Blue Marble, shaded relief". Satellite-derived land cover with terrain
+ *    relief, in the public domain (courtesy NASA EOSDIS GIBS). It is cloud-free, label-free and
+ *    road-free, which is exactly what a history map wants: a 1642 voyage over modern motorways and
+ *    city sprawl would be absurd. Levels 0–8 (~500 m/px), and our maps cap at zoom 6–7, so it never
+ *    runs out of detail.
+ *
+ *    We deliberately do NOT use the _Bathymetry variant of the same layer. It paints ocean-floor
+ *    depth — continental shelves, mid-ocean ridges, abyssal plains — in banded blues, and at the
+ *    zoom a lesson map actually sits at, that reads as clutter: a class looking for Tasman's ship
+ *    sees the Kerguelen Plateau. Sea-floor topography is a geography lesson, not a history one.
+ *    Plain shaded relief gives a near-uniform deep ocean the routes and labels can sit on top of.
  *  - Elevation: the AWS Open Data terrain tiles (terrarium-encoded), used by the atlas styles'
  *    hillshade. The satellite style does NOT hillshade — Blue Marble already has the relief baked
  *    in, and a hillshade over it just lays a grey haze across land and sea alike.
@@ -22,7 +28,7 @@
 /** Satellite base imagery. Attribution is carried on the source so MapLibre credits it. */
 export const SATELLITE_SOURCE = {
   type: 'raster',
-  tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg'],
+  tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg'],
   tileSize: 256,
   maxzoom: 8,
   attribution: 'Imagery: NASA EOSDIS GIBS (Blue Marble)',

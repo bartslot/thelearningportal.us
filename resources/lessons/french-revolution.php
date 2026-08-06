@@ -25,7 +25,7 @@ return [
     'subject' => 'histoire',
     'grade_level' => '10',
     'tone' => 'storytelling',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

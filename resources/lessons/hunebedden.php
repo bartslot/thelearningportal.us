@@ -8,7 +8,7 @@ return [
     'title' => 'The Hunebedden: the oldest monuments in the Netherlands',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

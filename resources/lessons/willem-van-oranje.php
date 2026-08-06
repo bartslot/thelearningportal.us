@@ -8,7 +8,7 @@ return [
     'title' => 'William of Orange and the Dutch Revolt',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [

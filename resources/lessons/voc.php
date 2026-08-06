@@ -15,7 +15,7 @@ return [
     'title' => 'The VOC: the world\'s first multinational',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

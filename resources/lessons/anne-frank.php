@@ -14,7 +14,7 @@ return [
     'title' => 'Anne Frank and the Secret Annex',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'soft-atlas',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

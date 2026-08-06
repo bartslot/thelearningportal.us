@@ -18,7 +18,7 @@ return [
     'title' => 'The Silk Road',
     'subject' => 'history',
     'grade_level' => '7',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
 

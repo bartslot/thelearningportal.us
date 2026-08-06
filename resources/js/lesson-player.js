@@ -1200,6 +1200,19 @@ Alpine.data('lessonGame', (lesson) => ({
       // through a chapter jump left the card painted over every later scene.
       this._quizOverlay?.hide()
 
+      // And the same again for the strategy challenge, which is a PHASE rather than an overlay
+      // object. GAME_BRIEF waits for the teacher to tap "Begin the challenge" and nothing else
+      // clears it, so jumping out of a game scene left a full-bleed briefing card — backdrop, blur
+      // and all — over every scene that followed. The Silk Road's map opened underneath a Julius
+      // Caesar challenge, correct in every respect except that nobody could see it.
+      //
+      // Any scene that is not a game is ordinary playback, so put the phase back. TIME_UP and
+      // ENDED are terminal states the lesson has genuinely reached, not leftovers — leave those be.
+      if (scene.kind !== 'game' && (this.phase === 'GAME_BRIEF' || this.phase === 'GAME_ACTIVE')) {
+        this.phase = 'INTRO'
+        this.showBigTimer = false
+      }
+
       // Chapter caption + bar (Micrio serial-tour). Chapters are filtered (no games), so look the
       // current one up by its queue index. A game scene (quiz) is not a chapter → hide the bar.
       this.currentIsGame = scene.kind === 'game'
@@ -1401,9 +1414,15 @@ Alpine.data('lessonGame', (lesson) => ({
         a.addEventListener('loadedmetadata', () => {
           if (this._audio !== a) return
           this._scriptEvents = parseScriptTags(scene.script, a.duration)
+          // Walk the camera through the focus cities in the order the script names them, paced to
+          // this narration. Started here rather than at mount because the pacing needs the duration,
+          // and MapLibre needs the style up before it will ease anywhere.
+          this._startMapItinerary(a.duration * 1000)
         })
         a.addEventListener('timeupdate', () => { if (this._audio === a) this._processScriptEvents() })
         a.play().catch(e => console.warn('lesson-player: autoplay blocked', e))
+      } else {
+        this._startMapItinerary(null)   // no narration — the itinerary's own natural pace
       }
 
       this.showMapContinue = (mode === 'interactive')
@@ -1412,6 +1431,19 @@ Alpine.data('lessonGame', (lesson) => ({
         clearTimeout(_mapTimer)
         _mapTimer = setTimeout(() => this._advanceFromMap(index), hold)
       }
+    },
+
+    /**
+     * Begin the focus-city tour for the map block now on screen.
+     *
+     * Waiting for the style is the map block's own business (see whenStyleReady in lesson-map.js) —
+     * it is the only thing that knows when its style is up, and it has to get this right for the
+     * palette too.
+     *
+     * @param {number|null} totalMs the narration duration to pace against, or null for the default
+     */
+    _startMapItinerary (totalMs) {
+      try { _mapInstance?.startItinerary?.({ totalMs }) } catch (e) { console.warn('lesson-player: itinerary failed', e) }
     },
 
     // ── Voyage tour leg (kind 'voyage') ────────────────────────────────
@@ -1907,6 +1939,13 @@ Alpine.data('lessonGame', (lesson) => ({
       // The sailing ship freezes mid-ocean and picks up from the same spot; the landfall's
       // auto-advance countdown stops accumulating (see _startVoyageAuto).
       try { _voyageInstance?.setPaused?.(this.playbackPaused) } catch (_) { /* map gone */ }
+
+      // Same for a map block touring its focus cities: a student who pauses on Constantinople must
+      // not come back to find the camera two cities further on than the narrator.
+      try {
+        if (this.playbackPaused) _mapInstance?.pauseItinerary?.()
+        else _mapInstance?.resumeItinerary?.()
+      } catch (_) { /* map gone */ }
 
       // Pausing the lesson pauses everything the lesson is making, music included — a bed still
       // playing over a frozen picture is how you get a teacher hunting for a second stop button.

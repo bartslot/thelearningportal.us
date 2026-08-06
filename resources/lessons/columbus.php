@@ -8,7 +8,7 @@ return [
     'title' => 'Columbus and the Crossing of 1492',
     'subject' => 'history',
     'grade_level' => '6',
-    'map_style' => 'antique',
+    'map_style' => 'satellite',
 
     'scenes' => [
         [
