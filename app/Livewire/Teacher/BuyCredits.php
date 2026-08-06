@@ -170,7 +170,11 @@ class BuyCredits extends Component
             'history' => $this->history(),
             'returnLesson' => $this->returnLesson(),
             'packCharacters' => NarrationCreditPack::characters(),
-            'packPrice' => NarrationCreditPack::priceLabel(),
+            // The price is EXCLUSIVE of VAT, so the gross is what the teacher actually pays and is
+            // the figure that must be prominent — EU price-indication rules ask for the total, not
+            // the part we keep. The country comes from the same signal the demo picker uses.
+            'packPrice' => NarrationCreditPack::grossLabel(\App\Support\VisitorCountry::code()),
+            'packPriceNet' => NarrationCreditPack::priceLabel(),
             'packExpiryDays' => NarrationCreditPack::expires() ? NarrationCreditPack::expiryDays() : null,
             'freePerLesson' => NarrationBudget::FREE_CHARACTERS_PER_LESSON,
             // When the soonest batch dies, so nobody discovers it only after it has.

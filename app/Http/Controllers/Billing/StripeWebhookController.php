@@ -122,8 +122,8 @@ final class StripeWebhookController
         // the checkout, so changing the pack later cannot re-price a payment already in flight.
         $characters = (int) ($session->metadata->characters ?? NarrationCreditPack::characters());
 
-        // The price is VAT-inclusive, so amount_total is the whole of what the teacher paid and the
-        // tax Stripe worked out for their country comes out of it. Stored as three numbers because
+        // amount_total is the whole of what the teacher paid, VAT included — the price is exclusive,
+        // so Stripe ADDED that tax on top of our 5.00. Stored as three numbers because
         // the rate varies (21% NL, 19% DE, 22% IT, 0% for a reverse-charged school) and a gross
         // total on its own cannot be taken apart again at the end of a quarter.
         $gross = (int) ($session->amount_total ?? NarrationCreditPack::amountCents());

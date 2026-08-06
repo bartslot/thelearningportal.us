@@ -18,6 +18,7 @@
     ":label modules aren't editable here yet — coming soon.": "Les modules :label ne sont pas encore modifiables ici. Bientôt disponible.",
     ":minutes min": ":minutes min",
     ":n answers took under 2 seconds": ":n réponses ont pris moins de 2 secondes",
+    ":price excl. VAT": ":price HT",
     ":title (copy :n)": ":title (copie :n)",
     ":title (copy)": ":title (copie)",
     "a background image": "une image de fond",

@@ -134,7 +134,7 @@ final class StripeCheckout
                     'currency' => NarrationCreditPack::currency(),
                     'unit_amount' => NarrationCreditPack::amountCents(),
                     // The 5 euro already contains the VAT — see NarrationCreditPack.
-                    'tax_behavior' => 'inclusive',
+                    'tax_behavior' => 'exclusive',
                     'product_data' => [
                         // What Stripe Tax thinks this is, and therefore the VAT rate. Required:
                         // Stripe refuses the session outright without it. See config/billing.php.

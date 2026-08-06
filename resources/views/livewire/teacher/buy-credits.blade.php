@@ -89,7 +89,10 @@
                 <h2 class="card-title text-base-content">
                     {{ __(':count characters of script editing', ['count' => number_format($packCharacters)]) }}
                 </h2>
-                <p class="text-2xl font-bold text-base-content">{{ $packPrice }}</p>
+                <p class="text-right">
+                    <span class="block text-2xl font-bold text-base-content">{{ $packPrice }}</span>
+                    <span class="block text-xs text-base-content/60">{{ __(':price excl. VAT', ['price' => $packPriceNet]) }}</span>
+                </p>
             </div>
 
             <ul class="space-y-1.5 text-sm text-base-content/70">

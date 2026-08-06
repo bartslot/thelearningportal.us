@@ -14,11 +14,16 @@ use Illuminate\Support\Number;
  * explain on the screen and easier to reason about in the ledger than a tier table nobody asked
  * for yet.
  *
- * The price is INCLUSIVE of VAT: the teacher pays exactly 5.00 euro and the VAT owed at their own
- * country's rate comes out of it (about 0.87 at the Dutch 21%, netting about 4.13). That is what EU
- * price-indication rules expect of a consumer-facing price, and most buyers here are individual
- * teachers rather than schools with a purchase order. Stripe Tax works the rate out per country, so
- * the line item is sent with tax_behavior=inclusive and nothing is added at checkout.
+ * The price is EXCLUSIVE of VAT (Bart's decision, 2026-08-06): 5.00 euro is what WE keep, and the
+ * VAT owed at the buyer's own country rate is added on top at checkout. A Dutch teacher pays 6.05,
+ * a German 5.95, an Italian 6.10; a school with a valid VAT number is reverse-charged and pays
+ * exactly 5.00. The line item goes to Stripe with tax_behavior=exclusive.
+ *
+ * Because of that, EVERY consumer-facing price has to show the gross figure. EU price-indication
+ * rules require the total a consumer actually pays to be the prominent one, so the buy screen leads
+ * with "6.05" and puts "5.00 excl. VAT" beside it — grossLabel() below, not priceLabel(). The exact
+ * rate is Stripe Tax's answer for the buyer's country; grossLabel() shows the local default so the
+ * screen is honest before Stripe has been asked.
  *
  * The numbers live in config/billing.php. Read them through here.
  */
@@ -72,11 +77,53 @@ final class NarrationCreditPack
         return ($boughtAt ?? CarbonImmutable::now())->addDays(self::expiryDays());
     }
 
-    /** "€5.00", in the reader's language. Display only — money is compared and stored in cents. */
+    /**
+     * "€5.00" — the NET price, what we keep. Display only; money is compared and stored in cents.
+     *
+     * This is not the figure to lead a buy button with. The price is exclusive of VAT, so a consumer
+     * pays more than this; see grossLabel().
+     */
     public static function priceLabel(?string $locale = null): string
     {
         return (string) Number::currency(
             self::amountCents() / 100,
+            strtoupper(self::currency()),
+            $locale ?? app()->getLocale(),
+        );
+    }
+
+    /**
+     * The VAT rate we show BEFORE Stripe Tax has computed the buyer's real one, per country.
+     *
+     * Only used to render an honest gross figure on the screen. The rate that is actually charged
+     * and stored is whatever Stripe returns for the buyer's address, which is why nothing downstream
+     * reads this.
+     */
+    private const DEFAULT_VAT_RATE = [
+        'NL' => 0.21, 'BE' => 0.21, 'DE' => 0.19, 'FR' => 0.20, 'IT' => 0.22,
+        'ES' => 0.21, 'AT' => 0.20, 'IE' => 0.23, 'LU' => 0.17, 'GB' => 0.20,
+    ];
+
+    private const FALLBACK_VAT_RATE = 0.21;
+
+    /** Gross price in cents for a country, rounded the way an invoice rounds. */
+    public static function grossCents(?string $country = null): int
+    {
+        $rate = self::DEFAULT_VAT_RATE[strtoupper((string) $country)] ?? self::FALLBACK_VAT_RATE;
+
+        return (int) round(self::amountCents() * (1 + $rate));
+    }
+
+    /**
+     * "€6.05" — what the teacher actually pays, VAT included.
+     *
+     * THIS is the figure a buy screen leads with. EU price-indication rules require the total a
+     * consumer pays to be the prominent one, and with an exclusive price the net figure is not it.
+     */
+    public static function grossLabel(?string $country = null, ?string $locale = null): string
+    {
+        return (string) Number::currency(
+            self::grossCents($country) / 100,
             strtoupper(self::currency()),
             $locale ?? app()->getLocale(),
         );

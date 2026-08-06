@@ -24,18 +24,21 @@ return [
         'characters' => (int) env('NARRATION_CREDIT_CHARACTERS', 5000),
 
         /**
-         * What the teacher pays, in integer cents, INCLUSIVE OF VAT.
+         * What WE KEEP, in integer cents, EXCLUSIVE OF VAT (Bart's decision,
+         * 2026-08-06).
          *
-         * The 5.00 euro is the whole of it: the VAT owed at the customer's own
-         * country rate comes out of this, not on top. About 0.87 at the Dutch
-         * 21%, netting about 4.13; a German teacher is 19% and an Italian 22%,
-         * so what we keep varies by country while the price on the button does
-         * not. That is what EU price-indication rules expect of a price shown to
-         * a consumer, and nearly every buyer here is an individual teacher.
+         * VAT at the buyer's own country rate is added on top at checkout, so
+         * the 5.00 is net however much tax applies: a Dutch teacher pays 6.05, a
+         * German 5.95, an Italian 6.10. A school with a valid VAT number is
+         * reverse-charged and pays exactly 5.00.
          *
-         * Stripe Tax works the rate out per country and reports the split back,
-         * which is what gets stored on the purchase row. A school entering a
-         * valid VAT number is reverse-charged and the whole 5.00 is net.
+         * Because the price is exclusive, every consumer-facing screen must lead
+         * with the GROSS figure — EU price-indication rules require the total a
+         * consumer actually pays to be the prominent one. Use
+         * NarrationCreditPack::grossLabel(), not priceLabel().
+         *
+         * Stripe Tax computes the real rate per country and reports the split
+         * back, which is what gets stored on the purchase row.
          */
         'amount_cents' => (int) env('NARRATION_CREDIT_AMOUNT_CENTS', 500),
 

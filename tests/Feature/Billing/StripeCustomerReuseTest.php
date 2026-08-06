@@ -162,7 +162,10 @@ class StripeCustomerReuseTest extends TestCase
 
         $this->assertSame(500, $price['unit_amount']);
         $this->assertSame('eur', $price['currency']);
-        $this->assertSame('inclusive', $price['tax_behavior']);
+        // EXCLUSIVE: the 5.00 is what we keep and Stripe adds the buyer's VAT on top, so a Dutch
+        // teacher pays 6.05. Flipping this to 'inclusive' silently cuts revenue by the VAT rate —
+        // 87 cents in every 5 euro at 21% — which is why it is asserted rather than assumed.
+        $this->assertSame('exclusive', $price['tax_behavior']);
         $this->assertSame(NarrationCreditPack::amountCents(), $price['unit_amount']);
     }
 
