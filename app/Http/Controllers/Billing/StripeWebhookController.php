@@ -129,6 +129,8 @@ final class StripeWebhookController
         $gross = (int) ($session->amount_total ?? NarrationCreditPack::amountCents());
         $vat = (int) ($session->total_details->amount_tax ?? 0);
 
+        $this->warnIfNoTaxWasCollected($session, $gross, $vat);
+
         $granted = $this->ledger->grantFromStripe(
             teacher: $teacher,
             characters: $characters,
@@ -148,6 +150,36 @@ final class StripeWebhookController
                 'session_id' => $sessionId,
             ]);
         }
+    }
+
+    /**
+     * Shout when a sale collected no VAT, because Stripe will not.
+     *
+     * Stripe Tax only collects in jurisdictions where the account holds an ACTIVE REGISTRATION.
+     * With none, `automatic_tax` returns no error and quietly calculates zero — you believe tax is
+     * on while collecting nothing. Stripe calls this the single most common Stripe Tax mistake, and
+     * the damage compounds: our price is VAT-INCLUSIVE, so the tax is owed out of the 5 euro we
+     * were paid whether or not it was ever separated out, and past transactions CANNOT be corrected
+     * retroactively. Every silent sale is money owed with nothing set aside for it.
+     *
+     * So the one thing worth doing in code is refusing to let it stay silent. Zero VAT is legitimate
+     * for a reverse-charged school with a valid VAT number, which is why this warns rather than
+     * refusing the sale — but a run of these on consumer sales means the registration is missing.
+     */
+    private function warnIfNoTaxWasCollected(mixed $session, int $gross, int $vat): void
+    {
+        if ($vat > 0 || ! (bool) config('services.stripe.automatic_tax')) {
+            return;
+        }
+
+        Log::warning('A narration credit sale collected no VAT. Check Stripe Tax registrations.', [
+            'session_id' => $session->id ?? null,
+            'gross_cents' => $gross,
+            'country' => $session->customer_details->address->country ?? null,
+            // Set when a valid VAT number was given, which makes zero tax the correct answer.
+            'reverse_charged' => ! empty($session->customer_details->tax_ids ?? null),
+            'hint' => 'Dashboard > Tax > Locations. Without an active registration Stripe collects nothing and it cannot be fixed afterwards.',
+        ]);
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\NarrationCredit;
 use App\Models\User;
 use App\Support\NarrationBudget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -191,6 +192,33 @@ class StripeWebhookTest extends TestCase
         $this->assertSame(87, $purchase->amount_vat_cents);
         $this->assertSame(500, $purchase->amount_gross_cents);
         $this->assertSame('eur', $purchase->currency);
+    }
+
+    public function test_a_sale_that_collected_no_vat_is_logged_loudly(): void
+    {
+        // Stripe Tax collects nothing at all without an active registration, returns no error while
+        // doing it, and past transactions cannot be corrected afterwards. Our price is VAT-inclusive,
+        // so every silent sale is tax owed out of money already banked. The only defence is noticing.
+        Log::shouldReceive('info')->andReturnNull();
+        Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(fn (string $m): bool => str_contains($m, 'collected no VAT'));
+
+        $teacher = User::factory()->create();
+
+        $this->postEvent($this->sessionEvent($teacher, [
+            'session' => ['total_details' => ['amount_tax' => 0]],
+        ]))->assertOk();
+    }
+
+    public function test_a_sale_that_did_collect_vat_says_nothing(): void
+    {
+        Log::shouldReceive('info')->andReturnNull();
+        Log::shouldReceive('warning')->never();
+
+        $teacher = User::factory()->create();
+
+        $this->postEvent($this->sessionEvent($teacher))->assertOk();   // fixture carries 87 cents tax
     }
 
     public function test_a_purchase_carries_the_date_it_runs_out(): void
