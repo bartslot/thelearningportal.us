@@ -77,6 +77,16 @@ const ADVANCE_MS_MAX = 7000
 // and a tap anywhere skips the wait.
 const AUTO_CONTINUE_SECONDS = 5
 
+/**
+ * "Lesson starts in 5", with the number in its own element so _startAutoContinue can tick it.
+ *
+ * The number is interpolated INTO the translation rather than glued onto the end of it: German
+ * puts the verb last and French needs "dans", so a language that cannot move the number ends up
+ * writing English word order in its own words. Both end screens render this, hence one function.
+ */
+const LESSON_STARTS_IN = (seconds) =>
+  t('Lesson starts in :count', { count: `<span class="font-bold text-primary">${seconds}</span>` })
+
 export class QuizOverlay {
   constructor(hostEl) {
     this.host = hostEl
@@ -211,7 +221,7 @@ export class QuizOverlay {
     veil.innerHTML = `
       <div class="text-5xl">&#128064;</div>
       <div class="text-[22px] font-extrabold">${t('Quiz paused')}</div>
-      <div class="text-[15px] text-base-content/60">Stay with the story — tap to continue.</div>`
+      <div class="text-[15px] text-base-content/60">${t('Stay with the story. Tap to continue.')}</div>`
     veil.addEventListener('click', () => veil.remove())
     this.host.firstElementChild?.appendChild(veil) || this.host.appendChild(veil)
   }
@@ -559,7 +569,7 @@ export class QuizOverlay {
     const savedName = (() => { try { return localStorage.getItem('lp_quiz_nickname') || '' } catch { return '' } })()
     const joinHtml = this._submitUrl ? `
       <div data-join class="qz-rise mb-6" style="animation-delay:0.6s;">
-        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">Join the leaderboard</div>
+        <div class="mb-2.5 text-[13px] uppercase tracking-[0.12em] text-base-content/60">${t('Join the leaderboard')}</div>
         ${this._hasClassroom ? `
         <div class="mb-2 flex justify-center gap-2">
           <input data-class-code type="text" maxlength="8" placeholder="${t('Class code…')}"
@@ -578,13 +588,13 @@ export class QuizOverlay {
         <div class="${CARD} mx-4 w-full max-w-lg p-10 text-center">
           <div class="mb-4 flex justify-center gap-2.5">${starsHtml}</div>
           <div class="mb-1.5 text-[15px] uppercase tracking-[0.15em] text-base-content/60">
-            ${correct} / ${total} correct
+            ${t(':correct of :total correct', { correct, total })}
           </div>
           <div data-final-score class="mb-6 text-6xl font-black text-warning">0</div>
           ${joinHtml}
           ${this._submitUrl
-            ? '<button data-done class="btn btn-ghost btn-lg">Skip ›</button>'
-            : `<div data-countdown class="text-[15px] text-base-content/60">Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span></div>`}
+            ? `<button data-done class="btn btn-ghost btn-lg">${t('Skip')} ›</button>`
+            : `<div data-countdown class="text-[15px] text-base-content/60">${LESSON_STARTS_IN(AUTO_CONTINUE_SECONDS)}</div>`}
         </div>
       </div>`
 
@@ -641,7 +651,7 @@ export class QuizOverlay {
         this._renderLeaderboard(data, nickname)
       } catch (err) {
         submitBtn.disabled = false
-        submitBtn.textContent = 'Submit'
+        submitBtn.textContent = t('Submit')
         if (errorEl) errorEl.textContent = err?.message === 'HTTP 422'
           ? t('Check the class code, ask your teacher.')
           : t('Could not submit, try again.')
@@ -668,26 +678,30 @@ export class QuizOverlay {
              style="animation-delay:${(0.08 * i).toFixed(2)}s;">
           ${medal}
           <span class="flex-1 truncate text-left text-[15px] ${i < 3 || isOwn ? 'font-bold' : 'font-medium'}">
-            ${this._escape(entry.nickname)}${isOwn ? ' · you' : ''}
+            ${this._escape(entry.nickname)}${isOwn ? ` · ${t('you')}` : ''}
           </span>
           <span class="text-[15px] font-extrabold text-warning">${entry.score}</span>
         </div>`
     }).join('')
 
     const ownOutsideTop = rank !== null && rank > top.length
-      ? `<div class="mt-2.5 text-sm font-bold text-warning">You're #${rank} of ${players} — keep climbing!</div>`
+      ? `<div class="mt-2.5 text-sm font-bold text-warning">${t('You are #:rank of :players. Keep climbing!', { rank, players })}</div>`
       : ''
+
+    // Two keys rather than one with a plural marker: t() is a lookup, not Laravel's trans_choice,
+    // and a language whose singular and plural differ has to be able to say both.
+    const playerCount = players === 1
+      ? t(':count player', { count: players })
+      : t(':count players', { count: players })
 
     this.host.innerHTML = `
       <div class="${SCRIM}">
         <div class="${CARD} mx-4 max-h-[calc(100vh-60px)] w-full max-w-lg overflow-y-auto p-8 text-center">
-          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">Leaderboard</div>
-          <div class="mb-4 text-[13px] text-base-content/50">${players} player${players === 1 ? '' : 's'}</div>
-          <div class="flex flex-col gap-1 text-left">${rows || '<span class="text-base-content/50">No scores yet — you could be first!</span>'}</div>
+          <div class="mb-1 text-[13px] uppercase tracking-[0.2em] text-primary">${t('Leaderboard')}</div>
+          <div class="mb-4 text-[13px] text-base-content/50">${playerCount}</div>
+          <div class="flex flex-col gap-1 text-left">${rows || `<span class="text-base-content/50">${t('No scores yet. You could be first!')}</span>`}</div>
           ${ownOutsideTop}
-          <div data-countdown class="mt-6 text-[15px] text-base-content/60">
-            Lesson starts in <span class="font-bold text-primary">${AUTO_CONTINUE_SECONDS}</span>
-          </div>
+          <div data-countdown class="mt-6 text-[15px] text-base-content/60">${LESSON_STARTS_IN(AUTO_CONTINUE_SECONDS)}</div>
         </div>
       </div>`
 

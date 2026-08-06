@@ -129,10 +129,13 @@ test.describe('the quiz end screen in a French class', () => {
     const dict = await page.evaluate(() => (window as any).__lpLang);
     expect(dict?.['Submit'], 'the French dictionary never reached the player').not.toBe('Submit');
 
+    // `|| '(clean)'` is not decoration: without a sentinel the received value on a clean card is
+    // the empty string OR-ed into the card's own text, which is never '' — this assertion could
+    // not pass, and reported a fully French card as English for as long as it existed.
     expect(
-      found(text).join(', ') || text,
+      found(text).join(', ') || '(clean)',
       `English on the French score card — see ${shot('fr-score-card')}\n---\n${text}\n---`,
-    ).toBe('');
+    ).toBe('(clean)');
   });
 
   test('the leaderboard card after a submit is French', async ({ page }) => {
@@ -172,8 +175,8 @@ test.describe('the quiz end screen in a French class', () => {
 
     const text = await overlay.innerText();
     expect(
-      found(text).join(', ') || text,
+      found(text).join(', ') || '(clean)',
       `English on the French leaderboard — see ${shot('fr-leaderboard-card')}\n---\n${text}\n---`,
-    ).toBe('');
+    ).toBe('(clean)');
   });
 });
