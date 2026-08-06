@@ -568,6 +568,25 @@
 }
 
 /* ─── Background gradients ───────────────────────────────────────────── */
+
+/* The house gradient for anything that floats above the lesson — modals and cards.
+   Figma calls the style HP/Modals (History-Portal-Game, node 1291:1843). It is darker and cooler
+   than `--color-base-200`, which is what lets a modal read as a sheet of glass over the scene
+   instead of another panel the same colour as the page.
+
+   Declared once, as a custom property, so the two hexes live in exactly one place: `.hp-modals`
+   below is for markup, `var(--lp-gradient-modal)` for anything that needs it inside another rule. */
+:root {
+    --lp-gradient-modal: linear-gradient(106deg, #0f1829 0%, #040b1a 100%);
+    /* The blank bar that stands in for a quiz answer while the read-gate counts down, and its
+       edge. Same Figma style, so the whole family stays in one place. */
+    --lp-modal-ghost: #0b1323;
+    --lp-modal-ghost-edge: #101a2b;
+}
+.hp-modals {
+    background: var(--lp-gradient-modal);
+}
+
 .lp-bg-hero {
     background: linear-gradient(160deg, #020617 0%, #0f172a 45%, #1e3a5f 80%, #020617 100%);
 }
@@ -1261,18 +1280,36 @@
 @keyframes qz-star-in { 0% { transform: scale(0) rotate(-30deg); opacity: 0; } 60% { transform: scale(1.25) rotate(8deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
 @keyframes qz-slide-in { 0% { transform: translateY(14px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
 @keyframes qz-flame  { 0%, 100% { transform: scale(1) rotate(-2deg); } 50% { transform: scale(1.12) rotate(2deg); } }
+/* The question arrives first and slightly small, overshooting its size before settling. */
+@keyframes qz-question-in { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+/* A bar lifting off the answer underneath. The pause at 0.3 is the Figma's, and it is what makes
+   four bars in a row read as a deliberate reveal rather than four things switching off. */
+@keyframes qz-ghost-out { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 0; } }
 
 .qz-card       { animation: qz-slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 .qz-correct    { animation: qz-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .qz-wrong      { animation: qz-wobble 0.45s ease-in-out; }
 .qz-score-bump { animation: qz-score-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .qz-streak     { animation: qz-flame 0.9s ease-in-out infinite; display: inline-block; }
+/* EASE.pop from resources/js/easing.js — the Figma's spring, in the app's own vocabulary. */
+.qz-question   { animation: qz-question-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+/* EASE.move — the Figma eases this one in AND out, which is what ease-in-out means here. */
+.qz-ghost-out  { animation: qz-ghost-out 0.8s cubic-bezier(0.645, 0.045, 0.355, 1) forwards; }
 /* Staggered entrances — the delay is data-driven, so it rides on an inline animation-delay. */
 .qz-star       { animation: qz-star-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
 .qz-rise       { animation: qz-slide-in 0.3s ease-out backwards; }
 
+/* The bar that stands where an answer is while the read-gate counts down. Opaque on purpose: it
+   HIDES the answer rather than dimming it, so there is nothing to read ahead. Its two colours
+   belong to the same Figma style as the card gradient (HP/Modals), so they live beside it. */
+.qz-ghost {
+    background-color: var(--lp-modal-ghost);
+    border-color: var(--lp-modal-ghost-edge);
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .qz-card, .qz-correct, .qz-wrong, .qz-score-bump, .qz-streak, .qz-star, .qz-rise {
+    .qz-card, .qz-correct, .qz-wrong, .qz-score-bump, .qz-streak, .qz-star, .qz-rise,
+    .qz-question, .qz-ghost-out {
         animation: none;
     }
 }

@@ -16,6 +16,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { waitForAnswers } from './support/quiz';
 
 const SHOTS = path.resolve('tests/playwright/results/quiz-end-screen-language');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -85,10 +86,8 @@ async function playQuizToTheEnd(page: Page) {
 
   for (let i = 0; i < 16; i++) {
     if (await page.locator('[data-final-score]').count()) break;
-    const gate = page.locator('[data-gate-secs]');
-    if (await gate.count()) await expect(gate).toHaveCount(0, { timeout: 20_000 });
-    const answers = overlay.locator('button').filter({ hasNotText: /^$/ });
-    if (!(await answers.count())) break;
+    const answers = await waitForAnswers(overlay);
+    if (!answers) break;
     await answers.first().click({ timeout: 5_000 }).catch(() => {});
     await page.waitForFunction(
       () => Boolean(document.querySelector('[data-final-score]')) || !document.querySelector('[data-choice-locked]'),
@@ -112,6 +111,11 @@ test.describe('the quiz end screen in a French class', () => {
   });
 
   test('the score card a French class sees is French', async ({ page }) => {
+    // A full quiz walk got longer when the read-gate became animation-led: the answers now
+    // arrive one bar at a time, so every question costs a few seconds more
+    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
+    // reports a timeout instead of whatever it actually found.
+    test.slow();
     await setInterfaceLanguage(page, 'Français');
     await openPlayer(page, FRENCH_CODE);
     await startLesson(page);
@@ -132,6 +136,11 @@ test.describe('the quiz end screen in a French class', () => {
   });
 
   test('the leaderboard card after a submit is French', async ({ page }) => {
+    // A full quiz walk got longer when the read-gate became animation-led: the answers now
+    // arrive one bar at a time, so every question costs a few seconds more
+    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
+    // reports a timeout instead of whatever it actually found.
+    test.slow();
     await setInterfaceLanguage(page, 'Français');
 
     // Answer the POST ourselves: a real, server-shaped leaderboard, no score written to the

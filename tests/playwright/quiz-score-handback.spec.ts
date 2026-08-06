@@ -20,6 +20,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { waitForAnswers } from './support/quiz';
 
 const SHOTS = path.resolve('tests/playwright/results-quiz-score-handback');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -60,10 +61,8 @@ async function playQuizToTheEnd(page: Page) {
 
   for (let i = 0; i < 16; i++) {
     if (await page.locator('[data-final-score]').count()) break;
-    const gate = page.locator('[data-gate-secs]');
-    if (await gate.count()) await expect(gate).toHaveCount(0, { timeout: 20_000 });
-    const answers = overlay.locator('button').filter({ hasNotText: /^$/ });
-    if (!(await answers.count())) break;
+    const answers = await waitForAnswers(overlay);
+    if (!answers) break;
     await answers.first().click({ timeout: 5_000 }).catch(() => {});
     await page.waitForFunction(
       () => Boolean(document.querySelector('[data-final-score]')) || !document.querySelector('[data-choice-locked]'),

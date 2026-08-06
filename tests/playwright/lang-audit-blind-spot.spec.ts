@@ -38,7 +38,7 @@ test.describe('lang:audit blind spot', () => {
     // stored locale other specs change. That is exactly why the assertion below is locale-blind.)
     const dict = await page.evaluate(() => (window as any).__lpLang ?? {});
     expect(Object.keys(dict).length).toBeGreaterThan(10);
-    console.log(`[blind spot] page lang=${await page.evaluate(() => document.documentElement.lang)} dict['Nice!']=${dict['Nice!']}`);
+    console.log(`[blind spot] page lang=${await page.evaluate(() => document.documentElement.lang)} dict['Quiz paused']=${dict['Quiz paused']}`);
 
     // …and the call to action next to it is English, in every language, always.
     const cta = page.getByRole('button', { name: /Start lesson/ });

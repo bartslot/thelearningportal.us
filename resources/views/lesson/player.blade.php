@@ -622,7 +622,7 @@
 
             {{-- QR modal --}}
             <dialog id="qr-modal" class="modal">
-                <div class="modal-box bg-black border border-white/10 flex flex-col items-center gap-6 py-10 px-12 max-w-sm">
+                <div class="modal-box hp-modals border border-white/10 flex flex-col items-center gap-6 py-10 px-12 max-w-sm">
                     <canvas id="qr-modal-canvas"
                             class="rounded-2xl"
                             style="image-rendering: pixelated;"></canvas>
@@ -762,21 +762,10 @@
                 ></span>
             </div>
 
-            {{-- Big timer (centre, first 5s of GAME_ACTIVE) --}}
-            <div
-                x-show="showBigTimer"
-                x-transition:leave="transition ease-in duration-500"
-                x-transition:leave-start="opacity-100 scale-100"
-                x-transition:leave-end="opacity-0 scale-75"
-                class="absolute inset-0 flex items-center justify-center"
-            >
-                <span
-                    x-text="timerDisplay"
-                    :class="timerSeconds <= 120 ? 'text-red-400' : 'text-amber-400'"
-                    class="font-history font-bold drop-shadow-[0_8px_16px_rgba(0,0,0,0.9)] tabular-nums"
-                    style="font-size: 20vw; line-height: 1;"
-                ></span>
-            </div>
+            {{-- Big timer (centre, first 5s of GAME_ACTIVE). Only the host lives here: the number,
+                 its tick and its scale-down exit come from resources/js/big-countdown.js, which is
+                 the same countdown the quiz read-gate uses. --}}
+            <div x-ref="bigTimer" class="absolute inset-0"></div>
         </div>
 
         {{-- ── TIME'S UP overlay ───────────────────────────────────────── --}}

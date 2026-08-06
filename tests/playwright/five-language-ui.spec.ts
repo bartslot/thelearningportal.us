@@ -23,6 +23,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { waitForAnswers } from './support/quiz';
 
 const SHOTS = path.resolve('tests/playwright/results/five-language-ui');
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -165,11 +166,14 @@ test.afterAll(async ({ browser }) => {
 });
 
 test.describe('five-language UI — the player dictionary', () => {
+  // "Nice!" was the probe here until the quiz card stopped praising in words — see
+  // resources/js/scene/QuizOverlay.js. "Quiz paused" is the same kind of string: built in
+  // JavaScript, invisible to a Blade-only audit, and the reason JsTranslations exists.
   for (const [name, key, notEnglish] of [
-    ['Français', 'Nice!', 'Bien joué !'],
-    ['Nederlands', 'Nice!', null],
-    ['Deutsch', 'Nice!', null],
-    ['Italiano', 'Nice!', null],
+    ['Français', 'Quiz paused', 'Quiz en pause'],
+    ['Nederlands', 'Quiz paused', null],
+    ['Deutsch', 'Quiz paused', null],
+    ['Italiano', 'Quiz paused', null],
   ] as Array<[string, string, string | null]>) {
     test(`window.__lpLang is translated for ${name}`, async ({ page }) => {
       await setInterfaceLanguage(page, name);
@@ -217,6 +221,11 @@ test.describe('five-language UI — French lesson, French teacher', () => {
   });
 
   test('the quiz card reads in French, gate and all', async ({ page }) => {
+    // A full quiz walk is a long test and got longer when the read-gate became animation-led:
+    // the answers now arrive one bar at a time, so every question costs a few seconds more
+    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
+    // reports a timeout instead of whatever it actually found.
+    test.slow();
     await setInterfaceLanguage(page, FRENCH.locale);
     await openPlayer(page, FRENCH.code);
     await startLesson(page);
@@ -227,17 +236,19 @@ test.describe('five-language UI — French lesson, French teacher', () => {
     await overlay.locator('button').first().waitFor({ state: 'visible', timeout: 90_000 });
     await page.screenshot({ path: shot('fr-03-quiz-gate') });
 
-    const gateText = await overlay.innerText();
-    // The answer gate is a JsTranslations string, so it should read in French.
-    expect(gateText, 'the answer-gate countdown').toMatch(/Lis la question|réponses/i);
+    // The gate used to be a sentence ("Lis la question…") and is now a counting number, so there
+    // is no wording left on it to get wrong in any language. What must hold is that the gate is
+    // language-free: the only text on the card is the question and its answers, plus a digit.
+    const gateSecs = overlay.locator('[data-gate-secs]');
+    if (await gateSecs.count()) {
+      expect((await gateSecs.innerText()).trim(), 'the gate countdown is a bare number').toMatch(/^\d+$/);
+    }
 
     // Answer through to the score screen, where the untranslated strings live.
     for (let i = 0; i < 14; i++) {
       if (await page.locator('[data-final-score]').count()) break;
-      const gate = page.locator('[data-gate-secs]');
-      if (await gate.count()) await expect(gate).toHaveCount(0, { timeout: 20_000 });
-      const answers = overlay.locator('button').filter({ hasNotText: /^$/ });
-      if (!(await answers.count())) break;
+      const answers = await waitForAnswers(overlay);
+      if (!answers) break;
       await answers.first().click({ timeout: 5_000 }).catch(() => {});
       await page.waitForTimeout(1400);
     }

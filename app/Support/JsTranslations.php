@@ -26,28 +26,18 @@ final class JsTranslations
     }
 
     /**
-     * The quiz card: praise, encouragement, the answer gate and the classroom sign-in.
+     * The quiz card: the classroom sign-in, and the handful of words left on it.
+     *
+     * The praise ("Nice!", "Almost!") and the read-gate sentence were here until the card was
+     * reworked to say all of that with motion instead — see resources/js/scene/QuizOverlay.js.
+     * A string that no longer exists in the browser must not stay in the audit, or every language
+     * is asked to translate something no class will ever read.
      *
      * @return array<string, string>
      */
     private static function quiz(): array
     {
         return self::translate([
-            // Praise, one per correct answer, cycled.
-            'Nice!',
-            'Great!',
-            'Perfect!',
-            'Brilliant!',
-            'On fire!',
-            // …and for a wrong one. Never scolding: the quiz runs in front of a class.
-            'Almost!',
-            'Good try!',
-            'Keep going!',
-            // A question that reaches ahead of the story is not a failure either way.
-            'You already knew this!',
-            'No worries, you will hear this later in the story!',
-            // The gate that holds the answers back until the question has been read.
-            'Read the question… answers unlock in :count',
             'Continue',
             // Joining a classroom leaderboard.
             'Class code…',

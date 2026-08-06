@@ -170,7 +170,7 @@
 
     {{-- Paper import: upload photos of filled answer sheets → review grid → confirm. --}}
     <div class="modal {{ $paperModalOpen || $paperPhotos ? 'modal-open' : '' }}">
-        <div class="modal-box max-w-3xl">
+        <div class="modal-box hp-modals max-w-3xl">
             <h3 class="mb-3 text-lg font-semibold flex items-center gap-2">
                 <x-icons.camera class="w-5 h-5 inline-block" />
                 {{ __('Import paper answers') }}

@@ -55,7 +55,7 @@
          Each tile shows a schematic preview of the block; roadmap types appear as disabled "Soon". --}}
     <div class="modal modal-bottom sm:modal-middle {{ $addModuleOpen ? 'modal-open' : '' }}"
          role="dialog" aria-modal="true">
-        <div class="modal-box max-w-lg">
+        <div class="modal-box hp-modals max-w-lg">
             <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-lg font-bold">{{ __('Add a module') }}</h2>
                 <button type="button" class="btn btn-sm btn-circle btn-ghost"
