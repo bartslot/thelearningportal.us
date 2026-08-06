@@ -186,6 +186,50 @@ class GenerateSceneAudioTest extends TestCase
         $this->assertSame('fr-FR-Remy:DragonHDLatestNeural', $scene->audio_voice);
     }
 
+    public function test_a_narrator_less_lesson_on_azure_is_not_called_a_downgrade(): void
+    {
+        // No avatar means no named narrator, so Azure on the native voice is the CORRECT outcome,
+        // not a substitution. Calling it a downgrade flagged 77 correctly-narrated production
+        // scenes; a warning that cries wolf is worth less than no warning.
+        $lesson = Lesson::create([
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => null,
+            'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
+        ]);
+        $scene = Scene::create([
+            'lesson_id' => $lesson->id, 'order' => 1, 'kind' => 'narration',
+            'script_segment' => 'Hello world.', 'image_path' => 'x.png', 'status' => 'generating',
+            // A stale warning left behind by an earlier, genuinely bad run.
+            'error_message' => 'Narrated by azure, not the elevenlabs voice this lesson uses.',
+        ]);
+
+        $this->mockTts('azure', 'en-GB-Ollie:DragonHDLatestNeural');
+
+        (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
+
+        $scene->refresh();
+        $this->assertFalse($scene->narrationWasDowngraded());
+        // A successful run clears the stale warning instead of leaving it forever.
+        $this->assertNull($scene->error_message);
+    }
+
+    /** Mock TtsService to return audio from a given provider/voice with no timings. */
+    private function mockTts(string $provider, string $voice): void
+    {
+        $this->mock(TtsService::class, function ($mock) use ($provider, $voice): void {
+            $mock->shouldReceive('prepareSpeechText')->andReturnUsing(fn ($t) => $t);
+            $mock->shouldReceive('generateAudioRaw')->andReturnUsing(
+                function ($text, $voiceId, $speed, $p, &$timing) {
+                    $timing = null;
+
+                    return 'BINARYMP3';
+                }
+            );
+            $mock->shouldReceive('lastExtension')->andReturn('mp3');
+            $mock->shouldReceive('lastProvider')->andReturn($provider);
+            $mock->shouldReceive('lastVoice')->andReturn($voice);
+        });
+    }
+
     private function sceneWithElevenLabsNarrator(string $slug): Scene
     {
         $avatar = Avatar::create([

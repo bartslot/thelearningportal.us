@@ -133,9 +133,13 @@ class GenerateSceneAudio implements ShouldQueue
             $duration = max(3.0, $duration);
 
             $actualProvider = $tts->lastProvider();
-            $this->warnIfDowngraded($scene, $provider, $actualProvider, $voiceId, $narrationTiming);
 
             $scene->update([
+                // A run that got this far succeeded, so any warning from a PREVIOUS run is stale.
+                // Clear it first and let warnIfDowngraded re-raise it below if it still applies —
+                // otherwise a scene stays flagged forever after one bad generation, and the
+                // warning stops meaning anything.
+                'error_message' => null,
                 'audio_path' => $path,
                 'audio_alignment' => $narrationTiming->toArray(),
                 'audio_script_hash' => sha1($script),
@@ -148,6 +152,8 @@ class GenerateSceneAudio implements ShouldQueue
                 'audio_voice' => $tts->lastVoice() ?: ($voiceId !== '' ? $voiceId : null),
                 'duration_seconds' => (int) ceil($duration),
             ]);
+
+            $this->warnIfDowngraded($scene, $provider, $actualProvider, $voiceId, $narrationTiming);
 
             $this->maybeMarkReady($scene->fresh());
         } catch (Throwable $e) {
