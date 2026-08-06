@@ -1,4 +1,4 @@
-{{-- Branded email layout — The Learning Portal / History Portal.
+{{-- Branded email layout — History Portal, on The Learning Portal.
      Table-based, inline styles only. Max width 600px.
      Usage: @component('emails.layout') ... body html ... @endcomponent
 
@@ -26,7 +26,7 @@
          the white card grey and the navy band white. --}}
     <meta name="color-scheme" content="light only">
     <meta name="supported-color-schemes" content="light only">
-    <title>{{ config('app.name', 'The Learning Portal') }}</title>
+    <title>{{ config('app.name') ?: 'History Portal' }}</title>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; background-color: #040B1A; -webkit-text-size-adjust: 100%;" bgcolor="#040B1A">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#040B1A" style="background-color: #040B1A;">
@@ -39,7 +39,7 @@
                     <tr>
                         <td align="left" bgcolor="#040B1A" style="background-color: #040B1A; padding: 0 4px 24px 4px;">
                             <img src="{{ asset('assets/email/logo-history-portal.png') }}"
-                                 alt="{{ config('app.name', 'The Learning Portal') }}"
+                                 alt="{{ config('app.name') ?: 'History Portal' }}"
                                  width="140" height="123"
                                  style="display: block; width: 140px; height: 123px; border: 0; outline: none; text-decoration: none;">
                         </td>
@@ -64,7 +64,7 @@
                     </tr>
                     <tr>
                         <td align="center" bgcolor="#040B1A" style="background-color: #040B1A; padding: 0 24px;">
-                            <span style="font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.6; color: #94a3b8;">&copy; {{ date('Y') }} {{ config('app.name', 'The Learning Portal') }} &middot; thelearningportal.us<br>{{ __('You are receiving this email because of your account on :app.', ['app' => config('app.name', 'The Learning Portal')]) }}</span>
+                            <span style="font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.6; color: #94a3b8;">&copy; {{ date('Y') }} {{ config('app.name') ?: 'History Portal' }} &middot; thelearningportal.us<br>{{ __('You are receiving this email because of your account on :app.', ['app' => config('app.name') ?: 'History Portal']) }}</span>
                         </td>
                     </tr>
 
