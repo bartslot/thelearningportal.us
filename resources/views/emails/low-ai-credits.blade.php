@@ -12,7 +12,7 @@
         </tr>
     </table>
 
-    <p style="margin: 0;">Top up or wait for the reset before generating new lessons &mdash; audio narration jobs will fail once the quota is exhausted.</p>
+    <p style="margin: 0;">Top up or wait for the reset before generating new lessons. Audio narration jobs will fail once the quota is exhausted.</p>
 
     @include('emails.partials.button', [
         'url' => 'https://elevenlabs.io/app/subscription',
