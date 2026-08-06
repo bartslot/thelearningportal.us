@@ -25,7 +25,15 @@ import * as THREE from 'three'
 import { GLTFLoader }    from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { FBXLoader }     from 'three/examples/jsm/loaders/FBXLoader.js'
-import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark'
+
+// TODO(3d-worlds): Gaussian-splat worlds are parked, not abandoned.
+// `@sparkjsdev/spark` was a static import here, which made it a static import of the wizard too:
+// 4,876 KB of renderer downloaded before a teacher could click anything, for a feature set on
+// exactly 0 of 263 scenes. The pipeline that produces the splats is untouched — WorldLabsService
+// still downloads .spz files and scenes.world_spz_path still stores them — so bringing this back
+// is: re-add the dependency, restore the SplatMesh mount inside mountWorldLabs(), and route it
+// through a DYNAMIC import so the cost lands only on a scene that actually has a world.
+// The pano skybox and the GLB ground below are unaffected; they cost nothing extra.
 
 const DEG = Math.PI / 180
 
@@ -1446,11 +1454,7 @@ export class Avatar3DPlayer {
     this._idlePass(delta * 1000)
     this._updateSkyboxTransition(delta)
     this._controls?.update()
-    if (this._sparkRenderer) {
-      this._sparkRenderer.render(this._scene, this._camera)
-    } else {
-      this._renderer?.render(this._scene, this._camera)
-    }
+    this._renderer?.render(this._scene, this._camera)
   }
 
   _updatePoseLerp (deltaSec) {
@@ -1918,22 +1922,11 @@ export class Avatar3DPlayer {
 
     if (stale()) return null
 
-    // ── SPZ Gaussian splat via @sparkjsdev/spark ──────────────────────────
-    // SparkRenderer extends THREE.Mesh — it IS a scene object. SplatMesh must
-    // be added as a child of SparkRenderer (not directly to the scene) so that
-    // SparkRenderer.render() / onBeforeRender can discover and process it.
-    if (spzUrl) {
-      this._sparkRenderer = new SparkRenderer({ renderer: this._renderer, enableLod: true })
-      const splat = new SplatMesh({ url: spzUrl })
-      splat.rotation.x = rotX
-      splat.position.y = groundPlaneOffset
-      splat.scale.setScalar(metricScaleFactor)
-      this._sparkRenderer.add(splat)   // child of SparkRenderer, not scene
-      // Lift the SparkRenderer so the splat cobblestone also sits at Y=0
-      this._sparkRenderer.position.y = worldYAdjust
-      this._scene.add(this._sparkRenderer)
-      this._worldSplatMesh = splat
-    }
+    // TODO(3d-worlds): the SPZ Gaussian splat mounted here — see the note at the top of the file.
+    // It needs SparkRenderer (a THREE.Mesh that is itself a scene object) with the SplatMesh as its
+    // CHILD, positioned at worldYAdjust and scaled by metricScaleFactor, so SparkRenderer.render()
+    // can discover it. Parked with the dependency; the pano and GLB above still draw the world.
+    void spzUrl
 
     return { streetY }
   }
@@ -1974,23 +1967,9 @@ export class Avatar3DPlayer {
       this._controls.maxPolarAngle = Math.acos(Math.max(-1, Math.min(1, cosMax)))
     }
 
-    // Fake fog on the splat: Spark's custom renderer ignores Three.js scene fog,
-    // so we simulate it by blending recolor toward a haze tint at distance.
-    if (this._worldSplatMesh) {
-      const FOG_START  = 4    // metres — fog begins
-      const FOG_END    = 18   // metres — full haze
-      const fogT = THREE.MathUtils.clamp((r - FOG_START) / (FOG_END - FOG_START), 0, 1)
-      // recolor multiplies each splat's RGB — lerp white→haze tint
-      const hazeR = 0.85, hazeG = 0.88, hazeB = 0.92
-      this._worldSplatMesh.recolor.setRGB(
-        1 - fogT * (1 - hazeR),
-        1 - fogT * (1 - hazeG),
-        1 - fogT * (1 - hazeB),
-      )
-      // Also fade opacity so far splats dissolve into background
-      this._worldSplatMesh.opacity = THREE.MathUtils.clamp(1 - fogT * 0.5, 0.5, 1)
-      this._worldSplatMesh.generatorDirty = true
-    }
+    // TODO(3d-worlds): distance haze on the splat lived here. Spark's renderer ignores Three.js
+    // scene fog, so it was faked by lerping SplatMesh.recolor white→haze over 4m…18m and fading
+    // opacity to 0.5. Restore alongside the SplatMesh mount.
 
     // Collision: raycast from head toward camera; pull camera in if world GLB is hit
     if (this._worldGlbMesh) {
@@ -2017,7 +1996,6 @@ export class Avatar3DPlayer {
 
   setWorldScale (scale) {
     if (this._worldGlbMesh)   this._worldGlbMesh.scale.setScalar(scale)
-    if (this._sparkRenderer)  this._sparkRenderer.scale.setScalar(scale)
     this._worldScale = scale
   }
 
@@ -2034,13 +2012,6 @@ export class Avatar3DPlayer {
       this._worldGlbMesh = null
     }
 
-    if (this._sparkRenderer) {
-      // SparkRenderer is the scene parent of SplatMesh — removing it also removes the splat.
-      this._scene.remove(this._sparkRenderer)
-      this._sparkRenderer.dispose?.()
-      this._sparkRenderer = null
-      this._worldSplatMesh = null
-    }
     // Restore character position and scale for non-world scene views.
     if (this._characterRoot) {
       if (this._worldStreetY != null) this._characterRoot.position.y = 0
