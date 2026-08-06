@@ -7,6 +7,10 @@
             <h1 class="font-history text-5xl font-semibold text-slate-100 md:text-6xl xl:text-7xl">Avatar management</h1>
             <p class="mt-1 text-sm text-slate-500">Configure voice, portrait and behaviour for each avatar character.</p>
         </div>
+        <a href="{{ route('admin.avatars.create') }}"
+           class="btn btn-primary shrink-0">
+            <span aria-hidden="true">＋</span> Add avatar
+        </a>
     </div>
 
     <div class="space-y-4">
@@ -64,7 +68,8 @@
                 <div class="mb-2 flex justify-center">
                     <x-icons.user-circle class="w-8 h-8 text-slate-500" />
                 </div>
-                <p class="text-sm text-slate-400">No avatars yet. Run <code class="text-amber-400">php artisan db:seed --class=AvatarSeeder</code> to create The Professor.</p>
+                <p class="text-sm text-slate-400">No narrators yet. Create the first one to start building your cast.</p>
+                    <a href="{{ route('admin.avatars.create') }}" class="btn btn-primary btn-sm mt-4">Add your first avatar</a>
             </div>
         @endforelse
     </div>

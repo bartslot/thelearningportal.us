@@ -62,6 +62,9 @@ class AvatarSeeder extends Seeder
                 'short_name' => $name,
                 'description' => null,
                 'portrait_path' => "avatars/{$i}/thumbnail.webp",
+                'intro_video_path' => file_exists("{$avatarDir}/{$i}/welcome.mp4")
+                    ? "avatars/{$i}/welcome.mp4"
+                    : null,
                 'subject' => 'all',
                 'gender' => $info['gender'] ?? 'male',
                 'age' => $info['age'] ?? 30,

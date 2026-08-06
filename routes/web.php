@@ -6,6 +6,7 @@ use App\Http\Controllers\HistoricalCitiesController;
 use App\Http\Controllers\LessonPlayerController;
 use App\Http\Controllers\Teacher\DashboardController;
 use App\Livewire\Admin\AvatarStudio;
+use App\Livewire\Admin\CreateAvatar;
 use App\Livewire\LessonWizard;
 use App\Models\Avatar;
 use App\Models\Lesson;
@@ -354,6 +355,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
         return view('admin.avatars.index', compact('avatars'));
     })->name('avatars.index');
+
+    Route::get('/avatars/create', CreateAvatar::class)->name('avatars.create');
 
     // Avatar Studio (Livewire component)
     Route::get('/avatars/{avatar}', AvatarStudio::class)->name('avatars.studio');
