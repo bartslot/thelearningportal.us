@@ -179,7 +179,15 @@ Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])
 
     // Read a territory's summary aloud via ElevenLabs. The mp3 is cached per id so each polity is
     // synthesised at most once (cost + latency). Returns { url } or { url: null } on failure.
-    Route::post('/timemap/speak', function (\Illuminate\Http\Request $request, \App\Services\ElevenLabsService $tts) {
+    // Read a territory's summary aloud on the Time-Map.
+    //
+    // AZURE, never ElevenLabs. This is browsing, not a lesson: a teacher clicking around the map
+    // generates a fresh territory summary on every click, and each one used to go to ElevenLabs
+    // through generateWithTimestamps — the priciest endpoint we have, called for its audio while
+    // the character timings it charges for were thrown away. Nothing here shows a subtitle.
+    //
+    // ElevenLabs is reserved for lesson narration, which is authored once and heard by a class.
+    Route::post('/timemap/speak', function (\Illuminate\Http\Request $request, \App\Services\TtsService $tts) {
         $id = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $request->input('id'));
         $text = trim((string) $request->input('text'));
         if ($id === '' || $text === '') {
@@ -188,13 +196,21 @@ Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])
         $rel = "tts/{$id}.mp3";
         $file = public_path($rel);
         if (! is_file($file)) {
-            $voice = (string) config('services.elevenlabs.voice_id');
-            $res = $tts->generateWithTimestamps(\Illuminate\Support\Str::limit($text, 700, ''), $voice);
-            if (! $res || empty($res['audio'])) {
+            // Cached per polity, so a territory is only ever synthesised once however many teachers
+            // click it. The voice follows the page's language rather than a pinned id — a Dutch
+            // teacher reading a Dutch summary should not hear it in English.
+            $voice = \App\Services\Support\NarrationVoice::azure(app()->getLocale(), '');
+            $audio = $tts->generateAudioRaw(
+                \Illuminate\Support\Str::limit($text, 700, ''),
+                $voice,
+                1.0,
+                'azure',
+            );
+            if (! $audio) {
                 return response()->json(['url' => null]);
             }
             \Illuminate\Support\Facades\File::ensureDirectoryExists(public_path('tts'));
-            \Illuminate\Support\Facades\File::put($file, $res['audio']);
+            \Illuminate\Support\Facades\File::put($file, $audio);
         }
 
         return response()->json(['url' => "/{$rel}"]);

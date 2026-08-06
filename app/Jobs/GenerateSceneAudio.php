@@ -52,6 +52,20 @@ class GenerateSceneAudio implements ShouldQueue
             // when set, pins one voice globally.
             $override = (string) config('services.tts.provider_override', '');
             $provider = $override !== '' ? $override : ($avatar?->voice_provider ?? 'elevenlabs');
+
+            // A demo guest never spends ElevenLabs credits, whatever narrator the lesson names.
+            //
+            // /try hands an anonymous visitor a throwaway teacher account and a copy of the demo
+            // lesson in the real wizard. Re-narrating a scene there is one click, the account costs
+            // nothing to create, and there is no rate limit that would stop somebody doing it a
+            // thousand times. Azure is a fraction of the price and the demo still speaks.
+            //
+            // This does NOT silence the demo lesson: its narration is generated ahead of time by
+            // `lessons:compose` under a real teacher, so what a visitor hears is already the
+            // ElevenLabs recording. Only NEW audio a guest asks for is downgraded.
+            if ($provider === 'elevenlabs' && $scene->lesson->teacher?->isGuestDemo()) {
+                $provider = 'azure';
+            }
             // For NARRATION the script itself is the authority: these are the actual words being
             // read aloud, and an English sentence read by a Dutch voice is wrong no matter what the
             // teacher's settings say. The teaching language (and then the interface locale) is only
