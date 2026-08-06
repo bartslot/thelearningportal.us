@@ -26,7 +26,7 @@
                 class="h-20 w-20 rounded-2xl object-cover border-2 border-amber-500/30"
             >
             <div>
-                <p class="text-xs uppercase tracking-widest text-amber-400">Avatar Studio · Admin</p>
+                <p class="text-xs uppercase tracking-widest text-amber-400">Narrator Studio · Admin</p>
                 <h1 class="mt-1 text-3xl font-semibold text-slate-100">{{ $avatar->name }}</h1>
                 <p class="mt-1 text-sm text-slate-400">{{ $avatar->description }}</p>
             </div>
@@ -368,7 +368,7 @@
             </div>
 
             <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 space-y-6 max-w-2xl">
-                <h2 class="text-sm font-semibold text-slate-200">Avatar settings</h2>
+                <h2 class="text-sm font-semibold text-slate-200">Narrator settings</h2>
 
                 {{-- Name --}}
                 <div>
@@ -394,7 +394,7 @@
                     </div>
                     <div>
                         <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">
-                            Avatar title <span class="text-slate-600 normal-case font-normal tracking-normal">(greeting)</span>
+                            Narrator title <span class="text-slate-600 normal-case font-normal tracking-normal">(greeting)</span>
                         </label>
                         <input wire:model.live="avatar_title" type="text"
                             class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100
@@ -469,7 +469,7 @@
                 <div class="flex items-center gap-3">
                     <input type="checkbox" wire:model="is_active" id="is_active"
                         class="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500">
-                    <label for="is_active" class="text-sm text-slate-300">Avatar is active (visible to teachers)</label>
+                    <label for="is_active" class="text-sm text-slate-300">Narrator is active (visible to teachers)</label>
                 </div>
 
                 {{-- Save --}}

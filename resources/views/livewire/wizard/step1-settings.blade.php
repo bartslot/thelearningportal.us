@@ -735,7 +735,7 @@
     <div class="collapse collapse-arrow bg-base-300 rounded-2xl">
         <input type="checkbox" />
         <div class="collapse-title flex items-center justify-between pr-10">
-            <span class="font-medium text-white text-sm">{{ __('Avatar') }}</span>
+            <span class="font-medium text-white text-sm">{{ __('Narrator') }}</span>
             <span class="text-slate-400 text-xs">
                 {{ $this->avatars->firstWhere('id', $avatar_id)?->name ?? __('None selected') }}
             </span>

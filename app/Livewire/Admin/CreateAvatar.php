@@ -231,6 +231,6 @@ class CreateAvatar extends Component
     public function render()
     {
         return view('livewire.admin.create-avatar')
-            ->layout('components.layouts.app', ['title' => 'Add avatar']);
+            ->layout('components.layouts.app', ['title' => 'Add narrator']);
     }
 }

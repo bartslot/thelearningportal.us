@@ -12,7 +12,7 @@
             <div class="mb-3">
                 <x-icons.user-circle class="w-8 h-8 text-slate-500" />
             </div>
-            <h2 class="font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">Avatars</h2>
+            <h2 class="font-semibold text-slate-200 group-hover:text-amber-400 transition-colors">Narrators</h2>
             <p class="text-sm text-slate-500 mt-1">{{ $avatarCount }} configured</p>
         </a>
 

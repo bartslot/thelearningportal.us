@@ -1,15 +1,15 @@
-<x-layouts.app title="Avatars">
+<x-layouts.app title="Narrators">
 <div class="space-y-8">
 
     <div class="flex items-end justify-between gap-4">
         <div>
-            <p class="text-xs uppercase tracking-widest text-rose-400">Admin · Avatars</p>
-            <h1 class="font-history text-5xl font-semibold text-slate-100 md:text-6xl xl:text-7xl">Avatar management</h1>
-            <p class="mt-1 text-sm text-slate-500">Configure voice, portrait and behaviour for each avatar character.</p>
+            <p class="text-xs uppercase tracking-widest text-rose-400">Admin · Narrators</p>
+            <h1 class="font-history text-5xl font-semibold text-slate-100 md:text-6xl xl:text-7xl">Narrator management</h1>
+            <p class="mt-1 text-sm text-slate-500">Configure voice, portrait and behaviour for each narrator.</p>
         </div>
         <a href="{{ route('admin.avatars.create') }}"
            class="btn btn-primary shrink-0">
-            <span aria-hidden="true">＋</span> Add avatar
+            <span aria-hidden="true">＋</span> Add narrator
         </a>
     </div>
 
@@ -69,7 +69,7 @@
                     <x-icons.user-circle class="w-8 h-8 text-slate-500" />
                 </div>
                 <p class="text-sm text-slate-400">No narrators yet. Create the first one to start building your cast.</p>
-                    <a href="{{ route('admin.avatars.create') }}" class="btn btn-primary btn-sm mt-4">Add your first avatar</a>
+                <a href="{{ route('admin.avatars.create') }}" class="btn btn-primary btn-sm mt-4">Add your first narrator</a>
             </div>
         @endforelse
     </div>
