@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Admin;
 
 use App\Models\Avatar;
+use App\Support\UploadLimit;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -15,6 +16,11 @@ use Livewire\WithFileUploads;
 class CreateAvatar extends Component
 {
     use WithFileUploads;
+
+    /** What we are willing to take, before PHP gets a say. UploadLimit takes the smaller of the two. */
+    private const VIDEO_CEILING_BYTES = 50 * 1024 * 1024;
+
+    private const PORTRAIT_CEILING_BYTES = 4 * 1024 * 1024;
 
     public int $step = 1;
 
@@ -58,8 +64,14 @@ class CreateAvatar extends Component
             'avatar_title' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'subject' => ['required', Rule::in(['all', 'history', 'science', 'literature', 'civics'])],
-            'portrait' => ['required', 'image', 'max:4096'],
-            'intro_video' => ['nullable', 'file', 'mimetypes:video/mp4,video/webm,video/quicktime', 'max:51200'],
+            'portrait' => ['required', 'image', 'max:'.UploadLimit::kilobytes(self::PORTRAIT_CEILING_BYTES)],
+            // Validated against what this server will really take, not what we wish it took. PHP
+            // discards an oversized body before Laravel ever runs, so a rule of 50 MB on a box that
+            // accepts 2 MB does not produce a validation error — it produces silence.
+            'intro_video' => [
+                'nullable', 'file', 'mimetypes:video/mp4,video/webm,video/quicktime',
+                'max:'.UploadLimit::kilobytes(self::VIDEO_CEILING_BYTES),
+            ],
             'voice_provider' => ['required', Rule::in(['elevenlabs', 'edge_tts'])],
             // Only the chosen provider's field is required, so switching provider cannot leave the
             // form stuck on a validation error for a field the teacher can no longer see.
@@ -78,6 +90,23 @@ class CreateAvatar extends Component
         return [
             'elevenlabs_voice_id.regex' => 'An ElevenLabs voice id is 20 letters and digits, copied from the voice in your ElevenLabs dashboard.',
         ];
+    }
+
+    /** The video size this server really accepts, for the field's own label. */
+    #[Computed]
+    public function videoLimit(): string
+    {
+        return UploadLimit::human(self::VIDEO_CEILING_BYTES);
+    }
+
+    /**
+     * True when PHP, not us, is the thing capping uploads — worth saying out loud on an admin
+     * screen, because it is a fixable deployment fact and silence is how it stays broken.
+     */
+    #[Computed]
+    public function videoLimitIsServerImposed(): bool
+    {
+        return UploadLimit::isServerConstrained(self::VIDEO_CEILING_BYTES);
     }
 
     /** The voice id actually stored, whichever provider was chosen. */

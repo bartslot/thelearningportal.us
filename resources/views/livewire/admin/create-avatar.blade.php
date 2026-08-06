@@ -45,10 +45,16 @@
                         <fieldset class="fieldset" x-data="{ uploading: false, uploadError: '' }"
                                   x-on:livewire-upload-start="uploading = true; uploadError = ''"
                                   x-on:livewire-upload-finish="uploading = false"
-                                  x-on:livewire-upload-error="uploading = false; uploadError = 'The video could not be uploaded. Check the file type and keep it under 50 MB.'">
+                                  x-on:livewire-upload-error="uploading = false; uploadError = @js(__('The video could not be uploaded. Check the file type and keep it under :limit.', ['limit' => $this->videoLimit]))">
                             <legend class="fieldset-legend">Introduction video <span class="font-normal text-base-content/40">optional</span></legend>
                             <input wire:model="intro_video" type="file" accept="video/mp4,video/webm,video/quicktime" class="file-input w-full">
-                            <p class="label">A short, landscape or portrait video where the narrator introduces themselves. MP4, WebM or MOV · up to 50 MB.</p>
+                            <p class="label">{{ __('A short, landscape or portrait video where the narrator introduces themselves. MP4, WebM or MOV · up to :limit.', ['limit' => $this->videoLimit]) }}</p>
+                            @if($this->videoLimitIsServerImposed)
+                                {{-- Not our rule: this server's PHP is the thing capping it, and a
+                                     teacher blaming their file for a deployment setting is how this
+                                     stayed broken. Name it, with the two directives to change. --}}
+                                <p class="label text-warning">{{ __('This server currently accepts :limit. Raise upload_max_filesize and post_max_size in PHP to allow more.', ['limit' => $this->videoLimit]) }}</p>
+                            @endif
                             <div x-show="uploading" x-cloak class="flex items-center gap-2 text-sm text-primary"><span class="loading loading-spinner loading-xs"></span> Preparing video…</div>
                             <div x-show="uploadError" x-cloak role="alert" class="alert alert-error alert-soft mt-2 py-2 text-sm" x-text="uploadError"></div>
                             @if($intro_video)
