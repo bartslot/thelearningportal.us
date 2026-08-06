@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Services\Support\NarrationTiming;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +14,9 @@ class TtsService
 
     /** Which rung of the fallback chain actually produced the last audio. */
     private ?string $generatedProvider = null;
+
+    /** The voice that rung actually spoke with — not the one the caller asked for. */
+    private ?string $generatedVoice = null;
 
     private function lessonDisk()
     {
@@ -87,10 +89,24 @@ class TtsService
         return $this->generatedProvider;
     }
 
+    /**
+     * The voice that actually spoke the last audio.
+     *
+     * Deliberately the voice USED, not the voice requested: a caller that asked with an empty
+     * voice id used to get Azure's American default, and recording the request would have stored
+     * an empty string — which is exactly how 14 scenes of a French lesson sat in the database
+     * looking unremarkable while being read in US English.
+     */
+    public function lastVoice(): ?string
+    {
+        return $this->generatedVoice;
+    }
+
     public function generateAudioRaw(string $text, string $voiceId, float $speed = 1.0, string $provider = 'auto', ?array &$timingData = null): ?string
     {
         $this->generatedAudioExtension = 'mp3'; // default; overridden by tryMacosTts
         $this->generatedProvider = null;
+        $this->generatedVoice = null;
         $text = $this->prepareSpeechText($text);
         $timingData = null;
 
@@ -139,25 +155,37 @@ class TtsService
 
     private function tryAzure(string $text, string $voiceId, float $speed = 1.0): ?string
     {
-        $key    = (string) config('services.azure_speech.key', '');
+        $key = (string) config('services.azure_speech.key', '');
         $region = (string) config('services.azure_speech.region', 'eastus');
         if ($key === '' || $text === '') {
             return null;
         }
 
-        // Reject non-Azure voice IDs (Azure voices match xx-XX-NameNeural)
-        $candidateVoice = $voiceId !== '' ? $voiceId : 'en-US-GuyNeural';
-        if (! preg_match('/^[a-z]{2}-[A-Z]{2}-.+Neural$/', $candidateVoice)) {
-            Log::warning('[Azure TTS] skipped — voice ID does not look like an Azure Neural voice: ' . $candidateVoice);
+        // No voice, no narration. This used to default to 'en-US-GuyNeural', which meant any
+        // caller that reached here without a voice got an AMERICAN one — and 14 scenes of a
+        // French lesson were read in US English before anybody noticed. Narration is never
+        // US-accented (see NarrationVoice), so refuse rather than guess: the caller is expected
+        // to resolve a voice for the content language first.
+        if ($voiceId === '') {
+            Log::warning('[Azure TTS] refused: no voice supplied. The caller must pick one for the content language.');
+
             return null;
         }
-        $voice    = $candidateVoice;
+
+        // Reject non-Azure voice IDs (Azure voices match xx-XX-NameNeural, optionally :DragonHD…)
+        $candidateVoice = $voiceId;
+        if (! preg_match('/^[a-z]{2}-[A-Z]{2}-.+Neural$/', $candidateVoice)) {
+            Log::warning('[Azure TTS] skipped — voice ID does not look like an Azure Neural voice: '.$candidateVoice);
+
+            return null;
+        }
+        $voice = $candidateVoice;
         // Document language follows the voice's own locale (nl-NL-FennaNeural → nl-NL), so
         // locale-sensitive reading (years like "1566", dates) matches the narration language.
-        $lang     = implode('-', array_slice(explode('-', $voice), 0, 2));
-        $ratePct  = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
-        $rateAttr = ($ratePct >= 0 ? '+' : '') . $ratePct . '%';
-        $escaped  = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $lang = implode('-', array_slice(explode('-', $voice), 0, 2));
+        $ratePct = (int) round(($speed - 1.0) * 100);   // 1.0 → +0%, 1.1 → +10%, etc.
+        $rateAttr = ($ratePct >= 0 ? '+' : '').$ratePct.'%';
+        $escaped = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         $ssml = <<<SSML
 <speak version="1.0" xml:lang="{$lang}">
@@ -170,29 +198,33 @@ SSML;
         try {
             $response = Http::withHeaders([
                 'Ocp-Apim-Subscription-Key' => $key,
-                'Content-Type'              => 'application/ssml+xml',
-                'X-Microsoft-OutputFormat'  => 'audio-24khz-48kbitrate-mono-mp3',
-                'User-Agent'                => 'TheLearningPortal',
+                'Content-Type' => 'application/ssml+xml',
+                'X-Microsoft-OutputFormat' => 'audio-24khz-48kbitrate-mono-mp3',
+                'User-Agent' => 'TheLearningPortal',
             ])
             // A full scene of narration is a minute or more of speech, and Azure streams it back as
             // it synthesises. From SiteGround that regularly ran past 25s with ~280 KB already
             // received, so every long scene failed with cURL 28 and silently lost its audio. The
             // connect timeout stays short — an unreachable endpoint should still fail fast.
-            ->timeout(180)
-            ->connectTimeout(5)
-            ->withBody($ssml, 'application/ssml+xml')
-            ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
+                ->timeout(180)
+                ->connectTimeout(5)
+                ->withBody($ssml, 'application/ssml+xml')
+                ->post("https://{$region}.tts.speech.microsoft.com/cognitiveservices/v1");
 
             if (! $response->successful()) {
-                Log::error('[Azure TTS] HTTP ' . $response->status() . ' (voice=' . $voice . '): ' . substr($response->body(), 0, 400));
+                Log::error('[Azure TTS] HTTP '.$response->status().' (voice='.$voice.'): '.substr($response->body(), 0, 400));
+
                 return null;
             }
 
             $this->generatedAudioExtension = 'mp3';
             $this->generatedProvider = 'azure';
+            $this->generatedVoice = $voice;
+
             return $response->body();
         } catch (\Throwable $e) {
-            Log::error('[Azure TTS] exception: ' . $e->getMessage());
+            Log::error('[Azure TTS] exception: '.$e->getMessage());
+
             return null;
         }
     }
@@ -206,6 +238,7 @@ SSML;
         $text = $this->prepareSpeechText($text);
         $this->generatedAudioExtension = 'mp3';
         $this->generatedProvider = null;
+        $this->generatedVoice = null;
         $timingData = null;
 
         // If the avatar explicitly chose edge_tts, try it first
@@ -222,12 +255,14 @@ SSML;
 
         if ($audioContent === null) {
             Log::error("TtsService: all providers failed for lesson {$lessonId}");
+
             return null;
         }
 
         $audioPath = "lessons/{$lessonId}/audio.{$this->generatedAudioExtension}";
 
         $this->lessonDisk()->put($audioPath, $audioContent);
+
         return $audioPath;
     }
 
@@ -244,6 +279,7 @@ SSML;
 
         $timingData = ['character_timings' => $result['alignment']];
         $this->generatedProvider = 'elevenlabs';
+        $this->generatedVoice = $voiceId;
 
         return $result['audio'];
     }
@@ -284,10 +320,11 @@ SSML;
 
             $this->generatedAudioExtension = 'mp3';   // server transcodes Piper WAV -> mp3
             $this->generatedProvider = 'piper';
+            $this->generatedVoice = $voice;
 
             return $response->body();
         } catch (\Throwable $e) {
-            Log::warning('[Piper TTS] failed: ' . $e->getMessage());
+            Log::warning('[Piper TTS] failed: '.$e->getMessage());
 
             return null;
         }
@@ -321,6 +358,7 @@ SSML;
             }
 
             $this->generatedProvider = 'pocket_tts';
+            $this->generatedVoice = $voiceId !== '' ? $voiceId : null;
 
             return $response->body();
         } catch (\Throwable) {
@@ -340,6 +378,7 @@ SSML;
     {
         try {
             Http::timeout(2)->get($baseUrl);
+
             return true;
         } catch (\Throwable $e) {
             return false;
@@ -362,26 +401,27 @@ SSML;
         $python = $this->pythonBinary();
 
         // Check if edge_tts module is available
-        $checkCmd = escapeshellcmd($python) . ' -c "import edge_tts" 2>/dev/null';
+        $checkCmd = escapeshellcmd($python).' -c "import edge_tts" 2>/dev/null';
         exec($checkCmd, $out, $rc);
         if ($rc !== 0) {
             Log::info('TtsService: edge-tts not installed, skipping. Run: pip install edge-tts');
+
             return null;
         }
 
         try {
-            $tempDir = sys_get_temp_dir() . '/tlp-tts';
+            $tempDir = sys_get_temp_dir().'/tlp-tts';
             if (! is_dir($tempDir)) {
                 @mkdir($tempDir, 0777, true);
             }
 
-            $outFile = $tempDir . '/' . uniqid('edge-', true) . '.mp3';
-            $errFile = $tempDir . '/' . uniqid('edge-err-', true) . '.log';
-            $scriptFile = $tempDir . '/' . uniqid('edge-script-', true) . '.py';
+            $outFile = $tempDir.'/'.uniqid('edge-', true).'.mp3';
+            $errFile = $tempDir.'/'.uniqid('edge-err-', true).'.log';
+            $scriptFile = $tempDir.'/'.uniqid('edge-script-', true).'.py';
 
             // Convert speed multiplier → percentage string: 0.92 → "-8%", 1.1 → "+10%"
             $ratePercent = (int) round(($speed - 1.0) * 100);
-            $rateStr     = ($ratePercent >= 0 ? "+{$ratePercent}%" : "{$ratePercent}%");
+            $rateStr = ($ratePercent >= 0 ? "+{$ratePercent}%" : "{$ratePercent}%");
 
             $pyScript = <<<PY
 import asyncio
@@ -421,7 +461,7 @@ PY;
                 Log::info('TtsService: no timeout binary (install coreutils for gtimeout); running edge-tts unwrapped.');
             }
             $runner = $timeoutBin !== null ? "{$timeoutBin} 55 {$wrappedPython}" : $wrappedPython;
-            $cmd = "({$runner} " . escapeshellarg($scriptFile) . ' 2>' . escapeshellarg($errFile) . ') || true';
+            $cmd = "({$runner} ".escapeshellarg($scriptFile).' 2>'.escapeshellarg($errFile).') || true';
             exec($cmd, $output, $exitCode);
             $stderr = file_exists($errFile) ? trim((string) file_get_contents($errFile)) : '';
             @unlink($scriptFile);
@@ -434,6 +474,7 @@ PY;
                     'stderr_tail' => $stderr !== '' ? substr($stderr, -300) : null,
                 ]);
                 @unlink($outFile);
+
                 return null;
             }
 
@@ -442,12 +483,15 @@ PY;
 
             $this->generatedAudioExtension = 'mp3';
             $this->generatedProvider = 'edge_tts';
+            $this->generatedVoice = $voice;
 
             Log::info("TtsService: edge-tts succeeded with voice {$voice}");
+
             return is_string($content) && strlen($content) > 100 ? $content : null;
 
         } catch (\Throwable $e) {
-            Log::error('TtsService::tryEdgeTts failed: ' . $e->getMessage());
+            Log::error('TtsService::tryEdgeTts failed: '.$e->getMessage());
+
             return null;
         }
     }
@@ -463,7 +507,7 @@ PY;
         }
 
         try {
-            $tempDir = sys_get_temp_dir() . '/thelearningportal-tts';
+            $tempDir = sys_get_temp_dir().'/thelearningportal-tts';
 
             if (! is_dir($tempDir)) {
                 @mkdir($tempDir, 0777, true);
@@ -474,15 +518,16 @@ PY;
                 return null;
             }
 
-            $m4aPath = $basePath . '.m4a';
+            $m4aPath = $basePath.'.m4a';
             @unlink($basePath);
 
-            $command = '/usr/bin/say -o ' . escapeshellarg($m4aPath) . ' ' . escapeshellarg($text);
+            $command = '/usr/bin/say -o '.escapeshellarg($m4aPath).' '.escapeshellarg($text);
             exec($command, $output, $exitCode);
 
             if ($exitCode !== 0 || ! file_exists($m4aPath)) {
                 Log::warning('TtsService: macOS say fallback failed');
                 @unlink($m4aPath);
+
                 return null;
             }
 
@@ -491,9 +536,9 @@ PY;
 
             // Prefer mp3 output for browser compatibility and waveform decoding when possible.
             if ($this->commandExists('ffmpeg')) {
-                $mp3Path = $basePath . '.mp3';
-                $convert = 'ffmpeg -y -i ' . escapeshellarg($m4aPath) . ' -codec:a libmp3lame -q:a 4 '
-                    . escapeshellarg($mp3Path) . ' >/dev/null 2>&1';
+                $mp3Path = $basePath.'.mp3';
+                $convert = 'ffmpeg -y -i '.escapeshellarg($m4aPath).' -codec:a libmp3lame -q:a 4 '
+                    .escapeshellarg($mp3Path).' >/dev/null 2>&1';
                 exec($convert, $ffOut, $ffCode);
 
                 if ($ffCode === 0 && file_exists($mp3Path) && filesize($mp3Path) > 100) {
@@ -519,10 +564,11 @@ PY;
             // this is exactly the downgrade that went unnoticed for months.
             Log::warning('[TTS] FELL BACK TO macOS `say` — the lesson narrator\'s voice was NOT used.');
             $this->generatedProvider = 'macos_say';
+            $this->generatedVoice = 'say';
 
             return $audioContent;
         } catch (\Throwable $e) {
-            Log::error('TtsService::tryMacosTts failed: ' . $e->getMessage());
+            Log::error('TtsService::tryMacosTts failed: '.$e->getMessage());
         }
 
         return null;
@@ -531,7 +577,9 @@ PY;
     private function tryOpenAiTts(string $text, string $voice): ?string
     {
         $apiKey = config('services.openai.api_key');
-        if (! $apiKey) return null;
+        if (! $apiKey) {
+            return null;
+        }
 
         try {
             $response = Http::timeout(60)
@@ -544,13 +592,14 @@ PY;
 
             if ($response->successful()) {
                 $this->generatedProvider = 'openai';
+                $this->generatedVoice = $voice;
 
                 return $response->body();
             }
 
             Log::error('TtsService OpenAI error', ['status' => $response->status()]);
         } catch (\Exception $e) {
-            Log::error('TtsService::tryOpenAiTts failed: ' . $e->getMessage());
+            Log::error('TtsService::tryOpenAiTts failed: '.$e->getMessage());
         }
 
         return null;
@@ -559,15 +608,16 @@ PY;
     private function commandExists(string $command): bool
     {
         exec("command -v {$command} 2>/dev/null", $out, $rc);
+
         return $rc === 0;
     }
 
     private function pythonModuleAvailable(string $python, string $module): bool
     {
         $command = escapeshellcmd($python)
-            . ' -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('
-            . var_export($module, true)
-            . ') else 1)" 2>/dev/null';
+            .' -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('
+            .var_export($module, true)
+            .') else 1)" 2>/dev/null';
 
         exec($command, $out, $rc);
 
@@ -583,10 +633,10 @@ PY;
 
     private function pythonStringLiteral(string $value): string
     {
-        return "'" . str_replace(
-            ["\\", "'"],
-            ["\\\\", "\\'"],
+        return "'".str_replace(
+            ['\\', "'"],
+            ['\\\\', "\\'"],
             $value
-        ) . "'";
+        )."'";
     }
 }

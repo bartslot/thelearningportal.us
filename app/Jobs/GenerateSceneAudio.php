@@ -8,8 +8,8 @@ use App\Jobs\Concerns\MarksSceneReady;
 use App\Models\Scene;
 use App\Services\Support\NarrationTiming;
 use App\Services\Support\NarrationVoice;
-use App\Services\Support\ScriptLanguage;
 use App\Services\Support\PronunciationLexicon;
+use App\Services\Support\ScriptLanguage;
 use App\Services\TtsService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -23,9 +23,10 @@ use Throwable;
 
 class GenerateSceneAudio implements ShouldQueue
 {
-    use Dispatchable, Batchable, InteractsWithQueue, Queueable, SerializesModels, MarksSceneReady;
+    use Batchable, Dispatchable, InteractsWithQueue, MarksSceneReady, Queueable, SerializesModels;
 
-    public int $tries   = 3;
+    public int $tries = 3;
+
     public int $timeout = 120;
 
     public function __construct(public readonly int $sceneId) {}
@@ -40,12 +41,12 @@ class GenerateSceneAudio implements ShouldQueue
         $scene = Scene::with('lesson.avatar')->findOrFail($this->sceneId);
 
         try {
-            $avatar  = $scene->lesson->avatar;
-            $script  = (string) ($scene->script_segment ?? '');
-            $text    = $tts->prepareSpeechText($script);
+            $avatar = $scene->lesson->avatar;
+            $script = (string) ($scene->script_segment ?? '');
+            $text = $tts->prepareSpeechText($script);
             // Spoken-form fixes only ("limes" → "liemes" for Dutch voices) — the on-screen
             // script keeps the correct written form.
-            $text    = PronunciationLexicon::apply($text, $scene->lesson->teacher?->locale);
+            $text = PronunciationLexicon::apply($text, $scene->lesson->teacher?->locale);
 
             // Temporary global override (e.g. ElevenLabs → Azure backup) wins over the avatar's
             // provider. A non-ElevenLabs backup can't use the avatar's ElevenLabs voice_id, so the
@@ -76,9 +77,9 @@ class GenerateSceneAudio implements ShouldQueue
             // Note this is the opposite priority to LessonScriptPrompt::contentLanguage, which asks
             // a different question: what language should we WRITE the next lesson in. That one
             // rightly follows the teacher's teaching language.
-            $teacher  = $scene->lesson->teacher;
-            $locale   = ScriptLanguage::detect($text, $teacher?->teachingLocale() ?? 'en');
-            $voiceId  = match (true) {
+            $teacher = $scene->lesson->teacher;
+            $locale = ScriptLanguage::detect($text, $teacher?->teachingLocale() ?? 'en');
+            $voiceId = match (true) {
                 // Self-hosted Piper: pick the voice by language (Dutch pim, English ryan) so an
                 // English lesson isn't narrated in a Dutch accent.
                 $provider === 'piper' => NarrationVoice::piper($locale),
@@ -90,8 +91,19 @@ class GenerateSceneAudio implements ShouldQueue
                 default => $avatar?->voiceFor($locale) ?? '',
             };
 
-            $timing  = null;
-            $audio   = $tts->generateAudioRaw(
+            // A lesson with no narrator at all resolves to an empty voice id. Sent down the chain
+            // that way it used to reach tryAzure's old en-US default, so a FRENCH lesson came back
+            // read by an American voice. There is no ElevenLabs voice to use without a narrator,
+            // so route it to Azure deliberately, on the native voice for the language it is
+            // actually written in.
+            if ($voiceId === '') {
+                $provider = 'azure';
+                $voiceId = NarrationVoice::azure($locale);
+                Log::info("[Narration] scene {$scene->id}: lesson names no narrator; using the native {$locale} voice {$voiceId}.");
+            }
+
+            $timing = null;
+            $audio = $tts->generateAudioRaw(
                 $text,
                 $voiceId,
                 (float) ($avatar?->voice_speed ?? 1.0),
@@ -102,7 +114,7 @@ class GenerateSceneAudio implements ShouldQueue
                 throw new \RuntimeException('TTS service returned no audio.');
             }
 
-            $ext  = $tts->lastExtension();
+            $ext = $tts->lastExtension();
             $path = "lessons/{$scene->lesson_id}/scenes/{$scene->id}/narration.{$ext}";
             Storage::disk('public')->put($path, $audio);
 
@@ -124,16 +136,17 @@ class GenerateSceneAudio implements ShouldQueue
             $this->warnIfDowngraded($scene, $provider, $actualProvider, $voiceId, $narrationTiming);
 
             $scene->update([
-                'audio_path'        => $path,
-                'audio_alignment'   => $narrationTiming->toArray(),
+                'audio_path' => $path,
+                'audio_alignment' => $narrationTiming->toArray(),
                 'audio_script_hash' => sha1($script),
                 // The language this audio is actually IN, so nothing downstream has to infer it.
-                'audio_locale'      => $locale,
+                'audio_locale' => $locale,
                 // ...and WHO actually read it, so a silent downgrade to a robot voice is a fact on
                 // the row rather than something you have to hear to discover.
-                'audio_provider'    => $actualProvider,
-                'audio_voice'       => $voiceId !== '' ? $voiceId : null,
-                'duration_seconds'  => (int) ceil($duration),
+                'audio_provider' => $actualProvider,
+                // The voice that SPOKE, from the service, not the one this job asked for.
+                'audio_voice' => $tts->lastVoice() ?: ($voiceId !== '' ? $voiceId : null),
+                'duration_seconds' => (int) ceil($duration),
             ]);
 
             $this->maybeMarkReady($scene->fresh());
@@ -174,8 +187,8 @@ class GenerateSceneAudio implements ShouldQueue
 
         Log::warning(
             "[Narration] scene {$scene->id} DOWNGRADED: asked for {$requested}"
-            . ($voiceId !== '' ? " (voice {$voiceId})" : '')
-            . " but the audio came from {$actual}. The narrator's voice was not used."
+            .($voiceId !== '' ? " (voice {$voiceId})" : '')
+            ." but the audio came from {$actual}. The narrator's voice was not used."
         );
 
         $scene->forceFill([
