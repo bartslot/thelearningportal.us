@@ -122,6 +122,36 @@ return [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // ── Stripe (teachers buy narration credits) ───────────────────────────────
+    //
+    // Hosted Checkout only: no card number ever reaches this server, and Dutch teachers get iDEAL
+    // without us building it. Both keys live in .env and nowhere else — a test key starts sk_test_.
+    //
+    // The webhook secret is what makes App\Http\Controllers\Billing\StripeWebhookController trust a
+    // request at all. Without it the endpoint would credit an account for anyone who could POST to
+    // it, so it refuses to run unsigned.
+    'stripe' => [
+        // STRIPE_SECRET_KEY is the name actually used in .env here and on prod. STRIPE_SECRET is
+        // kept as a fallback because it is what Cashier and most Laravel examples call it, and a
+        // silent null here would send every API call out unauthenticated.
+        'secret' => env('STRIPE_SECRET_KEY', env('STRIPE_SECRET')),
+
+        // A THIRD value, and not the same thing as the secret key: Stripe generates it per webhook
+        // endpoint, so it only exists once the endpoint has been created in the dashboard.
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+
+        // Not used yet. Hosted Checkout is a redirect, so nothing on our pages talks to Stripe from
+        // the browser. It is here for the day an embedded or in-page payment form needs Stripe.js.
+        'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
+
+        // Work the VAT out per country and show it inside the 5 euro (see NarrationCreditPack).
+        // Costs 0.5% per transaction; turning it off means calculating and filing OSS by hand.
+        'automatic_tax' => filter_var(env('STRIPE_AUTOMATIC_TAX', true), FILTER_VALIDATE_BOOLEAN),
+
+        // Let a school enter its VAT number, which reverse-charges the sale.
+        'collect_tax_id' => filter_var(env('STRIPE_COLLECT_TAX_ID', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
     // ── Image search (lesson slideshow backgrounds) ───────────────────────────
 
     'europeana' => [

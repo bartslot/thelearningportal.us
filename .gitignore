@@ -72,3 +72,7 @@ tests/playwright/report/
 # Throwaway visual comparison built by scripts/… for judging background optimisation by eye.
 /public/bg-compare
 /public/image-archive
+
+# Agent skill packs installed by `npx skills add` (e.g. Stripe's own docs). Tooling for whoever
+# installed them, not project source, and re-installable in one command.
+/.agents

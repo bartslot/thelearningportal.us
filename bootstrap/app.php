@@ -33,6 +33,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // untrusted (see the score clamp in QuizLeaderboardController).
         $middleware->validateCsrfTokens(except: [
             'lesson/*/quiz-score',
+
+            // Stripe posts from its own servers, so there is no session and no token to send. What
+            // replaces CSRF here is the signature check in StripeWebhookController, which verifies
+            // every request against STRIPE_WEBHOOK_SECRET and refuses anything it cannot verify.
+            // Without this exemption every webhook 419s and no teacher ever receives their credits.
+            'stripe/webhook',
         ]);
 
         $middleware->prependToPriorityList(

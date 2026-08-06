@@ -140,6 +140,14 @@ Route::post('/lesson/{lessonCode}/quiz-score', [\App\Http\Controllers\QuizLeader
 // the student player, both of which load the map unauthenticated.
 Route::get('/map/historical-cities.geojson', HistoricalCitiesController::class)->name('map.historical-cities');
 
+// ── Stripe (narration credits) ───────────────────────────────────────────────
+//
+// The only thing that grants credit. Stripe posts here from its own servers, so there is no
+// session and no CSRF token to have — the exemption is in bootstrap/app.php, and what takes its
+// place is the signature check in the controller, which refuses anything it cannot verify.
+Route::post('/stripe/webhook', \App\Http\Controllers\Billing\StripeWebhookController::class)
+    ->name('stripe.webhook');
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 Route::middleware('guest')->group(function () {
@@ -354,6 +362,10 @@ Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])
             'Content-Disposition' => 'inline; filename="spelpakket-'.$lesson->lesson_code.'.pdf"',
         ]);
     })->name('lessons.print.game-pack');
+
+    // Buy narration credits. Inside this group on purpose: RestrictGuestDemo only lets a demo
+    // guest reach the wizard, so a throwaway account gets a 403 here rather than a payment screen.
+    Route::get('/credits', \App\Livewire\Teacher\BuyCredits::class)->name('credits.index');
 
     // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
     Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');

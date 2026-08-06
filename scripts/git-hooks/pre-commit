@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# Refuse a commit that carries a live API key.
+#
+# Key exposure in a repository is the leading cause of Stripe API key takeover, and this repo is a
+# soft target for it: several agent sessions commit into it at once, each running `git add` against
+# a tree they did not fully write. `.env` is ignored, but a key pasted into a config file, a test
+# fixture or a debug script is not.
+#
+# Install (once per clone; hooks live in .git and are not themselves version-controlled):
+#
+#   git config core.hooksPath scripts/git-hooks
+#
+# That makes it apply to every worktree of this repo at the same time.
+#
+# BLOCKS on live credentials only, so it cannot cry wolf: sk_live_, rk_live_ and pk_live_ are
+# never legitimately in source. Test keys and webhook secrets only WARN — sk_test_ appears in
+# perfectly good test fixtures, and a blocking rule people learn to bypass with --no-verify
+# protects nothing.
+#
+# Bypass deliberately with:  git commit --no-verify
+
+set -uo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+live_hits=""
+test_hits=""
+
+while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    # Only the added lines: an existing line is already committed, and re-flagging it would make
+    # every later commit in that file impossible to land.
+    added=$(git diff --cached -U0 -- "$file" | grep '^+' | grep -v '^+++' || true)
+    [ -z "$added" ] && continue
+
+    if hit=$(printf '%s\n' "$added" | grep -oE '(sk|rk|pk)_live_[A-Za-z0-9]{8,}' | head -1); then
+        [ -n "$hit" ] && live_hits="${live_hits}  ${file}: ${hit:0:14}…\n"
+    fi
+    if hit=$(printf '%s\n' "$added" | grep -oE '(sk|rk)_test_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}' | head -1); then
+        [ -n "$hit" ] && test_hits="${test_hits}  ${file}: ${hit:0:12}…\n"
+    fi
+done <<< "$staged"
+
+if [ -n "$test_hits" ]; then
+    printf '\n\033[33mWarning: what looks like a TEST key or webhook secret is being committed:\033[0m\n'
+    printf "$test_hits"
+    printf 'Test keys in source are risky habit-forming practice. Prefer .env.\n\n'
+fi
+
+if [ -n "$live_hits" ]; then
+    printf '\n\033[31mBLOCKED: a LIVE credential is in this commit.\033[0m\n'
+    printf "$live_hits"
+    printf '\nRoll it now at https://dashboard.stripe.com/apikeys — assume it is already compromised,\n'
+    printf 'even if the commit never leaves this machine. Then move the value into .env.\n\n'
+    exit 1
+fi
+
+exit 0

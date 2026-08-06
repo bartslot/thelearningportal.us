@@ -20,10 +20,11 @@ use App\Models\City;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\StrategyGame;
+use App\Services\Billing\NarrationCreditLedger;
+use App\Support\NarrationBudget;
 use App\Support\PolityCapitals;
 use App\Support\PortraitFocus;
 use App\Support\SafeOutboundUrl;
-use App\Support\NarrationBudget;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -4931,24 +4932,65 @@ class Step3SceneConfigurator extends Component
         // Editing narration is the one keystroke in this app that becomes an ElevenLabs invoice, so
         // a lesson has an allowance for it — see App\Support\NarrationBudget. Only the CHANGE is
         // charged: fixing a typo costs about a character, not the length of the paragraph.
+        //
+        // Charged BEFORE the save, because charge() is also what decides. It checks and takes the
+        // characters in one locked step, so two panels autosaving at once cannot both read the same
+        // balance and both spend it. False means the teacher has run out and nothing was taken.
         $scene = $this->lesson->scenes()->find($this->selectedSceneId);
         $before = (string) ($scene?->script_segment ?? '');
         $after = trim($text);
         $cost = NarrationBudget::costOfEdit($before, $after);
 
-        if (! NarrationBudget::canAfford($this->lesson, $before, $after)) {
-            $this->dispatch('toast', type: 'warning', message: __(
-                'You have used this lesson\'s :total characters of script editing. Add credits to keep editing.',
-                ['total' => NarrationBudget::allowanceFor($this->lesson)],
-            ));
+        if (! NarrationBudget::charge($this->lesson, $cost)) {
+            $this->warnBudgetSpent();
 
             return;   // the edit is refused, so nothing is charged and nothing is re-narrated
         }
 
         $this->selectedScene['script_segment'] = $after;
         $this->saveSelected();
-        // Charged only once the save has gone through — a refused or failed save costs nothing.
-        NarrationBudget::charge($this->lesson, $cost);
+    }
+
+    /**
+     * Tell the teacher the allowance is gone, and where to get more.
+     *
+     * A demo guest is sent somewhere else entirely: they cannot buy credits (the buy screen is
+     * behind RestrictGuestDemo, like every other teacher route), so offering them the button would
+     * be a link to a 403.
+     */
+    private function warnBudgetSpent(): void
+    {
+        $total = NarrationBudget::allowanceFor($this->lesson);
+
+        if (auth()->user()?->isGuestDemo()) {
+            $this->dispatch('toast', type: 'warning', message: __(
+                'This demo includes :total characters of script editing, and they are used up. An account of your own can buy more.',
+                ['total' => $total],
+            ));
+
+            return;
+        }
+
+        // A teacher whose credits ran out of time needs telling THAT, not "you have used them" —
+        // they did not use them, and being told they did is how a support ticket starts.
+        $expired = app(NarrationCreditLedger::class)
+            ->expiredBatchesFor((int) $this->lesson->teacher_id)
+            ->sum('characters');
+
+        $message = $expired > 0
+            ? __(':count of your credits ran out and can no longer be spent.', ['count' => number_format((int) $expired)])
+            : __(
+                'You have used this lesson\'s :total characters of script editing. Add credits to keep editing.',
+                ['total' => $total],
+            );
+
+        $this->dispatch(
+            'toast',
+            type: 'warning',
+            message: $message,
+            duration: 9000,
+            action: ['label' => __('Add credits'), 'event' => 'billing:buy-credits'],
+        );
     }
 
     /**
