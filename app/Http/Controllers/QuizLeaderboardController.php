@@ -52,7 +52,16 @@ class QuizLeaderboardController extends Controller
             'answers.*.asks_ahead' => ['sometimes', 'boolean'],
             'class_code' => ['sometimes', 'nullable', 'string', 'max:12'],
             'member_name' => ['required_with:class_code', 'nullable', 'string', 'min:2', 'max:40'],
+            // Which quiz scene this run belongs to, so several quizzes in one lesson add up for the
+            // same player instead of inventing a new one each time. Optional: older clients omit it.
+            'quiz_scene_id' => ['sometimes', 'nullable', 'integer'],
         ]);
+
+        // Only a quiz scene of THIS lesson counts. A foreign id would let one lesson's board be
+        // written from another's, and an unknown id would silently create a phantom entry.
+        $sceneId = filled($data['quiz_scene_id'] ?? null)
+            ? $lesson->scenes()->whereKey((int) $data['quiz_scene_id'])->value('id')
+            : null;
 
         // DELIBERATE TRADE-OFF: quiz grading happens client-side — correct_index ships to the
         // browser with the questions (see the quiz_questions payload in lesson/player.blade.php).
@@ -92,18 +101,42 @@ class QuizLeaderboardController extends Controller
             $memberId = $member->id;
         }
 
-        $entry = QuizScore::create([
-            'lesson_id' => $lesson->id,
-            'nickname' => strip_tags(trim($data['nickname'])),
-            'classroom_member_id' => $memberId,
-            'score' => $score,
-            'correct' => $correct,
-            'total' => (int) $data['total'],
-            'integrity' => collect($data['integrity'] ?? [])
-                ->only(['avg_ms', 'rapid_guesses', 'same_letter_streak', 'focus_drops'])
-                ->map(fn ($value) => (int) $value)
-                ->all() ?: null,
-        ]);
+        $nickname = strip_tags(trim($data['nickname']));
+
+        // ONE ROW PER PLAYER PER QUIZ SCENE.
+        //
+        // A lesson holds several quiz scenes, and QuizOverlay resets its running score to zero at
+        // each one, so the same child submits two or three times under the same name. Creating a row
+        // per submission made them two or three PLAYERS with partial scores, and the board read like
+        // strangers had each done half the work.
+        //
+        // Keyed on the scene, so answering the second quiz ADDS a row while retrying the first
+        // REPLACES its own — otherwise replaying a lesson would inflate a score without limit, which
+        // in a classroom competition is the same as breaking it. The board then sums the rows.
+        //
+        // A submission with no scene (older client, or a lesson whose quiz is not scene-scoped)
+        // falls back to one row for the whole lesson, which is the behaviour those clients expect.
+        $entry = QuizScore::updateOrCreate(
+            [
+                'lesson_id' => $lesson->id,
+                'quiz_scene_id' => $sceneId,
+            ] + $this->playerKey($nickname, $memberId),
+            [
+                'nickname' => $nickname,
+                'classroom_member_id' => $memberId,
+                'score' => $score,
+                'correct' => $correct,
+                'total' => (int) $data['total'],
+                'integrity' => collect($data['integrity'] ?? [])
+                    ->only(['avg_ms', 'rapid_guesses', 'same_letter_streak', 'focus_drops'])
+                    ->map(fn ($value) => (int) $value)
+                    ->all() ?: null,
+            ],
+        );
+
+        // A retry replaces this scene's answers as well as its score, or the teacher's report would
+        // show both attempts as if the child had answered twice as many questions.
+        $entry->answers()->delete();
 
         foreach (array_values($data['answers'] ?? []) as $answer) {
             \App\Models\QuizAnswer::create([
@@ -118,17 +151,73 @@ class QuizLeaderboardController extends Controller
             ]);
         }
 
-        // Rank = players strictly ahead + 1 (ties share the better rank; earlier entry wins).
-        $rank = QuizScore::where('lesson_id', $lesson->id)
-            ->where(fn ($query) => $query
-                ->where('score', '>', $entry->score)
-                ->orWhere(fn ($tie) => $tie->where('score', $entry->score)->where('id', '<', $entry->id)))
-            ->count() + 1;
+        // Rank against TOTALS, not against this one quiz. Ranking a partial score among other
+        // players' totals put a child near the bottom the moment they finished the first quiz.
+        $totals = $this->playerTotals($lesson);
+        $mine = $this->identityFor($nickname, $memberId);
+        $myTotal = $totals[$mine]['score'] ?? $entry->score;
+        $rank = collect($totals)->filter(fn ($row, $key) => $row['score'] > $myTotal)->count() + 1;
 
         return response()->json($this->leaderboardPayload($lesson) + [
             'rank' => $rank,
             'entry_id' => $entry->id,
+            'total_score' => $myTotal,
         ], 201);
+    }
+
+    /**
+     * How a player is recognised again on their next quiz.
+     *
+     * A roster member is the same person whatever they type; otherwise it is the nickname, matched
+     * case-insensitively, because a child who types "Sanne" and then "sanne" is one child and cannot
+     * see or fix the difference.
+     *
+     * @return array<string,mixed>
+     */
+    private function playerKey(string $nickname, ?int $memberId): array
+    {
+        return $memberId !== null
+            ? ['classroom_member_id' => $memberId]
+            : ['nickname' => $nickname];
+    }
+
+    private function identityFor(?string $nickname, ?int $memberId): string
+    {
+        return $memberId !== null ? "member:{$memberId}" : 'nick:'.mb_strtolower(trim((string) $nickname));
+    }
+
+    /**
+     * Each player's summed score across every quiz scene in the lesson.
+     *
+     * Summed at read time rather than kept in a running column: the per-scene rows stay intact for
+     * the teacher's report, which reads answers off individual runs and would lose which quiz a
+     * mistake belonged to if they were collapsed.
+     *
+     * @return array<string, array{nickname:string, score:int, correct:int, total:int, first_id:int, integrity:mixed}>
+     */
+    private function playerTotals(Lesson $lesson): array
+    {
+        return QuizScore::where('lesson_id', $lesson->id)
+            ->orderBy('id')
+            ->get(['id', 'nickname', 'classroom_member_id', 'score', 'correct', 'total', 'integrity'])
+            ->reduce(function (array $carry, QuizScore $row): array {
+                $key = $this->identityFor($row->nickname, $row->classroom_member_id);
+
+                $carry[$key] ??= [
+                    'nickname' => $row->nickname,
+                    'score' => 0, 'correct' => 0, 'total' => 0,
+                    'first_id' => $row->id,
+                    'integrity' => null,
+                ];
+                $carry[$key]['score'] += (int) $row->score;
+                $carry[$key]['correct'] += (int) $row->correct;
+                $carry[$key]['total'] += (int) $row->total;
+                // Keep the worst-looking integrity reading rather than the newest: a teacher wants
+                // to know a run was odd, and the last quiz being clean does not undo the first.
+                $carry[$key]['integrity'] = $row->integrity ?? $carry[$key]['integrity'];
+
+                return $carry;
+            }, []);
     }
 
     private function playableLesson(string $lessonCode): Lesson
@@ -144,19 +233,23 @@ class QuizLeaderboardController extends Controller
         // Integrity flags are teacher-eyes only: never on the public board, never to students.
         $isOwningTeacher = (bool) auth()->user()?->canManage($lesson);
 
-        $top = QuizScore::where('lesson_id', $lesson->id)
-            ->orderByDesc('score')
-            ->orderBy('id')
-            ->limit(self::TOP_N)
-            ->get(['nickname', 'score', 'correct', 'total', 'integrity'])
-            ->map(fn (QuizScore $row) => [
-                'nickname' => $row->nickname,
-                'score' => $row->score,
-                'correct' => $row->correct,
-                'total' => $row->total,
-            ] + ($isOwningTeacher ? ['integrity' => $row->integrity] : []))
+        // Totals per player, not per submission. A lesson with two quiz scenes used to list the same
+        // child twice with half a score each.
+        $totals = $this->playerTotals($lesson);
+
+        $top = collect($totals)
+            ->sortBy([['score', 'desc'], ['first_id', 'asc']])   // ties go to whoever got there first
+            ->take(self::TOP_N)
+            ->values()
+            ->map(fn (array $row) => [
+                'nickname' => $row['nickname'],
+                'score' => $row['score'],
+                'correct' => $row['correct'],
+                'total' => $row['total'],
+            ] + ($isOwningTeacher ? ['integrity' => $row['integrity']] : []))
             ->all();
 
-        return ['top' => $top, 'players' => QuizScore::where('lesson_id', $lesson->id)->count()];
+        // Players, not runs. Counting rows told a teacher eleven children had played when six had.
+        return ['top' => $top, 'players' => count($totals)];
     }
 }

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class QuizScore extends Model
 {
     protected $fillable = [
-        'lesson_id', 'nickname', 'classroom_member_id', 'score',
+        'lesson_id', 'quiz_scene_id', 'nickname', 'classroom_member_id', 'score',
         'correct', 'total', 'integrity', 'source',
     ];
 

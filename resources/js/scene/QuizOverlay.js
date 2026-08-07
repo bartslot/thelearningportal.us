@@ -154,7 +154,7 @@ export class QuizOverlay {
 
   get isVisible() { return this._questions.length > 0 }
 
-  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false, shuffleMode = 'per_player' }) {
+  show({ questions, onComplete = null, submitUrl = null, leaderboardUrl = null, hasClassroom = false, shuffleMode = 'per_player', quizSceneId = null }) {
     this._questions = Array.isArray(questions) ? questions.filter(q => q?.question) : []
     this._index = 0
     this._answered = new Map()
@@ -162,6 +162,10 @@ export class QuizOverlay {
     this._streak = 0
     this._onComplete = onComplete
     this._submitUrl = submitUrl
+    // Which quiz scene this run is. The score resets to zero at every quiz, so the server
+    // needs to know WHICH one it is being told about — otherwise a lesson's second quiz is
+    // indistinguishable from a retry of the first, and one of them has to be wrong.
+    this._quizSceneId = quizSceneId
     this._leaderboardUrl = leaderboardUrl
     this._hasClassroom = hasClassroom
     this._classCode = (() => { try { return localStorage.getItem('lp_class_code') || '' } catch { return '' } })()
@@ -640,6 +644,7 @@ export class QuizOverlay {
           headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
           body: JSON.stringify({
             nickname, score: this._score, correct, total,
+            quiz_scene_id: this._quizSceneId,
             integrity: this._integritySummary(),
             answers: this._responses.map(r => r.snapshot).filter(Boolean),
             class_code: this._classCode || null,
