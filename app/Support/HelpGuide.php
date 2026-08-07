@@ -281,7 +281,7 @@ final class HelpGuide
                         'body' => __('Your top bar carries two entries ordinary teachers do not see.'),
                         'steps' => [
                             __('Dashboard: the admin overview, with the narrator count and a way into every lesson.'),
-                            __('Avatar Studio: the narrators teachers can choose in the wizard.'),
+                            __('Narrator Studio: the narrators teachers can choose in the wizard.'),
                         ],
                     ],
                     [
@@ -293,9 +293,9 @@ final class HelpGuide
                 'link' => ['label' => __('Open the admin dashboard'), 'route' => 'admin.dashboard'],
             ],
             [
-                'id' => 'admin-avatars',
+                'id' => 'admin-narrators',
                 'audience' => 'admin',
-                'title' => __('Narrators and the Avatar Studio'),
+                'title' => __('The Narrator Studio'),
                 'icon' => 'user-circle',
                 'summary' => __('The historical figures who tell the stories: their portrait, their voice, and whether teachers can pick them.'),
                 'sections' => [
@@ -310,7 +310,7 @@ final class HelpGuide
                         'steps' => [],
                     ],
                 ],
-                'link' => ['label' => __('Open the Avatar Studio'), 'route' => 'admin.avatars.index'],
+                'link' => ['label' => __('Open the Narrator Studio'), 'route' => 'admin.narrators.index'],
             ],
             [
                 'id' => 'admin-stories',
@@ -387,9 +387,9 @@ final class HelpGuide
                 'keywords' => __('map atlas borders year world geography'),
             ],
             [
-                'label' => __('Avatar Studio'),
+                'label' => __('Narrator Studio'),
                 'description' => __('The narrators teachers can pick, their portraits and voices.'),
-                'route' => 'admin.avatars.index',
+                'route' => 'admin.narrators.index',
                 'icon' => 'user-circle',
                 'keywords' => __('narrator voice portrait avatar figure admin'),
                 'audience' => 'admin',

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
-use App\Models\Avatar;
+use App\Models\Narrator;
 use App\Services\VideoTranscoder;
 use App\Support\UploadLimit;
 use Illuminate\Support\Facades\Storage;
@@ -14,7 +14,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
-class CreateAvatar extends Component
+class CreateNarrator extends Component
 {
     use WithFileUploads;
 
@@ -76,7 +76,7 @@ class CreateAvatar extends Component
             'voice_provider' => ['required', Rule::in(['elevenlabs', 'edge_tts'])],
             // Only the chosen provider's field is required, so switching provider cannot leave the
             // form stuck on a validation error for a field the teacher can no longer see.
-            'voice_id' => [Rule::requiredIf($this->voice_provider === 'edge_tts'), Rule::in(array_keys(Avatar::edgeTtsVoices()))],
+            'voice_id' => [Rule::requiredIf($this->voice_provider === 'edge_tts'), Rule::in(array_keys(Narrator::edgeTtsVoices()))],
             'elevenlabs_voice_id' => [
                 Rule::requiredIf($this->voice_provider === 'elevenlabs'),
                 'nullable', 'string', 'regex:/^[A-Za-z0-9]{20}$/',
@@ -152,16 +152,16 @@ class CreateAvatar extends Component
         $this->validate(array_intersect_key($rules, array_flip($fields)));
     }
 
-    public function createAvatar()
+    public function createNarrator()
     {
         $validated = $this->validate();
         $slug = $this->uniqueSlug($validated['name']);
         $portraitPath = $this->portrait->store('avatars/portraits', 'public');
         $introVideoPath = null;
-        $avatar = null;
+        $narrator = null;
 
         try {
-            $avatar = Avatar::create([
+            $narrator = Narrator::create([
                 'name' => $validated['name'],
                 'short_name' => $validated['short_name'] ?: null,
                 'avatar_title' => $validated['avatar_title'] ?: null,
@@ -174,7 +174,7 @@ class CreateAvatar extends Component
                 'voice_speed' => $validated['voice_speed'],
                 'voice_pitch' => 1.0,
                 'is_active' => $validated['is_active'],
-                'sort_order' => (int) Avatar::max('sort_order') + 1,
+                'sort_order' => (int) Narrator::max('sort_order') + 1,
                 'presentation_mode' => 'framed',
             ]);
 
@@ -183,15 +183,15 @@ class CreateAvatar extends Component
                 // leaves here as 720p H.264 in an MP4, so the stored extension would otherwise be a
                 // lie. VideoTranscoder keeps the original bytes untouched if it cannot do that.
                 $introVideoPath = $this->intro_video->storeAs(
-                    "avatar-introductions/{$avatar->id}",
+                    "avatar-introductions/{$narrator->id}",
                     'introduction.mp4',
                     'public'
                 );
                 VideoTranscoder::make()->transcodeStored($introVideoPath);
-                $avatar->update(['intro_video_path' => $introVideoPath]);
+                $narrator->update(['intro_video_path' => $introVideoPath]);
             }
         } catch (\Throwable $exception) {
-            $avatar?->forceDelete();
+            $narrator?->forceDelete();
             Storage::disk('public')->delete($portraitPath);
             if ($introVideoPath) {
                 Storage::disk('public')->delete($introVideoPath);
@@ -199,18 +199,18 @@ class CreateAvatar extends Component
             throw $exception;
         }
 
-        session()->flash('success', "{$avatar->name} was created. You can fine-tune the narrator in the Studio.");
+        session()->flash('success', "{$narrator->name} was created. You can fine-tune the narrator in the Studio.");
 
-        return $this->redirectRoute('admin.avatars.studio', $avatar, navigate: true);
+        return $this->redirectRoute('admin.narrators.studio', $narrator, navigate: true);
     }
 
     #[Computed]
     public function voices(): array
     {
-        $featured = Avatar::edgeTtsFeatured();
+        $featured = Narrator::edgeTtsFeatured();
 
         return array_values(array_filter(
-            Avatar::edgeTtsCatalog(),
+            Narrator::edgeTtsCatalog(),
             fn (array $voice): bool => in_array($voice['id'], $featured, true)
         ));
     }
@@ -221,7 +221,7 @@ class CreateAvatar extends Component
         $slug = $base;
         $suffix = 2;
 
-        while (Avatar::withTrashed()->where('slug', $slug)->exists()) {
+        while (Narrator::withTrashed()->where('slug', $slug)->exists()) {
             $slug = $base.'-'.$suffix++;
         }
 
@@ -230,7 +230,7 @@ class CreateAvatar extends Component
 
     public function render()
     {
-        return view('livewire.admin.create-avatar')
-            ->layout('components.layouts.app', ['title' => 'Add avatar']);
+        return view('livewire.admin.create-narrator')
+            ->layout('components.layouts.app', ['title' => 'Add narrator']);
     }
 }

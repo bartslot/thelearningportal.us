@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'temporary_file_upload' => [
-        // Avatar introduction videos pass through Livewire's temporary endpoint
+        // Narrator introduction videos pass through Livewire's temporary endpoint
         // before component validation, so this must match the advertised limit.
         'rules' => ['required', 'file', 'max:51200'],
         'preview_mimes' => [

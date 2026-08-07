@@ -109,9 +109,9 @@ return [
 
     'tts' => [
         // TEMPORARY global override for lesson narration (GenerateSceneAudio). Leave blank for the
-        // normal per-avatar provider (ElevenLabs by default). Set to 'azure' (our backup) to route
+        // normal per-narrator provider (ElevenLabs by default). Set to 'azure' (our backup) to route
         // all narration off ElevenLabs without editing avatars — revert by clearing the env var.
-        // When the override is a non-ElevenLabs provider, the avatar's ElevenLabs voice_id is not
+        // When the override is a non-ElevenLabs provider, the narrator's ElevenLabs voice_id is not
         // valid for it, so override_voice supplies a provider-native voice (blank → provider default,
         // e.g. Azure's en-US-GuyNeural).
         'provider_override' => env('TTS_PROVIDER_OVERRIDE'),

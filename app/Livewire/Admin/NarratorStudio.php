@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
-use App\Models\Avatar;
-use App\Models\AvatarVoiceSample;
+use App\Models\Narrator;
+use App\Models\NarratorVoiceSample;
 use App\Services\ElevenLabsService;
 use App\Services\TtsService;
 use Illuminate\Support\Facades\Log;
@@ -16,11 +16,11 @@ use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
-class AvatarStudio extends Component
+class NarratorStudio extends Component
 {
     use WithFileUploads;
 
-    public Avatar $avatar;
+    public Narrator $narrator;
 
     // ── Editable settings ─────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ class AvatarStudio extends Component
     public ?string $flashMessage  = null;
     public bool $flashError       = false;
 
-    // ── Portrait image upload (just the picture — avatars are image + ElevenLabs voice) ──
+    // ── Portrait image upload (just the picture — a narrator is an image plus an ElevenLabs voice) ──
     #[Validate('nullable|image|max:4096')]
     public $portraitUpload = null;
 
@@ -79,29 +79,29 @@ class AvatarStudio extends Component
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    public function mount(Avatar $avatar): void
+    public function mount(Narrator $narrator): void
     {
-        $this->avatar = $avatar;
+        $this->narrator = $narrator;
 
-        $this->name          = $avatar->name;
-        $this->short_name    = $avatar->short_name    ?? '';
-        $this->avatar_title  = $avatar->avatar_title  ?? '';
-        $this->description   = $avatar->description   ?? '';
-        $this->voice_provider = $avatar->voice_provider;
-        $this->voice_id       = $avatar->voice_id;
-        $this->voice_speed    = $avatar->voice_speed;
-        $this->subject        = $avatar->subject;
-        $this->is_active      = $avatar->is_active;
+        $this->name          = $narrator->name;
+        $this->short_name    = $narrator->short_name    ?? '';
+        $this->avatar_title  = $narrator->avatar_title  ?? '';
+        $this->description   = $narrator->description   ?? '';
+        $this->voice_provider = $narrator->voice_provider;
+        $this->voice_id       = $narrator->voice_id;
+        $this->voice_speed    = $narrator->voice_speed;
+        $this->subject        = $narrator->subject;
+        $this->is_active      = $narrator->is_active;
 
-        $this->previewVoiceId    = $avatar->voice_id;
-        $this->previewVoiceSpeed = $avatar->voice_speed;
+        $this->previewVoiceId    = $narrator->voice_id;
+        $this->previewVoiceSpeed = $narrator->voice_speed;
         // Provider tabs are full-page links (?provider=…) — see the blade comment.
         $requested = (string) request()->query('provider', '');
         $this->previewProvider = in_array($requested, ['elevenlabs', 'edge_tts', 'pocket_tts'], true)
             ? $requested
-            : $avatar->voice_provider;
+            : $narrator->voice_provider;
 
-        $this->greetingScript = $avatar->greeting_text ?? '';
+        $this->greetingScript = $narrator->greeting_text ?? '';
     }
 
     // ── Computed ──────────────────────────────────────────────────────────────
@@ -119,8 +119,8 @@ class AvatarStudio extends Component
     {
         return match ($this->previewProvider) {
             'elevenlabs' => app(ElevenLabsService::class)->getVoices(),
-            'edge_tts'   => Avatar::edgeTtsVoicesForCards(),
-            'pocket_tts' => Avatar::pocketTtsVoices(),
+            'edge_tts'   => Narrator::edgeTtsVoicesForCards(),
+            'pocket_tts' => Narrator::pocketTtsVoices(),
             default      => app(ElevenLabsService::class)->getVoices(),
         };
     }
@@ -155,7 +155,7 @@ class AvatarStudio extends Component
     /** @return list<array<string, mixed>> */
     private function edgeRows(): array
     {
-        $featured = Avatar::edgeTtsFeatured();
+        $featured = Narrator::edgeTtsFeatured();
 
         return array_map(function (array $v) use ($featured): array {
             $samplePath = "voices/edge/{$v['id']}.mp3";
@@ -165,7 +165,7 @@ class AvatarStudio extends Component
                 'preview_url' => is_file(public_path($samplePath)) ? asset($samplePath) : '',
                 'featured'    => in_array($v['id'], $featured, true),
             ];
-        }, Avatar::edgeTtsCatalog());
+        }, Narrator::edgeTtsCatalog());
     }
 
     /** Accent → display language + flag. ElevenLabs voices are all multilingual; the ACCENT is what matters. */
@@ -238,8 +238,8 @@ class AvatarStudio extends Component
 
     /**
      * Mark a voice as USED for a language. This is the single voice-selection action:
-     * it sets the per-language narrator (voice_map, resolved by Avatar::voiceFor) AND
-     * makes it the avatar's base/active voice. "Preferred" and "active" were two names
+     * it sets the per-language narrator (voice_map, resolved by Narrator::voiceFor) AND
+     * makes it the narrator's base/active voice. "Preferred" and "active" were two names
      * for practically the same thing — this merges them.
      */
     public function useVoice(string $lang, string $voiceId): void
@@ -249,7 +249,7 @@ class AvatarStudio extends Component
             return;
         }
 
-        $map = $this->avatar->voice_map ?? [];
+        $map = $this->narrator->voice_map ?? [];
         // Ticking the voice already used for this language clears it.
         $wasUsed = ($map[$lang] ?? null) === $voiceId;
         $map[$lang] = $wasUsed ? null : $voiceId;
@@ -257,7 +257,7 @@ class AvatarStudio extends Component
 
         $updates = ['voice_map' => $map];
         if (! $wasUsed) {
-            // Choosing a voice also makes it the avatar's base/active voice.
+            // Choosing a voice also makes it the narrator's base/active voice.
             $this->voice_id = $voiceId;
             $this->voice_provider = $this->previewProvider;
             $this->previewVoiceId = $voiceId;
@@ -265,20 +265,20 @@ class AvatarStudio extends Component
             $updates['voice_provider'] = $this->previewProvider;
         }
 
-        $this->avatar->update($updates);
+        $this->narrator->update($updates);
         $this->flash(__('Voice updated.'), false);
     }
 
     #[Computed]
     public function samplePhrases(): array
     {
-        return Avatar::samplePhrases();
+        return Narrator::samplePhrases();
     }
 
     #[Computed]
     public function voiceSamples()
     {
-        return $this->avatar->voiceSamples()->get();
+        return $this->narrator->voiceSamples()->get();
     }
 
     // ── Save settings ─────────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ class AvatarStudio extends Component
             'subject'        => 'required|in:all,history,science,literature,civics',
         ]);
 
-        $this->avatar->update([
+        $this->narrator->update([
             'name'           => $this->name,
             'short_name'     => $this->short_name ?: null,
             'avatar_title'   => $this->avatar_title ?: null,
@@ -334,11 +334,11 @@ class AvatarStudio extends Component
             $voiceLabel = collect($this->voices())->firstWhere('id', $voiceId)['label'] ?? $voiceId;
 
             $ext      = $tts->lastExtension();
-            $filename = 'avatar-samples/' . $this->avatar->id . '/' . Str::uuid() . '.' . $ext;
+            $filename = 'avatar-samples/' . $this->narrator->id . '/' . Str::uuid() . '.' . $ext;
             Storage::disk('public')->put($filename, $audioContent);
 
-            AvatarVoiceSample::create([
-                'avatar_id'       => $this->avatar->id,
+            NarratorVoiceSample::create([
+                'avatar_id'       => $this->narrator->id,
                 'phrase'          => $phrase,
                 'voice_id'        => $voiceId,
                 'voice_speed'     => $speed,
@@ -346,7 +346,7 @@ class AvatarStudio extends Component
                 'audio_extension' => $ext,
                 'settings_snapshot' => [
                     // The provider that actually SYNTHESIZED this sample (the active tab),
-                    // not the avatar's saved provider — applyVoice() restores it from here.
+                    // not the narrator's saved provider — applyVoice() restores it from here.
                     'provider'    => $this->previewProvider,
                     'voice_id'    => $voiceId,
                     'speed'       => $speed,
@@ -358,7 +358,7 @@ class AvatarStudio extends Component
             unset($this->voiceSamples); // clear computed cache
             $this->flash('Sample generated!', false);
         } catch (\Throwable $e) {
-            Log::error('AvatarStudio: sample generation failed', ['error' => $e->getMessage()]);
+            Log::error('NarratorStudio: sample generation failed', ['error' => $e->getMessage()]);
             $this->flash('Error: ' . $e->getMessage(), true);
         } finally {
             $this->generating = false;
@@ -380,13 +380,13 @@ class AvatarStudio extends Component
     }
 
     /**
-     * Apply a sample's voice settings to the active avatar configuration.
+     * Apply a sample's voice settings to the active narrator configuration.
      */
     public function applyVoice(int $sampleId): void
     {
-        $sample = AvatarVoiceSample::findOrFail($sampleId);
+        $sample = NarratorVoiceSample::findOrFail($sampleId);
 
-        // The provider MUST follow the voice: an edge-tts voice id on an avatar still set
+        // The provider MUST follow the voice: an edge-tts voice id on a narrator still set
         // to elevenlabs breaks narration (was the bug — provider never updated here).
         $provider = (string) ($sample->settings_snapshot['provider'] ?? $this->previewProvider);
 
@@ -394,7 +394,7 @@ class AvatarStudio extends Component
         $this->voice_speed    = $sample->voice_speed;
         $this->voice_provider = $provider;
 
-        $this->avatar->update([
+        $this->narrator->update([
             'voice_provider' => $provider,
             'voice_id'       => $sample->voice_id,
             'voice_speed'    => $sample->voice_speed,
@@ -408,7 +408,7 @@ class AvatarStudio extends Component
      */
     public function deleteSample(int $sampleId): void
     {
-        $sample = AvatarVoiceSample::findOrFail($sampleId);
+        $sample = NarratorVoiceSample::findOrFail($sampleId);
 
         if ($sample->audio_path) {
             Storage::disk('public')->delete($sample->audio_path);
@@ -419,8 +419,8 @@ class AvatarStudio extends Component
     }
 
     /**
-     * Upload a new avatar image. Just stores the (resized) picture — no sprite/lip-sync
-     * processing; avatars are a static image + an ElevenLabs voice.
+     * Upload a new narrator portrait. Just stores the (resized) picture — no sprite/lip-sync
+     * processing; a narrator is a static image plus an ElevenLabs voice.
      */
     public function uploadPortrait(): void
     {
@@ -430,16 +430,16 @@ class AvatarStudio extends Component
 
         try {
             $imageBytes   = file_get_contents($this->portraitUpload->getRealPath());
-            $resized      = app(\App\Services\AvatarService::class)->resizePortraitPublic($imageBytes);
-            $portraitPath = "avatars/{$this->avatar->id}/portrait.jpg";
+            $resized      = app(\App\Services\NarratorService::class)->resizePortraitPublic($imageBytes);
+            $portraitPath = "avatars/{$this->narrator->id}/portrait.jpg";
             Storage::disk('public')->put($portraitPath, $resized);
 
-            $this->avatar->update(['portrait_path' => $portraitPath]);
+            $this->narrator->update(['portrait_path' => $portraitPath]);
 
             $this->portraitUpload = null;
             $this->flash('Portrait updated.', false);
         } catch (\Throwable $e) {
-            Log::error('AvatarStudio: portrait upload failed', ['error' => $e->getMessage()]);
+            Log::error('NarratorStudio: portrait upload failed', ['error' => $e->getMessage()]);
             $this->flash('Upload failed: ' . $e->getMessage(), true);
         } finally {
             $this->uploadingPortrait = false;
@@ -456,9 +456,9 @@ class AvatarStudio extends Component
 
     public function render()
     {
-        $this->avatar = $this->avatar->fresh();
+        $this->narrator = $this->narrator->fresh();
 
-        return view('livewire.admin.avatar-studio')
-            ->layout('components.layouts.app', ['title' => 'Avatar Studio — ' . $this->avatar->name]);
+        return view('livewire.admin.narrator-studio')
+            ->layout('components.layouts.app', ['title' => 'Narrator Studio — ' . $this->narrator->name]);
     }
 }

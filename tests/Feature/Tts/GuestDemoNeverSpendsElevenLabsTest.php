@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Tts;
 
 use App\Jobs\GenerateSceneAudio;
-use App\Models\Avatar;
+use App\Models\Narrator;
 use App\Models\Lesson;
 use App\Models\Scene;
 use App\Models\User;
@@ -33,14 +33,14 @@ class GuestDemoNeverSpendsElevenLabsTest extends TestCase
     private function sceneNarratedBy(bool $guest): array
     {
         $teacher = User::factory()->create(['is_guest_demo' => $guest]);
-        $avatar = Avatar::factory()->create([
+        $narrator = Narrator::factory()->create([
             'voice_provider' => 'elevenlabs',
             'voice_id' => 'Gwv6uO8RNVuOAN68JgUb',
             'voice_speed' => 1.0,
         ]);
         $lesson = Lesson::create([
             'teacher_id' => $teacher->id,
-            'avatar_id' => $avatar->id,
+            'avatar_id' => $narrator->id,
             'title' => 'Test', 'topic' => 'Test', 'subject' => 'history',
             'language' => 'en', 'grade_level' => '7',
         ]);

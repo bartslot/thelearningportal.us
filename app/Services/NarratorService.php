@@ -7,7 +7,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class AvatarService
+class NarratorService
 {
     private function lessonDisk()
     {
@@ -30,7 +30,7 @@ class AvatarService
                 return $portraitPath;
             }
         } catch (\Exception $e) {
-            Log::error("AvatarService::downloadPortrait failed: " . $e->getMessage());
+            Log::error("NarratorService::downloadPortrait failed: " . $e->getMessage());
         }
 
         return null;
@@ -45,7 +45,7 @@ class AvatarService
         $fallbackFile = public_path('assets/professor.webp');
 
         if (! file_exists($fallbackFile)) {
-            Log::warning("AvatarService::useDefaultPortrait: fallback file not found at {$fallbackFile}");
+            Log::warning("NarratorService::useDefaultPortrait: fallback file not found at {$fallbackFile}");
             return null;
         }
 
@@ -57,7 +57,7 @@ class AvatarService
     }
 
     /**
-     * Public wrapper around resizePortrait — used by Avatar Studio's image upload.
+     * Public wrapper around resizePortrait — used by Narrator Studio's image upload.
      */
     public function resizePortraitPublic(string $imageData, int $maxDim = 512): string
     {

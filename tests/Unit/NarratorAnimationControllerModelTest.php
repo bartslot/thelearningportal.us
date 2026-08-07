@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Models\Avatar;
-use App\Models\AvatarAnimationController;
+use App\Models\Narrator;
+use App\Models\NarratorAnimationController;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class AvatarAnimationControllerModelTest extends TestCase
+class NarratorAnimationControllerModelTest extends TestCase
 {
     use RefreshDatabase;
 
     public function test_default_controller_data_returns_flat_category_arrays(): void
     {
         // Controller schema simplified to idle/expression/dance (was idle/presenting/greeting).
-        $data = AvatarAnimationController::defaultControllerData();
+        $data = NarratorAnimationController::defaultControllerData();
 
         $this->assertSame(['idle', 'expression', 'dance'], array_keys($data));
 
@@ -28,10 +28,10 @@ class AvatarAnimationControllerModelTest extends TestCase
 
     public function test_controller_is_cast_to_array(): void
     {
-        $avatar = Avatar::factory()->create();
+        $narrator = Narrator::factory()->create();
 
-        $controller = AvatarAnimationController::create([
-            'avatar_id'  => $avatar->id,
+        $controller = NarratorAnimationController::create([
+            'avatar_id'  => $narrator->id,
             'controller' => ['idle' => ['1', '2'], 'expression' => [], 'dance' => []],
         ]);
 

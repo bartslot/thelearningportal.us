@@ -35,7 +35,7 @@ class LessonStatus extends Component
 
     /**
      * The 5 pipeline steps with state: done | active | failed | pending.
-     * Portrait is handled separately via the Avatar — not part of lesson generation.
+     * Portrait is handled separately via the Narrator — not part of lesson generation.
      */
     #[Computed]
     public function steps(): array

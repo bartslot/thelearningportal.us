@@ -4,26 +4,26 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
-use App\Models\Avatar;
-use Database\Seeders\AvatarSeeder;
+use App\Models\Narrator;
+use Database\Seeders\DemoNarratorSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class AvatarSeederTest extends TestCase
+class DemoNarratorSeederTest extends TestCase
 {
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(AvatarSeeder::class);
+        $this->seed(DemoNarratorSeeder::class);
     }
 
     public function test_julian_is_seeded_as_the_default_active_narrator(): void
     {
-        // The "default" narrator is the active avatar with the lowest sort_order — this is what
+        // The "default" narrator is the active narrator with the lowest sort_order — this is what
         // pre-selects in the lesson wizard, sorts first in the picker, and drives the narrator card.
-        $default = Avatar::where('is_active', true)->orderBy('sort_order')->first();
+        $default = Narrator::where('is_active', true)->orderBy('sort_order')->first();
 
         $this->assertNotNull($default);
         $this->assertSame('Julian', $default->name);
@@ -32,7 +32,7 @@ class AvatarSeederTest extends TestCase
 
     public function test_julian_uses_the_configured_elevenlabs_voice(): void
     {
-        $julian = Avatar::where('name', 'Julian')->firstOrFail();
+        $julian = Narrator::where('name', 'Julian')->firstOrFail();
 
         $this->assertSame('elevenlabs', $julian->voice_provider);
         $this->assertSame('7p1Ofvcwsv7UBPoFNcpI', $julian->voice_id);
@@ -42,7 +42,7 @@ class AvatarSeederTest extends TestCase
 
     public function test_julian_is_active_alongside_napoleon_and_joan_of_arc(): void
     {
-        $activeNames = Avatar::where('is_active', true)
+        $activeNames = Narrator::where('is_active', true)
             ->orderBy('sort_order')
             ->pluck('name')
             ->all();

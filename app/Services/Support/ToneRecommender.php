@@ -32,7 +32,7 @@ final class ToneRecommender
             'socratic' => [
                 'icon'        => 'magnifying-glass',
                 'label'       => __('Socratic'),
-                'description' => __('Question-led inquiry. The avatar poses questions to spark critical thinking.'),
+                'description' => __('Question-led inquiry. The narrator poses questions to spark critical thinking.'),
             ],
             'inspiring' => [
                 'icon'        => 'sparkles',

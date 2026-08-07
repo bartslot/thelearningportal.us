@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Admin;
 
-use App\Livewire\Admin\CreateAvatar;
-use App\Models\Avatar;
+use App\Livewire\Admin\CreateNarrator;
+use App\Models\Narrator;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-class CreateAvatarTest extends TestCase
+class CreateNarratorTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -23,12 +23,12 @@ class CreateAvatarTest extends TestCase
         $this->assertContains('webm', config('livewire.temporary_file_upload.preview_mimes'));
     }
 
-    public function test_admin_can_open_the_add_avatar_workflow(): void
+    public function test_admin_can_open_the_add_narrator_workflow(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
-            ->get(route('admin.avatars.create'))
+            ->get(route('admin.narrators.create'))
             ->assertOk()
             ->assertSee('Build a voice');
     }
@@ -38,7 +38,7 @@ class CreateAvatarTest extends TestCase
         $teacher = User::factory()->create(['role' => 'teacher']);
 
         $this->actingAs($teacher)
-            ->get(route('admin.avatars.create'))
+            ->get(route('admin.narrators.create'))
             ->assertForbidden();
     }
 
@@ -47,7 +47,7 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->call('nextStep')
             ->assertHasErrors(['name'])
             ->assertSet('step', 1)
@@ -59,14 +59,14 @@ class CreateAvatarTest extends TestCase
             ->assertSet('step', 2);
     }
 
-    public function test_admin_can_create_an_inactive_avatar_with_a_unique_slug(): void
+    public function test_admin_can_create_an_inactive_narrator_with_a_unique_slug(): void
     {
         Storage::fake('public');
         $admin = User::factory()->create(['role' => 'admin']);
-        Avatar::factory()->create(['slug' => 'dr-maya-okafor', 'sort_order' => 4]);
+        Narrator::factory()->create(['slug' => 'dr-maya-okafor', 'sort_order' => 4]);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Dr. Maya Okafor')
             ->set('short_name', 'Maya')
             ->set('avatar_title', 'Historian')
@@ -77,25 +77,25 @@ class CreateAvatarTest extends TestCase
             ->set('voice_provider', 'edge_tts')
             ->set('voice_id', 'nl-NL-FennaNeural')
             ->set('voice_speed', 0.9)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasNoErrors()
             ->assertRedirect();
 
-        $avatar = Avatar::where('slug', 'dr-maya-okafor-2')->firstOrFail();
+        $narrator = Narrator::where('slug', 'dr-maya-okafor-2')->firstOrFail();
 
-        $this->assertSame('edge_tts', $avatar->voice_provider);
-        $this->assertSame(5, $avatar->sort_order);
-        $this->assertFalse($avatar->is_active);
-        Storage::disk('public')->assertExists($avatar->portrait_path);
-        Storage::disk('public')->assertExists($avatar->intro_video_path);
-        $this->assertSame(Storage::disk('public')->url($avatar->intro_video_path), $avatar->welcomeVideoUrl());
+        $this->assertSame('edge_tts', $narrator->voice_provider);
+        $this->assertSame(5, $narrator->sort_order);
+        $this->assertFalse($narrator->is_active);
+        Storage::disk('public')->assertExists($narrator->portrait_path);
+        Storage::disk('public')->assertExists($narrator->intro_video_path);
+        $this->assertSame(Storage::disk('public')->url($narrator->intro_video_path), $narrator->welcomeVideoUrl());
     }
 
     public function test_julians_existing_welcome_video_is_connected_by_the_seeder(): void
     {
-        $this->seed(\Database\Seeders\AvatarSeeder::class);
+        $this->seed(\Database\Seeders\DemoNarratorSeeder::class);
 
-        $julian = Avatar::where('name', 'Julian')->firstOrFail();
+        $julian = Narrator::where('name', 'Julian')->firstOrFail();
 
         $this->assertSame('avatars/31/welcome.mp4', $julian->intro_video_path);
         $this->assertSame(asset('avatars/31/welcome.mp4'), $julian->welcomeVideoUrl());
@@ -110,21 +110,21 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Ron Slot')
             ->set('subject', 'history')
             ->set('portrait', UploadedFile::fake()->image('ron.jpg', 640, 640))
             ->set('voice_provider', 'elevenlabs')
             ->set('elevenlabs_voice_id', 'Gwv6uO8RNVuOAN68JgUb')
             ->set('voice_speed', 0.95)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasNoErrors()
             ->assertRedirect();
 
-        $avatar = Avatar::where('slug', 'ron-slot')->firstOrFail();
+        $narrator = Narrator::where('slug', 'ron-slot')->firstOrFail();
 
-        $this->assertSame('elevenlabs', $avatar->voice_provider);
-        $this->assertSame('Gwv6uO8RNVuOAN68JgUb', $avatar->voice_id);
+        $this->assertSame('elevenlabs', $narrator->voice_provider);
+        $this->assertSame('Gwv6uO8RNVuOAN68JgUb', $narrator->voice_id);
     }
 
     public function test_a_malformed_elevenlabs_voice_id_is_refused(): void
@@ -134,14 +134,14 @@ class CreateAvatarTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         Livewire::actingAs($admin)
-            ->test(CreateAvatar::class)
+            ->test(CreateNarrator::class)
             ->set('name', 'Wrong Voice')
             ->set('subject', 'history')
             ->set('portrait', UploadedFile::fake()->image('x.jpg', 640, 640))
             ->set('voice_provider', 'elevenlabs')
             ->set('elevenlabs_voice_id', 'not-a-real-id')
             ->set('voice_speed', 0.95)
-            ->call('createAvatar')
+            ->call('createNarrator')
             ->assertHasErrors(['elevenlabs_voice_id']);
     }
 }

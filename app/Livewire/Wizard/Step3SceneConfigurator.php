@@ -5190,7 +5190,7 @@ class Step3SceneConfigurator extends Component
         // precisely because nothing ever mentioned it.
         $downgraded = $this->lesson->scenes()
             ->whereNotNull('audio_provider')
-            ->with('lesson.avatar')          // narrationWasDowngraded() reads the lesson's narrator
+            ->with('lesson.narrator')          // narrationWasDowngraded() reads the lesson's narrator
             ->orderBy('order')
             ->get(['id', 'lesson_id', 'order', 'audio_provider', 'audio_path'])
             ->filter(fn (Scene $s): bool => $s->narrationWasDowngraded());

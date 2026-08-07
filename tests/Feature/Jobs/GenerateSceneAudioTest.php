@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Jobs;
 
 use App\Jobs\GenerateSceneAudio;
-use App\Models\Avatar;
 use App\Models\Lesson;
+use App\Models\Narrator;
 use App\Models\Scene;
 use App\Models\User;
 use App\Services\TtsService;
@@ -27,13 +27,13 @@ class GenerateSceneAudioTest extends TestCase
     public function test_produces_audio_alignment_and_marks_ready_when_all_assets_present(): void
     {
         $teacher = User::factory()->create();
-        $avatar = Avatar::create([
+        $narrator = Narrator::create([
             'name' => 'Napoleon', 'slug' => 'napoleon-1', 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'voice-x',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
         ]);
         $lesson = Lesson::create([
-            'teacher_id' => $teacher->id, 'avatar_id' => $avatar->id,
+            'teacher_id' => $teacher->id, 'avatar_id' => $narrator->id,
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
         ]);
         $scene = Scene::create([
@@ -188,7 +188,7 @@ class GenerateSceneAudioTest extends TestCase
 
     public function test_a_narrator_less_lesson_on_azure_is_not_called_a_downgrade(): void
     {
-        // No avatar means no named narrator, so Azure on the native voice is the CORRECT outcome,
+        // No narrator row means no named voice, so Azure on the native voice is the CORRECT outcome,
         // not a substitution. Calling it a downgrade flagged 77 correctly-narrated production
         // scenes; a warning that cries wolf is worth less than no warning.
         $lesson = Lesson::create([
@@ -232,13 +232,13 @@ class GenerateSceneAudioTest extends TestCase
 
     private function sceneWithElevenLabsNarrator(string $slug): Scene
     {
-        $avatar = Avatar::create([
+        $narrator = Narrator::create([
             'name' => 'Napoleon', 'slug' => $slug, 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'voice-x',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
         ]);
         $lesson = Lesson::create([
-            'teacher_id' => User::factory()->create()->id, 'avatar_id' => $avatar->id,
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => $narrator->id,
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
         ]);
 
@@ -248,18 +248,18 @@ class GenerateSceneAudioTest extends TestCase
         ]);
     }
 
-    public function test_tts_override_forces_backup_provider_and_voice_over_avatar(): void
+    public function test_tts_override_forces_backup_provider_and_voice_over_narrator(): void
     {
         config()->set('services.tts.provider_override', 'azure');
         config()->set('services.tts.provider_override_voice', 'en-US-GuyNeural');
 
-        $avatar = Avatar::create([
+        $narrator = Narrator::create([
             'name' => 'Napoleon', 'slug' => 'napoleon-2', 'gender' => 'male',
             'voice_provider' => 'elevenlabs', 'voice_id' => 'eleven-voice-id',
             'voice_speed' => 1.0, 'is_active' => true, 'sort_order' => 1,
         ]);
         $lesson = Lesson::create([
-            'teacher_id' => User::factory()->create()->id, 'avatar_id' => $avatar->id,
+            'teacher_id' => User::factory()->create()->id, 'avatar_id' => $narrator->id,
             'topic' => 'X', 'subject' => 'history', 'grade_level' => '9th',
         ]);
         $scene = Scene::create([
@@ -285,7 +285,7 @@ class GenerateSceneAudioTest extends TestCase
 
         (new GenerateSceneAudio($scene->id))->handle(app(TtsService::class));
 
-        // The avatar is ElevenLabs, but the override routes to Azure with an Azure-native voice.
+        // The narrator is ElevenLabs, but the override routes to Azure with an Azure-native voice.
         $this->assertSame('azure', $captured['provider']);
         $this->assertSame('en-US-GuyNeural', $captured['voiceId']);
 

@@ -19,9 +19,9 @@
             'pattern' => 'admin.dashboard',
         ];
         $adminItems[] = [
-            'label' => 'Avatar Studio',
-            'route' => 'admin.avatars.index',
-            'pattern' => 'admin.avatars.*',
+            'label' => 'Narrator Studio',
+            'route' => 'admin.narrators.index',
+            'pattern' => 'admin.narrators.*',
         ];
         $adminItems[] = [
             'label' => 'Story review',

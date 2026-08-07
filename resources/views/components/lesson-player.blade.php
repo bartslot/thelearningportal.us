@@ -40,7 +40,7 @@
                 :style="`background-image: url('${nextImageUrl}'); opacity: ${layerBOpacity};`"
             ></div>
 
-            {{-- Dark gradient overlay so the avatar stays legible --}}
+            {{-- Dark gradient overlay so the narrator stays legible --}}
             <div class="absolute inset-0 bg-linear-to-t from-slate-950/80 via-slate-950/30 to-slate-950/10"></div>
             <div class="absolute inset-0 bg-linear-to-r from-slate-950/40 to-transparent"></div>
         </div>
@@ -91,7 +91,7 @@
     <div class="absolute inset-0 z-10 flex items-center justify-center">
 
         @if($audioUrl)
-            {{-- Lip-sync avatar player (portrait + mouth sprites driven by visemes) --}}
+            {{-- Lip-sync narrator player (portrait + mouth sprites driven by visemes) --}}
             <div
                 x-data="lipSyncPlayer(@js($audioUrl), @js($portraitUrl), @js($visemesUrl))"
                 x-init="init()"

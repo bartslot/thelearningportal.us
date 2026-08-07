@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Teacher;
 
 use App\Http\Controllers\Controller;
-use App\Models\Avatar;
 use App\Models\Classroom;
 use App\Models\ClassroomMember;
 use App\Models\Lesson;
+use App\Models\Narrator;
 use App\Models\QuizScore;
 use App\Services\CanonThemeCatalog;
 use Carbon\CarbonImmutable;
@@ -67,7 +67,7 @@ final class DashboardController extends Controller
             'classrooms' => $classrooms,
             'lessonCount' => $lessonCount,
             'lessonLimit' => self::LESSON_LIMIT,
-            'narrator' => Avatar::active()->first(),
+            'narrator' => Narrator::active()->first(),
             'results' => $this->resultSummary($scores),
             'shelves' => $catalog->placeShelves($lessons),
         ]);

@@ -30,9 +30,9 @@
         'slideshow_images'      => $lesson->slideshowImages(),
         'lesson_code'           => $lesson->lesson_code,
         'avatar_glb_url'        => null, // 3D avatar retired — avatars are a 2D image + ElevenLabs voice
-        'avatar_gender'         => strtolower($lesson->avatar?->gender ?? 'male'),
-        'narrator_welcome_url'      => $lesson->avatar?->welcomeVideoUrl(),
-        'narrator_welcome_lite_url' => $lesson->avatar?->welcomeVideoLiteUrl(),
+        'avatar_gender'         => strtolower($lesson->narrator?->gender ?? 'male'),
+        'narrator_welcome_url'      => $lesson->narrator?->welcomeVideoUrl(),
+        'narrator_welcome_lite_url' => $lesson->narrator?->welcomeVideoLiteUrl(),
         'game_duration_seconds' => $lesson->strategyGame ? $lesson->strategyGame->duration_minutes * 60 : 600,
         'game_title'            => $lesson->strategyGame?->title,
         'game_instructions'     => $lesson->strategyGame?->instructions,
@@ -241,9 +241,9 @@
 
     {{-- ── Narrator welcome video ───────────────────────────────────────────
          Plays once, full-screen, right after "Start lesson" is clicked and before
-         the first block. Dark-blue base + black vignette focuses the talking avatar;
+         the first block. Dark-blue base + black vignette focuses the talking narrator;
          the player auto-advances to block 1 the moment it ends (see _endWelcomeVideo). --}}
-    @if ($welcomeVideoUrl = $lesson->avatar?->welcomeVideoUrl())
+    @if ($welcomeVideoUrl = $lesson->narrator?->welcomeVideoUrl())
         <div x-show="phase === 'WELCOME_VIDEO'" x-cloak
              class="absolute inset-0 z-60 flex items-center justify-center pointer-events-auto"
              style="background:#0f172a;">
@@ -277,8 +277,8 @@
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
     {{-- 2D narrator portrait — small reminder badge during PLAYBACK only. The title screen has its
          own framed narrator card (below), so hide this there to avoid a dark, duplicate portrait. --}}
-    @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
-        <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
+    @if ($lesson->narrator && ($narratorImg = $lesson->narrator->thumbnailUrl() ?? $lesson->narrator->portraitUrl()))
+        <img src="{{ $narratorImg }}" alt="{{ $lesson->narrator->name }}"
              x-show="phase !== 'TITLE_SCREEN'" x-cloak
              class="pointer-events-none absolute bottom-6 right-6 z-30 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
     @endif
@@ -582,26 +582,26 @@
             {{-- Animated film grain — heavier than normal (0.12 opacity) --}}
             <div class="skybox-grain-overlay" style="opacity: 0.22; z-index: 2;"></div>
 
-            {{-- Narrator card — framed + brightened portrait beside the label/name/era. Avatar
+            {{-- Narrator card — framed + brightened portrait beside the label/name/era. Narrator
                  thumbnails are often dark, so a warm ring + shadow + brightness lifts it off the
                  dark cover so it reads as "on the forefront" (not a dark blob). --}}
-            @php $narratorImg = $lesson->avatar?->thumbnailUrl() ?? $lesson->avatar?->portraitUrl(); @endphp
-            @if($lesson->avatar?->name || $lesson->historical_figure)
+            @php $narratorImg = $lesson->narrator?->thumbnailUrl() ?? $lesson->narrator?->portraitUrl(); @endphp
+            @if($lesson->narrator?->name || $lesson->historical_figure)
                 <div class="absolute bottom-10 right-8 sm:right-12 hidden sm:flex items-center gap-4" style="z-index:20">
                     <div class="flex flex-col items-end gap-0.5 text-right">
                         <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400/80">{{ __('Narrated by') }}</p>
                         <p class="font-history text-2xl font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-                            {{ $lesson->avatar?->name ?? $lesson->historical_figure }}
+                            {{ $lesson->narrator?->name ?? $lesson->historical_figure }}
                         </p>
                         {{-- The narrator's ROLE (e.g. "Historian"), not the lesson era — the narrator is a
                              timeless guide, not a figure from the lesson's period. Falls back to era. --}}
-                        @php $narratorRole = $lesson->avatar?->avatar_title ?: ($lesson->avatar?->era ?? $lesson->era); @endphp
+                        @php $narratorRole = $lesson->narrator?->avatar_title ?: ($lesson->narrator?->era ?? $lesson->era); @endphp
                         @if($narratorRole)
                             <p class="text-xs text-slate-300/80">{{ $narratorRole }}</p>
                         @endif
                     </div>
                     @if($narratorImg)
-                        <img src="{{ $narratorImg }}" alt="{{ $lesson->avatar?->name }}"
+                        <img src="{{ $narratorImg }}" alt="{{ $lesson->narrator?->name }}"
                              class="h-28 w-28 shrink-0 rounded-2xl object-cover shadow-[0_10px_34px_rgba(0,0,0,0.6)] ring-2 ring-amber-400/50"
                              style="filter: brightness(1.18) contrast(1.06) saturate(1.05);">
                     @endif

@@ -47,7 +47,7 @@ class BackfillNarrationTimings extends Command
                 'lesson_id',
                 Lesson::where('status', 'published')->pluck('id'),
             ))
-            ->with('lesson.avatar')
+            ->with('lesson.narrator')
             ->orderBy('lesson_id')
             ->orderBy('order')
             ->get();

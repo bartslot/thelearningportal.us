@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\AnimationClip;
-use App\Models\AvatarAnimationController;
+use App\Models\NarratorAnimationController;
 use Illuminate\Database\Seeder;
 
 class AnimationLibrarySeeder extends Seeder
@@ -33,8 +33,8 @@ class AnimationLibrarySeeder extends Seeder
         AnimationClip::truncate();
 
         // ── 2. Reset all controller data to new category schema ────────────────
-        AvatarAnimationController::all()->each(function (AvatarAnimationController $ctrl): void {
-            $ctrl->update(['controller' => AvatarAnimationController::defaultControllerData()]);
+        NarratorAnimationController::all()->each(function (NarratorAnimationController $ctrl): void {
+            $ctrl->update(['controller' => NarratorAnimationController::defaultControllerData()]);
         });
 
         // ── 3. Index library files ─────────────────────────────────────────────

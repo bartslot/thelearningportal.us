@@ -1,12 +1,12 @@
 <div class="mx-auto max-w-6xl" x-data>
-    <a href="{{ route('admin.avatars.index') }}" class="btn btn-ghost btn-sm px-0">← Back to avatars</a>
+    <a href="{{ route('admin.narrators.index') }}" class="btn btn-ghost btn-sm px-0">← Back to narrators</a>
 
     <div class="mt-7 grid gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <main>
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-400">Avatar Studio · New narrator</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-400">Narrator Studio · New narrator</p>
             <h1 class="mt-2 font-history text-5xl font-semibold leading-none text-slate-100 md:text-6xl">Build a voice<br>students remember.</h1>
 
-            <nav aria-label="Avatar setup progress" class="mt-10 grid grid-cols-4 border-b border-slate-800">
+            <nav aria-label="Narrator setup progress" class="mt-10 grid grid-cols-4 border-b border-slate-800">
                 @foreach([1 => 'Identity', 2 => 'Portrait', 3 => 'Voice', 4 => 'Review'] as $number => $label)
                     <button type="button" wire:click="goToStep({{ $number }})" @disabled($number > $step)
                             class="relative pb-3 text-left text-xs font-semibold uppercase tracking-wider {{ $step === $number ? 'text-amber-300' : ($number < $step ? 'text-slate-300' : 'text-slate-600') }} disabled:cursor-not-allowed">
@@ -16,7 +16,7 @@
                 @endforeach
             </nav>
 
-            <form wire:submit="createAvatar" class="mt-9 min-h-[28rem]">
+            <form wire:submit="createNarrator" class="mt-9 min-h-[28rem]">
                 @if($step === 1)
                     <section wire:key="identity" class="max-w-2xl space-y-6">
                         <div><h2 class="text-2xl font-semibold text-slate-100">Who is joining the cast?</h2><p class="mt-1 text-sm text-slate-500">Give teachers enough context to choose this narrator with confidence.</p></div>
@@ -115,11 +115,11 @@
 
                 <div class="mt-10 flex items-center justify-between border-t border-slate-800 pt-5">
                     <button type="button" wire:click="previousStep" @disabled($step === 1) class="btn btn-ghost disabled:invisible">← Previous</button>
-                    @if($step < 4)<button type="button" wire:click="nextStep" class="btn btn-primary">Continue <span aria-hidden="true">→</span></button>@else<button type="submit" wire:loading.attr="disabled" class="btn btn-primary"><span wire:loading.remove wire:target="createAvatar">Create avatar</span><span wire:loading wire:target="createAvatar" class="loading loading-spinner loading-sm"></span><span wire:loading wire:target="createAvatar">Creating…</span></button>@endif
+                    @if($step < 4)<button type="button" wire:click="nextStep" class="btn btn-primary">Continue <span aria-hidden="true">→</span></button>@else<button type="submit" wire:loading.attr="disabled" class="btn btn-primary"><span wire:loading.remove wire:target="createNarrator">Create narrator</span><span wire:loading wire:target="createNarrator" class="loading loading-spinner loading-sm"></span><span wire:loading wire:target="createNarrator">Creating…</span></button>@endif
                 </div>
             </form>
         </main>
 
-        <aside class="hidden border-l border-slate-800 pl-8 lg:block"><div class="sticky top-8"><p class="text-xs font-semibold uppercase tracking-widest text-slate-600">Cast note</p><blockquote class="mt-4 font-history text-2xl leading-snug text-slate-300">“A narrator is the thread students follow through the story.”</blockquote><div class="mt-8 h-px bg-gradient-to-r from-amber-400/60 to-transparent"></div><p class="mt-5 text-sm leading-6 text-slate-500">New avatars begin inactive by default. Preview the portrait and voice in the Studio before introducing them to teachers.</p></div></aside>
+        <aside class="hidden border-l border-slate-800 pl-8 lg:block"><div class="sticky top-8"><p class="text-xs font-semibold uppercase tracking-widest text-slate-600">Cast note</p><blockquote class="mt-4 font-history text-2xl leading-snug text-slate-300">“A narrator is the thread students follow through the story.”</blockquote><div class="mt-8 h-px bg-gradient-to-r from-amber-400/60 to-transparent"></div><p class="mt-5 text-sm leading-6 text-slate-500">New narrators begin inactive by default. Preview the portrait and voice in the Studio before introducing them to teachers.</p></div></aside>
     </div>
 </div>

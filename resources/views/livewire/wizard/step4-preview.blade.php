@@ -35,9 +35,9 @@
          data-start-index="{{ $startIndex }}"
          wire:ignore>
         <canvas id="lesson-canvas" class="w-full h-full block"></canvas>
-        {{-- 2D avatar: small portrait badge in the bottom-right corner. --}}
-        @if ($lesson->avatar && ($avatarImg = $lesson->avatar->thumbnailUrl() ?? $lesson->avatar->portraitUrl()))
-            <img src="{{ $avatarImg }}" alt="{{ $lesson->avatar->name }}"
+        {{-- 2D narrator: small portrait badge in the bottom-right corner. --}}
+        @if ($lesson->narrator && ($narratorImg = $lesson->narrator->thumbnailUrl() ?? $lesson->narrator->portraitUrl()))
+            <img src="{{ $narratorImg }}" alt="{{ $lesson->narrator->name }}"
                  class="pointer-events-none absolute bottom-28 right-4 z-10 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
         @endif
         {{-- No vertical padding: SceneOverlay sets container-type:size here and padding forces a

@@ -7,9 +7,9 @@ namespace App\Livewire\Teacher;
 use App\Enums\LessonStatus;
 use App\Lessons\LessonPreset;
 use App\Lessons\LessonPresets;
-use App\Models\Avatar;
 use App\Models\Lesson;
 use App\Models\LessonSource;
+use App\Models\Narrator;
 use App\Models\Story;
 use App\Services\CanonThemeCatalog;
 use App\Services\LessonGoalContextResolver;
@@ -825,7 +825,7 @@ class LessonChat extends Component
             'region' => $this->region,
             'era' => $this->era,
             'source_mode' => 'internet',
-            'avatar_id' => Avatar::where('is_active', true)->orderBy('sort_order')->value('id'),
+            'avatar_id' => Narrator::where('is_active', true)->orderBy('sort_order')->value('id'),
             'lesson_code' => strtoupper(Str::random(6)),
             'status' => LessonStatus::Draft,
             'wizard_step' => 3,
