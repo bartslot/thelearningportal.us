@@ -14,10 +14,21 @@
 #
 set -euo pipefail
 
-HOST="u2628-emomoo15slu6@ssh.thelearningportal.us"
+# ssh.historyportal.eu, NOT ssh.thelearningportal.us: the marketing site moved to a separate
+# SiteGround server, taking that hostname with it, so the old one now resolves to a machine
+# this key cannot open and the app is not on. The SSH host has to follow the app.
+HOST="u2628-emomoo15slu6@ssh.historyportal.eu"
 PORT=18765
 KEY="$HOME/.ssh/siteground_tlp2"
-DEST="www/history.thelearningportal.us/app/storage/app/public"
+# Found, not assumed — the site directory is named after the primary domain, which has moved twice.
+APP=$(ssh -p "$PORT" -i "$KEY" "$HOST" \
+  "for d in www/*/app; do [ -f \"\$d/artisan\" ] && [ ! -L \"\$(dirname \"\$d\")\" ] && { echo \"\$d\"; exit; }; done" \
+  2>/dev/null | head -1 | tr -d '\r')
+if [[ -z "$APP" ]]; then
+  echo "✗ could not find the app on the server. Refusing to sync." >&2
+  exit 1
+fi
+DEST="$APP/storage/app/public"
 DRY=""
 
 [[ "${1:-}" == "--dry-run" ]] && DRY="--dry-run"

@@ -16,7 +16,10 @@
 #
 set -euo pipefail
 
-HOST="u2628-emomoo15slu6@ssh.thelearningportal.us"
+# ssh.historyportal.eu, NOT ssh.thelearningportal.us: the marketing site moved to a separate
+# SiteGround server, taking that hostname with it, so the old one now resolves to a machine
+# this key cannot open and the app is not on. The SSH host has to follow the app.
+HOST="u2628-emomoo15slu6@ssh.historyportal.eu"
 PORT=18765
 KEY="$HOME/.ssh/siteground_tlp2"
 DRY=""
@@ -29,18 +32,31 @@ DRY=""
 # second, unserved copy of the app, leaving the real site untouched and the deploy reporting success.
 #
 # So: ask the server which directory holds an artisan file. Exactly one does.
-DEST=$(ssh -p "$PORT" -i "$KEY" "$HOST" \
-  "ls -d www/*/app/ 2>/dev/null | while read -r d; do [ -f \"\$d/artisan\" ] && echo \"\$d\"; done" \
-  2>/dev/null | head -1 | tr -d '\r')
+# Counted by REAL path: a hostname can be a symlink to the site it shares (historyportal.eu and
+# history.historyportal.eu are one app reached two ways), and counting those as two apps made this
+# refuse a perfectly ordinary deploy. Two DISTINCT real paths still means a half-finished move, and
+# guessing between them is how the wrong one gets deployed to.
+APPS=$(ssh -p "$PORT" -i "$KEY" "$HOST" \
+  "for d in www/*/app; do [ -f \"\$d/artisan\" ] && readlink -f \"\$d\"; done | sort -u" \
+  2>/dev/null | tr -d '\r')
+COUNT=$(printf '%s\n' "$APPS" | grep -c . || true)
 
-if [[ -z "$DEST" ]]; then
+if [[ "$COUNT" -eq 0 ]]; then
   echo "✗ could not find the app on the server (no www/*/app/artisan). Refusing to deploy." >&2
   exit 1
 fi
-if [[ $(ssh -p "$PORT" -i "$KEY" "$HOST" "ls -d www/*/app/artisan 2>/dev/null | wc -l" | tr -d '\r ') != "1" ]]; then
-  echo "✗ more than one app directory on the server — deploy by hand until that is resolved." >&2
+if [[ "$COUNT" -gt 1 ]]; then
+  echo "✗ $COUNT distinct app directories on the server — deploy by hand until that is resolved:" >&2
+  printf '    %s\n' $APPS >&2
   exit 1
 fi
+
+# rsync wants the path as the server names it, not the resolved one — but prefer the REAL directory
+# over a hostname symlink pointing at it, so the log says where the files actually land.
+DEST=$(ssh -p "$PORT" -i "$KEY" "$HOST" \
+  "for d in www/*/app; do [ -f \"\$d/artisan\" ] && [ ! -L \"\$(dirname \"\$d\")\" ] && { echo \"\$d/\"; exit; }; done
+   for d in www/*/app; do [ -f \"\$d/artisan\" ] && { echo \"\$d/\"; exit; }; done" \
+  2>/dev/null | head -1 | tr -d '\r')
 
 echo "▸ app directory: $DEST"
 
