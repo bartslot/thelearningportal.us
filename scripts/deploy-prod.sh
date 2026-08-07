@@ -71,8 +71,16 @@ ssh -p "$PORT" -i "$KEY" "$HOST" "cd $DEST && \
 # A 200 is not proof. The page can render perfectly while every image behind it 404s — which is
 # exactly what a missing storage link looks like. Check a real media file, not just the HTML.
 echo "▸ verifying"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' https://history.thelearningportal.us --max-time 25)
-echo "  homepage      $CODE"
+# The public URL comes from the server's own APP_URL rather than being written here. The site is
+# moving to historyportal.eu, and a hardcoded hostname in the verification step is the kind that
+# keeps reporting 200 for the OLD domain long after the new one is the real site.
+SITE_URL=$(ssh -p "$PORT" -i "$KEY" "$HOST" "cd $DEST && php -r \"
+  foreach (file('.env', FILE_IGNORE_NEW_LINES) as \\\$l) {
+    if (preg_match('/^APP_URL=(.+)\\\$/', \\\$l, \\\$m)) { echo trim(\\\$m[1], '\\\"'); break; }
+  }\"" 2>/dev/null | tail -1 | tr -d '\r')
+SITE_URL=${SITE_URL:-https://history.thelearningportal.us}
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL" --max-time 25)
+echo "  homepage      $CODE  $SITE_URL"
 MEDIA=$(ssh -p "$PORT" -i "$KEY" "$HOST" "cd $DEST && php artisan tinker --execute=\"
   \\\$s = App\\Models\\Scene::whereNotNull('image_path')->first();
   echo \\\$s ? Storage::disk('public')->url(\\\$s->image_path) : '';\"" 2>/dev/null | tail -1 | tr -d '\r')
