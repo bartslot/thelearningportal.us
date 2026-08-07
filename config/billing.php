@@ -42,6 +42,17 @@ return [
          */
         'amount_cents' => (int) env('NARRATION_CREDIT_AMOUNT_CENTS', 500),
 
+        /**
+         * The VAT rate shown on the buy screen before Stripe has calculated the
+         * real one. 9% is the Dutch REDUCED rate for educational content, which
+         * is what this is (Bart, 2026-08-06) rather than the 21% general rate.
+         *
+         * Display only. What is charged and stored comes from Stripe Tax, which
+         * works it out from the tax code below and the buyer's address — so a
+         * German or Italian buyer may well see a different figure at checkout.
+         */
+        'display_vat_rate' => (float) env('NARRATION_CREDIT_VAT_RATE', 0.09),
+
         'currency' => env('NARRATION_CREDIT_CURRENCY', 'eur'),
 
         /*
@@ -51,10 +62,19 @@ return [
          * one), so this is not optional, and the default here is a real tax determination rather
          * than a placeholder. WORTH CONFIRMING WITH AN ACCOUNTANT alongside the expiry question.
          *
-         * txcd_10000000, "General - Electronically Supplied Services", is the honest description:
-         * the teacher is buying capacity inside our authoring tool, delivered electronically. It
-         * maps onto the EU's own "electronically supplied services" category, which is what the
-         * OSS rules are written around.
+         * txcd_20060258, "On demand Online Courses - pre-recorded audio or audio/video content
+         * accessed through a SaaS platform", is what carries the EDUCATIONAL classification and
+         * therefore the reduced rate (Bart, 2026-08-06: this is an education platform, 9% rather
+         * than 21%). It replaced txcd_10000000, "General - Electronically Supplied Services",
+         * which is the general-rate code and would have had Stripe charge 21%.
+         *
+         * WORTH KNOWING, because it is the risk in this choice: what a teacher buys here is
+         * narration capacity inside the authoring tool, and the code describes a pre-recorded
+         * course delivered to a learner. Those are close but not identical, and the classification
+         * is what the rate hangs on. Reduced rates and outright education exemptions also differ
+         * per EU country, so a German or Italian buyer may not get 9%. Stripe applies whatever the
+         * code and the buyer's address produce; getting the classification right is an accountant's
+         * call, not this file's.
          *
          * Deliberately NOT one of the education codes. txcd_20060052 (Educational Services) is for
          * academic classes run by an education establishment, and the online-course codes
@@ -67,7 +87,7 @@ return [
          * txcd_10103001 (SaaS, business use). Stripe takes one code per line item, so a single
          * consumer-leaning code is the practical choice while individual teachers are most buyers.
          */
-        'tax_code' => env('NARRATION_CREDIT_TAX_CODE', 'txcd_10000000'),
+        'tax_code' => env('NARRATION_CREDIT_TAX_CODE', 'txcd_20060258'),
 
         /**
          * How long bought credit lasts, in days from the moment it was bought.

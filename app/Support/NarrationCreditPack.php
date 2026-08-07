@@ -15,14 +15,15 @@ use Illuminate\Support\Number;
  * for yet.
  *
  * The price is EXCLUSIVE of VAT (Bart's decision, 2026-08-06): 5.00 euro is what WE keep, and the
- * VAT owed at the buyer's own country rate is added on top at checkout. A Dutch teacher pays 6.05,
- * a German 5.95, an Italian 6.10; a school with a valid VAT number is reverse-charged and pays
- * exactly 5.00. The line item goes to Stripe with tax_behavior=exclusive.
+ * VAT owed at the buyer's own rate is added on top at checkout. This is educational content, so the
+ * Dutch reduced rate of 9% applies rather than the 21% general rate: a Dutch teacher pays 5.45. A
+ * school with a valid VAT number is reverse-charged and pays exactly 5.00. The line item goes to
+ * Stripe with tax_behavior=exclusive.
  *
  * Because of that, EVERY consumer-facing price has to show the gross figure. EU price-indication
  * rules require the total a consumer actually pays to be the prominent one, so the buy screen leads
- * with "6.05" and puts "5.00 excl. VAT" beside it — grossLabel() below, not priceLabel(). The exact
- * rate is Stripe Tax's answer for the buyer's country; grossLabel() shows the local default so the
+ * with "5.45" and puts "5.00 excl. VAT" beside it — grossLabel() below, not priceLabel(). The exact
+ * rate is Stripe Tax's answer for the buyer's address; grossLabel() shows the configured rate so the
  * screen is honest before Stripe has been asked.
  *
  * The numbers live in config/billing.php. Read them through here.
@@ -35,7 +36,7 @@ final class NarrationCreditPack
         return (int) config('billing.credit_pack.characters', 5000);
     }
 
-    /** What the teacher pays, in integer cents, VAT included. */
+    /** What WE KEEP, in integer cents, before VAT. See grossCents() for what is charged. */
     public static function amountCents(): int
     {
         return (int) config('billing.credit_pack.amount_cents', 500);
@@ -93,29 +94,28 @@ final class NarrationCreditPack
     }
 
     /**
-     * The VAT rate we show BEFORE Stripe Tax has computed the buyer's real one, per country.
+     * The VAT rate the SCREEN shows before Stripe Tax has computed the buyer's real one.
      *
-     * Only used to render an honest gross figure on the screen. The rate that is actually charged
-     * and stored is whatever Stripe returns for the buyer's address, which is why nothing downstream
-     * reads this.
+     * Educational content sits on the reduced Dutch rate of 9% rather than the 21% general rate
+     * (Bart, 2026-08-06). Deliberately ONE configurable number rather than a table of every
+     * country's reduced rate: reduced rates and education exemptions differ wildly across the EU,
+     * a hard-coded table would be wrong somewhere within a year, and nothing here is what actually
+     * gets charged. Stripe Tax computes and stores the real figure from the product tax code and
+     * the buyer's address — this only keeps the price on the button honest before checkout.
      */
-    private const DEFAULT_VAT_RATE = [
-        'NL' => 0.21, 'BE' => 0.21, 'DE' => 0.19, 'FR' => 0.20, 'IT' => 0.22,
-        'ES' => 0.21, 'AT' => 0.20, 'IE' => 0.23, 'LU' => 0.17, 'GB' => 0.20,
-    ];
+    public static function displayVatRate(): float
+    {
+        return (float) config('billing.credit_pack.display_vat_rate', 0.09);
+    }
 
-    private const FALLBACK_VAT_RATE = 0.21;
-
-    /** Gross price in cents for a country, rounded the way an invoice rounds. */
+    /** Gross price in cents, rounded the way an invoice rounds. */
     public static function grossCents(?string $country = null): int
     {
-        $rate = self::DEFAULT_VAT_RATE[strtoupper((string) $country)] ?? self::FALLBACK_VAT_RATE;
-
-        return (int) round(self::amountCents() * (1 + $rate));
+        return (int) round(self::amountCents() * (1 + self::displayVatRate()));
     }
 
     /**
-     * "€6.05" — what the teacher actually pays, VAT included.
+     * "€5.45" — what the teacher actually pays, VAT included.
      *
      * THIS is the figure a buy screen leads with. EU price-indication rules require the total a
      * consumer pays to be the prominent one, and with an exclusive price the net figure is not it.
