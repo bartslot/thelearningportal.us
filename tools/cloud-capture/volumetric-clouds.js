@@ -1,37 +1,29 @@
 /**
- * clouds.js — a weather shell over the globe, as a MapLibre custom layer.
+ * volumetric-clouds.js — the expensive cloud deck, for OFFLINE capture only.
  *
- * A sphere of cloud drawn above the map, lit from the sun's side and drifting slowly. It reads as
- * weather over a planet rather than a texture on a map, so it earns its place on the globe.
+ * Never imported by the app. resources/js/timemap/clouds.js is the live layer: a shell, 120 fps,
+ * and what a classroom machine can afford every frame. This one marches a ray through a slab, which
+ * buys real depth and mist when the camera passes through it, and costs 21 fps on an M3 Pro.
  *
- * WHERE THE CLOUDS COME FROM. Given a `fieldUrl` it samples a real cloud field — NASA's Blue Marble
- * cloud composite, actual cyclones and frontal bands and a real ITCZ. Without one it falls back to
- * procedural noise, banded by latitude to imitate the same thing. The real field wins every time;
- * the fallback exists so a missing asset degrades instead of emptying the sky.
+ * That trade only makes sense when frames are rendered ahead of time. At half a second a frame
+ * nobody cares, so this is deliberately tuned for QUALITY over speed — more steps, more octaves —
+ * and the result is baked into a video the live map composites over itself.
  *
- * WHY A SHELL AND NOT A VOLUME. A raymarched slab gives genuine depth and mist when you fly through
- * it, and it was built and measured here: 21 fps close up on an M3 Pro, against 60 for this. That
- * is not a classroom-safe live layer, and the cost is structural — up to 112 density evaluations
- * per pixel — not a matter of tuning. Cinematic cloud belongs in a PRE-RENDERED pass, where a frame
- * may take half a second and nobody notices. This layer is what the live map can always afford.
+ * Two things differ from the live layer besides the shader:
  *
- * PROJECTION. MapLibre v5 does not hand a custom layer a matrix. It hands an options object, and
- * the way to project is its own shader prelude: `projectTileFor3D(vec2 mercator01, float elevation)`
- * maps mercator coordinates in 0..1 onto whichever projection is live, at a height above the
- * surface. That prelude changes when the projection does, so the program is compiled per
- * `shaderData.variantName` and cached under it.
- *
- * Elevation units differ by projection, which is the one genuine trap here: metres above the sphere
- * under globe, mercator z units under mercator. Both are passed and `#ifdef GLOBE` picks.
+ *  - TIME IS EXPLICIT. `setTime(seconds)` instead of performance.now(), because a captured frame
+ *    must be reproducible: re-running the capture has to yield the same weather, or the video will
+ *    not match a second take.
+ *  - IT NEVER ASKS FOR A FRAME. No triggerRepaint; the capture harness drives rendering.
  */
-
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, cameraInPlanetSpace, buildProgram, EQUIRECT_GLSL } from '../../resources/js/timemap/planet-mesh.js'
 
-const LAYER_ID = 'tm-clouds'
+const LAYER_ID = 'tm-clouds-volumetric'
 // Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
 // exaggerated until the shell parallaxes against the ground as the camera moves.
-const ALTITUDE_M = 90000
+const SLAB_BOTTOM_M = 30000
+const SLAB_TOP_M = 130000
 
 // Value noise + fbm over the unit sphere. Cheap, and at cloud scale nobody can tell it from
 // gradient noise. `u_time` drifts the field along one axis: weather moving over the planet.
@@ -85,18 +77,25 @@ void main() {
   #endif
 }`
 
-const fragmentSource = () => `precision highp float;
+// Marched, not shelled. Everything is in PLANET SPACE: the earth is a unit sphere at the origin
+// and altitudes are fractions of its radius, which keeps the ray/sphere maths conditioned and makes
+// the density field a pure function of direction and height.
+const fragmentSource = (marchSteps, lightSteps) => `precision highp float;
 varying vec3 v_sphere;
+uniform vec3 u_camera;        // camera in planet space
+uniform vec3 u_sun;           // direction TO the sun
+uniform float u_inner;        // slab floor, in earth radii
+uniform float u_outer;        // slab ceiling
 uniform float u_time;
 uniform float u_opacity;
 uniform float u_drift;
-uniform vec3 u_sun;           // direction TO the sun
-uniform sampler2D u_field;    // real cloud cover, equirectangular
+uniform sampler2D u_field;
 uniform float u_fieldAmount;  // 0 = procedural weather, 1 = the real field
 uniform sampler2D u_wind;     // real wind field: R = eastward, G = southward, 0.5 = still
 uniform float u_windAmount;   // 0 = the field sits still, 1 = fully advected
 uniform float u_windScale;    // how far the flow carries per cycle, in UV
 uniform float u_windRate;     // cycles per second
+
 ${NOISE_GLSL}
 ${EQUIRECT_GLSL}
 
@@ -128,40 +127,92 @@ float advectedField(vec2 uv, float lat) {
   return mix(mix(a, b, blend), texture2D(u_field, uv).r, 1.0 - u_windAmount);
 }
 
-void main() {
-  vec3 p = normalize(v_sphere);
-  // Fine noise, used either as the detail that breaks up the real field's edges or as an octave of
-  // the procedural fallback. Sampled on the SPHERE, so cloud cells stay the same size at Iceland as
-  // at the equator and the field wraps seamlessly across ±180°.
-  float detail = fbm(p * 9.0 - vec3(0.0, u_time * 0.01, 0.0));
+const int MARCH_STEPS = ${marchSteps};
+const int LIGHT_STEPS = ${lightSteps};
 
-  float coverage;
+// The satellite field decides WHERE cloud is — real cyclones, real fronts. Noise decides what its
+// edges look like from close up, which is the only part a 39 km-per-pixel texture cannot tell us.
+float density(vec3 pos) {
+  float r = length(pos);
+  float h = (r - u_inner) / (u_outer - u_inner);
+  if (h < 0.0 || h > 1.0) return 0.0;
+  vec3 dir = pos / r;
+
+  float cover = fbm(dir * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004));
   if (u_fieldAmount > 0.0) {
-    // Real weather. The texture decides WHERE cloud is; the noise decides what its edges look like,
-    // which is the only part a 39 km-per-pixel field cannot tell us.
-    float field = advectedField(equirectUV(p, u_drift), asin(clamp(p.y, -1.0, 1.0)));
-    coverage = smoothstep(0.16, 0.62, field + 0.14 * (detail - 0.5));
-  } else {
-    float cover = fbm(p * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004)) + 0.35 * detail;
-    // Earth's cloud is banded, not evenly scattered: a wet belt at the equator, the clear
-    // subtropical highs where the deserts are, then cloudy mid-latitudes again. Without this the
-    // fallback reads as a snowball — every ocean and every desert under the same porridge.
-    float sinLat = p.y;
-    float band = 1.0
-      + 0.35 * exp(-pow(sinLat / 0.16, 2.0))                    // ITCZ
-      - 0.40 * exp(-pow((abs(sinLat) - 0.50) / 0.16, 2.0))      // subtropical highs
-      + 0.20 * exp(-pow((abs(sinLat) - 0.82) / 0.18, 2.0));     // storm tracks
-    coverage = smoothstep(0.70, 1.02, cover * band);
+    cover = mix(cover, advectedField(equirectUV(dir, u_drift), asin(clamp(dir.y, -1.0, 1.0))), u_fieldAmount);
   }
 
-  // A lit face and a grey face, like the real thing.
-  float sun = max(dot(p, normalize(u_sun)), 0.0);
-  vec3 base = mix(vec3(0.62, 0.66, 0.72), vec3(1.0), 0.35 + 0.65 * sun);
-  float alpha = coverage * u_opacity;
+  // Flat-bottomed and billowing on top, the shape of a fair-weather deck.
+  float profile = smoothstep(0.0, 0.12, h) * (1.0 - smoothstep(0.45, 1.0, h));
+
+  // Erosion. SUBTRACTING noise keeps the cores solid while the edges dissolve; multiplying just
+  // fades the whole deck evenly, which is what makes a cloud look like a decal.
+  float detail = fbm(dir * 60.0 + vec3(0.0, u_time * 0.03, 0.0));
+  float fine = fbm(dir * 180.0 - vec3(u_time * 0.05, 0.0, 0.0));
+  return clamp((cover * profile - 0.22 * detail - 0.10 * fine) * 3.0, 0.0, 1.0);
+}
+
+// Distances along a ray where it meets a sphere of radius R about the origin. x > y means it misses.
+vec2 sphereSpan(vec3 origin, vec3 dir, float radius) {
+  float b = dot(origin, dir);
+  float c = dot(origin, origin) - radius * radius;
+  float disc = b * b - c;
+  if (disc < 0.0) return vec2(1.0, -1.0);
+  float sq = sqrt(disc);
+  return vec2(-b - sq, -b + sq);
+}
+
+void main() {
+  vec3 shell = normalize(v_sphere) * u_outer;
+  vec3 ray = normalize(shell - u_camera);
+
+  vec2 outer = sphereSpan(u_camera, ray, u_outer);
+  if (outer.x > outer.y) discard;
+
+  float near = max(outer.x, 0.0);          // 0 when the camera is already inside the deck
+  float far = outer.y;
+  vec2 ground = sphereSpan(u_camera, ray, 1.0);
+  if (ground.x <= ground.y && ground.x > 0.0) far = min(far, ground.x);
+  vec2 inner = sphereSpan(u_camera, ray, u_inner);
+  if (inner.x <= inner.y && inner.x > 0.0) far = min(far, inner.x);
+  if (far <= near) discard;
+
+  float stepLen = (far - near) / float(MARCH_STEPS);
+  // Dither the start so banding becomes noise, which the eye forgives and a band never is.
+  float jitter = hash(vec3(gl_FragCoord.xy, u_time)) * stepLen;
+
+  float transmittance = 1.0;
+  vec3 scattered = vec3(0.0);
+
+  for (int i = 0; i < MARCH_STEPS; i++) {
+    float t = near + jitter + stepLen * float(i);
+    if (t > far) break;
+    vec3 pos = u_camera + ray * t;
+    float d = density(pos);
+    if (d <= 0.001) continue;
+
+    // How much sun reaches this sample through the cloud above it: a lit top and a shadowed base.
+    float shadow = 0.0;
+    float lightStep = (u_outer - u_inner) / float(LIGHT_STEPS);
+    for (int j = 1; j <= LIGHT_STEPS; j++) {
+      shadow += density(pos + u_sun * (lightStep * float(j)));
+    }
+    float sunlight = exp(-shadow * lightStep * 26.0);
+    // Powder: sunward edges brighten before they thin out. Most of what separates cloud from smoke.
+    float powder = 1.0 - exp(-d * 8.0);
+    vec3 lit = mix(vec3(0.52, 0.57, 0.66), vec3(1.0), sunlight * powder);
+
+    float extinction = d * stepLen * 42.0;
+    float absorbed = 1.0 - exp(-extinction);
+    scattered += lit * absorbed * transmittance;
+    transmittance *= exp(-extinction);
+    if (transmittance < 0.01) break;
+  }
+
+  float alpha = (1.0 - transmittance) * u_opacity;
   if (alpha < 0.002) discard;
-  // MapLibre blends custom layers with gl.ONE / gl.ONE_MINUS_SRC_ALPHA, i.e. PREMULTIPLIED alpha.
-  // Returning straight alpha here is what makes a custom layer glow white over dark ground.
-  gl_FragColor = vec4(base * alpha, alpha);
+  gl_FragColor = vec4(scattered * u_opacity, alpha);
 }`
 
 /**
@@ -172,12 +223,12 @@ void main() {
  * @param {number} [opts.driftRate] revolutions per second of the real field, west to east
  * @param {number[]} [opts.sun]     direction TO the sun, in planet space
  */
-export const createCloudLayer = ({
-  opacity = 0.5, animate = true, fieldUrl = null, driftRate = 0.0004, sun = [0.4, 0.5, 0.75],
-  // Wind advection: a real GFS field carrying the clouds along actual circulation. Off without a
-  // texture, so a missing asset costs nothing but motion.
+export const createVolumetricCloudLayer = ({
+  opacity = 0.5, fieldUrl = null, driftRate = 0.0004, sun = [0.4, 0.5, 0.75],
+  marchSteps = 96, lightSteps = 8,
   windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
 } = {}) => {
+  let clock = 0
   const mesh = buildSphereMesh()
   let map = null
   let gl = null
@@ -185,7 +236,7 @@ export const createCloudLayer = ({
   // One compiled program per projection variant: the prelude is different under globe and
   // mercator, and the variant flips mid-flight when the map crosses the globe/mercator threshold.
   const programs = new Map()
-  let state = { opacity, animate, fieldUrl, driftRate, sun, windUrl, windAmount, windScale, windRate }
+  let state = { opacity, fieldUrl, driftRate, sun, marchSteps, lightSteps, windUrl, windAmount, windScale, windRate }
   let fieldTexture = null
   let fieldReady = false
   let windTexture = null
@@ -195,7 +246,7 @@ export const createCloudLayer = ({
     const key = shaderData.variantName
     if (programs.has(key)) return programs.get(key)
 
-    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(), 'tm-clouds')
+    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(state.marchSteps, state.lightSteps), 'tm-clouds-volumetric')
     const entry = {
       program,
       attribs: {
@@ -215,6 +266,9 @@ export const createCloudLayer = ({
         windAmount: gl.getUniformLocation(program, 'u_windAmount'),
         windScale: gl.getUniformLocation(program, 'u_windScale'),
         windRate: gl.getUniformLocation(program, 'u_windRate'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        inner: gl.getUniformLocation(program, 'u_inner'),
+        outer: gl.getUniformLocation(program, 'u_outer'),
         // Projection uniforms the prelude declares. Only the globe variant has the last four, so
         // every one of these is allowed to come back null.
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
@@ -315,21 +369,28 @@ export const createCloudLayer = ({
       setProjectionUniforms(uniforms, projection)
 
       const lat = map.getCenter().lat
-      const seconds = performance.now() * 0.001
-      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, ALTITUDE_M)
+      const seconds = clock            // explicit: a captured frame must be reproducible
+      const EARTH_RADIUS_M = 6371008.8
+      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, SLAB_TOP_M)
       if (uniforms.elevationMercator) {
-        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], ALTITUDE_M).z)
+        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], SLAB_TOP_M).z)
       }
-      if (uniforms.time) gl.uniform1f(uniforms.time, state.animate ? seconds : 0)
+      if (uniforms.inner) gl.uniform1f(uniforms.inner, 1 + SLAB_BOTTOM_M / EARTH_RADIUS_M)
+      if (uniforms.outer) gl.uniform1f(uniforms.outer, 1 + SLAB_TOP_M / EARTH_RADIUS_M)
+      if (uniforms.camera) {
+        const c = cameraInPlanetSpace(map, maplibregl)
+        gl.uniform3f(uniforms.camera, c[0], c[1], c[2])
+      }
+      if (uniforms.time) gl.uniform1f(uniforms.time, seconds)
       if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
       if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
       if (uniforms.fieldAmount) gl.uniform1f(uniforms.fieldAmount, fieldReady ? 1 : 0)
       // Real weather tracks west to east. Slow enough that a lesson never sees it move, fast enough
       // that the planet is not visibly frozen across a long scene.
-      if (uniforms.drift) gl.uniform1f(uniforms.drift, state.animate ? seconds * state.driftRate : 0)
+      if (uniforms.drift) gl.uniform1f(uniforms.drift, seconds * state.driftRate)
       if (uniforms.windAmount) gl.uniform1f(uniforms.windAmount, windReady ? state.windAmount : 0)
       if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
-      if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.animate ? state.windRate : 0)
+      if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.windRate)
       if (windReady && uniforms.wind) {
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, windTexture)
@@ -356,12 +417,13 @@ export const createCloudLayer = ({
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index)
       gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
       gl.depthMask(true)
-
-      // Only ask for another frame when something is actually moving.
-      if (state.animate) map.triggerRepaint()
+      // No triggerRepaint: the capture harness decides when a frame happens.
     },
 
-    /** Live controls — density, drift, sun, and which cloud field is shown. */
+    /** The capture clock, in seconds. Set it before each frame. */
+    setTime (seconds) { clock = seconds },
+
+    /** Options — density, drift, sun, and which cloud field is shown. */
     setOptions(next = {}) {
       const previousUrl = state.fieldUrl
       state = { ...state, ...next }
@@ -377,4 +439,4 @@ export const createCloudLayer = ({
   }
 }
 
-export const CLOUD_LAYER_ID = LAYER_ID
+export const VOLUMETRIC_LAYER_ID = LAYER_ID
