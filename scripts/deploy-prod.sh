@@ -19,8 +19,30 @@ set -euo pipefail
 HOST="u2628-emomoo15slu6@ssh.thelearningportal.us"
 PORT=18765
 KEY="$HOME/.ssh/siteground_tlp2"
-DEST="www/history.thelearningportal.us/app/"
 DRY=""
+
+# Where the app lives on the server, FOUND rather than assumed.
+#
+# SiteGround names a site's directory after its primary domain, so changing that domain renames the
+# directory underneath us — which is exactly what the move to historyportal.eu does. A hardcoded
+# path would not fail loudly here; rsync would happily CREATE the old directory again and deploy a
+# second, unserved copy of the app, leaving the real site untouched and the deploy reporting success.
+#
+# So: ask the server which directory holds an artisan file. Exactly one does.
+DEST=$(ssh -p "$PORT" -i "$KEY" "$HOST" \
+  "ls -d www/*/app/ 2>/dev/null | while read -r d; do [ -f \"\$d/artisan\" ] && echo \"\$d\"; done" \
+  2>/dev/null | head -1 | tr -d '\r')
+
+if [[ -z "$DEST" ]]; then
+  echo "✗ could not find the app on the server (no www/*/app/artisan). Refusing to deploy." >&2
+  exit 1
+fi
+if [[ $(ssh -p "$PORT" -i "$KEY" "$HOST" "ls -d www/*/app/artisan 2>/dev/null | wc -l" | tr -d '\r ') != "1" ]]; then
+  echo "✗ more than one app directory on the server — deploy by hand until that is resolved." >&2
+  exit 1
+fi
+
+echo "▸ app directory: $DEST"
 
 [[ "${1:-}" == "--dry-run" ]] && DRY="--dry-run"
 
