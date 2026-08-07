@@ -23,7 +23,7 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildProgram, EQUIRECT_GLSL, planetSpacePosition } from './planet-mesh.js'
+import { buildProgram, cameraInPlanetSpace, EQUIRECT_GLSL, planetSpacePosition } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-moon'
 const EARTH_RADIUS_M = 6371008.8
@@ -302,13 +302,45 @@ export const createMoonLayer = ({
       if (uniforms.transition) gl.uniform1f(uniforms.transition, projection.projectionTransition)
       if (uniforms.fallbackMatrix) gl.uniformMatrix4fv(uniforms.fallbackMatrix, false, projection.fallbackMatrix)
 
-      // The sub-lunar point in mercator 0..1 — where the moon sits on the sky, radially.
-      const mercator = maplibregl.MercatorCoordinate.fromLngLat([lng, lat], 0)
+      // ── Where to actually put it ──────────────────────────────────────────────────────────
+      //
+      // NOT at 384,400 km. MapLibre's globe projection cannot reach that far: past roughly five
+      // earth radii from the centre, a point's clip-space w goes NEGATIVE and it is dropped before
+      // rasterisation. Measured at z1.9 — w = +1350 on the ground, +115 at five radii, −194 at six,
+      // and −17,282 for the moon at its true sixty. The layer drew exactly zero pixels across a
+      // full-canvas scan of 990,000, with no error anywhere, because there is nothing wrong with
+      // it: it was simply being clipped.
+      //
+      // So the moon is drawn on the same SIGHT LINE, at a distance the projection can reach. That
+      // costs nothing real. A sphere is defined on screen by its direction and its angular size,
+      // and both are computed from the true geometry below — the distance itself is unobservable.
+      // Parallax is preserved because the direction is measured from the CAMERA, not from the
+      // earth's centre, and at sixty radii those differ by up to two degrees, four moon-widths.
+      //
+      // It sits just beyond the earth's far limb, so the globe's own depth still occludes it when
+      // the moon is behind the planet, which it must.
+      const camPos = cameraInPlanetSpace(map, maplibregl)
+      const trueMoon = planetSpacePosition(lng, lat, distance - EARTH_RADIUS_M)
+      const sightLine = normalise([
+        trueMoon[0] - camPos[0], trueMoon[1] - camPos[1], trueMoon[2] - camPos[2],
+      ])
+      const camRadius = Math.hypot(...camPos)
+      const renderDistance = camRadius + 1.2
+      const drawAt = [
+        camPos[0] + sightLine[0] * renderDistance,
+        camPos[1] + sightLine[1] * renderDistance,
+        camPos[2] + sightLine[2] * renderDistance,
+      ]
+      const drawRadius = Math.hypot(...drawAt)
+      const drawLat = Math.asin(drawAt[1] / drawRadius) * 180 / Math.PI
+      const drawLng = Math.atan2(drawAt[2], drawAt[0]) * 180 / Math.PI
+      const altitude = (drawRadius - 1) * EARTH_RADIUS_M
+
+      const mercator = maplibregl.MercatorCoordinate.fromLngLat([drawLng, drawLat], 0)
       if (uniforms.centre) gl.uniform2f(uniforms.centre, mercator.x, mercator.y)
-      const altitude = distance - EARTH_RADIUS_M
       if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, altitude)
       if (uniforms.elevationMercator) {
-        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([lng, lat], altitude).z)
+        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([drawLng, drawLat], altitude).z)
       }
 
       // Angular radius, turned into clip-space half-size through the field of view.
@@ -321,15 +353,10 @@ export const createMoonLayer = ({
       }
 
       // The billboard's basis in planet space, so the shader can build sphere normals in the same
-      // frame the sun vector lives in — which is what makes the phase come out right.
-      const moon = planetSpacePosition(lng, lat, altitude)
-      const cam = args.defaultProjectionData && map.transform
-      const camPos = planetSpacePosition(
-        map.transform.getCameraLngLat ? map.transform.getCameraLngLat().lng : map.getCenter().lng,
-        map.transform.getCameraLngLat ? map.transform.getCameraLngLat().lat : map.getCenter().lat,
-        Number.isFinite(map.transform.getCameraAltitude?.()) ? map.transform.getCameraAltitude() : 1e7,
-      )
-      const forward = normalise([moon[0] - camPos[0], moon[1] - camPos[1], moon[2] - camPos[2]])
+      // frame the sun vector lives in — which is what makes the phase come out right. Built from
+      // the TRUE sight line, not from where the disc is drawn, so moving it closer cannot rotate
+      // the terminator across its face.
+      const forward = sightLine
       const right = normalise(cross([0, 1, 0], forward))
       const up = cross(forward, right)
       if (uniforms.forward) gl.uniform3f(uniforms.forward, ...forward)

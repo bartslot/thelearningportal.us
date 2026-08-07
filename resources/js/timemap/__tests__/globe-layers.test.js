@@ -143,6 +143,64 @@ describe.each(LAYERS)('$name layer', ({ id, make, off, buffers }) => {
   })
 })
 
+describe('the moon is not drawn where the moon is', () => {
+  /**
+   * MapLibre's globe projection cannot reach the moon. Past roughly six earth radii from the centre
+   * a point's clip-space w goes negative and it is dropped before rasterisation — measured at z1.9:
+   * w = +115 at five radii, -194 at six, and -17,282 for the moon at its true sixty. The layer drew
+   * exactly zero pixels across a full-canvas scan of 990,000, silently, because nothing was wrong
+   * with it.
+   *
+   * So it is drawn on the same sight line at a reachable distance, which costs nothing: direction
+   * and angular size are still computed from the true geometry, and distance is not observable.
+   * This test exists because "put it at its real distance" is the obvious, well-meant change that
+   * would make the moon disappear again with no error to explain why.
+   */
+  const recordingGl = () => {
+    const uniforms = {}
+    const { gl, calls } = glStub()
+    // getUniformLocation in the stub returns the uniform's NAME, so these key by name.
+    gl.uniform1f = (name, value) => { uniforms[name] = value }
+    gl.uniform2f = (name, x, y) => { uniforms[name] = [x, y] }
+    return { gl, calls, uniforms }
+  }
+
+  const TRUE_LUNAR_DISTANCE_M = 3.6e8   // nearest perigee is about 3.63e8
+
+  it('places the billboard within the projection\'s reach, not at 384,000 km', () => {
+    const { gl, uniforms } = recordingGl()
+    const layer = createMoonLayer({ date: new Date(Date.UTC(2026, 7, 7, 12)) })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+
+    const elevation = uniforms.a_elevation_globe
+    expect(Number.isFinite(elevation)).toBe(true)
+    expect(elevation).toBeGreaterThan(0)
+    expect(elevation).toBeLessThan(TRUE_LUNAR_DISTANCE_M / 2)
+  })
+
+  it('keeps the disc at its true angular size — half a degree, whatever the date', () => {
+    // The size must come from the REAL distance. If it were derived from the shortened draw
+    // distance the moon would balloon to fill the sky, which is the tell that the two have been
+    // conflated.
+    const FOV = 0.6435
+    for (const month of [0, 3, 6, 9]) {
+      const { gl, uniforms } = recordingGl()
+      const layer = createMoonLayer({ date: new Date(Date.UTC(2026, month, 15)) })
+      layer.onAdd(mapStub(), gl)
+      layer.render(gl, { ...v5Args(), fov: FOV })
+
+      // u_size.y is the disc's half-height as a fraction of the half field of view.
+      const halfHeight = uniforms.u_size[1]
+      const apparentDeg = 2 * Math.atan(halfHeight * Math.tan(FOV / 2)) * 180 / Math.PI
+      // The moon runs 0.49° at apogee to 0.57° at perigee. Anything outside that means the draw
+      // distance has leaked into the size.
+      expect(apparentDeg).toBeGreaterThan(0.47)
+      expect(apparentDeg).toBeLessThan(0.59)
+    }
+  })
+})
+
 describe('equirectangular lookups', () => {
   /**
    * A sphere seen from inside is the MIRROR of the same sphere seen from outside, so the sky and

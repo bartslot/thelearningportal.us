@@ -13,9 +13,10 @@
  *    edge is the tell-tale of a cheap day/night globe.
  *  - TWILIGHT IS WARM. The last light through the low atmosphere has lost its blue, which is why
  *    the band running down the terminator glows orange rather than simply darkening.
- *  - CITY LIGHTS appear only where it is properly dark. NASA's Black Marble composite, faded in
- *    across the same twilight band, so the eastern seaboard and Europe come alight as they turn
- *    away from the sun.
+ *  - CITY LIGHTS, and they are OFF by default. Not because they look wrong — they look very good —
+ *    but because this map is usually showing a date. Electric light on the night side of a globe
+ *    tracking a 1596 voyage is an anachronism a few hundred years wide, and a bright one. Turn
+ *    `lightsAmount` up for a modern-era scene and they fade in across the same twilight band.
  *
  * Nothing here is a filter over the map — it is a translucent shell in front of it, so the imagery
  * underneath keeps its own detail and only its brightness changes.
@@ -24,7 +25,7 @@
 import maplibregl from 'maplibre-gl'
 import {
   buildSphereMesh, buildProgram, cameraInPlanetSpace,
-  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL,
+  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
 } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-daylight'
@@ -54,6 +55,7 @@ uniform sampler2D u_lights;    // NASA Black Marble, equirectangular
 uniform float u_lightsAmount;  // 0 when the texture has not loaded
 ${EQUIRECT_GLSL}
 ${FACING_CAMERA_GLSL}
+${TERMINATOR_GLSL}
 
 void main() {
   vec3 normal = normalize(v_sphere);
@@ -65,9 +67,7 @@ void main() {
 
   float sunAngle = dot(normal, u_sun);
 
-  // Twilight spans roughly -0.31 to +0.09 in this cosine — about 18° of sun elevation below the
-  // horizon down to just above it, which is astronomical twilight through to sunrise.
-  float day = smoothstep(-0.31, 0.09, sunAngle);
+  float day = daylightFraction(sunAngle);   // shared with the cloud deck: they must not disagree
   float night = 1.0 - day;
   if (night < 0.004) discard;                 // full daylight: leave the imagery untouched
 
@@ -108,7 +108,7 @@ export const createDaylightLayer = ({
   sun = [1, 0, 0],
   nightDarkness = 0.965,
   lightsUrl = null,
-  lightsAmount = 1,
+  lightsAmount = 0,
   nightColour = [0.02, 0.035, 0.07],
   twilightColour = [0.85, 0.35, 0.12],
 } = {}) => {

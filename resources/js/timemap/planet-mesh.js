@@ -127,6 +127,21 @@ export const SHELL_PROJECT_GLSL = /* glsl */`
 `
 
 /**
+ * How lit a point is, from the cosine between its normal and the sun.
+ *
+ * ONE function, shared by the ground and by the cloud deck above it, because they have to agree.
+ * The band runs from about 18° of sun below the horizon up to just above it — astronomical twilight
+ * through to sunrise — which is why the terminator is a soft band a few hundred kilometres wide
+ * rather than a line. Two copies of this drift apart the moment either is tuned, and the deck's
+ * terminator then visibly separates from the one on the ground it is casting shadows onto.
+ */
+export const TERMINATOR_GLSL = /* glsl */`
+  float daylightFraction(float sunAngle) {
+    return smoothstep(-0.31, 0.09, sunAngle);
+  }
+`
+
+/**
  * Is a point on the unit sphere on the half facing the camera?
  *
  * For a unit sphere the horizon is exactly the plane dot(p, camera) = 1, so this is the whole test

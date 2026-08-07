@@ -26,7 +26,7 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL, SHELL_PROJECT_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, buildProgram, EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-clouds'
 // Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
@@ -96,6 +96,7 @@ uniform float u_windScale;    // how far the flow carries per cycle, in UV
 uniform float u_windRate;     // cycles per second
 ${NOISE_GLSL}
 ${EQUIRECT_GLSL}
+${TERMINATOR_GLSL}
 
 // ── Wind advection ────────────────────────────────────────────────────────────────────────────
 // Sliding the whole texture makes clouds drift like a painted backdrop; real weather TURNS. The
@@ -151,9 +152,26 @@ void main() {
     coverage = smoothstep(0.70, 1.02, cover * band);
   }
 
-  // A lit face and a grey face, like the real thing.
-  float sun = max(dot(p, normalize(u_sun)), 0.0);
-  vec3 base = mix(vec3(0.62, 0.66, 0.72), vec3(1.0), 0.35 + 0.65 * sun);
+  // ── Lighting ──────────────────────────────────────────────────────────────────────────────
+  // A cloud emits nothing. It is only ever as bright as what is falling on it, so on the night
+  // side it has to go dark along with the ground — a white deck glowing over a black planet is the
+  // tell of clouds pasted on as decoration rather than lit as part of the scene.
+  float sunAngle = dot(p, normalize(u_sun));
+  float day = daylightFraction(sunAngle);
+
+  // The deck's own modelling: a lit face and a grey shaded face, like the real thing.
+  vec3 base = mix(vec3(0.62, 0.66, 0.72), vec3(1.0), 0.35 + 0.65 * max(sunAngle, 0.0));
+
+  // At the terminator the light reaching them has crossed the most air and lost its blue, so the
+  // tops go orange while the ground below is already dark. It is the best thing clouds do.
+  float twilight = 1.0 - abs(day * 2.0 - 1.0);
+  base = mix(base, base * vec3(1.30, 0.74, 0.44), twilight * twilight * 0.85);
+
+  // Not quite zero at night: a deck at pure black reads as a hole punched in the planet rather
+  // than as cloud. This is roughly what starlight and airglow leave on a real night-side deck.
+  const float NIGHT_FLOOR = 0.05;
+  base *= NIGHT_FLOOR + (1.0 - NIGHT_FLOOR) * day;
+
   float alpha = coverage * u_opacity;
   if (alpha < 0.002) discard;
   // MapLibre blends custom layers with gl.ONE / gl.ONE_MINUS_SRC_ALPHA, i.e. PREMULTIPLIED alpha.
