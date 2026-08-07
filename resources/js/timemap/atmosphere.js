@@ -24,7 +24,7 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, cameraInPlanetSpace, buildProgram } from './planet-mesh.js'
+import { buildSphereMesh, cameraInPlanetSpace, buildProgram, SHELL_PROJECT_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-atmosphere'
 const EARTH_RADIUS_M = 6371008.8
@@ -43,13 +43,10 @@ attribute vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
 varying vec3 v_sphere;
+${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
-  #ifdef GLOBE
-    gl_Position = projectTileFor3D(a_pos, a_elevation_globe);
-  #else
-    gl_Position = projectTileFor3D(a_pos, a_elevation_mercator);
-  #endif
+  gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
 const fragmentSource = () => `precision highp float;

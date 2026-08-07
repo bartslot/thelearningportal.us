@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createAtmosphereLayer, ATMOSPHERE_LAYER_ID } from '../atmosphere.js'
 import { createDaylightLayer, DAYLIGHT_LAYER_ID } from '../daylight.js'
 import { createStarfieldLayer, STARFIELD_LAYER_ID } from '../starfield.js'
@@ -138,6 +140,35 @@ describe.each(LAYERS)('$name layer', ({ id, make, off, buffers }) => {
   it('survives being removed before it was ever added', () => {
     const layer = make()
     expect(() => layer.onRemove()).not.toThrow()
+  })
+})
+
+describe('equirectangular lookups', () => {
+  /**
+   * A sphere seen from inside is the MIRROR of the same sphere seen from outside, so the sky and
+   * the planet cannot share one UV lookup. Getting this wrong flips the galaxy east for west, and
+   * nothing catches it: the sky still looks like a sky, still parallaxes correctly as the camera
+   * orbits, and raises no error anywhere. Only someone who knows the constellations would notice.
+   *
+   * There is no numeric output to assert on — the mapping exists only as GLSL — so the source is
+   * read as text. Crude, but it pins the one property that matters.
+   */
+  // vitest rewrites import.meta.url to a bare path, so resolve from the repo root instead.
+  const read = (name) => readFileSync(resolve(process.cwd(), 'resources/js/timemap', name), 'utf8')
+
+  it('defines the inside lookup as the outside one with the horizontal angle reversed', () => {
+    const mesh = read('planet-mesh.js')
+    const inside = mesh.slice(mesh.indexOf('vec2 equirectUVInside('))
+    const outside = mesh.slice(mesh.indexOf('vec2 equirectUV('), mesh.indexOf('vec2 equirectUVInside('))
+    expect(outside).toContain('atan(dir.z, dir.x) / 6.28318530718')
+    expect(inside).toContain('-atan(dir.z, dir.x) / 6.28318530718')
+  })
+
+  it('samples the sky from inside and the planet from outside', () => {
+    expect(read('starfield.js')).toContain('equirectUVInside(dir, u_rotation)')
+    const daylight = read('daylight.js')
+    expect(daylight).toContain('equirectUV(normal, 0.0)')
+    expect(daylight).not.toContain('equirectUVInside')
   })
 })
 

@@ -14,20 +14,22 @@
  * 2048-wide panorama stretched across a whole sky gives every star several degrees of blur.
  *
  * So the stars are GENERATED. Space is diced into cells; each cell hashes to at most one star with
- * its own position, brightness and colour, drawn as a point with a sub-pixel falloff. They stay
- * pin-sharp at any zoom because they are evaluated per pixel rather than sampled from an image, and
- * they cost no bandwidth at all.
+ * its own position, brightness and colour. They are evaluated per pixel rather than sampled from an
+ * image, so they stay sharp at any zoom and cost no bandwidth at all.
  *
- * The brightness distribution is deliberately lopsided — `pow(hash, 7)` — because the real sky is:
- * a handful of bright stars and a great many faint ones. A uniform distribution reads as static
- * noise, which is the usual tell of a procedural starfield.
+ * The brightness distribution is deliberately lopsided, because the real sky is: a handful of
+ * bright stars and a great many faint ones. A uniform distribution reads as static noise, which is
+ * the usual tell of a procedural starfield. But see `stars()` for the trap in that idea — pushed
+ * too far, in either brightness or size, the whole layer measures as exactly zero.
  *
  * The panorama's coordinates are galactic rather than terrestrial, so the band is not aligned to
  * anything on the map; it is scenery. `rotation` exists so a scene can place the galactic centre.
+ * It is sampled with the INSIDE lookup — see EQUIRECT_GLSL in planet-mesh.js — because the camera
+ * is within this shell, not outside it.
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, buildProgram, cameraInPlanetSpace, EARTH_RADIUS_M, EQUIRECT_GLSL, SHELL_PROJECT_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-starfield'
 /**
@@ -62,18 +64,18 @@ attribute vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
 varying vec3 v_sphere;
+${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
-  #ifdef GLOBE
-    gl_Position = projectTileFor3D(a_pos, a_elevation_globe);
-  #else
-    gl_Position = projectTileFor3D(a_pos, a_elevation_mercator);
-  #endif
+  gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
 const fragmentSource = () => `precision highp float;
 varying vec3 v_sphere;
 uniform sampler2D u_sky;
+uniform vec3 u_camera;      // camera in planet space, earth = unit sphere
+uniform float u_skyRadius;  // the sky shell's radius in the same units
+uniform float u_globeness;  // 1 on the globe, 0 on the flat map
 uniform float u_brightness;
 uniform float u_rotation;
 uniform float u_nebula;      // 0 drops the panorama and leaves bare stars
@@ -91,8 +93,7 @@ vec3 hash3(vec3 p) {
 }
 
 // One star per cell at most, placed by hash. Sampling the 3x3x3 neighbourhood would let stars sit
-// near cell edges without clipping, at 27x the cost; at these densities a single cell is enough,
-// and the grid never becomes visible because the cell size is far below a pixel of sky.
+// near cell edges without clipping, at 27x the cost; at these densities a single cell is enough.
 vec3 stars(vec3 dir) {
   vec3 p = dir * u_starDensity;
   vec3 cell = floor(p);
@@ -104,10 +105,22 @@ vec3 stars(vec3 dir) {
   vec3 offset = hash3(cell + 17.0);
   float dist = length(fract(p) - offset);
 
-  // A steep falloff makes a point rather than a blob; the exponent is the apparent star size.
-  float core = pow(max(0.0, 1.0 - dist * 2.6), 14.0);
-  // Lopsided on purpose: a few bright, very many faint — the real distribution.
-  float magnitude = pow(h.y, 7.0);
+  // A STAR HAS TO BE BIGGER THAN A PIXEL OR IT IS NOT THERE.
+  //
+  // The obvious way to draw a point source is a very steep falloff, and it silently produces an
+  // empty sky. At this density a cell is about seven screen pixels, so a profile that has decayed
+  // by a tenth of a cell is a third of a pixel wide — narrower than the sample grid. Nothing is
+  // being clipped or discarded; the pixel centres simply never land on a star, and the whole layer
+  // measures as exactly zero across a hundred thousand pixels while looking, in code, entirely
+  // reasonable.
+  //
+  // So the profile is a gaussian roughly a pixel and a half across, which always registers, and
+  // which is also what a real point source looks like once optics have spread it.
+  float core = exp(-dist * dist * 60.0);
+
+  // Lopsided on purpose: a few bright, very many faint — the real distribution. The floor is what
+  // stops the faint majority being crushed below one 255th and vanishing for the same reason.
+  float magnitude = 0.12 + 0.88 * pow(h.y, 4.0);
 
   // Blue-white through to amber, weighted toward white as real naked-eye stars are.
   vec3 tint = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.82, 0.62), pow(h.z, 1.6));
@@ -119,11 +132,29 @@ vec3 stars(vec3 dir) {
   return tint * core * magnitude * flicker;
 }
 
+// Is the earth between the camera and this piece of sky? Standard ray-versus-unit-sphere: a hit in
+// front of the camera means the planet is in the way.
+bool earthBlocks(vec3 skyPoint) {
+  vec3 ray = normalize(skyPoint - u_camera);
+  float b = dot(u_camera, ray);
+  float c = dot(u_camera, u_camera) - 1.0;
+  float disc = b * b - c;
+  if (disc < 0.0) return false;
+  return (-b - sqrt(disc)) > 0.0;
+}
+
 void main() {
   vec3 dir = normalize(v_sphere);
-  vec3 sky = texture2D(u_sky, equirectUV(dir, u_rotation)).rgb * u_nebula;
+
+  // The sky is the BACKDROP, but a custom layer draws AFTER the style's raster layers, not before
+  // them — so an opaque sky with nothing to stop it paints straight over the planet, and the earth
+  // disappears under a grey wash. The depth buffer is no help at this range: the shell sits tens of
+  // thousands of kilometres out, right where MapLibre's far plane is doing its own arithmetic. So
+  // the occlusion is worked out here, from the geometry, which is exact at any distance.
+  if (u_globeness > 0.5 && earthBlocks(dir * u_skyRadius)) discard;
+
+  vec3 sky = texture2D(u_sky, equirectUVInside(dir, u_rotation)).rgb * u_nebula;
   sky += stars(dir) * u_starAmount;
-  // Opaque: this is the backdrop, and everything else in the style draws over it.
   gl_FragColor = vec4(sky * u_brightness, 1.0);
 }`
 
@@ -136,7 +167,7 @@ void main() {
  */
 export const createStarfieldLayer = ({
   textureUrl = null, brightness = 0.55, rotation = 0,
-  nebula = 1, starDensity = 190, starAmount = 1, twinkle = 0, animate = false,
+  nebula = 1, starDensity = 190, starAmount = 3.2, twinkle = 0, animate = false,
 } = {}) => {
   const mesh = buildSphereMesh()
   let map = null
@@ -161,6 +192,9 @@ export const createStarfieldLayer = ({
         elevationGlobe: gl.getUniformLocation(program, 'a_elevation_globe'),
         elevationMercator: gl.getUniformLocation(program, 'a_elevation_mercator'),
         sky: gl.getUniformLocation(program, 'u_sky'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        skyRadius: gl.getUniformLocation(program, 'u_skyRadius'),
+        globeness: gl.getUniformLocation(program, 'u_globeness'),
         brightness: gl.getUniformLocation(program, 'u_brightness'),
         rotation: gl.getUniformLocation(program, 'u_rotation'),
         nebula: gl.getUniformLocation(program, 'u_nebula'),
@@ -259,6 +293,9 @@ export const createStarfieldLayer = ({
       if (uniforms.elevationMercator) {
         gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], SKY_ALTITUDE_M).z)
       }
+      if (uniforms.camera) gl.uniform3f(uniforms.camera, ...cameraInPlanetSpace(map, maplibregl))
+      if (uniforms.skyRadius) gl.uniform1f(uniforms.skyRadius, 1 + SKY_ALTITUDE_M / EARTH_RADIUS_M)
+      if (uniforms.globeness) gl.uniform1f(uniforms.globeness, projection.projectionTransition)
       if (uniforms.brightness) gl.uniform1f(uniforms.brightness, state.brightness)
       if (uniforms.rotation) gl.uniform1f(uniforms.rotation, state.rotation)
       if (uniforms.nebula) gl.uniform1f(uniforms.nebula, state.nebula)

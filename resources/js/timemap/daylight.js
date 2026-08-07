@@ -22,7 +22,10 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL } from './planet-mesh.js'
+import {
+  buildSphereMesh, buildProgram, cameraInPlanetSpace,
+  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL,
+} from './planet-mesh.js'
 
 const LAYER_ID = 'tm-daylight'
 
@@ -33,27 +36,33 @@ attribute vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
 varying vec3 v_sphere;
+${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
-  #ifdef GLOBE
-    gl_Position = projectTileFor3D(a_pos, a_elevation_globe);
-  #else
-    gl_Position = projectTileFor3D(a_pos, a_elevation_mercator);
-  #endif
+  gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
 const fragmentSource = () => `precision highp float;
 varying vec3 v_sphere;
 uniform vec3 u_sun;            // direction TO the sun
+uniform vec3 u_camera;         // camera in planet space, earth = unit sphere
+uniform float u_globeness;     // 1 on the globe, 0 on the flat map
 uniform float u_nightDarkness; // how black the unlit side goes
 uniform vec3 u_nightColour;
 uniform vec3 u_twilightColour;
 uniform sampler2D u_lights;    // NASA Black Marble, equirectangular
 uniform float u_lightsAmount;  // 0 when the texture has not loaded
 ${EQUIRECT_GLSL}
+${FACING_CAMERA_GLSL}
 
 void main() {
   vec3 normal = normalize(v_sphere);
+
+  // The mesh is a closed sphere, so the far side covers the same pixels as the near side. On the
+  // globe, drop it here rather than leaning on the depth buffer — see FACING_CAMERA_GLSL. On the
+  // flat map there is no far side to drop.
+  if (u_globeness > 0.5 && !facesCamera(normal, u_camera)) discard;
+
   float sunAngle = dot(normal, u_sun);
 
   // Twilight spans roughly -0.31 to +0.09 in this cosine — about 18° of sun elevation below the
@@ -85,7 +94,11 @@ void main() {
 /**
  * @param {object} opts
  * @param {number[]} [opts.sun]            direction TO the sun; share it with the clouds and air
- * @param {number} [opts.nightDarkness]    0 disables the layer, 1 is a black night side
+ * @param {number} [opts.nightDarkness]    0 disables the layer, 1 is a black night side.
+ *   Judge this over ICE, not over ocean. Blue Marble's night ocean is already near-black, so it
+ *   looks convincing at almost any setting, while its Antarctica is near-white: measured on the
+ *   globe, the ice reads 237 unshaded and still 78 at 0.82, a grey continent glowing in the middle
+ *   of the polar night. At 0.965 it lands around 12 and the night finally reads as night.
  * @param {string} [opts.lightsUrl]        equirectangular city-lights image (NASA Black Marble)
  * @param {number} [opts.lightsAmount]     brightness of the cities
  * @param {number[]} [opts.nightColour]    the unlit side's tint
@@ -93,7 +106,7 @@ void main() {
  */
 export const createDaylightLayer = ({
   sun = [1, 0, 0],
-  nightDarkness = 0.82,
+  nightDarkness = 0.965,
   lightsUrl = null,
   lightsAmount = 1,
   nightColour = [0.02, 0.035, 0.07],
@@ -122,6 +135,8 @@ export const createDaylightLayer = ({
         elevationGlobe: gl.getUniformLocation(program, 'a_elevation_globe'),
         elevationMercator: gl.getUniformLocation(program, 'a_elevation_mercator'),
         sun: gl.getUniformLocation(program, 'u_sun'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        globeness: gl.getUniformLocation(program, 'u_globeness'),
         nightDarkness: gl.getUniformLocation(program, 'u_nightDarkness'),
         nightColour: gl.getUniformLocation(program, 'u_nightColour'),
         twilightColour: gl.getUniformLocation(program, 'u_twilightColour'),
@@ -209,15 +224,18 @@ export const createDaylightLayer = ({
       if (uniforms.transition) gl.uniform1f(uniforms.transition, projection.projectionTransition)
       if (uniforms.fallbackMatrix) gl.uniformMatrix4fv(uniforms.fallbackMatrix, false, projection.fallbackMatrix)
 
-      // Just clear of the surface: at exactly 0 the shell z-fights the globe's own tiles and the
-      // night side flickers in bands as the camera moves.
+      // Right on the surface. Nothing is lifted to dodge the depth buffer any more — the shader
+      // rejects the far hemisphere itself — and lifting it would drag the terminator off the
+      // ground it is meant to fall on.
       const lat = map.getCenter().lat
-      const LIFT_M = 3000
+      const LIFT_M = 0
       if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, LIFT_M)
       if (uniforms.elevationMercator) {
         gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], LIFT_M).z)
       }
       if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
+      if (uniforms.camera) gl.uniform3f(uniforms.camera, ...cameraInPlanetSpace(map, maplibregl))
+      if (uniforms.globeness) gl.uniform1f(uniforms.globeness, projection.projectionTransition)
       if (uniforms.nightDarkness) gl.uniform1f(uniforms.nightDarkness, state.nightDarkness)
       if (uniforms.nightColour) gl.uniform3f(uniforms.nightColour, ...state.nightColour)
       if (uniforms.twilightColour) gl.uniform3f(uniforms.twilightColour, ...state.twilightColour)
@@ -235,11 +253,14 @@ export const createDaylightLayer = ({
       gl.enableVertexAttribArray(attribs.sphere)
       gl.vertexAttribPointer(attribs.sphere, 3, gl.FLOAT, false, 0, 0)
 
-      gl.enable(gl.DEPTH_TEST)
-      gl.depthFunc(gl.LEQUAL)
+      // No depth test at all. A shell this close to the surface cannot be told apart from it by a
+      // depth buffer at orbital range, and testing anyway is what broke the night into a quilt of
+      // tile-shaped patches. The horizon test in the fragment shader replaces it exactly.
+      gl.disable(gl.DEPTH_TEST)
       gl.depthMask(false)      // night is not geometry
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index)
       gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+      gl.enable(gl.DEPTH_TEST)
       gl.depthMask(true)
     },
 

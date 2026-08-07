@@ -68,11 +68,35 @@ describe('latFromMercatorY', () => {
 })
 
 describe('buildSphereMesh', () => {
-  it('lays vertices out in mercator 0..1 — the space the prelude consumes', () => {
+  it('reaches past the mercator square, because the poles are outside it', () => {
+    // The regression this exists for: a mesh spanning exactly 0..1 stops at ±85.05° and leaves a
+    // disc of bare imagery at each pole. Under the night shell that was a circle of lit Antarctica
+    // sitting in the middle of the polar night — invisible from any view that was not over a pole,
+    // which is why it shipped.
     const mesh = buildSphereMesh(4, 3)
     expect(mesh.positions.length).toBe(mesh.vertexCount * 2)
-    expect(Math.min(...mesh.positions)).toBe(0)
-    expect(Math.max(...mesh.positions)).toBe(1)
+    expect(Math.min(...mesh.positions)).toBeLessThan(0)
+    expect(Math.max(...mesh.positions)).toBeGreaterThan(1)
+
+    // Longitude still spans exactly one turn: only the y range grew.
+    const xs = mesh.positions.filter((_, i) => i % 2 === 0)
+    expect(Math.min(...xs)).toBe(0)
+    expect(Math.max(...xs)).toBe(1)
+  })
+
+  it('covers the sphere to within a metre or two of each pole', () => {
+    const mesh = buildSphereMesh(4, 3)
+    const ys = mesh.positions.filter((_, i) => i % 2 === 1)
+    // How much latitude is left uncovered at each end, in kilometres along the surface.
+    const gapKm = (lat) => (90 - Math.abs(lat)) * 111.32
+    expect(gapKm(latFromMercatorY(Math.min(...ys)))).toBeLessThan(0.2)
+    expect(gapKm(latFromMercatorY(Math.max(...ys)))).toBeLessThan(0.2)
+  })
+
+  it('never reaches the pole exactly, where the mercator y is infinite', () => {
+    const ys = buildSphereMesh(4, 3).positions.filter((_, i) => i % 2 === 1)
+    ys.forEach((y) => expect(Number.isFinite(y)).toBe(true))
+    expect(Math.abs(latFromMercatorY(Math.min(...ys)))).toBeLessThan(90)
   })
 
   it('carries a unit-sphere direction per vertex, so noise stays even from equator to Iceland', () => {
@@ -96,9 +120,12 @@ describe('buildSphereMesh', () => {
 
   it('indexes every quad as two triangles, within Uint16 range', () => {
     const mesh = buildSphereMesh(4, 3)
-    expect(mesh.indices.length).toBe(4 * 3 * 6)
+    // Every row gap, including the cap rows added beyond the mercator square.
+    expect(mesh.indices.length).toBe(4 * (mesh.rowCount - 1) * 6)
     expect(Math.max(...mesh.indices)).toBeLessThan(mesh.vertexCount)
+    // The index buffer is Uint16: an out-of-range vertex count wraps silently rather than throwing.
     expect(buildSphereMesh().vertexCount).toBeLessThan(65536)
+    expect(Math.max(...buildSphereMesh().indices)).toBeLessThan(65536)
   })
 })
 

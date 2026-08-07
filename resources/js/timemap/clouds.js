@@ -26,7 +26,7 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, buildProgram, EQUIRECT_GLSL, SHELL_PROJECT_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-clouds'
 // Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
@@ -75,14 +75,11 @@ attribute vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
 varying vec3 v_sphere;
+${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
   // Globe wants metres above the sphere; mercator wants z in mercator units. Same deck, two rulers.
-  #ifdef GLOBE
-    gl_Position = projectTileFor3D(a_pos, a_elevation_globe);
-  #else
-    gl_Position = projectTileFor3D(a_pos, a_elevation_mercator);
-  #endif
+  gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
 const fragmentSource = () => `precision highp float;
