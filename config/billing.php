@@ -44,14 +44,23 @@ return [
 
         /**
          * The VAT rate shown on the buy screen before Stripe has calculated the
-         * real one. 9% is the Dutch REDUCED rate for educational content, which
-         * is what this is (Bart, 2026-08-06) rather than the 21% general rate.
+         * real one. 21%, the Dutch GENERAL rate.
+         *
+         * We briefly ran this at the 9% reduced rate for educational content and
+         * parked that (Bart, 2026-08-07): the reduced rate turns on a
+         * classification nobody has confirmed, and the safe direction to be wrong
+         * in is the higher one. Charging 21% and later learning we could have
+         * charged 9% costs a teacher 60 cents; charging 9% and later learning we
+         * owed 21% is a bill we cannot go back and collect.
+         *
+         * Must stay in step with the tax code below — the code is what Stripe
+         * actually charges from, so a mismatch means the button quotes a price
+         * the checkout does not.
          *
          * Display only. What is charged and stored comes from Stripe Tax, which
-         * works it out from the tax code below and the buyer's address — so a
-         * German or Italian buyer may well see a different figure at checkout.
+         * works it out from the tax code and the buyer's address.
          */
-        'display_vat_rate' => (float) env('NARRATION_CREDIT_VAT_RATE', 0.09),
+        'display_vat_rate' => (float) env('NARRATION_CREDIT_VAT_RATE', 0.21),
 
         'currency' => env('NARRATION_CREDIT_CURRENCY', 'eur'),
 
@@ -62,19 +71,21 @@ return [
          * one), so this is not optional, and the default here is a real tax determination rather
          * than a placeholder. WORTH CONFIRMING WITH AN ACCOUNTANT alongside the expiry question.
          *
-         * txcd_20060258, "On demand Online Courses - pre-recorded audio or audio/video content
-         * accessed through a SaaS platform", is what carries the EDUCATIONAL classification and
-         * therefore the reduced rate (Bart, 2026-08-06: this is an education platform, 9% rather
-         * than 21%). It replaced txcd_10000000, "General - Electronically Supplied Services",
-         * which is the general-rate code and would have had Stripe charge 21%.
+         * txcd_10000000, "General - Electronically Supplied Services": the teacher is buying
+         * capacity inside our authoring tool, delivered electronically. General rate, 21% in the
+         * Netherlands.
          *
-         * WORTH KNOWING, because it is the risk in this choice: what a teacher buys here is
-         * narration capacity inside the authoring tool, and the code describes a pre-recorded
-         * course delivered to a learner. Those are close but not identical, and the classification
-         * is what the rate hangs on. Reduced rates and outright education exemptions also differ
-         * per EU country, so a German or Italian buyer may not get 9%. Stripe applies whatever the
-         * code and the buyer's address produce; getting the classification right is an accountant's
-         * call, not this file's.
+         * PARKED, NOT SETTLED (Bart, 2026-08-07). We tried txcd_20060258, "On demand Online
+         * Courses", which carries the educational classification and the 9% reduced rate, and
+         * reverted to this one deliberately: the reduced rate depends on a classification no
+         * accountant has confirmed, and what a teacher actually buys here is authoring capacity
+         * rather than a course delivered to a learner. Overcharging is recoverable; undercharging
+         * is a bill that cannot be collected after the fact.
+         *
+         * Worth revisiting WITH ADVICE. In the Netherlands education is often VAT-EXEMPT rather
+         * than reduced-rate, which is a third possible answer and a better one than either of
+         * these. Reduced rates and exemptions also differ per EU country. Change this and
+         * display_vat_rate above together — they must agree.
          *
          * Deliberately NOT one of the education codes. txcd_20060052 (Educational Services) is for
          * academic classes run by an education establishment, and the online-course codes
@@ -87,7 +98,7 @@ return [
          * txcd_10103001 (SaaS, business use). Stripe takes one code per line item, so a single
          * consumer-leaning code is the practical choice while individual teachers are most buyers.
          */
-        'tax_code' => env('NARRATION_CREDIT_TAX_CODE', 'txcd_20060258'),
+        'tax_code' => env('NARRATION_CREDIT_TAX_CODE', 'txcd_10000000'),
 
         /**
          * How long bought credit lasts, in days from the moment it was bought.

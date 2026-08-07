@@ -14,15 +14,16 @@ use Illuminate\Support\Number;
  * explain on the screen and easier to reason about in the ledger than a tier table nobody asked
  * for yet.
  *
- * The price is EXCLUSIVE of VAT (Bart's decision, 2026-08-06): 5.00 euro is what WE keep, and the
- * VAT owed at the buyer's own rate is added on top at checkout. This is educational content, so the
- * Dutch reduced rate of 9% applies rather than the 21% general rate: a Dutch teacher pays 5.45. A
- * school with a valid VAT number is reverse-charged and pays exactly 5.00. The line item goes to
- * Stripe with tax_behavior=exclusive.
+ * The price is EXCLUSIVE of VAT (Bart, 2026-08-06): 5.00 euro is what WE keep, and the VAT owed at
+ * the buyer's own rate is added on top at checkout. At the Dutch general rate of 21% a teacher pays
+ * 6.05. A school with a valid VAT number is reverse-charged and pays exactly 5.00. The line item
+ * goes to Stripe with tax_behavior=exclusive.
+ *
+ * The 9% educational rate is PARKED, not ruled out (Bart, 2026-08-07) — see config/billing.php.
  *
  * Because of that, EVERY consumer-facing price has to show the gross figure. EU price-indication
  * rules require the total a consumer actually pays to be the prominent one, so the buy screen leads
- * with "5.45" and puts "5.00 excl. VAT" beside it — grossLabel() below, not priceLabel(). The exact
+ * with "6.05" and puts "5.00 excl. VAT" beside it — grossLabel() below, not priceLabel(). The exact
  * rate is Stripe Tax's answer for the buyer's address; grossLabel() shows the configured rate so the
  * screen is honest before Stripe has been asked.
  *
@@ -96,16 +97,21 @@ final class NarrationCreditPack
     /**
      * The VAT rate the SCREEN shows before Stripe Tax has computed the buyer's real one.
      *
-     * Educational content sits on the reduced Dutch rate of 9% rather than the 21% general rate
-     * (Bart, 2026-08-06). Deliberately ONE configurable number rather than a table of every
-     * country's reduced rate: reduced rates and education exemptions differ wildly across the EU,
-     * a hard-coded table would be wrong somewhere within a year, and nothing here is what actually
-     * gets charged. Stripe Tax computes and stores the real figure from the product tax code and
-     * the buyer's address — this only keeps the price on the button honest before checkout.
+     * 21%, the Dutch general rate, matching the general-rate tax code we send. The 9% educational
+     * rate is parked pending advice (Bart, 2026-08-07); the two must move together, because the
+     * code is what Stripe charges from.
+     *
+     * Deliberately ONE configurable number rather than a table of every country's rate: they differ
+     * across the EU, a hard-coded table would be wrong somewhere within a year, and nothing here is
+     * what actually gets charged. Stripe Tax computes and stores the real figure from the product
+     * tax code and the buyer's address — this only keeps the price on the button honest.
      */
     public static function displayVatRate(): float
     {
-        return (float) config('billing.credit_pack.display_vat_rate', 0.09);
+        // Fallback matches config/billing.php deliberately. A hardcoded default that disagrees with
+        // the config is a trap that only springs when the config is missing — the moment nobody is
+        // looking — and it would quote a price the checkout does not honour.
+        return (float) config('billing.credit_pack.display_vat_rate', 0.21);
     }
 
     /** Gross price in cents, rounded the way an invoice rounds. */
@@ -115,7 +121,7 @@ final class NarrationCreditPack
     }
 
     /**
-     * "€5.45" — what the teacher actually pays, VAT included.
+     * "€6.05" — what the teacher actually pays, VAT included.
      *
      * THIS is the figure a buy screen leads with. EU price-indication rules require the total a
      * consumer pays to be the prominent one, and with an exclusive price the net figure is not it.

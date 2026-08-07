@@ -183,19 +183,20 @@ class StripeCustomerReuseTest extends TestCase
         $this->assertNotEmpty($product['tax_code'] ?? null, 'Stripe will refuse this session');
         $this->assertStringStartsWith('txcd_', $product['tax_code']);
 
-        // Pinned, not merely well-formed. This code carries the EDUCATIONAL classification and with
-        // it the reduced rate; txcd_10000000 ("General - Electronically Supplied Services") is the
-        // general-rate code and would have Stripe charge 21% instead of 9%. Both are valid txcd_
-        // strings, so a shape check would have let that swap through silently.
-        $this->assertSame('txcd_20060258', $product['tax_code']);
+        // Pinned, not merely well-formed. This is the GENERAL-rate code, deliberately: the 9%
+        // educational code (txcd_20060258) is parked pending advice. Both are valid txcd_ strings,
+        // so a shape check would let a swap through silently — and the code is what Stripe charges
+        // from, so swapping it changes the price without changing anything visible.
+        $this->assertSame('txcd_10000000', $product['tax_code']);
     }
 
-    public function test_the_screen_shows_the_reduced_education_rate(): void
+    public function test_the_screen_rate_matches_the_tax_code_we_send(): void
     {
-        // 9%, not 21%: this is an education platform. The gross is what a consumer must be shown,
-        // so a wrong rate here is a wrong price on the button, not just a wrong comment.
-        $this->assertSame(0.09, NarrationCreditPack::displayVatRate());
-        $this->assertSame(545, NarrationCreditPack::grossCents());
+        // These two must agree. The tax code decides what Stripe charges and the rate decides what
+        // the button says, so a drift between them quotes a price the checkout does not honour.
+        // General-rate code, therefore the general rate: 21%, 6.05 gross on a 5.00 net price.
+        $this->assertSame(0.21, NarrationCreditPack::displayVatRate());
+        $this->assertSame(605, NarrationCreditPack::grossCents());
     }
 
     public function test_the_session_carries_the_teacher_and_the_character_count(): void
