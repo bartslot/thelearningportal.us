@@ -103,7 +103,13 @@ ssh -p "$PORT" -i "$KEY" "$HOST" "cd $DEST && \
   php artisan storage:link && \
   php artisan config:clear -q && \
   php artisan view:clear -q && \
+  php artisan route:clear -q && \
+  `# ^ bootstrap/cache/ is EXCLUDED from the rsync, so a route cache generated on the server` \
+  `# outlives every deploy. /launch shipped correctly — file present, view present — and 404'd,` \
+  `# because routes-v7.php still held the pre-deploy table. A new route would silently never` \
+  `# exist. Clearing is cheap; the cache is rebuilt below.` \
   php artisan migrate --force && \
+  php artisan route:cache -q && \
   php artisan view:cache -q && echo 'caches warmed'"
 
 # A 200 is not proof. The page can render perfectly while every image behind it 404s — which is
