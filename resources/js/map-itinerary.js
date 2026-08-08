@@ -25,6 +25,7 @@
 import { PLACE_LABEL } from './map-place-label.js'
 import { EASE } from './easing.js'
 import { boxView } from './map-view.js'
+import { PITCH } from './map-imagery.js'
 
 /** Ink for the numbered dot. The last stop is lighter, so a class can see where the list ends. */
 const DOT_INK = '#7c2d12'
@@ -228,7 +229,11 @@ export function itineraryTour (map, stops, {
       map.easeTo({
         center: view.center,
         zoom: stopZoom,
-        pitch: 0,
+        // The house tilt, not flat. This used to force pitch 0, written when the ground under it
+        // was a drawn atlas and there was nothing to lean over; now it is photographed terrain
+        // with the height raised, and flattening the camera at every stop threw that away — a map
+        // block in the player sat dead flat no matter what, which is what made the Alps invisible.
+        pitch: PITCH,
         duration: Math.max(300, (schedule[i].arriveAt - schedule[i].departAt)),
         essential: true,
       })
@@ -255,7 +260,7 @@ export function itineraryTour (map, stops, {
       const box = stopsBox(list)
       if (box) {
         const v = boxView(box, { pad: 1.5, maxZoom: 5 })
-        try { map.easeTo({ ...v, pitch: 0, duration: 1200, essential: true }) } catch (_) { /* torn down */ }
+        try { map.easeTo({ ...v, pitch: PITCH, duration: 1200, essential: true }) } catch (_) { /* torn down */ }
       }
       startedAt = performance.now()
       elapsed = 0

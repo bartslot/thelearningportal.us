@@ -155,11 +155,9 @@ export function renderLessonMap (el, opts = {}) {
     // opening view is fitted to the block's own cities and a pitch applied afterwards re-frames
     // the shot — the class would watch the map settle instead of arriving already composed.
     //
-    // Mercator only. On the globe you are already looking at a curved surface from outside it, so
-    // leaning over buys no silhouette and can drive the camera under the horizon. The itinerary
-    // overview flattens itself back to 0 on purpose (map-itinerary.js) — reading a whole route
-    // end to end is the one shot that wants no perspective at all.
-    pitch: projection === 'mercator' ? PITCH : 0,
+    // Every projection, globe included: MapLibre's globe leans perfectly well, and a voyage seen
+    // over the curve of the earth is the best shot the app has.
+    pitch: PITCH,
     style: {
       version: 8,
       // 2D flat (mercator) vs 3D globe (MapLibre v5) — set on the style at init so the map starts
