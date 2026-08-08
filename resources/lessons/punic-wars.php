@@ -12,6 +12,11 @@ declare(strict_types=1);
  *
  * Imagery is PINNED to named paintings. Free-text search for these subjects returns battle
  * schematics and modern concrete statues, which is worse than no picture at all.
+ *
+ * Every stop carries at least three pictures, and no picture appears at two different stops. The
+ * one exception is deliberate: Turner's "Dido Building Carthage" opens the lesson and closes it.
+ * The rule exists because the Ripanda fresco used to fill the second slot of three consecutive
+ * legs, which reads as the lesson having run out of things to show.
  */
 return [
     'key' => 'The Punic Wars',
@@ -28,30 +33,39 @@ return [
             'type' => 'quiz',
             'when' => 'pre',
             'chapter' => 'What do you already know?',
+            // Prior knowledge only, and deliberately NOT the ending. The explanation is shown to the
+            // class the moment a question is answered, so anything stated here is stated in scene 1
+            // of 19: an outcome question spoils fifteen scenes of story before the story starts.
+            // Options are kept to the same visual length for the reason given on the post quiz.
             'questions' => [
                 [
                     'q' => 'The Punic Wars were fought between Rome and which other city?',
                     'o' => ['Athens', 'Carthage', 'Troy', 'Alexandria'],
                     'c' => 1,
-                    'e' => 'Carthage, on the coast of what is now Tunisia. The Romans called its people Poeni, which is where the word Punic comes from.',
+                    'e' => 'Carthage. The Romans called its people Poeni, which is where the word Punic comes from.',
                 ],
                 [
                     'q' => 'Which general famously marched an army with elephants over the Alps?',
-                    'o' => ['Julius Caesar', 'Alexander the Great', 'Hannibal', 'Scipio'],
-                    'c' => 2,
-                    'e' => 'Hannibal Barca, in the autumn of 218 BC.',
-                ],
-                [
-                    'q' => 'Roughly how long did the struggle between Rome and Carthage last?',
-                    'o' => ['About 5 years', 'About 20 years', 'About 60 years', 'More than 100 years'],
-                    'c' => 3,
-                    'e' => 'Three separate wars across 118 years, from 264 BC to 146 BC.',
-                ],
-                [
-                    'q' => 'Who won in the end?',
-                    'o' => ['Carthage', 'Rome', 'Neither, they made peace', 'Greece'],
+                    'o' => ['Julius Caesar', 'Hannibal Barca', 'Scipio Africanus', 'Alexander the Great'],
                     'c' => 1,
-                    'e' => 'Rome won, and destroyed the city of Carthage completely in 146 BC.',
+                    'e' => 'Hannibal Barca, in the autumn of 218 BC. Two of the others are in this story as well.',
+                ],
+                [
+                    'q' => 'Where was Carthage?',
+                    'o' => [
+                        'On the coast of North Africa',
+                        'On the coast of southern Spain',
+                        'On the coast of southern Greece',
+                        'On the island of Sicily',
+                    ],
+                    'c' => 0,
+                    'e' => 'North Africa, on the gulf beside modern Tunis. Close enough to Sicily that both cities wanted the island.',
+                ],
+                [
+                    'q' => 'How long did Rome and Carthage fight, on and off?',
+                    'o' => ['About 12 years', 'About 40 years', 'About 70 years', 'About 120 years'],
+                    'c' => 3,
+                    'e' => 'Three separate wars between 264 and 146 BC: a hundred and eighteen years. The grandchildren of the first war fought the last one.',
                 ],
             ],
         ],
@@ -111,8 +125,9 @@ return [
             'date_label' => 'Spring, 218 BC',
             'story' => 'Hannibal left New Carthage in the spring of 218 BC with something in the region of ninety thousand infantry, twelve thousand cavalry and thirty seven elephants. Nobody had ever attempted anything like it. He was twenty eight years old.',
             'images' => [
-                'commons:Hannibal in Italy, Jacopo Ripanda and assistants, 1507-1508, fresco - Musei Capitolini - Rome, Italy - DSC05922.jpg',
+                'commons:Hannibal Barca bust from Capua photo.jpg',
                 'commons:Guerrero ibero de La Alcudia (M.A.N. Inv.38441) 01.jpg',
+                'commons:Muralla Púnica de Cartagena.jpg',
             ],
             'prefer' => 'art',
             'script' => 'In the spring of 218 BC, Hannibal marched out of New Carthage heading north. With him went something like ninety thousand foot soldiers, twelve thousand horsemen, and thirty seven elephants. He was twenty eight years old. He was not marching to raid the coast or take a town. He intended to walk fifteen hundred kilometres, cross two mountain ranges, and attack the most powerful city in the world in its own back garden. Watch the line on the map, and keep asking yourself the same question the Romans never thought to ask: could anyone really come that way?',
@@ -125,8 +140,11 @@ return [
             'title' => 'The first mountains',
             'date_label' => 'Summer, 218 BC',
             'story' => 'Crossing the Pyrenees cost Hannibal thousands of men before he had fought a single battle. Some died. Many more simply went home: these were soldiers from Spain who had signed up to fight in Spain, and the mountains were where they understood what they had joined.',
-            'images' => ['commons:James Dickson Innes - Deep Twilight, Pyrenees - Google Art Project.jpg',
-                'commons:Hannibal in Italy, Jacopo Ripanda and assistants, 1507-1508, fresco - Musei Capitolini - Rome, Italy - DSC05922.jpg'],
+            'images' => [
+                'commons:James Dickson Innes - Deep Twilight, Pyrenees - Google Art Project.jpg',
+                'commons:Stanislas von Kalckreuth - Hochgebirgslandschaft in den Pyrenäen (1857).jpg',
+                'commons:Eiler Rasmussen Eilersen - En bjergvej i Pyrenæerne.png',
+            ],
             'prefer' => 'art',
             'script' => 'The Pyrenees came first, and they cost him dearly. Some men died on those slopes. Far more of them walked away. They were soldiers recruited in Spain to fight in Spain, and somewhere on that climb it dawned on them how far this general actually meant to go. Hannibal did something clever and rather cold: he let them leave, and he sent home a further ten thousand he did not trust, so that only the willing walked on. An army that wants to be there is worth more than a bigger one that does not. By the time he came down into Gaul he had lost roughly a third of the men he set out with, and had not yet seen a Roman.',
         ],
@@ -138,9 +156,12 @@ return [
             'title' => 'Getting an elephant across a river',
             'date_label' => 'September, 218 BC',
             'story' => 'To cross the Rhône, Hannibal built enormous rafts, covered them with earth and turf until they looked like solid ground, and led the elephants on. When the rafts were cut loose and began to drift, the animals panicked. Some threw themselves into the water and waded across on the riverbed with only their trunks above the surface.',
+            // The map walks a HORSE across this leg (transports.json has no elephant model), so the
+            // elephants have to arrive as pictures or the scene contradicts its own title.
             'images' => [
                 'commons:Hannibal traverse le Rhône Henri Motte 1878.jpg',
-                'commons:Hannibal in Italy, Jacopo Ripanda and assistants, 1507-1508, fresco - Musei Capitolini - Rome, Italy - DSC05922.jpg',
+                'commons:Carl Emil Doepler - The elephants crossing the Rhone, 218 BC.jpg',
+                'commons:Carthage, quarter shekel, 237-209 BC, SNG BM Spain 102.jpg',
             ],
             'prefer' => 'art',
             'script' => 'Then came the Rhône, wide and fast, with hostile Gauls waiting on the far bank. Hannibal sent part of his force upstream in the night to cross secretly and come at the Gauls from behind, and while they were busy he put his army over. The elephants were the hard part. He built huge rafts, piled them with earth and turf until they looked like ordinary ground, and walked the animals on. When the ropes were cut and the rafts began to move, the elephants realised. Some panicked and went into the river, and according to our sources they crossed by walking along the bottom with only their trunks lifted above the water. Look at the painting. That is a general improvising, in a foreign country, with an animal that weighs four tonnes and has just worked out it has been tricked.',
@@ -153,8 +174,13 @@ return [
             'title' => 'Fifteen days that made him famous',
             'date_label' => 'October to November, 218 BC',
             'story' => 'The crossing took about fifteen days, in late October, with the first snow already down. Mountain tribes rolled rocks onto the column from above. Pack animals slipped off ledges. On the descent the army met a landslide that had taken the path away entirely, and had to cut a new road through the rock while the men waited in the open with nothing to eat.',
+            // Poussin FIRST, deliberately: it is the one picture in the lesson where you can see
+            // Hannibal on the elephant, and it is also the map's thumbnail for this landfall.
+            // Turner's snowstorm is magnificent and shows almost nothing — it earns second place.
             'images' => [
+                "commons:Hannibal traversant les Alpes à dos d'éléphant - Nicolas Poussin.jpg",
                 'commons:Joseph Mallord William Turner - Snow Storm, Hannibal and his Army Crossing the Alps - WGA23167.jpg',
+                'commons:Heinrich Leutemann - Hannibals Übergang über die Alpen.jpg',
                 'commons:Loutherbourg-Une avalanche de glace dans les Alpes.jpg',
             ],
             'prefer' => 'art',
@@ -181,7 +207,11 @@ return [
             'title' => 'Cold water, before breakfast',
             'date_label' => 'December, 218 BC',
             'story' => 'Hannibal picked a freezing December morning, sent light cavalry to provoke the Romans out of camp before they had eaten, and made them wade a river shoulder deep in icy water. Then he sprang an ambush he had hidden in a stream bed the night before. It was his first battle in Italy, and it set the pattern.',
-            'images' => ["commons:Trajan's Column - NMR - panel 017 A.jpg", 'commons:Camille corot, veduta della campagna romana, 1825-28.jpg'],
+            'images' => [
+                'commons:Camille corot, veduta della campagna romana, 1825-28.jpg',
+                'commons:Battle of Trebbia (M. Merian).png',
+                "commons:Trajan's Column - NMR - panel 017 A.jpg",
+            ],
             'prefer' => 'art',
             'script' => 'His first battle in Italy tells you everything about how his mind worked. December, bitterly cold. He fed his own men and had them oil themselves by the fires. Then he sent a handful of horsemen to insult the Roman camp until the Romans came out, hungry, straight out of bed, and had to wade a river that was chest deep and full of meltwater to reach him. By the time they climbed the far bank they were shaking too hard to hold a shield properly. And his brother was waiting in a hidden stream bed to hit them from behind. Hannibal did not usually beat Roman armies with better soldiers. He beat them by deciding where, when and in what state they would arrive.',
         ],
@@ -193,7 +223,11 @@ return [
             'title' => 'The worst ambush in Roman history',
             'date_label' => '21 June, 217 BC',
             'story' => 'At Lake Trasimene, Hannibal hid his whole army in the hills along a narrow road between the water and the slopes, and waited for a morning mist. A Roman army of around twenty five thousand marched into the gap. Fighting lasted perhaps three hours. Some men drowned trying to escape into the lake in their armour.',
-            'images' => ['commons:Camille corot, la cervara, campagna romana, 1830-31.jpg', 'commons:Traj col battle 4.jpg'],
+            'images' => [
+                'commons:Camille corot, la cervara, campagna romana, 1830-31.jpg',
+                'commons:Trasimene battlefield.JPG',
+                'commons:Sylvestre Ducar decapite Flaminius (Trasimene).jpg',
+            ],
             'prefer' => 'art',
             'script' => 'Six months later he did something even bolder. At Lake Trasimene there is a stretch of road with the water on one side and steep hills on the other, and Hannibal put his entire army into those hills overnight. In the morning a mist came off the lake. A Roman army of twenty five thousand marched into that gap in column, unable to see more than a few metres, and the hills came down on them. It was over in about three hours. Men who ran for the water drowned, because nobody could swim in armour. The Roman commander was killed. And in Rome, a magistrate climbed onto the speakers\' platform in the Forum and announced it in one sentence: we have been beaten in a great battle.',
         ],
@@ -205,9 +239,13 @@ return [
             'title' => 'The second of August, 216 BC',
             'date_label' => '2 August, 216 BC',
             'story' => 'Rome raised the largest army it had ever put in one place, around eighty thousand men, and sent it to finish Hannibal. He had fewer than fifty thousand. He let his centre be pushed slowly backwards until the Roman mass had walked into a bag, then closed his cavalry behind them. Somewhere between fifty and seventy thousand Romans were killed in a single day.',
+            // Zama's engraving used to sit here as well as on the Zama scene. Cannae has its own
+            // painting — Trumbull's — and the Slodtz marble is Hannibal counting the rings taken
+            // off the Roman dead of THIS battle, which is the number the script quotes.
             'images' => [
-                'commons:The Battle Between Scipio and Hannibal at Zama MET DP874322.jpg',
-                "commons:Trajan's Column - NMR - panel 017 A.jpg",
+                'commons:John Trumbull - The Death of Paulus Aemilius at the Battle of Cannae - 1832.100 - Yale University Art Gallery.jpg',
+                'commons:Traj col battle 4.jpg',
+                'commons:Hannibal Slodtz Louvre MR2093.jpg',
             ],
             'prefer' => 'art',
             'script' => 'And then Cannae. Rome had had enough of clever ambushes, so it built the biggest army in its history, around eighty thousand men, and marched them out onto an open plain where there was nowhere to hide an ambush at all. Hannibal had fewer than fifty thousand. He put his weakest troops in the middle and his best on the wings, and he let that middle bend slowly backwards under Roman pressure, and the Romans pushed into it, and pushed, and thought they were winning. They were walking into a bag. When the sides closed and his cavalry came round behind, eighty thousand men were packed into a space too small to lift a sword. Somewhere between fifty and seventy thousand of them were killed in one afternoon. It is still, two thousand years later, one of the worst single days any army has ever had.',
@@ -222,8 +260,8 @@ return [
             'story' => 'Now put yourself in the middle of it, in the shoes of an ordinary Roman legionary. You are probably a farmer. You own your own equipment because that is the rule, so the shield you are holding cost your family real money. You are somewhere in the centre of a block of men eighty thousand strong, and at first the day goes well: the enemy in front of you is giving way. You push forward. Everyone pushes forward. Then the pushing stops, and you cannot understand why, and the men behind you keep coming. The sun is high. Nobody near you can see anything except the back of the man in front. You hear shouting from behind you, which makes no sense, because behind you is your own army. Livy writes that the next morning the Romans found men who had dug holes in the ground and pressed their faces into them to suffocate themselves. Around one Roman soldier in five who marched out that morning walked away. This is what a number in a textbook is made of.',
             'images' => [
                 'commons:Jean-Léon Gérôme - The Christian Martyrs\' Last Prayer - Walters 37113.jpg',
-                'commons:The Battle Between Scipio and Hannibal at Zama MET DP874322.jpg',
-                'commons:Traj col battle 4.jpg',
+                'commons:Dying Gaul Musei Capitolini MC747.jpg',
+                'commons:Grand Ludovisi Sarcophagus 04.jpg',
             ],
             'prefer' => 'art',
             'script' => 'Put yourself in that field, in the shoes of an ordinary Roman soldier. You are probably a farmer. You bought your own shield, because that is the rule, and it cost your family real money. At first the day goes well: the enemy in front of you is giving way, so you push forward, and everyone around you pushes forward. Then the pushing stops. You cannot see why, because all you can see is the back of the man in front of you, and the men behind you are still coming. Then you hear shouting from behind, which makes no sense, because behind you is your own army. Livy tells us that the next morning the Romans found men who had scraped holes in the earth and pushed their faces into them to stop themselves breathing. About one Roman in five who marched out that morning came home. That is what a number in a textbook is actually made of.',
@@ -258,8 +296,14 @@ return [
             'title' => 'The third war, and a story that is not true',
             'date_label' => '149 to 146 BC',
             'story' => 'Fifty years later Carthage was no threat to anybody. It had paid its fine, kept its treaty and grown rich again on trade. That last part was the problem. A senator called Cato ended every speech he gave, on any subject at all, with the same line: and furthermore, I consider that Carthage must be destroyed. In 149 BC Rome found a pretext and did it. The city held out for three years. When it fell, the survivors were sold into slavery and the buildings were pulled down. Polybius was standing next to the Roman general, his friend Scipio Aemilianus, and wrote that the general looked at the burning city and wept, and said that one day the same thing would happen to Rome. You may have heard that the Romans ploughed salt into the fields so nothing would ever grow. That story is not in any ancient source. It was invented by historians in the nineteenth century, and it spread because it sounds exactly like something Rome would do. Be careful with facts that feel too fitting.',
+            // Ends on Dido building the city, which opened the lesson — the same picture, now read
+            // backwards. Everything before it is the wreck: Cole's burning capital, then the real
+            // ruins and the real harbour, photographed.
             'images' => [
                 'commons:Joseph Mallord William Turner - The Decline of the Carthaginian Empire - WGA23169.jpg',
+                'commons:Cole Thomas The Course of Empire Destruction 1836.jpg',
+                'commons:Antonine Baths at Carthage.jpg',
+                'commons:PortsPuniquesSalamboTunis.jpg',
                 'commons:Turner Dido Building Carthage.jpg',
             ],
             'prefer' => 'art',
@@ -280,67 +324,143 @@ return [
             'type' => 'quiz',
             'when' => 'post',
             'chapter' => 'What did you learn?',
+            // One question per beat, in the order the beats were told, so a class re-walks the story
+            // rather than sampling it. Each answer is stated in the scene named above the question
+            // and in no later one.
+            //
+            // Every option in a question is written to roughly the SAME LENGTH. The previous set
+            // failed this in five questions out of six: the correct answer was the longest option by
+            // 2 to 10 words, and on the rendered card it was the only one that wrapped to a second
+            // line. Since `quiz_shuffle` is per_player the position moves, so length was the one
+            // stable cue left, and picking the longest row scored 5/6 without reading the question.
+            // Distractors are real things from the period or genuine misconceptions — never filler,
+            // because an obviously silly option removes itself and makes a 4-choice question a
+            // 2-choice one.
+            //
+            // `c` is spread across all four positions rather than left at 0. The composer sets
+            // per_player shuffle so position is hidden today, but the wizard's quiz editor can turn
+            // shuffling off for a class, and a spec with every answer at index 0 would then hand
+            // that class ten questions whose answer is always A.
             'questions' => [
                 [
-                    'q' => 'How did Rome, with almost no navy, win a war at sea against Carthage?',
+                    // scene 3 — The first war: Rome learns to swim
+                    'q' => 'Rome had no real navy in 264 BC. How did it win the war at sea?',
                     'o' => [
-                        'It hired the Greek fleet',
-                        'It copied a wrecked Carthaginian ship and invented a boarding bridge',
-                        'It blocked the harbour of Carthage',
-                        'It fought only on land',
+                        'It blockaded Carthage until the fleet surrendered',
+                        'It hired Greek crews from the cities of Sicily',
+                        'It copied a wrecked warship and boarded the enemy',
+                        'It waited for storms to break the Punic fleet',
                     ],
-                    'c' => 1,
-                    'e' => 'The Romans copied a captured design, then used a spiked boarding bridge to turn sea battles into the land fighting they were good at.',
-                ],
-                [
-                    'q' => 'Why did Hannibal march overland instead of sailing to Italy?',
-                    'o' => [
-                        'His elephants could not travel by ship',
-                        'Rome controlled the sea, so ships could be sunk',
-                        'It was faster',
-                        'He wanted to recruit in the Alps',
-                    ],
-                    'c' => 1,
-                    'e' => 'After the first war Rome dominated the sea. The long march was the only route that was not under Roman control.',
-                ],
-                [
-                    'q' => 'Roughly how much of Hannibal\'s army was lost before he fought a single Roman battle?',
-                    'o' => ['About a tenth', 'About a quarter', 'Around three quarters', 'Almost none'],
                     'c' => 2,
-                    'e' => 'He set out with over a hundred thousand and reached Italy with around twenty six thousand. Most losses came from the march, not from fighting.',
+                    'e' => 'They copied a Carthaginian ship that had run aground, then dropped a spiked bridge onto enemy decks so every sea battle became a land battle. Storms did sink hundreds of ships, but Rome\'s, and it simply built more.',
                 ],
                 [
-                    'q' => 'What did Hannibal do at Cannae to defeat a much larger army?',
+                    // scene 4 — A promise made by a nine year old
+                    'q' => 'Polybius says Hamilcar made his nine year old son swear what, at an altar?',
                     'o' => [
-                        'He attacked at night',
-                        'He let his centre give way so the Romans pushed into a trap and were surrounded',
-                        'He used a hundred elephants',
-                        'He set fire to the Roman camp',
+                        'That he would never be a friend to Rome',
+                        'That he would win Sicily back for Carthage',
+                        'That he would avenge his father in battle',
+                        'That he would rule Carthage after him',
                     ],
-                    'c' => 1,
-                    'e' => 'His centre bent backwards on purpose. Once the Romans had crowded into the pocket, his wings and cavalry closed around them.',
+                    'c' => 0,
+                    'e' => 'Never a friend to Rome. We cannot check it, because Hannibal told the story himself many years later and had good reasons to tell it. But everything he did afterwards fits it exactly.',
                 ],
                 [
-                    'q' => 'Rome lost battle after battle. Why did it still win the war?',
+                    // scene 5 — Where it happened (the map)
+                    'q' => 'Why did Hannibal march to Italy instead of sailing there?',
                     'o' => [
-                        'Hannibal ran out of elephants',
-                        'It refused to make peace and kept raising new armies, while avoiding battle under Fabius',
-                        'Greece came to help',
-                        'Carthage surrendered after Cannae',
+                        'His elephants were too heavy to carry by ship',
+                        'Rome controlled the sea and could sink his ships',
+                        'The march let him recruit tribes along the way',
+                        'Carthage had sold its warships after the first war',
                     ],
                     'c' => 1,
-                    'e' => 'Rome banned talk of peace, raised new legions from teenagers and freed slaves, and used Fabius\' strategy of never giving Hannibal the battle he wanted.',
+                    'e' => 'After the first war Rome owned that water, so any ship he put on it could be sunk. Walking was the only route to Italy that Rome did not control.',
                 ],
                 [
-                    'q' => 'The story that Rome ploughed salt into Carthage\'s fields is best described as what?',
+                    // scene 8 — Elephants on the river
+                    'q' => 'How did Hannibal get his elephants across the Rhône?',
                     'o' => [
-                        'A well documented fact from Polybius',
-                        'A myth invented much later that spread because it sounds convincing',
-                        'Something Cato ordered personally',
-                        'A detail found on a Roman monument',
+                        'He swam them across roped behind rowing boats',
+                        'On flat barges borrowed from the Gauls upstream',
+                        'He marched them to a shallow ford further north',
+                        'On rafts covered with earth to look like ground',
+                    ],
+                    'c' => 3,
+                    'e' => 'Rafts piled with earth and turf until they looked like solid ground, so the animals walked on believing it. When the ropes were cut some panicked into the river and crossed along the bottom, with only their trunks above the water.',
+                ],
+                [
+                    // scenes 9-10 — The Alps, and What it cost
+                    'q' => 'Hannibal left Spain with over a hundred thousand men. How many reached Italy?',
+                    'o' => [
+                        'About a tenth of them',
+                        'About a quarter of them',
+                        'About half of them',
+                        'Nearly all of them',
                     ],
                     'c' => 1,
-                    'e' => 'No ancient source mentions it. Nineteenth-century historians invented it, and it stuck because it fits what we expect of Rome.',
+                    'e' => 'Around twenty six thousand out of more than a hundred thousand. Almost none of the missing died in a battle: the mountains, the hunger and the men who walked home did it.',
+                ],
+                [
+                    // scenes 11-12 — The Trebia, and Ambush in the fog
+                    'q' => 'At the Trebia and at Lake Trasimene, how did Hannibal beat larger Roman armies?',
+                    'o' => [
+                        'He bribed the Roman commanders to pull back',
+                        'He had far better armour and heavier weapons',
+                        'He chose when and where they would fight',
+                        'He fought only at night, while the Romans slept',
+                    ],
+                    'c' => 2,
+                    'e' => 'Cold water before breakfast at the Trebia, a lake mist at Trasimene. He did not beat Romans with better soldiers. He decided the time, the place, and what state they would arrive in.',
+                ],
+                [
+                    // scene 13 — Cannae
+                    'q' => 'At Cannae, what did Hannibal do with the centre of his own line?',
+                    'o' => [
+                        'He let it bend back until the Romans crowded in',
+                        'He pulled it out and attacked from the flank',
+                        'He packed it with his strongest African troops',
+                        'He hid his cavalry behind it until first light',
+                    ],
+                    'c' => 0,
+                    'e' => 'His weakest troops were in the middle on purpose. The centre gave way slowly, the Romans pushed into the pocket thinking they were winning, and then the wings and the cavalry closed behind them.',
+                ],
+                [
+                    // scene 15 — The city that would not surrender
+                    'q' => 'After Cannae, Hannibal offered terms. What did Rome do?',
+                    'o' => [
+                        'It paid him to take his army out of Italy',
+                        'It agreed, and then broke the treaty a year later',
+                        'It asked the Greek kings to negotiate for it',
+                        'It refused to let his messenger through the gates',
+                    ],
+                    'c' => 3,
+                    'e' => 'It banned the word peace, raised new legions from teenagers, debtors and eight thousand slaves, and then refused to fight him at all. Fabius shadowed him for years and never gave battle.',
+                ],
+                [
+                    // scene 16 — Zama, and the end of the second war
+                    'q' => 'How did Scipio deal with Hannibal\'s elephants at Zama?',
+                    'o' => [
+                        'He drove them back with trumpets and drums',
+                        'He opened lanes and let them charge through',
+                        'He shot them with catapults before they charged',
+                        'He set the ground alight in front of them',
+                    ],
+                    'c' => 1,
+                    'e' => 'He left gaps in his ranks and let them charge straight through. Fire, missiles and noise were all real tactics against elephants; Scipio had survived Cannae as a teenager and had spent his life studying the man who did it to him.',
+                ],
+                [
+                    // scene 17 — The end of Carthage
+                    'q' => 'Which ancient source records Rome ploughing salt into Carthage\'s fields?',
+                    'o' => [
+                        'Cato, in his speeches to the Roman Senate',
+                        'Polybius, who stood there watching it burn',
+                        'None of them, the story was invented much later',
+                        'Livy, in his history of the wars with Carthage',
+                    ],
+                    'c' => 2,
+                    'e' => 'No ancient source mentions it at all. Historians invented it in the eighteen hundreds and it spread because it sounds exactly like something Rome would do. Be careful with the facts that fit too well.',
                 ],
             ],
         ],
