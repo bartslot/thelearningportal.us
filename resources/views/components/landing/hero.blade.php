@@ -1,4 +1,16 @@
+@props(['mode' => 'lesson'])
+
 @php
+    // Two scripts, one stage. 'lesson' is the demo that builds a lesson and hands it over; 'launch'
+    // is the announcement that the product itself has shipped. They share the timewarp field, the
+    // card wheel, the lighting and the GSAP timeline verbatim — only the words and the thing that
+    // arrives out of the tunnel differ, because that is the only part that is actually different.
+    //
+    // Kept as one component rather than two: the timeline in resources/js/hero/lesson-demo.js is
+    // driven entirely by data-attributes, so a second copy would inherit 1,555 lines of JS it would
+    // then have to keep in step. Nothing here changes the JS.
+    $isLaunch = $mode === 'launch';
+
     $portalCards = [
         'historycards/history.jpg',
         'historycards/history12.jpg',
@@ -32,6 +44,9 @@
     // With it the tunnel is made of Tasman's fleet and the Golden Bay encounter rather than
     // stock history cards; without it the hero falls back to the generic set.
     $warpAtlas = $demoLesson?->warpAtlas();
+
+    // The launch script's chips: what the product IS, in the same shape the demo uses for grades.
+    $launchChips = [__('Five languages'), __('Narrated'), __('Interactive maps'), __('Live now')];
 
     $demoGrades = [__('Grade 6'), __('Grade 8'), __('Grade 10'), __('Grade 12')];
     $demoPick = __('Grade 12');
@@ -84,23 +99,46 @@
          hands over to the other. --}}
     <div class="hero-stage pointer-events-none absolute inset-0 z-30 flex items-center justify-center px-4">
     <div data-demo-conversation class="hero-copy pointer-events-auto w-full max-w-2xl text-center">
-        <p data-demo-step="goal" class="font-history text-lg text-white/55 sm:text-xl">{{ __('What is your learning goal?') }}</p>
+        @if ($isLaunch)
+            {{-- The same beats as the demo, because the timeline is the same: a quiet question, a
+                 typed answer, then a row of chips. Here they name what shipped rather than asking
+                 what to build, so the tunnel still resolves into something instead of just stopping. --}}
+            <p data-demo-step="goal" class="font-history text-lg text-white/55 sm:text-xl">{{ __('Three years of history lessons') }}</p>
 
-        <p class="font-history mt-4 text-2xl leading-snug text-white sm:text-4xl">
-            <span data-demo-typed="{{ $demoGoal }}"></span><span data-demo-caret class="hero-caret" aria-hidden="true"></span>
-        </p>
+            <p class="font-history mt-4 text-2xl leading-snug text-white sm:text-4xl">
+                <span data-demo-typed="{{ __('all of it, in one place') }}"></span><span data-demo-caret class="hero-caret" aria-hidden="true"></span>
+            </p>
 
-        <p data-demo-step="audience" class="font-history mt-10 text-lg text-white/55 sm:text-xl">{{ __('Great. Who is it for?') }}</p>
+            <p data-demo-step="audience" class="font-history mt-10 text-lg text-white/55 sm:text-xl">{{ __('Built for the classroom') }}</p>
 
-        <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
-            @foreach ($demoGrades as $grade)
-                <span
-                    data-demo-chip
-                    @if ($grade === $demoPick) data-demo-chip-pick @endif
-                    class="hero-chip rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/80"
-                >{{ $grade }}</span>
-            @endforeach
-        </div>
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+                @foreach ($launchChips as $chip)
+                    <span
+                        data-demo-chip
+                        @if ($loop->last) data-demo-chip-pick @endif
+                        class="hero-chip rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/80"
+                    >{{ $chip }}</span>
+                @endforeach
+            </div>
+        @else
+            <p data-demo-step="goal" class="font-history text-lg text-white/55 sm:text-xl">{{ __('What is your learning goal?') }}</p>
+
+            <p class="font-history mt-4 text-2xl leading-snug text-white sm:text-4xl">
+                <span data-demo-typed="{{ $demoGoal }}"></span><span data-demo-caret class="hero-caret" aria-hidden="true"></span>
+            </p>
+
+            <p data-demo-step="audience" class="font-history mt-10 text-lg text-white/55 sm:text-xl">{{ __('Great. Who is it for?') }}</p>
+
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+                @foreach ($demoGrades as $grade)
+                    <span
+                        data-demo-chip
+                        @if ($grade === $demoPick) data-demo-chip-pick @endif
+                        class="hero-chip rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/80"
+                    >{{ $grade }}</span>
+                @endforeach
+            </div>
+        @endif
     </div>
     </div>
 
@@ -108,7 +146,42 @@
          reduced motion on, which is why the h1 and the real links live here. --}}
     <div class="hero-stage pointer-events-none absolute inset-0 z-30 flex items-center justify-center px-4">
     <div data-demo-reveal class="hero-cta pointer-events-auto flex max-w-4xl flex-col items-center gap-8 text-center sm:flex-row sm:gap-10 sm:text-left">
-        @if ($demoLesson)
+        @if ($isLaunch)
+            {{-- The logo is what arrives out of the tunnel, in the slot the lesson poster occupies
+                 in the other script — same stagger, same overshoot, same landing beat. --}}
+            <img
+                data-reveal-item
+                src="{{ asset('assets/logo.svg') }}"
+                alt="{{ __('History Portal') }}"
+                width="208" height="208"
+                class="hero-launch-mark w-[11.5rem] shrink-0 sm:w-[13rem]"
+                fetchpriority="high"
+            >
+
+            <div class="flex flex-col items-center sm:items-start">
+                <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+                    {{ __('History Portal is now live') }}
+                </h1>
+
+                <p data-reveal-item class="mt-5 max-w-md text-balance text-sm leading-relaxed text-white/60 sm:text-base">
+                    {{ __('Story-driven history lessons, narrated and ready for your class.') }}
+                </p>
+
+                <div data-reveal-item class="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                    @if ($demoLesson)
+                        <a href="{{ route('lesson.play', $demoLesson->lesson_code) }}" class="hero-action hero-action--primary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="hero-action__play h-4 w-4" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
+                            </svg>
+                            {{ __('Watch a lesson') }}
+                        </a>
+                    @endif
+                    <a href="{{ route('public.lessons') }}" class="hero-action hero-action--ghost">
+                        {{ __('Browse the lessons') }}
+                    </a>
+                </div>
+            </div>
+        @elseif ($demoLesson)
             {{-- The lesson itself, playable. It is what the demo just built, so it arrives out of
                  the tunnel ahead of the words. --}}
             <x-lesson-poster-card
@@ -118,6 +191,7 @@
             />
         @endif
 
+        @unless ($isLaunch)
         <div class="flex flex-col items-center sm:items-start">
             <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
                 {{ __('Your lesson is ready') }}
@@ -158,6 +232,7 @@
                 @endif
             </div>
         </div>
+        @endunless
     </div>
     </div>
 

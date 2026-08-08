@@ -118,6 +118,10 @@ Route::prefix('{locale}')
 // Student lesson player — public, no auth required
 Route::get('/lesson/{lessonCode}', LessonPlayerController::class)->name('lesson.play');
 
+// The launch announcement: the hero's other script, saying the product has shipped rather than
+// demonstrating it. Its own page so the landing page keeps doing its job.
+Route::view('/launch', 'launch')->name('launch');
+
 // TEMPORARY: preview of the reworked hero animation for review on production. Unlinked and
 // noindex; delete with resources/views/hero-preview.blade.php once a variant is chosen.
 Route::view('/hero-preview', 'hero-preview')->name('hero.preview');

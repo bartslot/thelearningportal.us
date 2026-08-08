@@ -108,6 +108,18 @@ const MOUNT_URLS = Object.fromEntries(
 const MOUNT_PX = 26;          // a single rider reads smaller than a tall ship at the same zoom
 const WALK_SPEED = 1.35;      // walk-cycle playback rate; the clips are a touch slow for map pacing
 
+// The ground speed, in track units per second, at which WALK_SPEED looks right. Anything slower
+// plays the cycle proportionally slower, anything faster proportionally faster. Derived from a
+// typical route: LAP_SECONDS across a track of ~1 unit total, which is the pacing the clips were
+// originally tuned against.
+const GAIT_REFERENCE_SPEED = 1 / LAP_SECONDS;
+// Below this the clip advances so little per frame that it reads as stuttering rather than slowness;
+// above it, any quadruped on a map blurs into a gallop.
+const GAIT_MIN_RATE = 0.25;
+const GAIT_MAX_RATE = 2.2;
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
 // ── A photograph or painting instead of a model ───────────────────────────────
 // Not every journey has a model worth building — a leg travelled by sledge, on foot or by canoe is
 // better served by a picture of the real thing. Drawn as a round portrait with a ring, matching the
@@ -585,7 +597,25 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
 
         if (mount) {
           // Has the traveller moved since the last frame? Pinned at a landfall → stand still.
-          setGait(mount, Math.abs(baseT - (v._lastLandT ?? baseT)) > MOVE_EPSILON);
+          const advancedT = Math.abs(baseT - (v._lastLandT ?? baseT));
+          setGait(mount, advancedT > MOVE_EPSILON);
+
+          // ...and how FAST. The walk cycle used to play at a fixed rate whatever the ground speed,
+          // so on a short leg the legs galloped while the body crawled — the Alps crossing was the
+          // worst of it, a horse sprinting on the spot up a mountain. Tie the playback rate to the
+          // distance actually covered per second, so the gait reads as the pace of the march.
+          //
+          // Measured in track fractions per second and scaled by the route's own length, which is
+          // what makes a short leg slow and a long one brisk rather than every route looking the
+          // same. Clamped at both ends: below the floor the clip stutters frame by frame, above the
+          // ceiling it blurs into a gallop that suits no animal on this map.
+          if (mount.walk && dt > 0) {
+            const fractionPerSecond = advancedT / dt;
+            const groundSpeed = fractionPerSecond * (v.track.total || 1);
+            const rate = groundSpeed / GAIT_REFERENCE_SPEED;
+            mount.walk.timeScale = WALK_SPEED * clamp(rate, GAIT_MIN_RATE, GAIT_MAX_RATE);
+          }
+
           v._lastLandT = baseT;
 
           const p = pointAt(v.track, baseT);
