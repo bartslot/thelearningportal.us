@@ -67,6 +67,7 @@ class OptimiseSceneBackgrounds extends Command
         $done = 0;
         $skipped = 0;
         $failed = 0;
+        $grainless = 0;
 
         foreach ($scenes as $scene) {
             $path = (string) $scene->image_path;
@@ -129,6 +130,7 @@ class OptimiseSceneBackgrounds extends Command
             $before += $size;
             $after += strlen($result['bytes']);
             $done++;
+            $result['grain'] or $grainless++;
 
             $this->line(sprintf(
                 '  scene %-6d %8s KB -> %6s KB  %s q%d%s',
@@ -153,6 +155,17 @@ class OptimiseSceneBackgrounds extends Command
 
             if (! $this->option('prune-originals') && $done > 0) {
                 $this->line('Originals kept as bg.original.* — rerun with --prune-originals to remove them.');
+            }
+
+            // Say it out loud rather than leaving it in a per-line suffix nobody reads. On SiteGround
+            // every single result comes back grainless — there is no avifenc, no compiler and no AV1
+            // encoder in its ffmpeg — and the difference is a Turner sky compressed to flat plateaus.
+            // The fix is to re-encode from the kept originals on a machine that has the encoder.
+            if ($grainless > 0) {
+                $this->newLine();
+                $this->warn("{$grainless} of {$done} were written WITHOUT film grain — this host has no AVIF encoder that can synthesise it.");
+                $this->line('  Skies and shadows will band. Re-encode from the kept originals somewhere that can:');
+                $this->line('  <fg=cyan>scripts/regrain-prod-backgrounds.sh</>');
             }
         } else {
             $this->info(sprintf(
