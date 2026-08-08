@@ -18,10 +18,19 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class RestrictGuestDemo
 {
-    /** Route names a guest may open. Both resolve to LessonWizard. */
+    /**
+     * Route names a guest may open.
+     *
+     * The first two resolve to LessonWizard, which is the whole point of the demo. `help.index` is
+     * here because the Help icon sits in the editor's own chrome: a visitor trying the product
+     * clicked the one control offering to explain it and was told "this demo can only open the
+     * lesson it was given". Reading the help costs nothing and spends nothing, and refusing it is
+     * the least useful moment in the product to refuse anything.
+     */
     private const ALLOWED_ROUTES = [
         'teacher.lessons.wizard',
         'teacher.lessons.show',
+        'help.index',
     ];
 
     public function handle(Request $request, Closure $next): Response

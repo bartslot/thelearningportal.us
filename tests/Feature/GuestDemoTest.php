@@ -110,7 +110,12 @@ class GuestDemoTest extends TestCase
         $this->get(route('teacher.dashboard'))->assertForbidden();
         $this->get(route('teacher.lessons.index'))->assertForbidden();
         $this->get(route('settings.index'))->assertForbidden();
-        $this->get(route('help.index'))->assertForbidden();
+
+        // The help centre is DELIBERATELY not in that list any more. The Help icon sits in the
+        // editor's own chrome, so a visitor trying the product pressed the one control offering to
+        // explain it and was told "this demo can only open the lesson it was given". Reading the
+        // help spends nothing and reveals nothing about another teacher's work.
+        $this->get(route('help.index'))->assertOk();
     }
 
     public function test_a_guest_is_shown_no_control_that_would_bounce_them_back(): void
