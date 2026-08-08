@@ -35,12 +35,21 @@ export const SATELLITE_SOURCE = {
 }
 
 /**
- * How far the 3D terrain may be dramatised. At exaggeration 1 the height is true to life, which on
- * a map spanning a continent is almost invisible — the Alps are 4 km tall against 4,000 km of
- * width. Schoolbook relief maps have always overstated height for exactly this reason; this is the
- * ceiling on how far a teacher may push it before mountains turn into spikes.
+ * How hard the ground is pushed up, and how far the camera leans over to show it.
+ *
+ * At exaggeration 1 the height is true to life, which on a map spanning a continent is almost
+ * invisible — the Alps are 4 km tall against 4,000 km of width. Schoolbook relief maps have always
+ * overstated height for exactly this reason.
+ *
+ * The tilt matters as much as the height. Seen straight down, a mountain range casts no silhouette
+ * whatever its exaggeration, so a lesson map with relief switched on still looked flat.
+ *
+ * Both maps in the app raise the ground by the same amount. They do NOT share the camera angle:
+ * PITCH is the lesson map's, where the point is a journey seen in profile, while the Time-Map keeps
+ * its own gentler lean because its job is reading borders across a continent.
  */
-export const MAX_RELIEF = 6
+export const RELIEF = 3.5
+export const PITCH = 42
 
 /** Elevation behind the atlas styles' relief hillshade and the 3D terrain. Free AWS Open Data terrain tiles. */
 export const DEM_SOURCE = {

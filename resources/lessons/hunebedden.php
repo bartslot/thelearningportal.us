@@ -9,7 +9,6 @@ return [
     'subject' => 'history',
     'language' => 'nl',
     'grade_level' => '6',
-    'map_style' => 'satellite',
 
     'scenes' => [
         [

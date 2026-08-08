@@ -38,8 +38,6 @@
         'game_instructions'     => $lesson->strategyGame?->instructions,
         'era'                   => $lesson->era,
         'region'                => $lesson->region,
-        'map_style'             => $lesson->map_style, // lesson-wide default palette for map blocks
-        'map_relief'            => $lesson->map_relief, // 3D terrain exaggeration; 0 = flat
 
         // Does this lesson start with the narration written along the bottom? The teacher sets the
         // starting state; the student can still toggle it (C) while it plays.

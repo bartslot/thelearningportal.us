@@ -11,8 +11,6 @@ return [
     'avatar' => 'ron-slot',
     'grade_level' => 'K-7',
     'tone' => 'adventurous',
-    'map_style' => 'satellite',
-    'map_relief' => 6,
     'game_config' => [
         'voyage' => 'tasman-1642',
         'route_line' => [

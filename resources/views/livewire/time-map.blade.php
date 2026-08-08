@@ -197,43 +197,21 @@
                aria-label="{{ __('Territory colour strength') }}">
     </div>
 
-    {{-- Settings: a cog that fans out to a palette (map style) and a sound (read-aloud) toggle. --}}
+    {{-- Settings: a cog that fans out to a sound (read-aloud) toggle. The map-style palette that
+         used to live here is gone — there is one ground now (see timemap/index.js). --}}
     <div class="absolute right-4 top-4 z-30"
-         x-data="{ settingsOpen: false, paletteOpen: false,
-                   style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
-                   sound: (window.localStorage.getItem('tm-sound') === '1'),
-                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Tolkien'],['night','Night'],['satellite','Satellite']] }"
-         x-on:click.outside="settingsOpen = false; paletteOpen = false">
+         x-data="{ settingsOpen: false,
+                   sound: (window.localStorage.getItem('tm-sound') === '1') }"
+         x-on:click.outside="settingsOpen = false">
 
         {{-- Cog --}}
-        <button type="button" x-on:click="settingsOpen = !settingsOpen; if (!settingsOpen) paletteOpen = false"
+        <button type="button" x-on:click="settingsOpen = !settingsOpen"
                 aria-label="{{ __('Settings') }}"
                 class="btn btn-circle border-none bg-warning text-black shadow-lg hover:bg-warning">
             <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <path fill-rule="evenodd" clip-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.6 7.6 0 0 0 0 1.139c.016.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.6 7.6 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z"/>
             </svg>
         </button>
-
-        {{-- Palette sub-button (to the left) --}}
-        <div class="absolute top-0" style="right: 3.75rem; display: none;" x-show="settingsOpen" x-transition>
-            <button type="button" x-on:click="paletteOpen = !paletteOpen" aria-label="{{ __('Map style') }}"
-                    class="btn btn-circle border-none bg-base-100 text-base-content shadow-lg">
-                <svg class="h-6 w-6" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="m71.34 26.148c-7.8477-7.0195-18.648-9.7305-28.879-7.2461-10.234 2.4805-18.59 9.8398-22.348 19.676-3.7578 9.8359-2.4375 20.891 3.5312 29.566 5.9727 8.6719 15.824 13.855 26.355 13.855h2.3398c3.9023-0.003906 7.418-2.3555 8.9141-5.9609 1.4922-3.6055 0.67188-7.7539-2.082-10.52l-4.6914-4.6914c-0.47266-0.47266-0.61328-1.1836-0.35547-1.8008 0.25391-0.62109 0.85547-1.0234 1.5234-1.0273h18.352c2.1211 0 4.1562-0.84375 5.6562-2.3438s2.3438-3.5352 2.3438-5.6562c-0.003906-9.1016-3.8828-17.773-10.66-23.852zm-15.691 23.852c-3.9023 0.003906-7.418 2.3555-8.9102 5.9609-1.4961 3.6055-0.67188 7.7539 2.082 10.52l4.6914 4.6914c0.46875 0.47266 0.60938 1.1836 0.35547 1.8008-0.25781 0.62109-0.85938 1.0234-1.5273 1.0273h-2.3398c-8.2656 0.023438-15.961-4.2031-20.371-11.191-4.4062-6.9922-4.9102-15.758-1.332-23.207 3.582-7.4453 10.742-12.531 18.953-13.453 0.91406-0.097657 1.832-0.14844 2.75-0.14844 5.9102-0.023438 11.613 2.1602 16 6.1211 5.0898 4.5508 7.9961 11.051 8 17.879z"/>
-                    <path d="m62 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
-                    <path d="m46 38c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
-                    <path d="m42 54c0 5.332-8 5.332-8 0s8-5.332 8 0"/>
-                </svg>
-            </button>
-            <ul x-show="paletteOpen" x-transition.opacity style="display:none"
-                class="menu absolute right-0 mt-2 w-56 rounded-box bg-base-100/95 p-2 shadow-xl">
-                <li class="menu-title text-xs">{{ __('Map style') }}</li>
-                <template x-for="it in items" :key="it[0]">
-                    <li><a x-on:click="style = it[0]; window.__applyMapStyle && window.__applyMapStyle(it[0]); paletteOpen = false"
-                           :class="{ 'active font-semibold': style === it[0] }" x-text="it[1]"></a></li>
-                </template>
-            </ul>
-        </div>
 
         {{-- Sound sub-button (bottom-left): read summaries aloud via ElevenLabs --}}
         <div class="absolute" style="right: 2.5rem; top: 3.75rem; display: none;" x-show="settingsOpen" x-transition>

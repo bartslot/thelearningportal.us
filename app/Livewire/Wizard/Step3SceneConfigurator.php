@@ -327,8 +327,6 @@ class Step3SceneConfigurator extends Component
             'config' => $scene->kind === 'voyage'
                 ? array_merge($scene->config ?? [], ['view' => $this->voyageView()])
                 : $scene->config,
-            'lesson_map_style' => $this->lesson->map_style, // lesson-wide default a map block inherits
-            'lesson_map_relief' => $this->lesson->map_relief, // 3D terrain exaggeration; 0 = flat
             // Voyage scenes preview against the lesson's editable route copy (falls back to the
             // shared catalog until the first edit clones it) — the wizard overlay passes this to
             // renderVoyageTour as `def`.
@@ -1198,37 +1196,6 @@ class Step3SceneConfigurator extends Component
         }
         $this->selectedScene['config']['projection'] = in_array($type, ['mercator', 'globe'], true) ? $type : 'mercator';
         $this->saveSelected();
-    }
-
-    /**
-     * Lesson-wide map palette (soft-atlas / antique / pen-ink / night / satellite) — one setting for
-     * every map block in the lesson, mirroring the front-end Time-Map's five styles. Clears any
-     * per-block override on the selected scene so the lesson choice is what shows.
-     */
-    public function setLessonMapStyle(string $name): void
-    {
-        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night', 'satellite'];
-        $this->lesson->update(['map_style' => in_array($name, $allowed, true) ? $name : 'soft-atlas']);
-
-        if ($this->selectedScene && ($this->selectedScene['config']['map_style'] ?? null) !== null) {
-            unset($this->selectedScene['config']['map_style']);
-            $this->saveSelected();   // config changed → re-fires scene:load → preview repaints
-        } elseif ($this->selectedSceneId) {
-            $this->selectSceneInternal($this->selectedSceneId); // repaint the preview to the new default
-        }
-    }
-
-    /**
-     * Lesson-wide 3D terrain: how far the height map is exaggerated under every map in the lesson.
-     * 0 = flat. Above ~6 the mountains turn to spikes, so that is the ceiling.
-     *
-     * The preview has already raised its ground live (lessonmap:relief) by the time this lands —
-     * this call is only about persistence, so it deliberately does NOT re-select the scene: that
-     * would re-fire scene:load and yank the camera the teacher just set.
-     */
-    public function setLessonMapRelief(float $relief): void
-    {
-        $this->lesson->update(['map_relief' => max(0.0, min(6.0, $relief))]);
     }
 
     // ── Voyage lesson: per-lesson editable route/fleet copy + scene editors ──────────────
@@ -5199,7 +5166,7 @@ class Step3SceneConfigurator extends Component
             $this->publishOk = false;
             $this->publishNotice = __('Lesson published, but :count of its scenes (:list) were narrated by a stand-in voice, not the lesson\'s narrator. Regenerate their audio to fix that.', [
                 'count' => $downgraded->count(),
-                'list'  => $downgraded->map(fn (Scene $s): string => (string) $s->order)->implode(', '),
+                'list' => $downgraded->map(fn (Scene $s): string => (string) $s->order)->implode(', '),
             ]);
 
             return;

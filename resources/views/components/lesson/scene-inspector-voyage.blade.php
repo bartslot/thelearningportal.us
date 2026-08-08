@@ -1,4 +1,4 @@
-@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'lessonMapStyle' => 'soft-atlas', 'lessonMapRelief' => 0, 'stops' => []])
+@props(['scene' => null, 'voyageDef' => null, 'routeLine' => [], 'voyageMap' => ['cities' => true, 'borders' => true, 'labels' => true], 'voyageFog' => [], 'voyageView' => 'flat', 'transports' => [], 'stops' => []])
 
 @php
     $config = $scene->config ?? [];
@@ -336,12 +336,6 @@
                            class="toggle toggle-sm toggle-warning" />
                 </label>
             </div>
-        </section>
-
-        {{-- MAP STYLE — the same lesson-wide palette a map block uses, voyages included (a voyage is
-             not a special case: pick the look once and every map in the lesson follows). --}}
-        <section class="border-t border-slate-700/50 pt-3">
-            <x-lesson.map-style-picker :effective-style="$lessonMapStyle" :relief="$lessonMapRelief" />
         </section>
 
         {{-- MAP DETAIL — hide anachronistic modern cities/borders (they didn't exist yet) and pin the

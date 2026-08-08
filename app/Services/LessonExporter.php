@@ -42,7 +42,7 @@ class LessonExporter
         'narration' => ['image_credit', 'image_source_url', 'background_focus', 'bg_embed'],
         'video' => ['bg_embed'],
         'gallery' => ['title', 'date_label', 'story', 'fit', 'images'],
-        'map' => ['qid', 'year', 'projection', 'map_style', 'playback_mode', 'annotations'],
+        'map' => ['qid', 'year', 'projection', 'playback_mode', 'annotations'],
         'voyage' => ['voyage', 'leg', 'view', 'intro', 'stop_images', 'gallery'],
         'game' => ['quiz_scope', 'quiz_shuffle', 'quiz_difficulty', 'hide_identity'],
     ];
@@ -76,12 +76,7 @@ class LessonExporter
             'subject' => (string) ($lesson->subject ?: 'history'),
             'grade_level' => (string) ($lesson->grade_level ?: '6'),
             'tone' => (string) ($lesson->tone ?: 'storytelling'),
-            'map_style' => (string) ($lesson->map_style ?: 'antique'),
         ];
-
-        if ((float) $lesson->map_relief !== 0.0) {
-            $spec['map_relief'] = (float) $lesson->map_relief;
-        }
 
         $gameConfig = $this->withoutKeys((array) ($lesson->game_config ?? []), self::GAME_CONFIG_SCRATCH);
         if ($gameConfig !== []) {
@@ -194,7 +189,6 @@ class LessonExporter
             'year' => $this->year($scene),
             'qid' => $config['qid'] ?? null,
             'projection' => $config['projection'] ?? null,
-            'map_style' => $config['map_style'] ?? null,
             'script' => $scene->script_segment,
             'labels' => $labels,
         ], $this->keep(...));

@@ -119,21 +119,39 @@ test.describe('Lesson map block (composer)', () => {
     expect(result.driftLat).toBeLessThan(1);
   });
 
-  test('map style swatches repaint the map to the chosen palette', async ({ page }) => {
+  test('a map opens on photographed ground, raised and tilted', async ({ page }) => {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2500);
 
     await page.evaluate(() => (document.querySelector('button[wire\\:click="addScene(\'map\')"]') as HTMLButtonElement)?.click());
     await page.waitForTimeout(4000); // add + select + mount
 
-    // Night swatch → the sea (bg layer) becomes the dark Night water colour, applied live.
-    await page.locator('button[wire\\:click="setLessonMapStyle(\'night\')"]').click();
-    await page.waitForTimeout(1500);
-    expect(await page.evaluate(() => (window as any).__lessonMap.getPaintProperty('bg', 'background-color'))).toBe('#0f1420');
+    const ground = await page.evaluate(() => {
+      const m = (window as any).__lessonMap;
+      return {
+        satellite: m.getLayer('satellite') ? m.getLayoutProperty('satellite', 'visibility') ?? 'visible' : null,
+        // The drawn atlas is not hidden, it is not built at all.
+        drawn: ['land', 'lakes', 'graticule', 'coast-shadow'].filter((l) => !!m.getLayer(l)),
+        exaggeration: m.getTerrain()?.exaggeration ?? 0,
+        pitch: m.getPitch(),
+      };
+    });
 
-    // Tolkien swatch → warm parchment land.
-    await page.locator('button[wire\\:click="setLessonMapStyle(\'pen-ink\')"]').click();
-    await page.waitForTimeout(1500);
-    expect(await page.evaluate(() => (window as any).__lessonMap.getPaintProperty('land', 'fill-color'))).toBe('#e6d6ad');
+    expect(ground.satellite).toBe('visible');
+    expect(ground.drawn).toEqual([]);
+    // Height alone is invisible from straight above — the tilt is what makes a mountain read.
+    expect(ground.exaggeration).toBeGreaterThan(1);
+    expect(ground.pitch).toBeGreaterThan(20);
+  });
+
+  test('no map-style option is offered to the teacher', async ({ page }) => {
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+
+    await page.evaluate(() => (document.querySelector('button[wire\\:click="addScene(\'map\')"]') as HTMLButtonElement)?.click());
+    await page.waitForTimeout(4000);
+
+    await expect(page.locator('text=Map style')).toHaveCount(0);
+    await expect(page.locator('[wire\\:click^="setLessonMapStyle"]')).toHaveCount(0);
   });
 });

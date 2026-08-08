@@ -108,7 +108,7 @@ const setReadingOverlayOpen = (open) => {
   } catch (_) { /* no CustomEvent (never in a browser we support) */ }
 };
 
-export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, style = null, relief = 0, overviewAnim = null } = {}) {
+export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeLine = null, onArrived = null, preview = false, editable = false, onGalleryEdit = null, onHotspotMove = null, onEndpointMove = null, onWaypointInsert = null, onWaypointRemove = null, openGalleryOnArrive = false, mapOptions = null, legLabels = null, paintedFog = null, overviewAnim = null } = {}) {
   // Prefer the lesson's editable copy, but ONLY when it belongs to this voyage. A lesson can hold
   // scenes from more than one voyage (Abel Tasman sailed twice), and an unguarded `def` would draw
   // the edited route under every voyage scene — the 1644 legs rendered as the 1642 route.
@@ -160,7 +160,6 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     }).filter(Boolean);
   };
 
-  // terrain:false — the voyage map is about the sea route, not hill/forest/volcano glyphs.
   // interactive only in the EDITOR: the teacher needs to pan/zoom to place a leg's destination dot.
   // The player stays non-interactive (a cinematic sail).
   /**
@@ -194,18 +193,12 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   };
 
   const inst = renderLessonMap(mapHost, {
-    qid: null, year: firstYear, interactive: editable, terrain: false,
+    qid: null, year: firstYear, interactive: editable,
     // Only the water this voyage sails. The camera is on rails behind the ship and the student
     // cannot pan away, so anything outside the route's box is a tile nobody will ever see.
     tileBounds: routeTileBounds(),
     projection: view === 'flat' ? 'mercator' : 'globe',
     showCities: MO.cities, showBorders: MO.borders, labels: resolveLabels(),
-    // The lesson's map palette applies here exactly as it does to a plain map scene — a voyage is
-    // not a special case. Omitted → renderLessonMap's own default.
-    ...(style ? { style } : {}),
-    // 3D ground from the height map (0 = flat). The route line, the place names and the fog are
-    // draped onto it by MapLibre; the traveller is lifted onto it by voyage-ships.
-    relief,
   });
   const map = inst.map;
   // Project a lng into the SAME world copy the camera is showing (like the ship in voyage-ships.js),
@@ -250,8 +243,6 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
   const fogHome = route.waypoints && route.waypoints[0];
   const fogKnownBoxes = [...KNOWN_WORLD_BOXES];
   if (Array.isArray(fogHome)) fogKnownBoxes.push([fogHome[0] - 7, fogHome[1] - 7, fogHome[0] + 7, fogHome[1] + 7]);
-  let onMapStyle = null;
-  let onMapRelief = null;
   let ready = false;         // map + ships + fog + trail built
   let pendingLeg = null;     // a playLeg() that arrived before the map was ready
   let pendingOverview = null;   // showOverview() arrived before the style finished loading
@@ -1289,7 +1280,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       for (let z = sailZoom; z <= finest; z++) zooms.push(z);
       stopPrefetch = prefetchRouteTiles({
         route: (route.waypoints || []).filter(Array.isArray),
-        templates: [SATELLITE_SOURCE.tiles[0], ...(relief > 0 ? [DEM_SOURCE.tiles[0]] : [])],
+        templates: [SATELLITE_SOURCE.tiles[0], DEM_SOURCE.tiles[0]],
         zooms,
         pad: 1,
         // Each extra zoom quadruples the corridor, so the cap is what keeps this a warm-up rather
@@ -1304,15 +1295,6 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
 
     // Repaint the map to the chosen palette IN PLACE (never a re-mount), then follow it with the
     // fog: undiscovered sea is painted in the style's water colour, so it has to be read after.
-    onMapStyle = (e) => {
-      const name = e && e.detail && e.detail.name;
-      if (name) { try { inst.setStyle(name); } catch (_) { /* map not ready */ } }
-      if (fog) setTimeout(() => fog.setWaterColor(readWater()), 60);
-    };
-    window.addEventListener('lessonmap:style', onMapStyle);
-    // Same contract for the 3D terrain slider: raise or flatten the ground live, never a re-mount.
-    onMapRelief = (e) => { try { inst.setRelief(e && e.detail ? e.detail.relief : 0); } catch (_) { /* map not ready */ } };
-    window.addEventListener('lessonmap:relief', onMapRelief);
     // Route trail line — sits just above the land/coast but BELOW every text label, so place names
     // (and city names) read cleanly on top of the sailed route instead of being struck through.
     // Anchor before the first label layer that exists; fall back to below the fleet.
@@ -1727,8 +1709,6 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
       stopPrefetch = null;
       legToken++;   // invalidate any in-flight leg
       if (raf) cancelAnimationFrame(raf);
-      if (onMapStyle) { try { window.removeEventListener('lessonmap:style', onMapStyle); } catch (_) { /* noop */ } onMapStyle = null; }
-      if (onMapRelief) { try { window.removeEventListener('lessonmap:relief', onMapRelief); } catch (_) { /* noop */ } onMapRelief = null; }
       try { galleryClose && galleryClose(); } catch (_) { /* clears the gallery interval */ }
       try { if (map.getLayer('voyage-trail')) map.removeLayer('voyage-trail'); if (map.getSource('voyage-trail')) map.removeSource('voyage-trail'); } catch (_) { /* map gone */ }
       try { if (map.getLayer('voyage-edit-line')) map.removeLayer('voyage-edit-line'); if (map.getSource('voyage-edit-line')) map.removeSource('voyage-edit-line'); } catch (_) { /* map gone */ }

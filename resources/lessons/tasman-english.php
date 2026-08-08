@@ -31,7 +31,6 @@ return [
     'language' => 'en',
     'grade_level' => '9',
     'tone' => 'storytelling',
-    'map_style' => 'satellite',
 
     'scenes' => [
 

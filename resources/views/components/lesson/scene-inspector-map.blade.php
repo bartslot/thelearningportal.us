@@ -1,4 +1,4 @@
-@props(['scene' => null, 'lessonMapStyle' => null, 'lessonMapRelief' => 0, 'territoryResults' => null, 'territoryQuery' => '', 'cityResults' => null, 'cityQuery' => ''])
+@props(['scene' => null, 'territoryResults' => null, 'territoryQuery' => '', 'cityResults' => null, 'cityQuery' => ''])
 
 <div class="space-y-3 text-sm">
     <h3 class="flex items-center gap-2 font-semibold text-sky-300">
@@ -56,8 +56,6 @@
             </button>
         </div>
     </div>
-
-    <x-lesson.map-style-picker :effective-style="$scene->config['map_style'] ?? $lessonMapStyle ?? 'soft-atlas'" :relief="$lessonMapRelief" />
 
     {{-- Focus cities — search the cities corpus (modern OR historical name), then drop a red dot
          + label on the map (annotations[].type === 'focus'). A typeahead leads; dropping a raw pin

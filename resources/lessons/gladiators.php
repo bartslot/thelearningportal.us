@@ -20,7 +20,6 @@ return [
     'subject' => 'history',
     'language' => 'en',
     'grade_level' => '7',
-    'map_style' => 'satellite',
 
     'scenes' => [
 

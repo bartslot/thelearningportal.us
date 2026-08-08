@@ -42,7 +42,6 @@ class LessonExportTest extends TestCase
             'subject' => 'history',
             'grade_level' => '6',
             'tone' => 'storytelling',
-            'map_style' => 'antique',
             'scenes' => [
                 [
                     'type' => 'quiz',
@@ -193,8 +192,6 @@ class LessonExportTest extends TestCase
             'subject' => 'history',
             'grade_level' => '6',
             'tone' => 'storytelling',
-            'map_style' => 'satellite',
-            'map_relief' => 6.0,
             'game_config' => [
                 'voyage' => 'tasman-1642',
                 'voyage_def' => ['id' => 'tasman-1642', 'waypoints' => [[106.9, -5.9], [105.85, -6.15]]],
@@ -218,7 +215,10 @@ class LessonExportTest extends TestCase
 
         $this->assertSame('voyage', $lesson->game_type);
         $this->assertEquals($spec['game_config'], $exported['game_config']);
-        $this->assertSame(6.0, $exported['map_relief']);
+        // The map has one look now (satellite, 3D ground, tilted camera), so a spec no longer
+        // carries a palette or a relief number — there is nothing left for it to choose.
+        $this->assertArrayNotHasKey('map_style', $exported);
+        $this->assertArrayNotHasKey('map_relief', $exported);
     }
 
     public function test_editor_undo_history_is_left_out_of_the_spec(): void

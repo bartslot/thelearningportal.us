@@ -584,8 +584,6 @@
                         preview: true,   // editor: jump straight to the landfall, skip the sail
                         editable: true,  // teacher can edit the gallery title/date/story on the scene
                         mapOptions: p.voyage_map || null,   // hide cities/borders, show place labels
-                        style: vcfg.map_style || p.lesson_map_style || 'soft-atlas',
-                        relief: Number(p.lesson_map_relief) || 0,
                         legLabels: p.leg_labels || [],
                         paintedFog: p.voyage_fog || [],     // teacher-painted undiscovered regions
                         overviewAnim: vcfg.overview_anim || null,   // itinerary: draw the route on
@@ -648,16 +646,8 @@
             // map and just sync the focus markers.
             // (projection is excluded — the Flat/Globe toggle flips it in place via lessonmap:projection,
             //  which keeps the camera; re-mounting for it would reset the view)
-            // Effective palette: a per-block override wins, else the lesson-wide default, else app default.
-            const style = cfg.map_style || p.lesson_map_style || 'soft-atlas'
-            const relief = Number(p.lesson_map_relief) || 0
             const key = [p.sceneId, cfg.qid || '', year].join('|')
             if (inst && key === lastKey) {
-                // Style isn't in the key (it repaints in place), so apply it here too — this is
-                // the path a saved style change lands on after its Livewire round-trip. Same for
-                // the 3D terrain.
-                try { inst.setStyle(style) } catch (_) {}
-                try { inst.setRelief(relief) } catch (_) {}
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
                 return
             }
@@ -668,8 +658,6 @@
             const prev = lastKey ? lastKey.split('|') : null
             if (inst && prev && prev[0] === String(p.sceneId)) {
                 lastKey = key
-                try { inst.setStyle(style) } catch (_) {}
-                try { inst.setRelief(relief) } catch (_) {}
                 if (prev[2] !== String(year)) { try { inst.setYear(year) } catch (_) {} }
                 if (prev[1] !== String(cfg.qid || '')) { try { inst.setPolity(cfg.qid || null) } catch (_) {} }
                 try { inst.setAnnotations(cfg.annotations || []) } catch (_) {}
@@ -690,8 +678,6 @@
                     qid: cfg.qid || null,
                     year,
                     projection: cfg.projection || 'mercator',
-                    style,
-                    relief,
                     interactive: true,
                     annotations: cfg.annotations || [],
                     editable: true,
@@ -713,13 +699,6 @@
         // Inspector VIEW toggle (Flat 2D / Globe 3D) → flip the live preview projection immediately.
         window.addEventListener('lessonmap:projection', (e) => inst && inst.setProjection(e.detail.type))
 
-        // Inspector MAP STYLE select → repaint the live preview to the chosen palette immediately.
-        // A voyage scene's `inst` is the tour, which listens for these itself — hence the method
-        // check rather than a bare call (the tour has no setStyle/setRelief of its own).
-        window.addEventListener('lessonmap:style', (e) => inst && inst.setStyle && inst.setStyle(e.detail.name))
-
-        // Inspector 3D TERRAIN slider → raise/flatten the live preview's ground immediately.
-        window.addEventListener('lessonmap:relief', (e) => inst && inst.setRelief && inst.setRelief(e.detail.relief))
 
         // Focus-city rename/remove saved server-side → push fresh annotations so marker labels update live.
         window.Livewire.on('focusAnnotationsRefresh', (e) => {
@@ -900,7 +879,6 @@
                 <div x-show="tab === 'format'">
                 @if ($sceneModel->kind === 'map')
                     <x-lesson.scene-inspector-map :scene="$sceneModel"
-                                                 :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style"
                                                  :territory-results="$this->territoryResults"
                                                  :territory-query="$territoryQuery"
                                                  :city-results="$this->cityResults"
@@ -911,7 +889,7 @@
                                                   :quiz-difficulty="$this->quizDifficulty()" :quiz-scope="$this->quizScope()"
                                                   :quiz-shuffle="$this->quizShuffle()" />
                 @elseif ($sceneModel->kind === 'voyage')
-                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :lesson-map-relief="$this->lesson->map_relief" :lesson-map-style="$this->lesson->map_style ?? 'soft-atlas'" :stops="$this->voyageStops()" />
+                    <x-lesson.scene-inspector-voyage :scene="$sceneModel" :voyage-def="$this->voyageDef()" :route-line="$this->routeLine()" :voyage-map="$this->voyageMap()" :voyage-fog="$this->voyageFog()" :voyage-view="$this->voyageView()" :transports="$this->transports()" :stops="$this->voyageStops()" />
                 @elseif ($sceneModel->kind === 'gallery')
                     <x-lesson.scene-inspector-gallery :scene="$sceneModel" />
                 @elseif ($sceneModel->kind === 'video')

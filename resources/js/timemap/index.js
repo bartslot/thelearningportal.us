@@ -11,7 +11,7 @@ import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 import nationalColors from './national-colors.json';
-import { SATELLITE_SOURCE, DEM_SOURCE } from '../map-imagery.js';
+import { SATELLITE_SOURCE, DEM_SOURCE, RELIEF } from '../map-imagery.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -106,7 +106,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     },
     center: [8.23, 46.8], // Switzerland
     zoom: 4,
-    pitch: 28,   // gentle tilt for the "map on a table" look (symbols stay billboarded upright)
+    // A gentler lean than the lesson map's. This map's job is reading borders across a continent,
+    // and a steep tilt buries the far half of Europe behind the near half; the lesson map is showing
+    // a journey, where the silhouette matters more than the plan view.
+    pitch: 28,   // "map on a table" (symbols stay billboarded upright)
     maxPitch: 70,
     // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
@@ -317,46 +320,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
-  // ---- Map styles: switched live from the palette dropdown (window.__applyMapStyle). ----
-  const ATLAS_PAL = theme.palette;
+  // ---- The ground ----
+  // There used to be five: Soft Atlas, Antique, Tolkien, Night and Satellite, switched from a
+  // palette dropdown behind the cog. The dropdown is gone and so are the other four. A drawn atlas
+  // of any year still draws its coastline the way 2026 knows it, so the parchment bought no
+  // historical truth — and the Tolkien one, which was the reason to have the choice at all, never
+  // looked the way it was meant to. Photography of the real earth is what the map is now.
   const NIGHT_PAL = ['#39496a', '#4a3b63', '#37614f', '#63503b', '#4c6140', '#63415a', '#3a5570', '#56426a', '#3f6657', '#665445', '#414f6e', '#5c4258'];
-  // Greyscale paper-grain texture (multiply-blended) to break up the flat vector fills.
-  const PAPER_URI = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>";
-  // Per-feature line width from a hash of the polity QID → adjacent borders get visibly different
-  // weights (the main source of "hand-drawn" width variance; MapLibre can't vary width along a line).
-  const inkWidth = (min, max) => ['interpolate', ['linear'],
-    ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
-  // Label hands, per style — the same rule the lesson map follows. The drawn atlases are
-  // hand-lettered (Cinzel small-caps for territories, Eagle Lake for regions/peoples); the two
-  // modern grounds, Satellite and Night, switch both to the app sans, because calligraphy over
-  // satellite imagery reads as a costume rather than a map. Fontstacks are built by
-  // scripts/build-glyphs.mjs; `display` labels territories, `body` labels everything else.
-  const LETTERED = { display: ['Cinzel'], body: ['Eagle Lake'] };
+  // Labels are set in the app sans: calligraphy over satellite imagery reads as a costume rather
+  // than a map. Fontstacks are built by scripts/build-glyphs.mjs; `display` labels territories,
+  // `body` labels everything else.
   const MODERN = { display: ['inter'], body: ['inter'] };
   const MAP_STYLES = {
-    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, voyage: '#1f5f8f', paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
-    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, voyage: '#274f66', paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
-    'pen-ink': {
-      palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
-      shore: { color: '#2f2418', width: 1.15, shadow: '#574631', shadowWidth: 2.9, dy: 2 },
-      line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
-      // Draw borders from the wobbled ink-border tileset (hand-drawn jitter baked into geometry).
-      borderSource: { source: 'ink-borders', sourceLayer: 'ink' },
-      coast: { color: '#5e4a34', opacity: 0.55, width: 0.85 },
-      river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
-      grid: { color: '#8f8c6e', opacity: 0.45, width: 0.5 }, hillshade: true,
-      mountains: true,
-      forest: true,
-      // Stacked passes on the wobbled lines: faint bleed, offset rough, the main dark stroke, then a
-      // light broken accent — all width-varied so borders read as uneven pen work.
-      inkLayers: [
-        { color: '#5a4630', width: inkWidth(1.2, 2.4), opacity: 0.1, blur: 1.4 },
-        { color: '#4a3826', width: inkWidth(0.7, 1.5), opacity: 0.18, blur: 0.6, offset: 0.4 },
-        { color: '#33261a', width: inkWidth(0.4, 1.2), opacity: 0.8, blur: 0.2 },
-        { color: '#2a1f12', width: 0.6, opacity: 0.32, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
-      ],
-      text: { color: '#33271a', halo: '#efe2c4' }, voyage: '#2f4e66', paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
-    },
     // Real satellite ground instead of a drawn one. `imagery` turns the raster on and the painted
     // atlas ground (land fill, sea grid, coast shadow, lakes, ink hills/forests) off — the photo
     // already shows all of that, relief and ocean depth included, so no hillshade either (over
@@ -366,22 +341,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       selected: '#f5c518', hover: '#e8cf94',
       shore: { color: '#f6efdc', width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
       line: { color: '#ffd9a0', width: 0.9, blur: 0.2 },
-      text: { color: '#241a10', halo: '#f2e9d4' }, fonts: MODERN, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
+      text: { color: '#241a10', halo: '#f2e9d4' }, fonts: MODERN, voyage: '#ffce6b', vignette: 'rgba(0,0,0,0.4)',
     },
-    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, fonts: MODERN, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
     if (!wrap) return;
-    let pv = wrap.querySelector('#tm-paper');
-    if (!pv) {
-      pv = document.createElement('div');
-      pv.id = 'tm-paper';
-      pv.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:5;mix-blend-mode:multiply';
-      pv.style.backgroundImage = `url("${PAPER_URI}")`;
-      wrap.appendChild(pv);
-    }
-    pv.style.opacity = String(s.paper);
     let vg = wrap.querySelector('#tm-vignette');
     if (!vg) {
       vg = document.createElement('div');
@@ -413,14 +378,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const startWaves = (coast) => { coastCfg = coast; if (!reduceMotion && !waveRAF) waveRAF = requestAnimationFrame(waveTick); };
   const stopWaves = () => { coastCfg = null; if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; } };
 
-  let currentStyleName = 'soft-atlas';
-  const applyMapStyle = (name) => {
-    // Migrate the retired raster 'ink-art' style → the vector 'pen-ink' Tolkien style.
-    if (name === 'ink-art' || name === 'inkart') name = 'pen-ink';
-    const key = MAP_STYLES[name] ? name : 'soft-atlas';
-    const s = MAP_STYLES[key];
-    currentStyleName = key;
-    try { localStorage.setItem('tm-style', key); } catch (e) { /* private mode */ }
+  // There is one ground and the teacher does not choose it — see the MAP_STYLES note above.
+  // Kept as a function because the layers it paints arrive asynchronously (terrain glyphs,
+  // historical cities), so it has to be re-runnable rather than a one-shot at style time.
+  const currentStyleName = 'satellite';
+  const applyMapStyle = () => {
+    const s = MAP_STYLES[currentStyleName];
     const pal = s.palette;
     const fill = ['case',
       ['boolean', ['feature-state', 'selected'], false], s.selected,
@@ -433,7 +396,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Satellite: the photographed ground replaces the drawn one, so every layer that paints a
     // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
     const photo = !!s.imagery;
-    const fonts = s.fonts || LETTERED;
+    const fonts = s.fonts;
     const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
     vis('satellite', photo);
     for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
@@ -560,7 +523,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
     applyOverlays(s);
   };
-  window.__applyMapStyle = applyMapStyle;
 
   // Read-aloud (ElevenLabs): gated by the Settings sound toggle (persisted). The panel calls
   // __timemapSpeak when a territory's summary is shown; audio is cached server-side per polity.
@@ -796,6 +758,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   }
 
   map.on('load', () => {
+    // 3D ground. The DEM was already loaded for the hillshade, which only ever drew depth as a grey
+    // shadow on a flat sheet; draping the map over the same height map is what actually raises the
+    // Alps. Guarded because setTerrain throws if the style is not finished parsing, and a map
+    // without relief is worth far more than a map that failed to load.
+    try { map.setTerrain({ source: 'dem', exaggeration: RELIEF }); } catch (e) { /* style not ready */ }
     map.addLayer({
       id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: {
@@ -851,7 +818,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then(() => addForestLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
       .then(() => addMountainLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
       .then(() => addVolcanoLayer(map, { beforeId: 'boundaries-label', visibility: 'none' }))
-      .then(() => applyMapStyle(currentStyleName));
+      .then(() => applyMapStyle());
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
@@ -896,9 +863,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Border tiles load asynchronously; re-settle once they're in so labels + prefetch see them.
     map.on('sourcedata', (e) => { if (e.sourceId === 'cliopatria' && e.isSourceLoaded) scheduleSettle(); });
 
-    let savedStyle = null;
-    try { savedStyle = localStorage.getItem('tm-style'); } catch (e) { /* private mode */ }
-    applyMapStyle(savedStyle || 'soft-atlas');
+    applyMapStyle();
     applyYear(state.year);
 
     // Pointer cursor + hover highlight over historical regions.

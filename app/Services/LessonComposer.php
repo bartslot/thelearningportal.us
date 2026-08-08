@@ -76,7 +76,6 @@ class LessonComposer
             'language' => (string) ($spec['language'] ?? 'en'),
             'grade_level' => (string) ($spec['grade_level'] ?? '6'),
             'tone' => (string) ($spec['tone'] ?? 'storytelling'),
-            'map_style' => (string) ($spec['map_style'] ?? 'antique'),
             'source_mode' => 'internet',
             'include_game' => true,
             // A spec containing voyage legs must declare game_type=voyage — that is what makes the
@@ -99,9 +98,6 @@ class LessonComposer
             $lesson->avatar_id = $narrator->id;
         }
 
-        if (isset($spec['map_relief'])) {
-            $lesson->map_relief = (float) $spec['map_relief'];
-        }
         if (! empty($spec['game_config'])) {
             // A voyage lesson keeps its own edited copy of the route here, so a rebuild that
             // ignored it would quietly snap the ship back to the catalogue's default track.
@@ -333,7 +329,6 @@ class LessonComposer
                 'qid' => $s['qid'] ?? null,             // the ONLY camera control
                 'year' => $s['year'] ?? null,
                 'projection' => (string) ($s['projection'] ?? 'mercator'),
-                'map_style' => $s['map_style'] ?? null,
                 'playback_mode' => 'interactive',
                 'annotations' => $annotations,
             ], fn ($v) => $v !== null && $v !== []),

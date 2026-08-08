@@ -1398,9 +1398,6 @@ Alpine.data('lessonGame', (lesson) => ({
           qid: cfg.qid || null,
           year: cfg.year ?? 1600,
           projection: cfg.projection || 'mercator',
-          // per-block override → lesson-wide default → app default
-          style: cfg.map_style || lesson.map_style || 'soft-atlas',
-          relief: Number(lesson.map_relief) || 0,   // 3D terrain, lesson-wide
           interactive: mode === 'interactive',
           annotations: cfg.annotations || [],   // read-only focus cities for students
         })
@@ -1518,8 +1515,6 @@ Alpine.data('lessonGame', (lesson) => ({
           view: cfg.view || 'globe',
           routeLine: lesson.game_config?.route_line || null, // styled/animated trail (lesson-wide)
           mapOptions: lesson.game_config?.voyage_map || null, // hide cities/borders, show place labels
-          style: cfg.map_style || lesson.map_style || 'soft-atlas', // same palette as a map scene
-          relief: Number(lesson.map_relief) || 0,                   // …and the same 3D terrain
           legLabels,
           paintedFog: lesson.game_config?.voyage_fog || null, // teacher-painted undiscovered regions
           overviewAnim: cfg.overview_anim || null,            // itinerary: draw the route on

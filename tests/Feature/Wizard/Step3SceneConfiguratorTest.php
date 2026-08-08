@@ -480,27 +480,6 @@ class Step3SceneConfiguratorTest extends TestCase
         $this->assertSame('Filled question?', $draft[0]['question']);
     }
 
-    public function test_set_lesson_map_style_persists_lesson_wide_and_rejects_junk(): void
-    {
-        $map = Scene::create([
-            'lesson_id' => $this->lesson->id, 'order' => 3, 'kind' => 'map',
-            'config' => ['year' => 1600, 'map_style' => 'night'], 'status' => 'ready',
-        ]);
-
-        $component = Livewire::actingAs($this->teacher)
-            ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
-            ->call('selectScene', $map->id);
-
-        // The style is a LESSON setting, and any per-block override is cleared so it inherits.
-        $component->call('setLessonMapStyle', 'pen-ink');
-        $this->assertSame('pen-ink', $this->lesson->fresh()->map_style);
-        $this->assertArrayNotHasKey('map_style', $map->fresh()->config);
-
-        // Unknown values fall back to the default rather than persisting junk.
-        $component->call('setLessonMapStyle', 'not-a-style');
-        $this->assertSame('soft-atlas', $this->lesson->fresh()->map_style);
-    }
-
     public function test_correct_answer_cannot_be_redrawn_but_distractors_can(): void
     {
         $this->mock(\App\Services\OpenAiLlmService::class, fn ($mock) => $mock

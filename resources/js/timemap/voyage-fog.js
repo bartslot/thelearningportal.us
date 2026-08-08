@@ -14,7 +14,7 @@ import { buffer as turfBuffer, difference as turfDifference, union as turfUnion,
 const FOG_SRC = 'voyage-fog';
 const CORRIDOR_KM = 450;         // how far the crew "sees" — wide enough that a visited landmass reveals
                                  // its nearby extent too (e.g. all of NZ, not just the South Island coast)
-const WATER_FALLBACK = '#c7d4c6'; // soft-atlas water; real colour comes from the active style
+const WATER_FALLBACK = '#08131f'; // deep ocean; the real colour comes from the map itself
 
 // Feathered boundary. The fog fill is solid to its own outline; these blurred lines ride that
 // outline and carry the colour outwards, so the mask fades from nothing to solid instead of

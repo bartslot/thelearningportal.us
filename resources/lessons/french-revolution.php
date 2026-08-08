@@ -26,7 +26,6 @@ return [
     'language' => 'fr',
     'grade_level' => '10',
     'tone' => 'storytelling',
-    'map_style' => 'satellite',
 
     'scenes' => [
 
