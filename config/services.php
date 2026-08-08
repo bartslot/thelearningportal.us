@@ -70,6 +70,11 @@ return [
         // compare them with scripts/test-avif-grain-presets.sh before changing this. 0 disables.
         'grain_preset' => (int) env('BACKGROUND_GRAIN_PRESET', 1),
         'avifenc_path' => (string) env('AVIFENC_PATH', 'avifenc'),
+
+        // Fallback encoder for hosts with no avifenc and no in-process AVIF. libwebp's own binary
+        // writes a smaller file than PHP-GD's imagewebp() at the same quality number, and shared
+        // hosting tends to have it even where it has nothing else.
+        'cwebp_path' => (string) env('CWEBP_PATH', 'cwebp'),
     ],
 
     'openai' => [

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Services\Imaging\CanvasFactory;
+use App\Services\Imaging\ImageCanvas;
 use Illuminate\Support\Facades\Log;
-use Imagick;
-use ImagickException;
 use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
@@ -30,8 +30,17 @@ use Symfony\Component\Process\Process;
  *
  * Encoders, in order of preference:
  *   1. avifenc with AOM  — AVIF + native film grain (the good path; needs the binary)
- *   2. Imagick AVIF      — AVIF, no grain (shared hosting usually lands here)
- *   3. Imagick WebP      — last resort, roughly double the bytes for the same look
+ *   2. in-process AVIF   — Imagick's or GD's own AVIF encoder, no grain
+ *   3. cwebp             — a better WebP than GD writes, and shared hosts tend to have the binary
+ *   4. in-process WebP   — last resort, roughly double the bytes for the same look
+ *
+ * WHICH RUNG A HOST REACHES IS NOT GUESSABLE, and assuming otherwise is what hid a bug for months.
+ * The pixel work used to be written straight against the Imagick class, on the theory that shared
+ * hosting lands on Imagick AVIF. Production has no imagick extension at all: every call threw
+ * `Class "Imagick" not found`, nothing was ever optimised, and every background on the live site
+ * was served as its full multi-megabyte original. Production has PHP-GD with AVIF, cwebp, and no
+ * avifenc; this Mac has Imagick and avifenc and a GD built without AVIF. So the pixels live behind
+ * ImageCanvas and each rung is asked, not assumed.
  */
 class BackgroundImageOptimizer
 {
@@ -51,6 +60,8 @@ class BackgroundImageOptimizer
         private readonly string $avifencPath,
         private readonly int $startQuality,
         private readonly int $speed,
+        private readonly string $cwebpPath = 'cwebp',
+        private readonly CanvasFactory $canvases = new CanvasFactory,
     ) {}
 
     public static function fromConfig(): self
@@ -63,6 +74,7 @@ class BackgroundImageOptimizer
             avifencPath: (string) config('services.imagery.avifenc_path', 'avifenc'),
             startQuality: (int) config('services.imagery.start_quality', 60),
             speed: (int) config('services.imagery.encoder_speed', 6),
+            cwebpPath: (string) config('services.imagery.cwebp_path', 'cwebp'),
         );
     }
 
@@ -76,24 +88,21 @@ class BackgroundImageOptimizer
      */
     public function optimise(string $bytes): array
     {
-        $image = $this->readImage($bytes);
+        $canvas = $this->canvases->make($bytes);
 
         try {
-            $this->fitToStage($image);
-            $hasAlpha = $this->hasRealTransparency($image);
+            $canvas->resizeToFit($this->maxWidth, $this->maxHeight);
 
             // No transparency to preserve? Drop the channel. It is a whole extra encoded plane —
             // an opaque painting carrying an alpha mask pays for a mask that says "all opaque".
-            if (! $hasAlpha) {
-                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
-                $image->setImageBackgroundColor('black');
-                $image = $image->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+            if (! $canvas->hasRealTransparency()) {
+                $canvas->flatten();
             }
 
-            $width = $image->getImageWidth();
-            $height = $image->getImageHeight();
+            $width = $canvas->width();
+            $height = $canvas->height();
 
-            $encoded = $this->encodeUnderCap($image, $hasAlpha);
+            $encoded = $this->encodeUnderCap($canvas);
 
             return [
                 ...$encoded,
@@ -101,7 +110,7 @@ class BackgroundImageOptimizer
                 'height' => $height,
             ];
         } finally {
-            $image->clear();
+            $canvas->close();
         }
     }
 
@@ -118,90 +127,29 @@ class BackgroundImageOptimizer
      */
     public function archive(string $bytes, int $quality = 45): array
     {
-        $image = $this->readImage($bytes);
+        $canvas = $this->canvases->make($bytes);
 
         try {
-            $this->fitToStage($image);
-            $hasAlpha = $this->hasRealTransparency($image);
+            $canvas->resizeToFit($this->maxWidth, $this->maxHeight);
 
-            if (! $hasAlpha) {
-                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
-                $image->setImageBackgroundColor('black');
-                $image = $image->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+            if (! $canvas->hasRealTransparency()) {
+                $canvas->flatten();
             }
 
-            $width = $image->getImageWidth();
-            $height = $image->getImageHeight();
+            $width = $canvas->width();
+            $height = $canvas->height();
 
-            $source = $this->writeTemporarySource($image, $hasAlpha);
+            $source = $this->writeTemporarySource($canvas);
             try {
-                $encoded = $this->encodeOnce($source, $image, $quality, $hasAlpha);
+                $encoded = $this->encodeOnce($source, $canvas, $quality);
             } finally {
                 @unlink($source);
             }
 
             return [...$encoded, 'width' => $width, 'height' => $height];
         } finally {
-            $image->clear();
+            $canvas->close();
         }
-    }
-
-    private function readImage(string $bytes): Imagick
-    {
-        try {
-            $image = new Imagick;
-            $image->readImageBlob($bytes);
-            $image->setImageColorspace(Imagick::COLORSPACE_SRGB);
-            // Orientation is baked in here; a rotated original would otherwise be cropped sideways.
-            $image->autoOrient();
-
-            return $image;
-        } catch (ImagickException $e) {
-            throw new RuntimeException('not a readable image: '.$e->getMessage(), previous: $e);
-        }
-    }
-
-    /**
-     * Scale down to fit the stage, never up.
-     *
-     * Enlarging a small original wastes bytes inventing detail that is not there — a 900px painting
-     * stays 900px and the stage scales it, which looks the same and costs a third as much.
-     */
-    private function fitToStage(Imagick $image): void
-    {
-        $width = $image->getImageWidth();
-        $height = $image->getImageHeight();
-
-        if ($width <= $this->maxWidth && $height <= $this->maxHeight) {
-            return;
-        }
-
-        $image->resizeImage($this->maxWidth, $this->maxHeight, Imagick::FILTER_LANCZOS, 1, true);
-        $image->stripImage();   // EXIF, colour profiles, thumbnails — none of it reaches the screen
-    }
-
-    /**
-     * Does the image actually use its alpha channel, or merely have one?
-     *
-     * A PNG from Commons almost always carries an alpha channel that is opaque everywhere. Trusting
-     * getImageAlphaChannel() alone would keep a pointless second plane on every single background.
-     */
-    private function hasRealTransparency(Imagick $image): bool
-    {
-        if (! $image->getImageAlphaChannel()) {
-            return false;
-        }
-
-        try {
-            $range = $image->getImageChannelRange(Imagick::CHANNEL_ALPHA);
-        } catch (ImagickException) {
-            return true;    // cannot tell — keep the channel rather than flatten something visible
-        }
-
-        $quantum = $image->getQuantumRange()['quantumRangeLong'];
-
-        // Fully opaque everywhere means the minimum alpha is still the maximum value.
-        return $range['minima'] < $quantum;
     }
 
     /**
@@ -213,9 +161,9 @@ class BackgroundImageOptimizer
      *
      * @return array{bytes:string,extension:string,quality:int,grain:bool}
      */
-    private function encodeUnderCap(Imagick $image, bool $hasAlpha): array
+    private function encodeUnderCap(ImageCanvas $canvas): array
     {
-        $source = $this->writeTemporarySource($image, $hasAlpha);
+        $source = $this->writeTemporarySource($canvas);
 
         try {
             $low = self::QUALITY_ABSOLUTE_FLOOR;
@@ -224,7 +172,7 @@ class BackgroundImageOptimizer
 
             for ($i = 0; $i < self::SEARCH_ITERATIONS && $low <= $high; $i++) {
                 $quality = intdiv($low + $high, 2);
-                $candidate = $this->encodeOnce($source, $image, $quality, $hasAlpha);
+                $candidate = $this->encodeOnce($source, $canvas, $quality);
 
                 if (strlen($candidate['bytes']) <= $this->maxBytes) {
                     $best = $candidate;         // fits — try to spend the remaining budget on quality
@@ -240,7 +188,7 @@ class BackgroundImageOptimizer
 
             // Nothing fit. Encode once at the floor and ship it over budget rather than blank: a
             // heavy background still teaches the lesson, a missing one does not.
-            $fallback = $this->encodeOnce($source, $image, self::QUALITY_FLOOR, $hasAlpha);
+            $fallback = $this->encodeOnce($source, $canvas, self::QUALITY_FLOOR);
             Log::info('BackgroundImageOptimizer: could not reach the byte cap', [
                 'cap_bytes' => $this->maxBytes,
                 'actual_bytes' => strlen($fallback['bytes']),
@@ -253,28 +201,50 @@ class BackgroundImageOptimizer
         }
     }
 
-    /** avifenc reads a file, not a stream, so the resized image lands on disk once and is reused. */
-    private function writeTemporarySource(Imagick $image, bool $hasAlpha): string
+    /** The CLI encoders read a file, not a stream, so the resized image lands on disk once. */
+    private function writeTemporarySource(ImageCanvas $canvas): string
     {
         $path = tempnam(sys_get_temp_dir(), 'bg-src-').'.png';
-        $image->setImageFormat('png');
-        $image->writeImage($path);
-        unset($hasAlpha);
+        $canvas->writePng($path);
 
         return $path;
     }
 
     /**
+     * One trip down the encoder ladder.
+     *
      * @return array{bytes:string,extension:string,quality:int,grain:bool}
+     *
+     * @throws RuntimeException when the host can write neither AVIF nor WebP by any route
      */
-    private function encodeOnce(string $sourcePath, Imagick $image, int $quality, bool $hasAlpha): array
+    private function encodeOnce(string $sourcePath, ImageCanvas $canvas, int $quality): array
     {
-        $avif = $this->encodeAvifWithGrain($sourcePath, $quality);
-        if ($avif !== null) {
-            return ['bytes' => $avif, 'extension' => 'avif', 'quality' => $quality, 'grain' => true];
+        $avifWithGrain = $this->encodeAvifWithGrain($sourcePath, $quality);
+        if ($avifWithGrain !== null) {
+            return ['bytes' => $avifWithGrain, 'extension' => 'avif', 'quality' => $quality, 'grain' => true];
         }
 
-        return $this->encodeWithImagick($image, $quality, $hasAlpha);
+        $avif = $canvas->encode('avif', $quality);
+        if ($avif !== null) {
+            return ['bytes' => $avif, 'extension' => 'avif', 'quality' => $quality, 'grain' => false];
+        }
+
+        // Above the in-process WebP rung on purpose: libwebp's own encoder at method 6 beats what
+        // GD's imagewebp() produces for the same quality number, and production has the binary.
+        $cwebp = $this->encodeWebpWithCwebp($sourcePath, $quality);
+        if ($cwebp !== null) {
+            return ['bytes' => $cwebp, 'extension' => 'webp', 'quality' => $quality, 'grain' => false];
+        }
+
+        $webp = $canvas->encode('webp', $quality);
+        if ($webp !== null) {
+            return ['bytes' => $webp, 'extension' => 'webp', 'quality' => $quality, 'grain' => false];
+        }
+
+        throw new RuntimeException(
+            'no usable image encoder: this host can write neither AVIF nor WebP '
+            .'(tried avifenc, the '.$this->canvases->backendName().' extension, and cwebp)'
+        );
     }
 
     /**
@@ -320,38 +290,46 @@ class BackgroundImageOptimizer
         }
     }
 
-    /**
-     * Imagick's own encoders. AVIF if this build has it (still a big win over WebP, just without
-     * the grain), WebP otherwise.
-     *
-     * @return array{bytes:string,extension:string,quality:int,grain:bool}
-     */
-    private function encodeWithImagick(Imagick $image, int $quality, bool $hasAlpha): array
+    /** libwebp's own encoder, where the binary exists. Null when it does not — same contract. */
+    private function encodeWebpWithCwebp(string $sourcePath, int $quality): ?string
     {
-        $formats = array_map('strtoupper', Imagick::queryFormats());
-        $format = in_array('AVIF', $formats, true) ? 'avif' : 'webp';
+        if (! $this->cwebpAvailable()) {
+            return null;
+        }
 
-        $copy = clone $image;
+        $destination = tempnam(sys_get_temp_dir(), 'bg-out-').'.webp';
+
         try {
-            $copy->setImageFormat($format);
-            $copy->setImageCompressionQuality($quality);
-            if (! $hasAlpha) {
-                $copy->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
-            }
+            $process = new Process([
+                $this->cwebpPath,
+                '-quiet',
+                '-q', (string) $quality,
+                '-m', '6',      // slowest search, smallest file; we encode once and serve forever
+                $sourcePath,
+                '-o', $destination,
+            ]);
+            $process->setTimeout(120);
+            $process->mustRun();
 
-            return [
-                'bytes' => $copy->getImageBlob(),
-                'extension' => $format,
+            $bytes = @file_get_contents($destination);
+
+            return $bytes === false || $bytes === '' ? null : $bytes;
+        } catch (ProcessFailedException $e) {
+            Log::warning('BackgroundImageOptimizer: cwebp failed, falling back', [
                 'quality' => $quality,
-                'grain' => false,
-            ];
+                'error' => mb_substr($e->getMessage(), 0, 300),
+            ]);
+
+            return null;
         } finally {
-            $copy->clear();
+            @unlink($destination);
         }
     }
 
-    /** Probed once per request — spawning avifenc --version per quality probe would be silly. */
+    /** Probed once per instance — spawning a binary per quality probe would be silly. */
     private ?bool $grainSupported = null;
+
+    private ?bool $cwebpFound = null;
 
     private function avifencSupportsGrain(): bool
     {
@@ -372,5 +350,23 @@ class BackgroundImageOptimizer
         }
 
         return $this->grainSupported;
+    }
+
+    private function cwebpAvailable(): bool
+    {
+        if ($this->cwebpFound !== null) {
+            return $this->cwebpFound;
+        }
+
+        try {
+            $process = new Process([$this->cwebpPath, '-version']);
+            $process->setTimeout(10);
+            $process->run();
+            $this->cwebpFound = $process->isSuccessful();
+        } catch (\Throwable) {
+            $this->cwebpFound = false;
+        }
+
+        return $this->cwebpFound;
     }
 }
