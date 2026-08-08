@@ -23,3 +23,47 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# ── Static asset caching ─────────────────────────────────────────────────────
+#
+# Measured on production before this existed: a lesson page pulled 633 KB across 22 static
+# subresources and NOT ONE carried Cache-Control or Expires. Every student re-downloaded the lot on
+# every visit. One class of thirty opening the same lesson moved 19 MB where 633 KB would do.
+#
+# Vite fingerprints /build/ filenames, so those are immutable by construction: a changed file gets a
+# changed name, and a year is safe. Fonts, tiles and images are content-stable too. Everything else
+# is left alone — HTML must never be cached here, because it carries the CSRF token and the session.
+<IfModule mod_headers.c>
+    # Fingerprinted build output: safe to cache forever, because the name changes when the bytes do.
+    <FilesMatch "\.(js|css)$">
+        <If "%{REQUEST_URI} =~ m#^/build/#">
+            Header set Cache-Control "public, max-age=31536000, immutable"
+        </If>
+    </FilesMatch>
+
+    # Fonts, map tiles and imagery: stable content at a stable URL.
+    <FilesMatch "\.(woff2|woff|ttf|otf|eot)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(pbf|mvt)$">
+        Header set Cache-Control "public, max-age=2592000"
+    </FilesMatch>
+    <FilesMatch "\.(png|jpe?g|webp|avif|svg|ico|gif)$">
+        Header set Cache-Control "public, max-age=2592000"
+    </FilesMatch>
+
+    # ETag is FileETag MTime Size by default, and every deploy rewrites every mtime — so a returning
+    # browser is told its perfectly good copy is stale. With immutable Cache-Control above, the ETag
+    # earns nothing and costs a revalidation per file.
+    <FilesMatch "\.(js|css|woff2|woff|png|jpe?g|webp|avif|svg|ico|pbf)$">
+        Header unset ETag
+    </FilesMatch>
+</IfModule>
+FileETag None
+
+# Compress the text-shaped assets that are not already. Map tiles are the big one: 111 MB of .pbf
+# served raw, and protobuf compresses well.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/x-protobuf application/vnd.mapbox-vector-tile
+    AddOutputFilterByType DEFLATE application/json image/svg+xml
+</IfModule>

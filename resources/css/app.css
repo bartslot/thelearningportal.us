@@ -150,7 +150,7 @@
 /* ─── Cinzel — self-hosted (latin subset), replaces external font CDN ─ */
 @font-face {
     font-family: 'Cinzel';
-    src: url('/fonts/cinzel/cinzel-700.woff2') format('woff2');
+    src: url('/fonts/Cinzel/cinzel-700.woff2') format('woff2');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
