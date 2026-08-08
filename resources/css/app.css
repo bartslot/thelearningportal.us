@@ -797,11 +797,7 @@
         opacity: 0;
     }
 
-    @media (pointer: fine) {
-        .landing-shell {
-            cursor: none;
-        }
-    }
+
 
     .landing-shell h1,
     .landing-shell h2,
@@ -815,6 +811,34 @@
 }
 
 @layer components {
+    /* The dot's glow breathes. Slow and shallow on purpose: it should read as alive at the edge of
+       vision, never as something asking to be looked at. Only the shadow animates — size and
+       position stay put, so nothing about the pointer's precision moves. */
+    @keyframes landing-cursor-breathe {
+        0%, 100% {
+            box-shadow: 0 0 18px rgba(255, 255, 255, 0.42), 0 0 42px rgba(255, 255, 255, 0.16);
+        }
+        50% {
+            box-shadow: 0 0 26px rgba(255, 255, 255, 0.62), 0 0 60px rgba(255, 255, 255, 0.26);
+        }
+    }
+
+    .landing-cursor {
+        /* Fully white. It was 90% over a near-black page, which reads as slightly grey rather than
+           as a light source. */
+        opacity: 1;
+        animation: landing-cursor-breathe 3.2s var(--ease-move, cubic-bezier(0.65, 0, 0.35, 1)) infinite;
+    }
+
+    /* A pulsing glow at the centre of vision is exactly what motion sensitivity struggles with, so
+       it holds still at its brightest instead. */
+    @media (prefers-reduced-motion: reduce) {
+        .landing-cursor {
+            animation: none;
+            box-shadow: 0 0 26px rgba(255, 255, 255, 0.62), 0 0 60px rgba(255, 255, 255, 0.26);
+        }
+    }
+
     .landing-cursor--portal-bg {
         border-color: rgba(255, 255, 255, 0.98);
         background-color: rgba(255, 255, 255, 0.98);
@@ -1327,5 +1351,21 @@
     .qz-card, .qz-correct, .qz-wrong, .qz-score-bump, .qz-streak, .qz-star, .qz-rise,
     .qz-question, .qz-ghost-out {
         animation: none;
+    }
+}
+
+/* ─── The landing dot is the cursor ─────────────────────────────────────────
+   DELIBERATELY UNLAYERED. Everything in @layer loses to an unlayered rule, and the two things that
+   put the system pointer back are exactly that: Flickity ships its stylesheet through a JS import
+   (unlayered), and DaisyUI's .btn declares `cursor: pointer`. Inside @layer base this rule lost to
+   both, so the hand reappeared over every carousel arrow and every button — the places the dot
+   matters most.
+
+   `cursor` inherits, so the shell alone would be enough if nothing re-declared it. Things do, hence
+   the descendant selector. */
+@media (pointer: fine) {
+    .landing-shell,
+    .landing-shell * {
+        cursor: none !important;
     }
 }

@@ -73,7 +73,9 @@ const setupLandingCursor = () => {
     gsap.set(cursor, {
         left: window.innerWidth / 2,
         top: window.innerHeight / 2,
-        autoAlpha: 0.9,
+        // Fully opaque. At 0.9 over a near-black page the dot reads as grey — present, but not as
+        // a light source, which is the whole point of it. The CSS glow does the softening.
+        autoAlpha: 1,
     });
 
     const moveCursor = (x, y, target) => {
@@ -92,7 +94,7 @@ const setupLandingCursor = () => {
         isBackgroundHover = false;
         cursor.classList.remove('landing-cursor--portal-bg');
         scaleTo(0.7);
-        gsap.to(cursor, { autoAlpha: 0.9, duration: 0.18, ease: 'sine.out', overwrite: 'auto' });
+        gsap.to(cursor, { autoAlpha: 1, duration: 0.18, ease: 'sine.out', overwrite: 'auto' });
     });
 
     window.addEventListener('mousedown', () => {
