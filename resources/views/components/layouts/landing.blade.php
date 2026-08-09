@@ -31,7 +31,9 @@
     <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_34%),radial-gradient(circle_at_bottom,_rgba(14,165,233,0.14),_transparent_28%)]"></div>
     <div class="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.15)_0%,rgba(2,6,23,0.7)_100%)]"></div>
     <div
-        class="landing-cursor pointer-events-none fixed left-0 top-0 z-9999 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-white"
+        {{-- Centred by GSAP (xPercent/yPercent), not by a Tailwind translate: the dot is positioned
+             with a transform now, and two systems writing the same box is how one of them loses. --}}
+        class="landing-cursor pointer-events-none fixed left-0 top-0 z-9999 h-5 w-5 rounded-full border border-white bg-white"
         aria-hidden="true"
     ></div>
 

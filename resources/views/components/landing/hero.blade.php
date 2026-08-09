@@ -67,7 +67,17 @@
     data-portal-images='@json(array_map(fn ($image) => asset("assets/{$image}"), $portalCards))'
 >
     {{-- Deep navy radial gradient background --}}
-    <img src="{{ asset('assets/videocards.webp') }}" alt="" fetchpriority="high" class="h-7xl w-7xl pointer-events-none absolute wheel z-10" />
+    {{-- width/height are load-bearing, not decoration. `h-7xl` was never a real utility (Tailwind v4
+         builds `w-7xl` from --container-7xl but has no matching height scale), so this had a width
+         and NO reserved height: until the bytes arrived it laid out 1281x0 at the flex centre, then
+         snapped to 1303x1303 at y=-201 the moment they did. A 651px jump of a full-width element in
+         a 900px viewport is a 0.72 layout shift, and `fetchpriority=high` guarantees the picture
+         wins the race against the JS that would otherwise have hidden it first.
+         The attributes give the browser an aspect ratio in the very first frame, so the box is the
+         right size before there is anything to put in it. --}}
+    <img src="{{ asset('assets/videocards.webp') }}" alt="" fetchpriority="high"
+         width="1280" height="1280"
+         class="h-auto w-7xl pointer-events-none absolute wheel z-10" />
     <div class="hero-glow pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_100%,#0d2a4a_0%,#020b24_55%,#010510_100%)] opacity-60"></div>
     {{-- Subtle center glow --}}
     <div class="hero-spotlight pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_60%,rgba(30,80,140,0.45)_0%,transparent_70%)] bg-blend-overlay"></div>
@@ -194,7 +204,7 @@
         @unless ($isLaunch)
         <div class="flex flex-col items-center sm:items-start">
             <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
-                {{ __('Your lesson is ready') }}
+                {{ __(':lesson for :grade', ['lesson' => $demoLesson->title, 'grade' => $demoPick]) }}
             </h1>
 
             {{-- Names what was just built, for the class it was just built for: the two answers

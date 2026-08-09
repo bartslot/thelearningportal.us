@@ -57,8 +57,13 @@ const setupLandingCursor = () => {
         return;
     }
 
-    const xTo = gsap.quickTo(cursor, 'left', { duration: 0.12, ease: 'power3.out' });
-    const yTo = gsap.quickTo(cursor, 'top', { duration: 0.12, ease: 'power3.out' });
+    // `x`/`y`, NOT `left`/`top`. Those two are layout properties, so every frame of every mouse
+    // move re-laid-out a positioned element — and pointermove does not set `hadRecentInput`, which
+    // means the browser counted each one toward Cumulative Layout Shift. Moving the mouse for a few
+    // seconds was enough to log ninety-odd shift entries and climb the score without limit.
+    // A transform is composited: it moves the dot without touching layout at all.
+    const xTo = gsap.quickTo(cursor, 'x', { duration: 0.12, ease: 'power3.out' });
+    const yTo = gsap.quickTo(cursor, 'y', { duration: 0.12, ease: 'power3.out' });
     const scaleTo = gsap.quickTo(cursor, 'scale', { duration: 0.2, ease: 'power2.out' });
     let isMouseDown = false;
     let isBackgroundHover = false;
@@ -71,8 +76,11 @@ const setupLandingCursor = () => {
     };
 
     gsap.set(cursor, {
-        left: window.innerWidth / 2,
-        top: window.innerHeight / 2,
+        // Centre the dot on the pointer from inside the same transform that moves it.
+        xPercent: -50,
+        yPercent: -50,
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
         // Fully opaque. At 0.9 over a near-black page the dot reads as grey — present, but not as
         // a light source, which is the whole point of it. The CSS glow does the softening.
         autoAlpha: 1,
