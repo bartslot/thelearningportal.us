@@ -1068,6 +1068,34 @@
     /* The ring of thumbnails goes down the tunnel with everything else and stays gone: the
        finished lesson gets a clean field behind it. !important because the hero's pointer
        parallax keeps writing an inline opacity onto the wheel and would resurrect it. */
+    /* The flat card wheel behind the hero. Background art, not content: a SQUARE stage centred in
+       the hero on both axes, which the hero then clips.
+
+       Never below 960px. The stage otherwise follows the shorter edge of the device, and on a
+       laptop that is the height — which shrank the wheel until it stopped reading as a wheel.
+       Below the floor it simply overflows and gets cropped, which is the right trade for
+       background art: a cropped wheel at full size reads far better than a whole one too small to
+       see. hero/cardwheel.js floors its drawn ring at the same 960 so the two agree.
+
+       Centred with the `translate` PROPERTY, not a `transform`, deliberately: GSAP writes `scale`
+       on this element, and translate is its own property in modern CSS, so the two compose instead
+       of overwriting each other. `inset:0; margin:auto` centres too, but only while the box still
+       fits — once it overflows, the over-constrained margins resolve to the left edge and a phone
+       got the wheel shoved 285px off centre. */
+    .wheel {
+        --wheel-span: max(960px, min(100vw, 100vh));
+        left: 50%;
+        top: 50%;
+        translate: -50% -50%;
+        width: var(--wheel-span);
+        height: var(--wheel-span);
+        /* Preflight puts `max-width: 100%` on every img, which on a phone squashed this to the
+           viewport width and left a 394x970 rectangle instead of a square wheel. Overflowing is the
+           whole point here — the hero crops it. */
+        max-width: none;
+        max-height: none;
+    }
+
     .hero-revealed .wheel {
         opacity: 0 !important;
         transition: opacity 600ms cubic-bezier(0.25, 1, 0.5, 1);

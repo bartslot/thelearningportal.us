@@ -66,18 +66,20 @@
     class="relative isolate flex min-h-screen flex-col items-center justify-center overflow-hidden"
     data-portal-images='@json(array_map(fn ($image) => asset("assets/{$image}"), $portalCards))'
 >
-    {{-- Deep navy radial gradient background --}}
-    {{-- width/height are load-bearing, not decoration. `h-7xl` was never a real utility (Tailwind v4
-         builds `w-7xl` from --container-7xl but has no matching height scale), so this had a width
-         and NO reserved height: until the bytes arrived it laid out 1281x0 at the flex centre, then
-         snapped to 1303x1303 at y=-201 the moment they did. A 651px jump of a full-width element in
-         a 900px viewport is a 0.72 layout shift, and `fetchpriority=high` guarantees the picture
-         wins the race against the JS that would otherwise have hidden it first.
-         The attributes give the browser an aspect ratio in the very first frame, so the box is the
-         right size before there is anything to put in it. --}}
+    {{-- The flat card wheel. Sized and centred by `.wheel` in app.css — a square stage floored at
+         960px, which the hero clips.
+
+         The width/height attributes are load-bearing, not decoration. This used to carry `h-7xl`,
+         which was never a real utility (Tailwind v4 builds `w-7xl` from --container-7xl and has no
+         matching height scale), so it had a width and NO reserved height: until the bytes arrived
+         it laid out 1281x0 at the flex centre and snapped to 1303x1303 at y=-201 the moment they
+         did. A 651px jump of a full-width element in a 900px viewport is a 0.72 layout shift, and
+         `fetchpriority=high` guarantees the picture wins the race against the JS that would
+         otherwise have hidden it first. Keep both attributes even though CSS now sets the box:
+         they are what the browser has to go on before the stylesheet's own value can matter. --}}
     <img src="{{ asset('assets/videocards.webp') }}" alt="" fetchpriority="high"
          width="1280" height="1280"
-         class="h-auto w-7xl pointer-events-none absolute wheel z-10" />
+         class="pointer-events-none absolute wheel z-10" />
     <div class="hero-glow pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_100%,#0d2a4a_0%,#020b24_55%,#010510_100%)] opacity-60"></div>
     {{-- Subtle center glow --}}
     <div class="hero-spotlight pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_60%,rgba(30,80,140,0.45)_0%,transparent_70%)] bg-blend-overlay"></div>

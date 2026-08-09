@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createCardwheel } from '../cardwheel.js'
+import { createCardwheel, stageSpan } from '../cardwheel.js'
 
 /**
  * The cardwheel is the "order, chaos, order" hero: a ring of evenly spaced cards, dragged into
@@ -58,6 +58,22 @@ const run = (wheel, seconds) => {
 }
 
 describe('hero cardwheel', () => {
+  test('the wheel is measured against a stage that never drops below 960px', () => {
+    // The canvas fills the hero, which is the height of the device, so the shorter edge is usually
+    // the height — and the whole wheel used to shrink with it until, on a laptop, the ring stopped
+    // reading as a ring. Bart: "should not be less height as 960px … min-h-960px is big enough for
+    // the wheel to shine." Under the floor it overflows and the hero clips it, which is the right
+    // trade for background art.
+    expect(stageSpan(1920, 1080)).toBe(1080)   // roomy: follows the shorter edge
+    expect(stageSpan(1440, 900)).toBe(960)     // laptop: floored
+    expect(stageSpan(1280, 720)).toBe(960)     // short laptop: floored
+    expect(stageSpan(390, 844)).toBe(960)      // phone: floored, and overflows on both axes
+
+    // A short window and a narrow one land on the same stage, so the wheel is the same size in
+    // both rather than tracking whichever edge happens to be smaller.
+    expect(stageSpan(2400, 700)).toBe(stageSpan(700, 2400));
+  })
+
   test('the ring is evenly spaced with an identical gap between every pair', () => {
     const { wheel } = makeWheel()
     const angles = wheel.particles.map((particle) => particle.homeAngle)

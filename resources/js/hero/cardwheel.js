@@ -38,8 +38,23 @@ const Z_REF = 1600;
 const Z_HOME = 1600;
 const Z_GONE = 16000;
 
-const RING_RATIO = 0.4; // ring radius, as a share of the short viewport edge
+const RING_RATIO = 0.4; // ring radius, as a share of the stage span
 const GUTTER_RATIO = 0.022; // the gap between neighbours, same share — this is the "gutter"
+
+/**
+ * The stage the ring is measured against: the shorter edge of the canvas, but never below this.
+ *
+ * The canvas fills the hero, which is the height of the device, so on a short window the shorter
+ * edge IS the height and the whole wheel shrank with it — on a laptop the ring came out small
+ * enough to stop reading as a ring at all. Bart: "should not be less height as 960px … min-h-960px
+ * is big enough for the wheel to shine."
+ *
+ * Below the floor the wheel simply overflows and the hero clips it, which is correct: these cards
+ * are background art, not content, and a cropped wheel at full size reads far better than a
+ * complete one too small to see. Matches the flat backdrop's own floor in .wheel (app.css).
+ */
+const MIN_STAGE_SPAN = 960;
+export const stageSpan = (width, height) => Math.max(MIN_STAGE_SPAN, Math.min(width, height));
 const CARD_COUNT = 22;
 
 // Cards in flight get a small random tilt — they are tumbling, so it reads as motion.
@@ -276,7 +291,7 @@ export const createCardwheel = (canvas, image, options = {}) => {
     };
 
     const drawParticle = (particle) => {
-        const minDimension = Math.min(width, height);
+        const minDimension = stageSpan(width, height);
         const journey = journeyOf(particle);
 
         // Accelerate away from the ring, so the drag starts as a tug and ends as a snatch.
@@ -325,7 +340,7 @@ export const createCardwheel = (canvas, image, options = {}) => {
             return;
         }
 
-        const minDimension = Math.min(width, height);
+        const minDimension = stageSpan(width, height);
         // Accelerate toward the lens, so it arrives rather than drifts.
         const eased = EASING.easeInQuad(Math.min(1, card.progress));
         const z = BURST_Z_START * ((BURST_Z_END / BURST_Z_START) ** eased);
@@ -361,7 +376,10 @@ export const createCardwheel = (canvas, image, options = {}) => {
             return;
         }
 
-        const radius = Math.min(width, height) * GLOW_RADIUS_RATIO;
+        // The same stage the ring is measured against, so the halo stays sized to the WHEEL rather
+        // than to the window. Left on the raw canvas it would shrink out from under a floored ring
+        // on a short screen and light only its middle.
+        const radius = stageSpan(width, height) * GLOW_RADIUS_RATIO;
         const gradient = ctx.createRadialGradient(
             width / 2, height / 2, 0,
             width / 2, height / 2, radius,
