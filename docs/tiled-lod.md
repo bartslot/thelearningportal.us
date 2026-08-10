@@ -148,18 +148,40 @@ baked map, area-weighted as a share of all the relief on earth:
 
 ### The two caps are not the same, and neither is empty
 
-They are homogeneous in opposite directions, which makes both cheap to fill:
+Composition, area-weighted over signed heights, measured by Realistic Earth:
 
-- **North of 85.05° is entirely ocean.** Zero relief and zero maximum slope in the measurement
-  above, and the northernmost land on earth is Kaffeklubben Island at 83.67°N — below the fade band.
-  A layer that needs an answer there can substitute a constant: deep water, no coastline, no relief.
-- **South of 85.05° is entirely land**, and it is the steepest polar band of the six. That is the
-  Antarctic plateau, and it is the one place the pyramid genuinely drops something the baked global
-  map has — in the region the terminator sits over for months.
+| band | land | water | extreme |
+|---|---:|---:|---:|
+| 85.05–90 N | 0.000% | 100.000% | −4393 m |
+| 83–85.05 N | 1.772% | 98.228% | 1449 m |
+| 83–85.05 S | 100.000% | 0.000% | 3957 m |
+| 85.05–90 S | 100.000% | 0.000% | 3879 m |
 
-So the cap that hurts a **relief** layer is the southern one, and the cap that hurts an **ocean**
-layer is the northern one. They are not interchangeable, and a layer with no global fallback should
-fill each with the constant that cap actually is rather than fading out.
+**North of 85.05° is entirely ocean; south of it is entirely land**, to three decimal places. The
+northernmost land on earth is Kaffeklubben Island at 83.67°N, below the fade band.
+
+**But knowing which it is does not tell you what value to use, and that distinction matters.** An
+earlier version of this section said each cap could be filled with a constant. That is right about
+composition and wrong about value:
+
+- The northern cap is 100% water **spanning shelf depth down to −4393 m**. A constant makes the
+  Lomonosov Ridge and the basins either side of it one colour.
+- The southern cap is 100% land **rising to 3879 m with slopes to 10.9°** — the steepest polar band
+  of the six.
+
+So each layer loses real data in the cap where its own data lives, and they are mirror images: a
+relief layer loses the Antarctic plateau's slopes in the **south**, an ocean layer loses the Arctic
+basin's 4.4 km depth range in the **north**.
+
+What the homogeneity does buy is that **neither layer has to blend two sources inside a cap** — only
+to keep a value varying within it. For relief that is `mix(bakedMap, pyramid, coverage)`. For an
+ocean layer it is whatever global bathymetry it has, or an accepted flat Arctic if 100% water above
+85°N is judged rare enough not to matter. That last one is defensible, but it should be a decision
+rather than a surprise.
+
+The only complete fix is a polar-projection source — IBCAO for Arctic bathymetry, BedMachine for
+Antarctica — since mercator genuinely stops at 85.0511° and no amount of tiling gets past it. Out of
+scope here, and named so nobody re-derives that it is the answer.
 
 `tiledSample` takes mercator 0..1 — the same space `buildSphereMesh` lays its vertices out in, so
 you already have it as `a_pos`. For a raymarch, convert from the unit sphere with
