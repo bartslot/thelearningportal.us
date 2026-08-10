@@ -50,16 +50,19 @@ import { buildProgram } from './planet-mesh.js'
 import { skyFrameMatrix, PANORAMA_UV_GLSL } from './celestial.js'
 import { viewRayBasis } from './sky-camera.js'
 import { acquireEquirectTexture } from './equirect-texture.js'
+import { chooseSkyTier, readDeviceFacts, SKY_PLACEHOLDER, SKY_TIERS } from './sky-tiers.js'
 
 const LAYER_ID = 'tm-starfield'
 
 /**
- * Where the panorama and the catalogue live. Both are built by `scripts/build-sky-assets.mjs`,
- * whose docblock has the measurement behind the panorama's size — it is smaller than it looks like
- * it should be, on purpose, and the reason is that a sky does not gain from zoom.
+ * The panorama is not one file — it is a ladder, and which rung this device gets is decided at
+ * runtime from its texture limit and what it will admit about itself. See `sky-tiers.js`; the
+ * short version is that above `MAX_TEXTURE_SIZE` a texture does not soften, it fails to bind, and
+ * the result is a black sky with no error on hardware nobody reviewing this owns.
+ *
+ * Passing `textureUrl` explicitly overrides the choice, which is what the bench does.
  */
-export const SKY_PANORAMA_URL = '/img/map/sky/milkyway-2k.webp'
-export const SKY_PLACEHOLDER_URL = '/img/map/sky/milkyway-1k.webp'
+export const SKY_PLACEHOLDER_URL = SKY_PLACEHOLDER.url
 export const SKY_CATALOGUE_URL = '/data/sky/bright-stars.bin'
 
 /**
@@ -306,7 +309,7 @@ void main() {
  * @param {number} [opts.catalogueAmount]  how loud the real stars are against the procedural fill
  */
 export const createStarfieldLayer = ({
-  textureUrl = SKY_PANORAMA_URL, placeholderUrl = SKY_PLACEHOLDER_URL, catalogueUrl = SKY_CATALOGUE_URL,
+  textureUrl = null, placeholderUrl = SKY_PLACEHOLDER_URL, catalogueUrl = SKY_CATALOGUE_URL,
   date = new Date(), brightness = 0.55, nebula = 0.3, nebulaContrast = 1.45,
   starDensity = 210, starAmount = 1.5, catalogueAmount = 2.2, starSize = 3,
   limitMagnitude = 6.5, twinkle = 0, animate = false,
@@ -316,6 +319,8 @@ export const createStarfieldLayer = ({
   let buffers = null
   let skyHandle = null
   let placeholderHandle = null
+  let tier = null
+  let tierReason = 'not chosen yet'
   let starCount = 0
   const programs = new Map()
   let state = {
@@ -390,8 +395,20 @@ export const createStarfieldLayer = ({
     if (!gl) return
     const claim = (url, onReady) => (url ? acquireEquirectTexture(gl, url, onReady, { mipmap: false }) : null)
 
+    // An explicit URL wins; otherwise the device is asked what it can take. The reason is recorded
+    // rather than only the answer, because "why did this class get the small one" is the question
+    // that gets asked, and nothing else in the frame can answer it.
+    if (state.textureUrl === null) {
+      const chosen = chooseSkyTier(readDeviceFacts(gl))
+      tier = chosen.tier
+      tierReason = chosen.reason
+    } else {
+      tier = SKY_TIERS.find((entry) => entry.url === state.textureUrl) ?? { name: 'explicit', url: state.textureUrl }
+      tierReason = 'the caller named a panorama'
+    }
+
     placeholderHandle = claim(state.placeholderUrl, () => { map?.triggerRepaint() })
-    skyHandle = claim(state.textureUrl, () => {
+    skyHandle = claim(tier.url === state.placeholderUrl ? null : tier.url, () => {
       // The full panorama is in. Let go of the stand-in.
       placeholderHandle?.release()
       placeholderHandle = null
@@ -572,6 +589,8 @@ export const createStarfieldLayer = ({
     getOptions: () => ({ ...state }),
     get hasSky () { return currentSky() !== null },
     get starCount () { return starCount },
+    /** Which rung of the ladder this device was given, and why. */
+    get skyTier () { return tier ? { ...tier, reason: tierReason } : null },
   }
 }
 

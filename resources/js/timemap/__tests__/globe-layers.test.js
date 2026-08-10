@@ -279,6 +279,53 @@ describe('starfield without its assets', () => {
   })
 })
 
+describe('choosing a panorama for the device it landed on', () => {
+  /**
+   * The pure choice is tested in `sky-tiers.test.js`. This checks the layer actually asks — a
+   * layer that quietly kept a hardcoded URL would pass every one of those tests and still hand a
+   * 3.6 MB texture to a machine that cannot bind it.
+   */
+  const glReporting = (maxTextureSize) => {
+    const { gl, calls } = glStub()
+    gl.getParameter = () => maxTextureSize
+    return { gl, calls }
+  }
+
+  it('never asks for a texture wider than the driver allows', () => {
+    for (const limit of [1024, 2048, 4096, 8192, 16384]) {
+      const { gl } = glReporting(limit)
+      const layer = createStarfieldLayer({ catalogueUrl: null })
+      layer.onAdd(mapStub(), gl)
+      expect(layer.skyTier.width).toBeLessThanOrEqual(limit)
+      layer.onRemove()
+    }
+  })
+
+  it('drops to the placeholder rather than nothing on hardware that can take neither tier', () => {
+    const { gl } = glReporting(512)
+    const layer = createStarfieldLayer({ catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    expect(layer.skyTier.name).toBe('placeholder')
+    // Still a sky: the procedural field does not need a texture at all.
+    layer.render(gl, v5Args())
+  })
+
+  it('records why, because that is the question that gets asked afterwards', () => {
+    const { gl } = glReporting(16384)
+    const layer = createStarfieldLayer({ catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    expect(layer.skyTier.reason).toBeTruthy()
+  })
+
+  it('lets a caller override the choice outright', () => {
+    const { gl } = glReporting(16384)
+    const layer = createStarfieldLayer({ textureUrl: '/somewhere/else.webp', catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    expect(layer.skyTier.url).toBe('/somewhere/else.webp')
+    expect(layer.skyTier.reason).toContain('caller')
+  })
+})
+
 describe('the panorama, through the shared field cache', () => {
   /**
    * The sky takes shares in the same cache the cloud deck uses, rather than loading its own copy —

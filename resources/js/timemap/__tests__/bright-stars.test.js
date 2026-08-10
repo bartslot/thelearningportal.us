@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { buildStarVertices, starColour, SKY_PANORAMA_URL, SKY_PLACEHOLDER_URL } from '../starfield.js'
+import { buildStarVertices, starColour, SKY_PLACEHOLDER_URL } from '../starfield.js'
+import { SKY_TIERS, SKY_PLACEHOLDER } from '../sky-tiers.js'
 
 /**
  * The bright star catalogue, and what the layer makes of it.
@@ -89,31 +90,39 @@ describe('turning the catalogue into vertices', () => {
   })
 })
 
-describe('the panorama that actually ships', () => {
+describe('the panoramas that actually ship', () => {
   /**
-   * Size is a decision here, not an accident — see docs/sky-resolution.md. Improvement stops around
-   * 2048 because a sky is at infinity and never gains from zoom, and the steps above it carry the
-   * source's shot noise rather than detail. The budget below is a tripwire for someone reaching for
-   * a bigger file on the reasonable-sounding assumption that bigger is better.
+   * Every rung of the ladder has to be on disk, or a device selecting it gets nothing — and it will
+   * be the rung nobody reviewing on a good machine ever selects.
    */
   const shipped = (url) => resolve(process.cwd(), 'public', url.replace(/^\//, ''))
 
-  it('is on disk, because a sky is a download and downloads go missing', () => {
-    expect(existsSync(shipped(SKY_PANORAMA_URL))).toBe(true)
-    expect(existsSync(shipped(SKY_PLACEHOLDER_URL))).toBe(true)
+  it.each([...SKY_TIERS, SKY_PLACEHOLDER])('$name is on disk', ({ url }) => {
+    expect(existsSync(shipped(url))).toBe(true)
   })
 
-  it('stays inside a budget that a slow machine can decode', () => {
+  it('weighs what sky-tiers.js says it weighs', () => {
+    // Those numbers are what the tier choice is reasoned about. A file that quietly changed size
+    // would make every comment and every test around it a lie.
+    for (const tier of [...SKY_TIERS, SKY_PLACEHOLDER]) {
+      const actual = readFileSync(shipped(tier.url)).length
+      expect(Math.abs(actual - tier.bytes) / tier.bytes).toBeLessThan(0.05)
+    }
+  })
+
+  it('keeps the low tier small enough for the machine it exists for', () => {
     // 8192 measured at 1.2 seconds of blocked main thread on an M3 Pro, and several times that on
-    // the hardware this has to run on. 2048 is 51 ms.
-    const bytes = readFileSync(shipped(SKY_PANORAMA_URL)).length
-    expect(bytes).toBeLessThan(1_200_000)
-    expect(bytes).toBeGreaterThan(100_000)   // if it ever collapses, it collapsed silently
+    // the hardware the low tier is for. The standard tier is 51 ms there.
+    const standard = SKY_TIERS[SKY_TIERS.length - 1]
+    expect(readFileSync(shipped(standard.url)).length).toBeLessThan(1_200_000)
+    // And the placeholder has to be lighter still, or it covers nothing.
+    expect(readFileSync(shipped(SKY_PLACEHOLDER_URL)).length).toBeLessThan(120_000)
   })
 
-  it('keeps the placeholder small enough to be worth having', () => {
-    // It exists to cover the gap before the real one lands. A heavy placeholder covers nothing.
-    expect(readFileSync(shipped(SKY_PLACEHOLDER_URL)).length).toBeLessThan(120_000)
+  it('orders the ladder largest first, which every consumer assumes', () => {
+    const widths = SKY_TIERS.map((tier) => tier.width)
+    expect([...widths].sort((a, b) => b - a)).toEqual(widths)
+    expect(SKY_PLACEHOLDER.width).toBeLessThan(widths[widths.length - 1])
   })
 })
 

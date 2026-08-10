@@ -55,6 +55,7 @@
   <div id="map"></div>
   <div id="panel">
     <div id="zooms"></div>
+    <div id="tiers"></div>
     <div>
       <button data-probe>probe</button>
       <button data-sweep>zoom sweep</button>
@@ -68,7 +69,8 @@
   <script type="module">
     import maplibregl from 'maplibre-gl'
     import 'maplibre-gl/dist/maplibre-gl.css'
-    import { createStarfieldLayer, SKY_PANORAMA_URL, SKY_PLACEHOLDER_URL, SKY_CATALOGUE_URL } from '/resources/js/timemap/starfield.js'
+    import { createStarfieldLayer, SKY_PLACEHOLDER_URL, SKY_CATALOGUE_URL } from '/resources/js/timemap/starfield.js'
+    import { SKY_TIERS, SKY_PLACEHOLDER, chooseSkyTier, readDeviceFacts } from '/resources/js/timemap/sky-tiers.js'
     import { viewRayBasis, rayThrough, earthHit } from '/resources/js/timemap/sky-camera.js'
     import { EARTH_RADIUS_M, cameraAltitudeMetres } from '/resources/js/timemap/planet-mesh.js'
     import { j2000ToPlanet, planetToJ2000, skyFrameMatrix } from '/resources/js/timemap/celestial.js'
@@ -107,9 +109,17 @@
     // written out again: a bench measuring a different panorama from the one that ships is a bench
     // that tells you nothing, and it would do it quietly.
     const onDisk = (url) => `/public${url}`
+    // The bench names its panorama, because it has to reach it through a different path than the
+    // app does. It starts on whichever tier this machine would really have been given, so the
+    // default measurement is a measurement of what ships here — and the buttons below force the
+    // others, which is the only way to see the tier a reviewer's hardware never selects.
+    const wouldGet = () => {
+      const gl = map?.painter?.context?.gl
+      return gl ? chooseSkyTier(readDeviceFacts(gl)) : { tier: SKY_TIERS[0], reason: 'no context yet' }
+    }
     const sky = createStarfieldLayer({
       date: new Date(Date.UTC(1492, 9, 12, 5)),
-      textureUrl: onDisk(SKY_PANORAMA_URL),
+      textureUrl: onDisk(SKY_TIERS[0].url),
       placeholderUrl: onDisk(SKY_PLACEHOLDER_URL),
       catalogueUrl: onDisk(SKY_CATALOGUE_URL),
     })
@@ -346,6 +356,21 @@
       }
       say(`stars brighter than magnitude 2.2 in shot, ${sky.getOptions().date.toISOString().slice(0, 10)}\n` +
         `${lines.slice(0, 14).join('\n')}\n  ${found}/${visible} found where the catalogue says they are`)
+    }
+
+    // Which tier this machine would really be given, and a way to force each of them.
+    const tiers = document.getElementById('tiers')
+    for (const tier of [...SKY_TIERS, SKY_PLACEHOLDER]) {
+      const button = document.createElement('button')
+      button.textContent = `${tier.name} ${tier.width}`
+      button.onclick = async () => {
+        sky.setOptions({ textureUrl: onDisk(tier.url) })
+        for (let i = 0; i < 400 && !sky.hasSky; i++) await new Promise((r) => setTimeout(r, 25))
+        draw()
+        say(`forced ${tier.name}: ${tier.width} wide, ${(tier.bytes / 1024).toFixed(0)} KB, ${tier.decodeMs} ms to decode on an M3 Pro.\n` +
+          `this machine would really be given: ${wouldGet().tier.name} — ${wouldGet().reason}`)
+      }
+      tiers.append(button)
     }
 
     const zooms = document.getElementById('zooms')

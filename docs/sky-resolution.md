@@ -1,27 +1,43 @@
 # How big should the sky panorama be?
 
-The answer for the Time-Map sky is **2048 x 1024, 746 KB**, and the interesting part is that it is
-so much smaller than the surrounding assets. This is the working, because the method generalises to
-any large baked texture even though the number does not.
+It ships as **two tiers**, chosen at runtime:
+
+| tier | size | bytes | decode, M3 Pro | who gets it |
+|---|---|---|---|---|
+| high | 4096 x 2048 | 3.6 MB | 235 ms | anything that can bind it and is not signalling constraint |
+| standard | 2048 x 1024 | 746 KB | 51 ms | everything else, including data-saver and slow connections |
+| placeholder | 1024 x 512 | 44 KB | 5 ms | shown first, always; also the floor below 2048 |
+
+`sky-tiers.js` makes the choice and `sky-tiers.test.js` tests it against named devices. **There is no
+8192 tier, and that is a measurement, not a budget** — see below. This is the working, because the
+method generalises to any large baked texture even though the numbers do not.
 
 Everything below was measured on 10 August 2026 against `milkyway_2020_*.webp`, built by
 `scripts/build-sky-assets.mjs` from NASA SVS Deep Star Maps 2020.
 
 ## The four numbers
 
-| | |
-|---|---|
-| `MAX_TEXTURE_SIZE`, this machine | **16384** (M3 Pro, ANGLE Metal) |
-| `MAX_TEXTURE_SIZE`, low-end profile | **not measured — no such device here** |
-| Resolution at which visible improvement stops | **~2048**, and it is already below the visible threshold there |
-| Transfer bytes | 1k 44 KB · 2k 746 KB · 4k 3.6 MB · 8k 20.2 MB |
-| Decode, M3 Pro | 1k 5 ms · 2k 51 ms · 4k 235 ms · **8k 1210 ms** |
+| | | sets |
+|---|---|---|
+| `MAX_TEXTURE_SIZE`, this machine | **16384** (M3 Pro, ANGLE Metal) | — |
+| `MAX_TEXTURE_SIZE`, low-end profile | **not measured — no such device here** | which tiers a device may have at all |
+| Resolution at which visible improvement stops | **~2048** | that the top tier is not wasteful |
+| Transfer bytes | 1k 44 KB · 2k 746 KB · 4k 3.6 MB · 8k 20.2 MB | where the step-down goes |
+| Decode, M3 Pro | 1k 5 ms · 2k 51 ms · 4k 235 ms · **8k 1210 ms** | where the step-down goes |
 
 The second row is a real gap and it should not be papered over. Everything here was measured on a
 fast Mac. A low-end Chromebook is commonly 3-5x slower to decode, which puts 8k at four to six
 seconds of blocked main thread, and its `MAX_TEXTURE_SIZE` is commonly 4096 or 8192 — above which
 a texture does not soften, it **fails to bind at all and the sky is black with no error**. Someone
 with the hardware should run the check in `dev/sky-lab.html`.
+
+`MAX_TEXTURE_SIZE` alone cannot make this decision, and it is worth being explicit about why: both
+shipped tiers fit inside 4096, which every WebGL device supports. The limit rules tiers OUT; it
+cannot rule the top tier IN. A Chromebook reporting 8192 can bind the 3.6 MB texture perfectly well
+and will then spend a second and a half decoding a file it did not need. So the choice also reads
+`deviceMemory`, `hardwareConcurrency`, `saveData` and `effectiveType`, and — importantly — treats a
+MISSING signal as "not obviously constrained". Safari and Firefox report no `deviceMemory` at all,
+and reading absence as constraint would quietly send every Mac in the building the small one.
 
 ## Why a sky is not like the ground
 
@@ -77,6 +93,19 @@ through it, the only place structure could hide — moves nothing: 1k is 2.71 fr
 Looking, as well as measuring: side by side at the bulge, the 8192 is visibly **grainier** than the
 2048, with the same dust lanes in the same places. It is not more detail. It is the speckle the
 downscale averaged away.
+
+## Why there is no 8192 tier
+
+Tiering is about giving the best hardware the best picture. For this asset the 8192 is not the best
+picture — it is a worse one. Shipping it as a top tier would mean the most capable machines in the
+building get the graininess, at 20 MB and a second of blocked main thread, in exchange for nothing
+the eye or the instrument can find. So the top tier is 4096: the largest size where the difference
+is still converging, and, conveniently, the largest texture every WebGL device is required to
+support, so it can never be the thing that fails to bind.
+
+If the source is ever replaced with one that has real structure at that scale — a mosaic rather than
+a survey map — this conclusion should be re-measured rather than inherited. The script can still
+build the whole ladder; see the reproduction steps below.
 
 ## Why this asset can afford to be small
 

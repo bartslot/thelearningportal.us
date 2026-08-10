@@ -22,9 +22,11 @@
  * The stars are the Yale Bright Star Catalogue, 5th edition: about 9,100 stars, essentially every
  * star visible to the naked eye. It is small enough to ship whole.
  *
- * WHY 2048 AND NOT 4096, 8192 OR 16384 — measured. See docs/sky-resolution.md for the full workings.
+ * WHY THE LADDER STOPS AT 4096 — measured. See docs/sky-resolution.md for the full workings.
  *
- * The obvious move is the biggest file the budget allows, and for this asset it is the wrong one.
+ * Two tiers ship, 4096 and 2048, and `sky-tiers.js` picks between them per device. There is no 8192
+ * tier, and that is a measurement rather than a budget: for this asset the 8192 is not a better
+ * picture, it is a worse one.
  *
  * A SKY DOES NOT GAIN FROM ZOOM. Every other baked texture on this map is sampled harder as the
  * camera comes in, so its ceiling is set by the closest the surface can get. This one is at
@@ -233,13 +235,15 @@ const catalogue = download(SOURCES.catalogue)
 
 ensureDir(OUT_IMG)
 const only = Number(process.env.SKY_ONLY ?? 0)
+// The two shipped tiers. `sky-tiers.js` picks between them at runtime from the device's texture
+// limit and what else the browser will admit to.
+if (!only || only === 4096) writePanorama(panorama, 4096, 2048, resolve(OUT_IMG, 'milkyway-4k.webp'))
 if (!only || only === 2048) writePanorama(panorama, 2048, 1024, resolve(OUT_IMG, 'milkyway-2k.webp'))
 // The placeholder. It loads in a blink and holds the sky while the real one arrives, so nobody
-// watches a black rectangle on a school connection.
+// watches a black rectangle on a school connection, and it is also the floor for hardware that
+// cannot take either tier.
 if (!only || only === 1024) writePanorama(panorama, 1024, 512, resolve(OUT_IMG, 'milkyway-1k.webp'), 80)
-// The rest of the ladder exists only to re-run the resolution measurement. They are not shipped,
-// and the docblock above is what they were for.
-if (only === 4096) writePanorama(panorama, 4096, 2048, resolve(OUT_IMG, 'milkyway-4k.webp'))
+// Not shipped. It exists so the resolution measurement above can be re-run rather than believed.
 if (only === 8192) writePanorama(panorama, 8192, 4096, resolve(OUT_IMG, 'milkyway-8k.webp'), 95)
 if (only) process.exit(0)
 writeFixture(panorama)
