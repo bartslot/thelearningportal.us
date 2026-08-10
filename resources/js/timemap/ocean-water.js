@@ -1,0 +1,458 @@
+/**
+ * ocean-water.js — the sea, lit, as a MapLibre custom layer.
+ *
+ * The single strongest cue that a globe is a photograph rather than a texture. In every picture
+ * taken from orbit the ocean is not evenly blue: there is a bright patch where the sun's reflection
+ * happens to point at the camera, smeared into a streak by waves, and it moves as the camera does.
+ * A flat blue ocean is the giveaway that nothing is being lit.
+ *
+ * Four things stacked, in the order the eye reads them:
+ *
+ *  1. WATER COLOUR. The base imagery's ocean is near-black on purpose (see map-imagery.js: the
+ *     bathymetry variant drew the sea floor, which is not something you can see from orbit). This
+ *     paints it back as water — one deep colour, no terrain in it.
+ *  2. SHALLOW WATER. Within a few tens of kilometres of land the bottom scatters light back and the
+ *     sea reads turquoise. Blue Marble gets this exactly backwards — its relief shading treats the
+ *     coast as a cliff and casts a shadow onto the water, so its imagery is DARKER at the shore
+ *     than in open ocean (measured: 4.8 luma against 8.9, where Sentinel-2 runs 46.6 against 38.7).
+ *     This term is what puts the shelf back the right way round.
+ *  3. SKY REFLECTION. Water reflects about 2% of the light when you look straight down and nearly
+ *     all of it at a glancing angle (Fresnel). That is why the ocean below the camera is near-black
+ *     and the ocean out toward the limb is bright silver-blue, and it is the single biggest reason
+ *     a flat-tinted ocean looks fake — the tint is uniform, and real water never is.
+ *  4. SUN GLINT. The bright patch where the sun's own reflection points at the camera, smeared by
+ *     waves into the glitter path. Water is a MIRROR, so the highlight sits where the surface normal
+ *     bisects the directions to the sun and to the eye — Blinn-Phong's half vector, which on a
+ *     sphere lands in exactly one place. It is a ROUGH mirror, and the wave facets spread that point
+ *     into an elongated streak (Cox-Munk). Two lobes stand in for the roughness distribution: a
+ *     tight one for the core and a broad one for the smear, which is cheaper than a real
+ *     distribution and indistinguishable at this scale.
+ *
+ * WHERE THE SEA IS. A custom layer cannot sample the raster tiles underneath it, so the coastline
+ * has to be carried in a texture of its own. It is a SIGNED DISTANCE FIELD — kilometres to the
+ * nearest coast, negative inland — and not a mask, which is what the first attempt used and what
+ * made it unusable. A mask holds one bit per texel, so the only thing bilinear filtering can do
+ * between two texels is ramp across the whole texel, and every shore came out of the magnifier as
+ * squares. A distance field is smooth, so interpolation reconstructs the coastline as a LINE
+ * through the texel: sharp at any magnification, and what a coarse bake costs is the shape of the
+ * coast rather than the crispness of it. See scripts/build-ocean-sdf.py.
+ *
+ * PROJECTION. MapLibre v5 hands `render` an options object, not a matrix, and the way to project is
+ * its own prelude: `projectTileFor3D(vec2 mercator01, float elevation)`. The prelude changes with
+ * the projection, so one program is compiled per `shaderData.variantName` and cached under it.
+ */
+
+import maplibregl from 'maplibre-gl'
+import {
+  buildSphereMesh, buildProgram, cameraInPlanetSpace, cameraAltitudeMetres,
+  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
+} from './planet-mesh.js'
+import { OCEAN_SDF_RANGE_KM, OCEAN_SDF_SOURCES, OCEAN_SDF_DECODE_GLSL } from './ocean-sdf-manifest.js'
+
+const LAYER_ID = 'tm-ocean'
+
+const vertexSource = (shaderData) => `${shaderData.vertexShaderPrelude}
+${shaderData.define}
+attribute vec2 a_pos;
+attribute vec3 a_sphere;
+uniform float a_elevation_globe;
+uniform float a_elevation_mercator;
+varying vec3 v_sphere;
+${SHELL_PROJECT_GLSL}
+void main() {
+  v_sphere = a_sphere;
+  // Sea level: the glint belongs on the water, not above it.
+  gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
+}`
+
+const fragmentSource = () => `precision highp float;
+varying vec3 v_sphere;
+uniform vec3 u_camera;      // camera in planet space, earth = unit sphere
+uniform vec3 u_sun;         // direction TO the sun
+uniform float u_globeness;  // 1 on the globe, 0 on the flat map
+uniform sampler2D u_field;  // signed distance to the coast, equirectangular
+uniform float u_rangeKm;    // kilometres at which that field saturates
+uniform float u_shoreKm;    // half-width of the shoreline transition
+uniform float u_shelfKm;    // how far out the shallow-water colour reaches
+uniform float u_strength;   // glint intensity
+uniform float u_roughness;  // 0 glassy, 1 whipped up
+uniform vec3 u_deep;        // open-ocean colour
+uniform vec3 u_shallow;     // over the shelf, where the bottom scatters light back
+uniform vec3 u_sky;         // what the water mirrors at a glancing angle
+uniform float u_water;      // how strongly the water colour is painted at all
+uniform float u_fade;       // 1 from orbit, 0 close up where real imagery takes over
+uniform float u_opacity;    // master
+${EQUIRECT_GLSL}
+${FACING_CAMERA_GLSL}
+${TERMINATOR_GLSL}
+${OCEAN_SDF_DECODE_GLSL}
+
+void main() {
+  vec3 normal = normalize(v_sphere);
+
+  // The mesh is a closed sphere, so the far side covers the same pixels as the near side. Reject it
+  // here rather than with the depth buffer: a shell sitting on a 6371 km sphere cannot be separated
+  // from the globe's own tiles by depth at orbital range, and testing anyway breaks the layer into
+  // a flickering quilt of tile-shaped patches. See FACING_CAMERA_GLSL.
+  if (u_globeness > 0.5 && !facesCamera(normal, u_camera)) discard;
+
+  float km = oceanDistanceKm(texture2D(u_field, equirectUV(normal, 0.0)).r, u_rangeKm);
+  // u_shoreKm tracks the screen pixel, so this transition is always about a pixel and a half wide:
+  // crisp on approach, and self-antialiasing at globe zoom where the coast is far below a texel.
+  float water = smoothstep(-u_shoreKm, u_shoreKm, km);
+  if (water < 0.004) discard;                    // land: leave the imagery alone
+
+  vec3 view = normalize(u_camera - normal);
+  float facing = max(dot(normal, view), 0.0);
+  float fresnel = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+
+  float sunAngle = dot(normal, u_sun);
+  float day = daylightFraction(sunAngle);        // shared with the night and the clouds
+  float lambert = max(sunAngle, 0.0);
+
+  // Shallow water. Squared so the turquoise hugs the coast instead of washing halfway to the
+  // horizon — the real gradient is steep, and so is the shadow artifact this is correcting.
+  float shelf = 1.0 - smoothstep(0.0, u_shelfKm, max(km, 0.0));
+  vec3 body = mix(u_deep, u_shallow, shelf * shelf) * (0.08 + 0.92 * lambert);
+
+  vec3 skyTerm = u_sky * fresnel * day;
+
+  vec3 halfway = normalize(u_sun + view);
+  float alignment = max(dot(normal, halfway), 0.0);
+  float sharp = pow(alignment, mix(2400.0, 260.0, u_roughness));
+  float broad = pow(alignment, mix(180.0, 26.0, u_roughness));
+  // The highlight outlives the water colour on the way down — a square root rather than the fade
+  // itself — so it survives the handover to Sentinel-2 instead of blinking out mid-descent.
+  float glint = (sharp + 0.35 * broad) * day * u_strength * sqrt(u_fade);
+  vec3 sunTerm = mix(vec3(0.85, 0.90, 1.0), vec3(1.0, 0.96, 0.86), fresnel) * glint;
+
+  // The body and the sky fade out with the layer; the glint is added back on top of that fade, so
+  // at low altitude what is left is a highlight on real imagery rather than a blue wash over it.
+  vec3 colour = (body + skyTerm) * u_fade + sunTerm;
+
+  float alpha = clamp(water * (u_water * u_fade + glint), 0.0, 1.0) * u_opacity;
+  if (alpha < 0.003) discard;
+  // MapLibre blends custom layers with gl.ONE / gl.ONE_MINUS_SRC_ALPHA, i.e. PREMULTIPLIED alpha.
+  // Multiplying the colour by the water mask instead of by the alpha is what made an earlier
+  // version of this layer glow over dark ground.
+  gl_FragColor = vec4(colour * alpha, alpha);
+}`
+
+/**
+ * How much of the sea this layer paints, at a given camera height.
+ *
+ * Full from orbit, where the imagery has no ocean colour of its own; gone by the time Sentinel-2
+ * has faded in and is showing real water, shelves and turbidity that no shader should be painting
+ * over. Smoothstepped rather than linear so neither end of the handover has a visible corner.
+ */
+export const altitudeFadeFor = (altitudeMetres, { fadeInAbove = 900000, fadeOutBelow = 180000 } = {}) => {
+  const t = Math.max(0, Math.min(1, (altitudeMetres - fadeOutBelow) / (fadeInAbove - fadeOutBelow)))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * How soft the shoreline should be, in kilometres, at the current zoom.
+ *
+ * A fixed width cannot work at both ends of the range. Held constant in kilometres it is invisible
+ * from orbit and the coast aliases into a crawling staircase as the globe turns; held constant in
+ * pixels it would need the screen-space derivative of the field, and `fwidth` means depending on
+ * an extension whose absence is a shader that fails to compile and an ocean that never appears.
+ * The ground covered by one screen pixel is already known on the CPU, so this is the same answer
+ * for free: about a pixel and a half of coast, always.
+ */
+export const shoreSoftnessKmFor = (zoom, lat, minimumKm = 0.8) => {
+  const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
+  return Math.max(minimumKm, metresPerPixel * 1.5 / 1000)
+}
+
+/**
+ * The widest bake this GPU will accept, or null if even the smallest is too big.
+ *
+ * MAX_TEXTURE_SIZE is still 4096 on low-end Android. Handing such a device the 8192 field fails the
+ * upload, and the failure is silent — an unpainted sea with nothing in the console to explain it.
+ */
+export const pickSdfSource = (maxTextureSize, sources = OCEAN_SDF_SOURCES) =>
+  sources.find((s) => s.width <= maxTextureSize && s.height <= maxTextureSize) || null
+
+/**
+ * @param {object} opts
+ * @param {number} [opts.opacity]    master; 0 costs nothing at all
+ * @param {number} [opts.strength]   glint intensity
+ * @param {number} [opts.roughness]  0 glassy, 1 whipped up — widens the glitter path
+ * @param {number[]} [opts.sun]      direction TO the sun, planet space; share it with the clouds
+ * @param {object[]} [opts.sources]  candidate distance fields, widest first
+ */
+export const createOceanWaterLayer = ({
+  opacity = 1,
+  strength = 0.9,
+  roughness = 0.55,
+  sun = [0.4, 0.5, 0.75],
+  water = 1,
+  deep = [0.020, 0.075, 0.160],    // open ocean: dark, with a touch of green in the blue
+  shallow = [0.075, 0.230, 0.290], // over the shelf, where the bottom throws light back
+  sky = [0.34, 0.50, 0.76],        // daylight sky, what the sea mirrors near the limb
+  shelfKm = 22,                    // the turquoise band; the field saturates a little past this
+  shoreSoftnessKm = 0.8,
+  fadeInAbove = 900000,            // metres: fully painted above this
+  fadeOutBelow = 180000,           // metres: gone below this, where real imagery has the detail
+  sources = OCEAN_SDF_SOURCES,
+} = {}) => {
+  const mesh = buildSphereMesh()
+  let map = null
+  let gl = null
+  let buffers = null
+  let fieldTexture = null
+  let fieldReady = false
+  const programs = new Map()
+  let state = {
+    opacity, strength, roughness, sun, water, deep, shallow, sky,
+    shelfKm, shoreSoftnessKm, fadeInAbove, fadeOutBelow, sources,
+  }
+
+  const programFor = (shaderData) => {
+    const key = shaderData.variantName
+    if (programs.has(key)) return programs.get(key)
+    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(), 'tm-ocean')
+    const entry = {
+      program,
+      attribs: {
+        pos: gl.getAttribLocation(program, 'a_pos'),
+        sphere: gl.getAttribLocation(program, 'a_sphere'),
+      },
+      uniforms: {
+        elevationGlobe: gl.getUniformLocation(program, 'a_elevation_globe'),
+        elevationMercator: gl.getUniformLocation(program, 'a_elevation_mercator'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        sun: gl.getUniformLocation(program, 'u_sun'),
+        globeness: gl.getUniformLocation(program, 'u_globeness'),
+        field: gl.getUniformLocation(program, 'u_field'),
+        rangeKm: gl.getUniformLocation(program, 'u_rangeKm'),
+        shoreKm: gl.getUniformLocation(program, 'u_shoreKm'),
+        shelfKm: gl.getUniformLocation(program, 'u_shelfKm'),
+        strength: gl.getUniformLocation(program, 'u_strength'),
+        roughness: gl.getUniformLocation(program, 'u_roughness'),
+        water: gl.getUniformLocation(program, 'u_water'),
+        deep: gl.getUniformLocation(program, 'u_deep'),
+        shallow: gl.getUniformLocation(program, 'u_shallow'),
+        sky: gl.getUniformLocation(program, 'u_sky'),
+        fade: gl.getUniformLocation(program, 'u_fade'),
+        opacity: gl.getUniformLocation(program, 'u_opacity'),
+        // Projection uniforms the prelude declares. Only the globe variant has the last four, so
+        // every one of these is allowed to come back null.
+        matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
+        tileMercatorCoords: gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
+        clippingPlane: gl.getUniformLocation(program, 'u_projection_clipping_plane'),
+        transition: gl.getUniformLocation(program, 'u_projection_transition'),
+        fallbackMatrix: gl.getUniformLocation(program, 'u_projection_fallback_matrix'),
+      },
+    }
+    programs.set(key, entry)
+    return entry
+  }
+
+  /**
+   * A single texel reading "far inland", uploaded before anything is fetched.
+   *
+   * Without it the first frames have no field to sample and the layer would have to skip drawing
+   * until one arrives — one more branch, and a state the contract tests could not reach. Starting
+   * at "everywhere is land" also fails in the right direction: the frames before the field lands
+   * are simply the map, where an all-sea placeholder would flash a blue planet on every load.
+   */
+  const uploadPlaceholder = () => {
+    fieldTexture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, 1, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE,
+      new Uint8Array([0]))
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  }
+
+  const upload = (bitmap) => {
+    if (!gl) return
+    if (fieldTexture) gl.deleteTexture(fieldTexture)
+    fieldTexture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+
+    // One byte per texel, not four: the 8192 field is 33 MB as single-channel and 134 MB as RGBA.
+    // WebGL2 needs the SIZED format for that — generateMipmap there requires a colour-renderable
+    // format, and unsized LUMINANCE is not one, so the failure would land on the mipmap rather
+    // than on the upload. WebGL1 has no R8, and LUMINANCE is fine.
+    if (typeof gl.texStorage2D === 'function') {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, bitmap)
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, bitmap)
+    }
+
+    // Wraps in longitude, clamps at the poles: REPEAT on T would fold the Arctic coastline onto
+    // the Antarctic one at the seam.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    // Averaging distances is very nearly the distance field of the coarser coast, so an SDF
+    // mipmaps honestly — which is what stops the shoreline crawling at globe zoom.
+    gl.generateMipmap(gl.TEXTURE_2D)
+    fieldReady = true
+    map?.triggerRepaint()
+  }
+
+  /**
+   * Fetch and decode the field.
+   *
+   * Deliberately NOT `new Image()`, for two reasons that both bite silently. The browser is free to
+   * COLOUR-MANAGE a decoded image, and this one is not a picture — a few levels of gamma correction
+   * applied to a distance field moves the coastline. `colorSpaceConversion: 'none'` is the only way
+   * to say "these are numbers, not colours". The second is decode timing: an 8192x4096 image
+   * decoded on the main thread stalls it for a visible beat, and a hidden document may not decode
+   * an `<img>` at all until something paints it — which is a page that never finishes loading in
+   * any automated pane. `createImageBitmap` decodes off-thread, on demand, and answers either way.
+   */
+  const loadField = () => {
+    const source = pickSdfSource(gl.getParameter(gl.MAX_TEXTURE_SIZE), state.sources)
+    if (!source) return
+    const wanted = source.url
+
+    fetch(wanted, { credentials: 'omit' })
+      .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(response.status))))
+      .then((blob) => createImageBitmap(blob, {
+        colorSpaceConversion: 'none',
+        premultiplyAlpha: 'none',
+        imageOrientation: 'none',
+      }))
+      .then((bitmap) => {
+        // setOptions may have moved on while this was in flight; the later request owns the slot.
+        if (pickSdfSource(gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 0, state.sources)?.url !== wanted) {
+          bitmap.close?.()
+          return
+        }
+        upload(bitmap)
+        bitmap.close?.()
+      })
+      // Decorative: a failed load leaves the map as it was, never a broken globe.
+      .catch(() => {})
+  }
+
+  return {
+    id: LAYER_ID,
+    type: 'custom',
+    renderingMode: '3d',
+
+    onAdd(mapInstance, glContext) {
+      map = mapInstance
+      gl = glContext
+      const buffer = (target, data) => {
+        const b = gl.createBuffer()
+        gl.bindBuffer(target, b)
+        gl.bufferData(target, data, gl.STATIC_DRAW)
+        return b
+      }
+      buffers = {
+        pos: buffer(gl.ARRAY_BUFFER, mesh.positions),
+        sphere: buffer(gl.ARRAY_BUFFER, mesh.spheres),
+        index: buffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices),
+      }
+      uploadPlaceholder()
+      loadField()
+    },
+
+    // Without this every style reload leaks a program, a texture and three buffers.
+    onRemove() {
+      if (!gl) return
+      programs.forEach(({ program }) => gl.deleteProgram(program))
+      programs.clear()
+      if (fieldTexture) { gl.deleteTexture(fieldTexture); fieldTexture = null; fieldReady = false }
+      if (buffers) {
+        gl.deleteBuffer(buffers.pos)
+        gl.deleteBuffer(buffers.sphere)
+        gl.deleteBuffer(buffers.index)
+        buffers = null
+      }
+      map = null
+      gl = null
+    },
+
+    render(glContext, args) {
+      if (!buffers || state.opacity <= 0) return
+      // v4 handed a matrix here; v5 hands this options object. Bail rather than feed the old code
+      // path something it will silently mis-read.
+      const shaderData = args && args.shaderData
+      const projection = args && args.defaultProjectionData
+      if (!shaderData || !projection) return
+
+      const { program, attribs, uniforms } = programFor(shaderData)
+      gl.useProgram(program)
+      if (uniforms.matrix) gl.uniformMatrix4fv(uniforms.matrix, false, projection.mainMatrix)
+      if (uniforms.tileMercatorCoords) gl.uniform4f(uniforms.tileMercatorCoords, ...projection.tileMercatorCoords)
+      if (uniforms.clippingPlane) gl.uniform4f(uniforms.clippingPlane, ...projection.clippingPlane)
+      if (uniforms.transition) gl.uniform1f(uniforms.transition, projection.projectionTransition)
+      if (uniforms.fallbackMatrix) gl.uniformMatrix4fv(uniforms.fallbackMatrix, false, projection.fallbackMatrix)
+
+      // Right on the surface. Nothing is lifted to dodge the depth buffer — the shader rejects the
+      // far hemisphere itself — and lifting it would slide the glint off the water it belongs to.
+      const centre = map.getCenter()
+      const LIFT_M = 0
+      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, LIFT_M)
+      if (uniforms.elevationMercator) {
+        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, centre.lat], LIFT_M).z)
+      }
+      if (uniforms.camera) gl.uniform3f(uniforms.camera, ...cameraInPlanetSpace(map, maplibregl))
+      if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
+      if (uniforms.globeness) gl.uniform1f(uniforms.globeness, projection.projectionTransition)
+      if (uniforms.field) {
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
+        gl.uniform1i(uniforms.field, 0)
+      }
+      if (uniforms.rangeKm) gl.uniform1f(uniforms.rangeKm, OCEAN_SDF_RANGE_KM)
+      if (uniforms.shoreKm) {
+        gl.uniform1f(uniforms.shoreKm, shoreSoftnessKmFor(map.getZoom(), centre.lat, state.shoreSoftnessKm))
+      }
+      if (uniforms.shelfKm) gl.uniform1f(uniforms.shelfKm, state.shelfKm)
+      if (uniforms.strength) gl.uniform1f(uniforms.strength, state.strength)
+      if (uniforms.roughness) gl.uniform1f(uniforms.roughness, state.roughness)
+      if (uniforms.water) gl.uniform1f(uniforms.water, state.water)
+      if (uniforms.deep) gl.uniform3f(uniforms.deep, ...state.deep)
+      if (uniforms.shallow) gl.uniform3f(uniforms.shallow, ...state.shallow)
+      if (uniforms.sky) gl.uniform3f(uniforms.sky, ...state.sky)
+      if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
+      if (uniforms.fade) {
+        gl.uniform1f(uniforms.fade, altitudeFadeFor(cameraAltitudeMetres(map, maplibregl), state))
+      }
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos)
+      gl.enableVertexAttribArray(attribs.pos)
+      gl.vertexAttribPointer(attribs.pos, 2, gl.FLOAT, false, 0, 0)
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.sphere)
+      gl.enableVertexAttribArray(attribs.sphere)
+      gl.vertexAttribPointer(attribs.sphere, 3, gl.FLOAT, false, 0, 0)
+
+      // No depth test at all — see the horizon rejection in the fragment shader, which replaces it
+      // exactly and, unlike the depth buffer, works at orbital range.
+      gl.disable(gl.DEPTH_TEST)
+      gl.depthMask(false)      // a reflection is not geometry
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index)
+      gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+      gl.enable(gl.DEPTH_TEST)
+      gl.depthMask(true)
+    },
+
+    /** Live controls — the sun, the sea state, the water colour, and how hard the highlight burns. */
+    setOptions(next = {}) {
+      const previousSources = state.sources
+      state = { ...state, ...next }
+      if (next.sources !== undefined && next.sources !== previousSources) {
+        fieldReady = false
+        if (gl) loadField()
+      }
+      map?.triggerRepaint()
+    },
+    getOptions: () => ({ ...state }),
+    /** True once the real distance field is uploaded; until then the sea is simply not painted. */
+    get hasField () { return fieldReady },
+  }
+}
+
+export const OCEAN_LAYER_ID = LAYER_ID

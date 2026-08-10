@@ -6,6 +6,7 @@ import { createDaylightLayer, DAYLIGHT_LAYER_ID } from '../daylight.js'
 import { createStarfieldLayer, STARFIELD_LAYER_ID } from '../starfield.js'
 import { createMoonLayer, MOON_LAYER_ID } from '../moon.js'
 import { createCloudLayer, CLOUD_LAYER_ID } from '../clouds.js'
+import { createOceanWaterLayer, OCEAN_LAYER_ID } from '../ocean-water.js'
 
 /**
  * The contract every globe overlay has to keep.
@@ -30,7 +31,8 @@ const glStub = () => {
     DEPTH_TEST: 11, LEQUAL: 12, TEXTURE_2D: 20, TEXTURE0: 21, TEXTURE1: 33, RGBA: 22,
     UNSIGNED_BYTE: 23, TEXTURE_WRAP_S: 24, TEXTURE_WRAP_T: 25, TEXTURE_MIN_FILTER: 26,
     TEXTURE_MAG_FILTER: 27, REPEAT: 28, CLAMP_TO_EDGE: 29, LINEAR_MIPMAP_LINEAR: 30, LINEAR: 31,
-    UNPACK_FLIP_Y_WEBGL: 32,
+    UNPACK_FLIP_Y_WEBGL: 32, MAX_TEXTURE_SIZE: 34, LUMINANCE: 35, R8: 36, RED: 37,
+    getParameter: () => 16384,
     createBuffer: () => ({}), bindBuffer: () => {}, bufferData: () => {},
     createShader: () => ({}), shaderSource: () => {}, compileShader: () => {}, deleteShader: () => {},
     createProgram: () => ({}), attachShader: () => {}, linkProgram: () => {},
@@ -83,6 +85,7 @@ const LAYERS = [
   { name: 'starfield', id: STARFIELD_LAYER_ID, make: (o) => createStarfieldLayer(o), off: { brightness: 0 }, buffers: 3 },
   { name: 'moon', id: MOON_LAYER_ID, make: (o) => createMoonLayer(o), off: { brightness: 0 }, buffers: 2 },
   { name: 'clouds', id: CLOUD_LAYER_ID, make: (o) => createCloudLayer(o), off: { opacity: 0 }, buffers: 3 },
+  { name: 'ocean', id: OCEAN_LAYER_ID, make: (o) => createOceanWaterLayer(o), off: { opacity: 0 }, buffers: 3 },
 ]
 
 describe.each(LAYERS)('$name layer', ({ id, make, off, buffers }) => {

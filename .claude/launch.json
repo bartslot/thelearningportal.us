@@ -6,6 +6,13 @@
       "name": "serve",
       "url": "http://localhost:8000",
       "port": 8000
+    },
+    {
+      "//": "Standalone globe-layer harness: esbuild bundle plus the baked ocean fields, no Laravel involved. Exists because the ocean layer cannot be judged from a screenshot — it is measured with gl.readPixels from inside a render pass.",
+      "name": "ocean-harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["harness/ocean/serve.mjs"],
+      "port": 5183
     }
   ]
 }
