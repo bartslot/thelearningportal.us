@@ -231,13 +231,26 @@ So quantisation is invisible deeper than 10 m and increasingly visible above it,
 levels at the waterline. That is real, and it lands on tidal flats, lagoons, reef tops and the
 Wadden — water people look at.
 
-**Do not re-scale on this account, though.** The encoding shares one 16-bit number with relief, so
-the shallow half cannot be given a finer step without splitting the payload, and the binding limit
-above 10 m is almost certainly the source's own vertical accuracy rather than the coding —
-terrarium's shallow bathymetry comes from a global compilation with metre-scale error, so finer
-buckets would quantise noise. The mitigation belongs on this side: soften the ramp's steepest
-couple of metres, where the shoreline coverage is already partial. To be measured against real
-tiles rather than guessed, using `stats().completeness` so it is not measured on a half-loaded frame.
+**But there is a free 2× available, and nobody has to trade anything for it.** The range as built
+spans −11,500 m to +9,000 m, and the deep half of that is stored for no consumer at all: relief
+clamps to ≥ 0 and never looks below sea level, and this layer is blind below 200 m. The Challenger
+Deep tail costs everybody half their precision:
+
+| stored range | span | step | colour step at 0 m / 2 m / 10 m |
+|---|---|---|---|
+| −11,500 … 9,000 (as built) | 20,500 m | 31.3 cm | 28.7 / 4.75 / 0.94 levels |
+| **−1,000 … 9,000** | 10,000 m | **15.3 cm** | **14.0 / 2.32 / 0.46** |
+| −300 … 9,000 | 9,300 m | 14.2 cm | 13.0 / 2.15 / 0.43 |
+
+Narrowing to −1,000 m halves the banding at every depth for two constants and no loss to anyone.
+Going further to −300 m buys almost nothing more, so −1,000 m is the sweet spot and leaves headroom.
+
+That still leaves 14 levels at the waterline, which only a shore-band scale would fix — 5 cm steps
+would give 4.6 levels, 1 cm would give 0.92. **Not worth asking for yet.** In water shallower than
+about 2 m the source's own vertical accuracy is worse than any of these steps, so finer buckets
+would quantise noise rather than signal, and this layer's shoreline coverage is already partial
+there. The mitigation belongs on this side first: soften the ramp's steepest couple of metres, then
+measure against real tiles with `stats().completeness` rather than guessing.
 
 ### No, depth cannot retire the coastline field
 
