@@ -53,8 +53,12 @@ import { acquireEquirectTexture } from './equirect-texture.js'
 
 const LAYER_ID = 'tm-starfield'
 
-/** Where the panorama and the catalogue live. Both are built by `scripts/build-sky-assets.mjs`. */
-export const SKY_PANORAMA_URL = '/img/map/sky/milkyway-4k.webp'
+/**
+ * Where the panorama and the catalogue live. Both are built by `scripts/build-sky-assets.mjs`,
+ * whose docblock has the measurement behind the panorama's size — it is smaller than it looks like
+ * it should be, on purpose, and the reason is that a sky does not gain from zoom.
+ */
+export const SKY_PANORAMA_URL = '/img/map/sky/milkyway-2k.webp'
 export const SKY_PLACEHOLDER_URL = '/img/map/sky/milkyway-1k.webp'
 export const SKY_CATALOGUE_URL = '/data/sky/bright-stars.bin'
 

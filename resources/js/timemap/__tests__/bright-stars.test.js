@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { buildStarVertices, starColour } from '../starfield.js'
+import { buildStarVertices, starColour, SKY_PANORAMA_URL, SKY_PLACEHOLDER_URL } from '../starfield.js'
 
 /**
  * The bright star catalogue, and what the layer makes of it.
@@ -86,6 +86,34 @@ describe('turning the catalogue into vertices', () => {
   it('lays out six floats a star, which is what the attribute pointers assume', () => {
     const { vertices, count } = buildStarVertices(catalogue([[0, 0, 1, 5800], [1, 1, 2, 5800]]))
     expect(vertices.length).toBe(count * 6)
+  })
+})
+
+describe('the panorama that actually ships', () => {
+  /**
+   * Size is a decision here, not an accident — see docs/sky-resolution.md. Improvement stops around
+   * 2048 because a sky is at infinity and never gains from zoom, and the steps above it carry the
+   * source's shot noise rather than detail. The budget below is a tripwire for someone reaching for
+   * a bigger file on the reasonable-sounding assumption that bigger is better.
+   */
+  const shipped = (url) => resolve(process.cwd(), 'public', url.replace(/^\//, ''))
+
+  it('is on disk, because a sky is a download and downloads go missing', () => {
+    expect(existsSync(shipped(SKY_PANORAMA_URL))).toBe(true)
+    expect(existsSync(shipped(SKY_PLACEHOLDER_URL))).toBe(true)
+  })
+
+  it('stays inside a budget that a slow machine can decode', () => {
+    // 8192 measured at 1.2 seconds of blocked main thread on an M3 Pro, and several times that on
+    // the hardware this has to run on. 2048 is 51 ms.
+    const bytes = readFileSync(shipped(SKY_PANORAMA_URL)).length
+    expect(bytes).toBeLessThan(1_200_000)
+    expect(bytes).toBeGreaterThan(100_000)   // if it ever collapses, it collapsed silently
+  })
+
+  it('keeps the placeholder small enough to be worth having', () => {
+    // It exists to cover the gap before the real one lands. A heavy placeholder covers nothing.
+    expect(readFileSync(shipped(SKY_PLACEHOLDER_URL)).length).toBeLessThan(120_000)
   })
 })
 

@@ -22,25 +22,43 @@
  * The stars are the Yale Bright Star Catalogue, 5th edition: about 9,100 stars, essentially every
  * star visible to the naked eye. It is small enough to ship whole.
  *
- * WHY 4096 AND NOT 8192 OR 16384 — measured, not assumed.
+ * WHY 2048 AND NOT 4096, 8192 OR 16384 — measured. See docs/sky-resolution.md for the full workings.
  *
- * The obvious move is the biggest file the budget allows. It was tried and it is the wrong one, for
- * a reason specific to this image: the top octave of the 8192-wide source is NOISE, not structure.
- * Halve it, put it back, and look at what is left over — the residual's lag-1 autocorrelation is
- * 0.08 across and -0.16 down in the galactic plane, which is the signature of uncorrelated shot
- * noise rather than of anything on the sky. Survey data has speckle, and the gamma below amplifies
- * it hard, because the gamma's whole job is to stretch the faint end where the speckle lives.
+ * The obvious move is the biggest file the budget allows, and for this asset it is the wrong one.
  *
- * The cost of encoding that noise is not small. At 8192 across it came to 16 MB, four times the
- * budget; blurring it enough to compress produced a 5.6 MB file whose extra pixels were, by
- * construction, blur. At 4096 the downscale averages the noise away for free, and 3.6 MB buys
- * near-lossless quality on all the structure there actually is.
+ * A SKY DOES NOT GAIN FROM ZOOM. Every other baked texture on this map is sampled harder as the
+ * camera comes in, so its ceiling is set by the closest the surface can get. This one is at
+ * infinity: its angular sampling is fixed by the field of view and the height of the canvas, and
+ * is 0.023° per screen pixel at MapLibre's default 36.87° over an 800 px pane at device pixel
+ * ratio 2. Map zoom does not enter into it. So the ceiling is set once and never moves.
  *
- * 4096 is also the largest texture every WebGL device is required to support, so nothing here can
- * fail as a silently black sky on school hardware.
+ * WHERE THE IMPROVEMENT STOPS. Rendering the same frame through 1k, 2k, 4k and 8k panoramas and
+ * differencing the sky pixels against the 8k: 1k is 2.04 away, 2k is 1.71, 4k is 1.34, on a scale
+ * where the panorama is worth 13.83 against no panorama at all and where one or two levels out of
+ * 255 is the threshold for seeing a difference in a smooth gradient. Every step is worth about one
+ * level, and the steps do not shrink — 1k→2k is 0.97, 2k→4k is 0.90, 4k→8k is 1.34. Detail that
+ * were really there would converge. This does not: each resolution simply carries a different
+ * realisation of the source's shot noise, which is also what the residual autocorrelation of the
+ * source says (0.08 across, -0.16 down in the galactic plane — uncorrelated speckle).
  *
- * The sharpness in this sky does not come from the panorama anyway. It comes from the catalogue
- * stars, which are drawn analytically and have no resolution at all.
+ * Side by side at the galactic bulge the 8192 is visibly GRAINIER than the 2048, with the same dust
+ * lanes in the same places. It is not more detail; it is the speckle the downscale averaged away.
+ *
+ * WHAT THE BIGGER FILES COST. Transfer and decode, measured on an M3 Pro — a Chromebook is several
+ * times slower:
+ *
+ *     1k     44 KB      5 ms decode
+ *     2k    746 KB     51 ms
+ *     4k   3594 KB    235 ms
+ *     8k  20193 KB   1210 ms      <- over a second of main thread, on fast hardware
+ *
+ * And past the driver's MAX_TEXTURE_SIZE a texture does not soften, it does not bind at all: a
+ * black sky with no error. 16384 is out of reach on a good share of school hardware for that
+ * reason alone. `equirect-texture.js` now refuses an oversized image rather than going black, but
+ * refusing is not a plan.
+ *
+ * So: 2048. The sharpness in this sky does not come from the panorama anyway — it comes from the
+ * catalogue stars, which are drawn analytically and have no resolution at all.
  */
 
 import { execFileSync, execSync } from 'node:child_process'
@@ -215,10 +233,14 @@ const catalogue = download(SOURCES.catalogue)
 
 ensureDir(OUT_IMG)
 const only = Number(process.env.SKY_ONLY ?? 0)
-if (!only || only === 4096) writePanorama(panorama, 4096, 2048, resolve(OUT_IMG, 'milkyway-4k.webp'))
+if (!only || only === 2048) writePanorama(panorama, 2048, 1024, resolve(OUT_IMG, 'milkyway-2k.webp'))
 // The placeholder. It loads in a blink and holds the sky while the real one arrives, so nobody
 // watches a black rectangle on a school connection.
 if (!only || only === 1024) writePanorama(panorama, 1024, 512, resolve(OUT_IMG, 'milkyway-1k.webp'), 80)
+// The rest of the ladder exists only to re-run the resolution measurement. They are not shipped,
+// and the docblock above is what they were for.
+if (only === 4096) writePanorama(panorama, 4096, 2048, resolve(OUT_IMG, 'milkyway-4k.webp'))
+if (only === 8192) writePanorama(panorama, 8192, 4096, resolve(OUT_IMG, 'milkyway-8k.webp'), 95)
 if (only) process.exit(0)
 writeFixture(panorama)
 writeCatalogue(catalogue)

@@ -68,7 +68,7 @@
   <script type="module">
     import maplibregl from 'maplibre-gl'
     import 'maplibre-gl/dist/maplibre-gl.css'
-    import { createStarfieldLayer } from '/resources/js/timemap/starfield.js'
+    import { createStarfieldLayer, SKY_PANORAMA_URL, SKY_PLACEHOLDER_URL, SKY_CATALOGUE_URL } from '/resources/js/timemap/starfield.js'
     import { viewRayBasis, rayThrough, earthHit } from '/resources/js/timemap/sky-camera.js'
     import { EARTH_RADIUS_M, cameraAltitudeMetres } from '/resources/js/timemap/planet-mesh.js'
     import { j2000ToPlanet, planetToJ2000, skyFrameMatrix } from '/resources/js/timemap/celestial.js'
@@ -102,14 +102,18 @@
     })
     window.map = map
 
-    // Vite's dev server does not serve Laravel's public directory at the root, so the assets are
-    // reached through their real path on disk. In the app these are the layer's own defaults.
+    // Vite's dev server does not serve Laravel's public directory at the root, so every asset is
+    // reached through its real path on disk. Derived from the layer's own constants rather than
+    // written out again: a bench measuring a different panorama from the one that ships is a bench
+    // that tells you nothing, and it would do it quietly.
+    const onDisk = (url) => `/public${url}`
     const sky = createStarfieldLayer({
       date: new Date(Date.UTC(1492, 9, 12, 5)),
-      textureUrl: '/public/img/map/sky/milkyway-4k.webp',
-      placeholderUrl: '/public/img/map/sky/milkyway-1k.webp',
-      catalogueUrl: '/public/data/sky/bright-stars.bin',
+      textureUrl: onDisk(SKY_PANORAMA_URL),
+      placeholderUrl: onDisk(SKY_PLACEHOLDER_URL),
+      catalogueUrl: onDisk(SKY_CATALOGUE_URL),
     })
+    window.onDisk = onDisk
     window.sky = sky
 
     /**
@@ -293,7 +297,7 @@
        * limb. So the catalogue itself is asked which of its stars are in that ring, and the
        * brightest of those are the ones measured.
        */
-      const table = new Float32Array(await (await fetch('/public/data/sky/bright-stars.bin')).arrayBuffer())
+      const table = new Float32Array(await (await fetch(onDisk(SKY_CATALOGUE_URL))).arrayBuffer())
       const NAMED = []
       for (let i = 0; i < table.length / 4; i++) {
         if (table[i * 4 + 2] > 2.2) continue    // the properly bright ones only
