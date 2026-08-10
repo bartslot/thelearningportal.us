@@ -49,6 +49,7 @@ import maplibregl from 'maplibre-gl'
 import { buildProgram } from './planet-mesh.js'
 import { skyFrameMatrix, PANORAMA_UV_GLSL } from './celestial.js'
 import { viewRayBasis } from './sky-camera.js'
+import { acquireEquirectTexture } from './equirect-texture.js'
 
 const LAYER_ID = 'tm-starfield'
 
@@ -309,10 +310,9 @@ export const createStarfieldLayer = ({
   let map = null
   let gl = null
   let buffers = null
-  let texture = null
-  let ready = false
+  let skyHandle = null
+  let placeholderHandle = null
   let starCount = 0
-  let bestTextureUrl = null
   const programs = new Map()
   let state = {
     textureUrl, placeholderUrl, catalogueUrl, date, brightness, nebula, nebulaContrast,
@@ -370,42 +370,39 @@ export const createStarfieldLayer = ({
   }
 
   /**
-   * Upload a panorama. Called twice: once with the placeholder, which arrives in a blink, and once
-   * with the real one. Nobody watches a black rectangle on a school connection, and a sky that
-   * sharpens after a second is not something anyone notices.
+   * Take shares in the panorama and its placeholder.
+   *
+   * Two of them, on purpose. The placeholder arrives in a blink and holds the sky while the real
+   * one is still coming down a school connection; nobody watches a black rectangle, and a sky that
+   * sharpens after a second is not something anyone notices. Once the full one lands the
+   * placeholder is released, so only one of them is on the card for the life of the map.
+   *
+   * Both go through the shared loader with `mipmap: false` — see the note in `equirect-texture.js`
+   * for why that is not a preference. Sharing matters even though nothing else currently loads
+   * these two images: a second copy of a panorama is exactly the kind of thing that goes unnoticed
+   * until video memory runs out on a school tablet.
    */
-  const loadSky = (url, isPlaceholder = false) => {
-    if (!url) return
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => {
-      if (!gl) return
-      // A texture wider than the driver allows fails silently as a black sky. 4096 is the smallest
-      // maximum WebGL permits, so this only ever fires if the panorama is replaced with a bigger one.
-      const limit = gl.getParameter?.(gl.MAX_TEXTURE_SIZE) ?? Infinity
-      if (image.width > limit) {
-        if (isPlaceholder) return
-        loadSky(state.placeholderUrl, true)
-        return
-      }
-      if (isPlaceholder && bestTextureUrl && bestTextureUrl !== url) return
-      bestTextureUrl = url
-      texture = texture || gl.createTexture()
-      gl.bindTexture(gl.TEXTURE_2D, texture)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-      // LINEAR, and deliberately NO mipmaps. A sky fills the screen with a handful of triangles, so
-      // the UV derivative per pixel is enormous and mipmapping collapses to a 2x2 level over most
-      // of the frame — the galaxy renders as a few soft grey blocks. Ground textures want mipmaps;
-      // a skybox wants the base level.
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-      ready = true
+  const loadSky = () => {
+    if (!gl) return
+    const claim = (url, onReady) => (url ? acquireEquirectTexture(gl, url, onReady, { mipmap: false }) : null)
+
+    placeholderHandle = claim(state.placeholderUrl, () => { map?.triggerRepaint() })
+    skyHandle = claim(state.textureUrl, () => {
+      // The full panorama is in. Let go of the stand-in.
+      placeholderHandle?.release()
+      placeholderHandle = null
       map?.triggerRepaint()
-    }
-    // Decorative: without it space is simply black, which is what it was before.
-    image.src = url
+    })
+  }
+
+  /** Whichever panorama is the best one currently on the card. */
+  const currentSky = () => (skyHandle?.ready ? skyHandle : (placeholderHandle?.ready ? placeholderHandle : null))
+
+  const releaseSky = () => {
+    skyHandle?.release()
+    placeholderHandle?.release()
+    skyHandle = null
+    placeholderHandle = null
   }
 
   const loadCatalogue = (url) => {
@@ -450,8 +447,7 @@ export const createStarfieldLayer = ({
         // catalogue ever arrived.
         stars: buffer(gl.ARRAY_BUFFER, null),
       }
-      loadSky(state.placeholderUrl, true)
-      loadSky(state.textureUrl)
+      loadSky()
       loadCatalogue(state.catalogueUrl)
     },
 
@@ -462,7 +458,7 @@ export const createStarfieldLayer = ({
         gl.deleteProgram(stars.program)
       })
       programs.clear()
-      if (texture) { gl.deleteTexture(texture); texture = null; ready = false }
+      releaseSky()
       if (buffers) {
         gl.deleteBuffer(buffers.pos)
         gl.deleteBuffer(buffers.index)
@@ -503,15 +499,16 @@ export const createStarfieldLayer = ({
       rayUniforms(sky)
       if (sky.uniforms.globeness) gl.uniform1f(sky.uniforms.globeness, globeness)
       if (sky.uniforms.brightness) gl.uniform1f(sky.uniforms.brightness, state.brightness)
-      if (sky.uniforms.nebula) gl.uniform1f(sky.uniforms.nebula, ready ? state.nebula : 0)
+      const panorama = currentSky()
+      if (sky.uniforms.nebula) gl.uniform1f(sky.uniforms.nebula, panorama ? state.nebula : 0)
       if (sky.uniforms.nebulaContrast) gl.uniform1f(sky.uniforms.nebulaContrast, state.nebulaContrast)
       if (sky.uniforms.starDensity) gl.uniform1f(sky.uniforms.starDensity, state.starDensity)
       if (sky.uniforms.starAmount) gl.uniform1f(sky.uniforms.starAmount, state.starAmount)
       if (sky.uniforms.twinkle) gl.uniform1f(sky.uniforms.twinkle, state.twinkle)
       if (sky.uniforms.time) gl.uniform1f(sky.uniforms.time, state.animate ? performance.now() * 0.001 : 0)
-      if (ready && sky.uniforms.sky) {
+      if (panorama && sky.uniforms.sky) {
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.bindTexture(gl.TEXTURE_2D, panorama.texture)
         gl.uniform1i(sky.uniforms.sky, 0)
       }
 
@@ -557,9 +554,10 @@ export const createStarfieldLayer = ({
       const previousCatalogue = state.catalogueUrl
       state = { ...state, ...next }
       if (next.textureUrl !== undefined && next.textureUrl !== previousUrl) {
-        ready = false
-        bestTextureUrl = null
-        loadSky(next.textureUrl)
+        // Let go of the old shares before taking new ones, or a style that swaps panoramas twice
+        // leaves the first one on the card with nobody left to free it.
+        releaseSky()
+        loadSky()
       }
       if (next.catalogueUrl !== undefined && next.catalogueUrl !== previousCatalogue) {
         starCount = 0
@@ -568,7 +566,7 @@ export const createStarfieldLayer = ({
       map?.triggerRepaint()
     },
     getOptions: () => ({ ...state }),
-    get hasSky () { return ready },
+    get hasSky () { return currentSky() !== null },
     get starCount () { return starCount },
   }
 }

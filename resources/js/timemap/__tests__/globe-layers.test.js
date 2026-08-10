@@ -34,7 +34,7 @@ const glStub = () => {
     UNSIGNED_BYTE: 23, TEXTURE_WRAP_S: 24, TEXTURE_WRAP_T: 25, TEXTURE_MIN_FILTER: 26,
     TEXTURE_MAG_FILTER: 27, REPEAT: 28, CLAMP_TO_EDGE: 29, LINEAR_MIPMAP_LINEAR: 30, LINEAR: 31,
     UNPACK_FLIP_Y_WEBGL: 32, POINTS: 34, MAX_TEXTURE_SIZE: 35,
-    getParameter: () => 4096,
+    getParameter: () => 8192,
     drawArrays: () => { calls.drawArrays++ },
     disableVertexAttribArray: () => {},
     uniformMatrix3fv: (_l, _t, v) => calls.uniformMatrix3fv.push(v),
@@ -276,6 +276,77 @@ describe('starfield without its assets', () => {
     layer.onAdd(mapStub(), gl)
     layer.render(gl, v5Args())
     expect(calls.drawArrays).toBe(0)
+  })
+})
+
+describe('the panorama, through the shared field cache', () => {
+  /**
+   * The sky takes shares in the same cache the cloud deck uses, rather than loading its own copy —
+   * a second panorama on the card is exactly the sort of thing that goes unnoticed until video
+   * memory runs out on a school tablet. What it must NOT inherit is the cache's mipmapping: seen
+   * from inside, a mipmapped sky collapses into a few soft grey blocks.
+   */
+  const stubImages = () => {
+    const pending = []
+    class FakeImage {
+      set src (value) { this._src = value; pending.push(this) }
+      get src () { return this._src }
+      get width () { return 4096 }
+    }
+    vi.stubGlobal('Image', FakeImage)
+    return { settle: () => pending.splice(0).forEach((image) => image.onload?.()) }
+  }
+
+  const recordingGl = () => {
+    const { gl, calls } = glStub()
+    calls.minFilters = []
+    gl.texParameteri = (_target, name, value) => { if (name === gl.TEXTURE_MIN_FILTER) calls.minFilters.push(value) }
+    return { gl, calls }
+  }
+
+  it('samples the sky flat, never through mipmaps', () => {
+    const { gl, calls } = recordingGl()
+    const images = stubImages()
+    const layer = createStarfieldLayer({ catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    images.settle()
+    vi.unstubAllGlobals()
+    expect(calls.minFilters.length).toBeGreaterThan(0)
+    expect(calls.minFilters).not.toContain(gl.LINEAR_MIPMAP_LINEAR)
+    expect(new Set(calls.minFilters)).toEqual(new Set([gl.LINEAR]))
+  })
+
+  it('lets go of the placeholder once the real panorama arrives', () => {
+    const { gl, calls } = recordingGl()
+    const images = stubImages()
+    const layer = createStarfieldLayer({ catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    images.settle()
+    vi.unstubAllGlobals()
+    expect(layer.hasSky).toBe(true)
+    // Two were taken; the stand-in is freed the moment it is no longer standing in for anything.
+    expect(calls.deleteTexture).toBe(1)
+    layer.onRemove()
+    expect(calls.deleteTexture).toBe(2)
+  })
+
+  it('holds the sky on the placeholder while the full one is still coming', () => {
+    // A school connection is the whole reason the placeholder exists. Nobody watches a black
+    // rectangle, and the swap when it sharpens is not something anyone notices.
+    const { gl } = recordingGl()
+    const pending = []
+    class SlowImage {
+      set src (value) { this._src = value; pending.push(this) }
+      get src () { return this._src }
+      get width () { return 1024 }
+    }
+    vi.stubGlobal('Image', SlowImage)
+    const layer = createStarfieldLayer({ catalogueUrl: null })
+    layer.onAdd(mapStub(), gl)
+    expect(layer.hasSky).toBe(false)
+    pending.find((image) => image.src.includes('1k'))?.onload?.()
+    vi.unstubAllGlobals()
+    expect(layer.hasSky).toBe(true)
   })
 })
 
