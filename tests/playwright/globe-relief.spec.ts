@@ -19,7 +19,7 @@ import { test, expect } from '@playwright/test';
  * Needs the harness server:  npx vite --config vite.harness.config.js
  */
 
-const HARNESS = process.env.HARNESS_URL ?? 'http://localhost:5199/';
+const HARNESS = process.env.HARNESS_URL ?? 'http://localhost:5198/';
 
 type Difference = { mean: number; max: number; samples: number };
 type Report = {

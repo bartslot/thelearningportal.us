@@ -11,5 +11,5 @@ import { resolve } from 'node:path'
 export default defineConfig({
   root: resolve(import.meta.dirname, 'resources/js/timemap/__harness__'),
   publicDir: resolve(import.meta.dirname, 'public'),
-  server: { port: 5199, strictPort: true },
+  server: { port: 5198, strictPort: true },
 })
