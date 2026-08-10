@@ -63,6 +63,85 @@ describe('the grid', () => {
   })
 })
 
+describe('absolute position, against an authority outside this module', () => {
+  /**
+   * EVERY OTHER POSITIONAL TEST HERE IS RELATIVE — a tile against its neighbour, a point inside its
+   * own tile's bounds, a parent against its children. A pyramid displaced by a uniform offset
+   * satisfies all of them, and that is not hypothetical: the page-table straddle was a positional
+   * error, and it was found by rendering rather than by any of these.
+   *
+   * So these check against something this module does not own. The reference below is the published
+   * slippy-tilenames formula written out independently — it uses `log(tan + sec)` where scheme.js
+   * goes through `mercatorYFromLat`'s `log(tan(π/4 + lat/2))` — so an offset in one shows as a
+   * disagreement rather than cancelling.
+   */
+  const referenceTile = (lng, lat, z) => {
+    const n = 2 ** z
+    const latRad = (lat * Math.PI) / 180
+    return {
+      x: Math.floor(((lng + 180) / 360) * n),
+      y: Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n),
+    }
+  }
+
+  it('agrees with the published slippy-map formula everywhere, not just on average', () => {
+    const places = [
+      [4.895, 52.370],    // Amsterdam
+      [-74.006, 40.713],  // New York
+      [151.209, -33.868], // Sydney
+      [139.692, 35.690],  // Tokyo
+      [-43.173, -22.907], // Rio
+      [18.424, -33.925],  // Cape Town
+      [0, 0],             // the origin of everything
+    ]
+    for (const [lng, lat] of places) {
+      for (const z of [1, 4, 8, 12, 14]) {
+        const mine = tileForLngLat(lng, lat, z)
+        expect({ x: mine.x, y: mine.y }).toEqual(referenceTile(lng, lat, z))
+      }
+    }
+  })
+
+  it('puts the equator and the prime meridian exactly on the seam between tiles', () => {
+    // Both are exact in web mercator, so any offset at all breaks these — there is no rounding to
+    // hide in. At z4 that is the boundary between rows 7 and 8, and columns 7 and 8.
+    expect(tileForLngLat(0.0001, 0.0001, 4)).toMatchObject({ x: 8, y: 7 })
+    expect(tileForLngLat(-0.0001, -0.0001, 4)).toMatchObject({ x: 7, y: 8 })
+  })
+
+  it('ends the world at the published web-mercator limit', () => {
+    // 85.0511287798066° is not ours to choose; it is where the projection is defined to stop.
+    const world = tileLngLatBounds({ z: 0, x: 0, y: 0 })
+    expect(world.north).toBeCloseTo(85.0511287798066, 9)
+    expect(world.south).toBeCloseTo(-85.0511287798066, 9)
+    expect(world.west).toBe(-180)
+    expect(world.east).toBe(180)
+  })
+
+  it('lands a known city on a known texel, not merely in the right tile', () => {
+    /**
+     * One level finer than the tile: which TEXEL of that tile. A half-tile offset would still put
+     * Amsterdam in the right tile and would show here.
+     */
+    const AMSTERDAM = { lng: 4.895, lat: 52.37 }
+    const tile = tileForLngLat(AMSTERDAM.lng, AMSTERDAM.lat, 12)
+    const { x0, y0, size } = tileMercatorBounds(tile)
+    const mx = (AMSTERDAM.lng + 180) / 360
+    const my = mercatorYFromLat(AMSTERDAM.lat)
+    const texelX = Math.floor(((mx - x0) / size) * 256)
+    const texelY = Math.floor(((my - y0) / size) * 256)
+    expect(texelX).toBeGreaterThanOrEqual(0)
+    expect(texelX).toBeLessThan(256)
+    expect(texelY).toBeGreaterThanOrEqual(0)
+    expect(texelY).toBeLessThan(256)
+    // And the texel's own ground position round-trips to within its own size.
+    const backLng = (x0 + ((texelX + 0.5) / 256) * size) * 360 - 180
+    const groundMetres = groundMetresPerTexel(12, AMSTERDAM.lat, 256)
+    const metresPerDegreeLng = (MERCATOR_CIRCUMFERENCE_M * Math.cos((AMSTERDAM.lat * Math.PI) / 180)) / 360
+    expect(Math.abs(backLng - AMSTERDAM.lng) * metresPerDegreeLng).toBeLessThan(groundMetres)
+  })
+})
+
 describe('the poles, where the mercator square runs out', () => {
   /**
    * There are no tiles past ±85.0511°, but the globe mesh reaches ±89.999° — `buildSphereMesh`

@@ -110,6 +110,28 @@ ocean's failure would be silent, since relief would still look perfect.
 how you delete a coastal mountain: half a 2,000 m massif and half a 4,000 m trench averages to
 −1,000 m and then to zero.
 
+### Do not decode the normal
+
+`tiledNormal` returns a **unit vector, already decoded** — floats computed in the shader, never
+packed into a byte. The convention matches `terrain-normals.js`: +R east, +G SOUTH, +B up.
+
+So do **not** apply `decodeTerrainNormal` (or the conventional `texel * 2 - 1`) to its output. Those
+exist for the baked equirectangular normal map, where flat ground lands on byte 128 and the naive
+decode reads it back as 0.0039 rather than 0 — a constant tilt on every flat texel, measured at a
+full 8-bit level of shading across open ocean. There is no encode step here, so there is nothing to
+undo, and undoing it anyway would introduce the very bias it was written to remove.
+
+### The poles
+
+`tiledSampleSphere` maps a sphere direction into mercator, and mercator stops at ±85.0511° while
+`buildSphereMesh` deliberately reaches ±89.999°. Past the edge the sample clamps to the last row of
+texels and smears it across the final five degrees, with no flag to return.
+
+`tiledSphereCoverage(vec3 unitPos)` is that flag: 1 where the pyramid can speak for the ground,
+falling to 0 across the caps. Multiply by it rather than writing a per-layer latitude test, so every
+overlay lets go of the pole at the same latitude. It matters most for relief — Antarctica is a
+four-kilometre dome and the terminator crosses it for months.
+
 `tiledSample` takes mercator 0..1 — the same space `buildSphereMesh` lays its vertices out in, so
 you already have it as `a_pos`. For a raymarch, convert from the unit sphere with
 `tiledSampleSphere`.
@@ -240,6 +262,28 @@ That is exactly the case `tiledShortfall()` exists for.
 The z11 and z14 figures are roughly double an earlier build of this module that baked an 8-bit
 normal per tile. Deriving the normal in the shader instead removed the quantisation and the
 one-sided edge stencil at once.
+
+### Absolute anchors, because every other positional test is relative
+
+The gains above are all *relative* — pyramid against a z3-capped baseline. So are most of the
+positional tests: a tile against its neighbour, a point inside its own tile's bounds, a parent
+against its children. **A pyramid displaced by a uniform offset satisfies every one of them.** That
+is not hypothetical here: the page-table straddle was a positional error and it was found by
+rendering, not by any test.
+
+Two anchors were added against authorities outside this module, and both were checked by breaking
+the code on purpose:
+
+- `scheme.test.js` compares against the published slippy-tilenames formula, written out
+  independently — it uses `log(tan + sec)` where `scheme.js` goes through `mercatorYFromLat`'s
+  `log(tan(π/4 + lat/2))`, so an offset in one shows as a disagreement rather than cancelling. Plus
+  the equator and prime meridian, which are exact in web mercator with no rounding to hide in, and
+  the world's edge at 85.0511287798066°.
+- `atlas.test.js` takes real coordinates, works out independently which tile covers them, then walks
+  the page table exactly as the shader does and checks it points at that tile's slot.
+
+Injecting a half-tile offset into `tileForLngLat` fails 4 tests; reinstating the fixed 32×32 page
+grid fails 3, including the absolute one. A test that has never been seen to fail is not evidence.
 
 ### Cache
 

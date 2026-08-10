@@ -29,7 +29,7 @@
  * there is one code path rather than two.
  */
 
-import { MERCATOR_CIRCUMFERENCE_M, keyOf, tileMercatorBounds } from './scheme.js'
+import { MERCATOR_CIRCUMFERENCE_M, MERCATOR_EDGE_LAT, keyOf, tileMercatorBounds } from './scheme.js'
 
 /** Slot indices travel through a byte of the page table, so this is the ceiling on residency. */
 const MAX_SLOTS = 255
@@ -291,6 +291,9 @@ export const createTileAtlas = (gl, {
     if (uniforms.tileSize) gl.uniform1f(uniforms.tileSize, tileSize)
     if (uniforms.circumference) gl.uniform1f(uniforms.circumference, MERCATOR_CIRCUMFERENCE_M)
     if (uniforms.slopeStep) gl.uniform1f(uniforms.slopeStep, 1 / (2 ** finestLevel * tileSize))
+    // The fade starts two degrees before the tile grid ends, so an overlay has let go by the time
+    // there is nothing left to sample rather than at the instant the data stops.
+    if (uniforms.capFade) gl.uniform2f(uniforms.capFade, MERCATOR_EDGE_LAT - 2, MERCATOR_EDGE_LAT)
   }
 
   return {
@@ -383,6 +386,7 @@ uniform vec2 u_tm_heightRange;        // metres at step zero, and metres per ste
 uniform float u_tm_tileSize;          // texels along a tile's edge
 uniform float u_tm_circumference;     // metres round the equator, for ground scale
 uniform float u_tm_slopeStep;         // mercator step for slope, one texel of the FINEST level
+uniform vec2 u_tm_capFade;            // degrees: where the polar fade starts, and where tiles end
 
 /** One tile of the array, at a point given in mercator 0..1. */
 vec4 tm_sampleLayer(vec2 mercatorUV, float slot, float level) {
@@ -403,6 +407,26 @@ vec4 tiledSample(vec2 mercatorUV) {
   vec4 near = tm_sampleLayer(mercatorUV, fine.r * 255.0, fine.g * 255.0);
   vec4 far = tm_sampleLayer(mercatorUV, coarse.r * 255.0, coarse.g * 255.0);
   return mix(far, near, fine.b);
+}
+
+/**
+ * How much of this point the pyramid can actually speak for, 1 down to 0 across the polar caps.
+ *
+ * THE SPHERE HAS GROUND THE TILE GRID DOES NOT COVER. Mercator stops at ±85.0511°, but
+ * buildSphereMesh deliberately reaches ±89.999° — those cap rows exist because leaving them out put
+ * a disc of daylit Antarctica in the middle of the polar night. So tiledSampleSphere past the edge
+ * clamps to the last row of texels and smears it across the final five degrees, silently.
+ *
+ * There is no honest tile to return there, so this returns the confidence instead and lets each
+ * layer decide: fade the effect out, or substitute something. Multiply by it rather than inventing
+ * a per-layer latitude test, so every overlay lets go of the pole at the same latitude.
+ *
+ * It matters most for relief: Antarctica is a four-kilometre dome with real relief, and the
+ * terminator crosses it for months.
+ */
+float tiledSphereCoverage(vec3 unitPos) {
+  float lat = degrees(asin(clamp(normalize(unitPos).y, -1.0, 1.0)));
+  return 1.0 - smoothstep(u_tm_capFade.x, u_tm_capFade.y, abs(lat));
 }
 
 /** The same, from a direction on the unit sphere — for anything shading in planet space. */

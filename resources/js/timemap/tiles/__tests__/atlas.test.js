@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createTileAtlas } from '../atlas.js'
-import { keyOf } from '../scheme.js'
+import { keyOf, tileForLngLat } from '../scheme.js'
+import { mercatorYFromLat } from '../../planet-mesh.js'
 
 /**
  * The atlas is where tiles stop being data and become something a shader can reach. Two things it
@@ -15,7 +16,7 @@ import { keyOf } from '../scheme.js'
 const gl2Stub = () => {
   const calls = {
     texStorage3D: [], texSubImage3D: [], texImage2D: [], texParameteri: [],
-    deleteTexture: 0, createTexture: 0, bindTexture: [], uniform1i: {}, uniform4f: {},
+    deleteTexture: 0, createTexture: 0, bindTexture: [], uniform1i: {}, uniform2f: {}, uniform4f: {},
   }
   const gl = {
     TEXTURE_2D: 3553, TEXTURE_2D_ARRAY: 35866, RGBA8: 32856, RGBA: 6408, UNSIGNED_BYTE: 5121,
@@ -36,6 +37,7 @@ const gl2Stub = () => {
     getParameter: (name) => (name === 35071 ? 256 : 0),
     uniform1i: (name, value) => { calls.uniform1i[name] = value },
     uniform1f: (name, value) => { calls.uniform1i[name] = value },
+    uniform2f: (name, ...values) => { calls.uniform2f[name] = values },
     uniform4f: (name, ...values) => { calls.uniform4f[name] = values },
   }
   return { gl, calls }
@@ -188,6 +190,52 @@ describe('the page table', () => {
     expect(atlas.pageSize()).toEqual([8, 8])
   })
 
+  it('names the tile that actually contains a known point on the earth', () => {
+    /**
+     * THE ABSOLUTE POSITIONAL ANCHOR, and it belongs here because this is where the positional bug
+     * was. The straddle put the right place in the wrong tile, and every other test in this file
+     * compares a page entry against another page entry — a pyramid displaced by a uniform offset
+     * satisfies all of them.
+     *
+     * So: take real coordinates, work out independently which tile covers them, then walk the page
+     * table exactly as the shader does and check it points at that tile's slot. If the page grid,
+     * the extent, or the tile bounds were offset by anything at all, this disagrees.
+     */
+    const { atlas, calls } = atlasWith({ options: { pageResolution: 64 } })
+    const LEVEL = 5
+    const places = [
+      { name: 'Amsterdam', lng: 4.895, lat: 52.37 },
+      { name: 'Sydney', lng: 151.209, lat: -33.868 },
+      { name: 'the origin', lng: 0, lat: 0 },
+    ]
+
+    // One tile per place, plus a coarse tile underneath so the page has something to fall back to.
+    const tiles = places.map((place) => {
+      const found = tileForLngLat(place.lng, place.lat, LEVEL)
+      return { z: found.z, x: found.x, y: found.y, key: keyOf(found) }
+    })
+    atlas.upload(tile(0, 0, 0), pixels())
+    tiles.forEach((t) => atlas.upload(t, pixels()))
+    atlas.buildPages([tile(0, 0, 0), ...tiles])
+
+    const fine = calls.texImage2D.slice(-2)[0].at(-1)
+    const [width, height] = atlas.pageSize()
+    const [x0, y0, invWidth, invHeight] = atlas.pageExtent()
+
+    places.forEach((place, index) => {
+      // The shader's own lookup: mercator coordinate -> page space -> page texel.
+      const mx = (place.lng + 180) / 360
+      const my = mercatorYFromLat(place.lat)
+      const i = Math.min(width - 1, Math.floor((mx - x0) * invWidth * width))
+      const j = Math.min(height - 1, Math.floor((my - y0) * invHeight * height))
+      const slot = fine[(j * width + i) * 4]
+      const level = fine[(j * width + i) * 4 + 1]
+
+      expect(level, `${place.name} level`).toBe(LEVEL)
+      expect(slot, `${place.name} slot`).toBe(atlas.slotOf(tiles[index].key))
+    })
+  })
+
   it('says so when the extent needs a finer grid than the cap allows', () => {
     // Silently capping puts the straddling artefact back with nothing to explain it.
     const { atlas } = atlasWith({ options: { pageResolution: 4 } })
@@ -284,6 +332,21 @@ describe('the shader side', () => {
     expect(atlas.glsl).toContain('vec3 tiledNormal(vec2')
   })
 
+  it('hands consumers one polar-cap signal rather than letting each invent a latitude test', () => {
+    /**
+     * The sphere has ground the tile grid does not cover: mercator stops at ±85.0511° and
+     * buildSphereMesh reaches ±89.999°. Past the edge `tiledSampleSphere` clamps to the last row and
+     * smears it, silently. `tiledSphereCoverage` is the confidence, so every overlay lets go of the
+     * pole at the same latitude instead of three sessions each picking one.
+     */
+    const { atlas, calls } = atlasWith()
+    expect(atlas.glsl).toContain('float tiledSphereCoverage(vec3')
+    atlas.bind({ capFade: 'u_tm_capFade' }, 0)
+    const [start, end] = calls.uniform4f.u_tm_capFade ?? calls.uniform2f.u_tm_capFade
+    expect(end).toBeCloseTo(85.0511287798066, 9)
+    expect(start).toBeLessThan(end)
+  })
+
   it('bakes neither clamp into the shader path that both consumers share', () => {
     /**
      * Relief wants max(h, 0); the ocean wants the negative half as depth. `tiledHeight` must hand
@@ -332,6 +395,12 @@ describe('the shader side', () => {
   it('samples the array, not a flat texture', () => {
     const { atlas } = atlasWith()
     expect(atlas.glsl).toContain('sampler2DArray u_tm_tiles')
+  })
+
+  it('carries no backtick, which would close the template the GLSL lives in', () => {
+    // Caught three times while writing this: a backtick in a GLSL comment ends the template
+    // literal, and the module then fails to parse with an error pointing at prose. Cheap to pin.
+    expect(atlasWith().atlas.glsl).not.toContain('`')
   })
 
   it('declares a precision for the sampler, which ES 3.00 does not default', () => {
