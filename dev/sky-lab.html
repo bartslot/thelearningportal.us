@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sky lab</title>
+  <!--
+    A bench for the sky layer, not a page in the app.
+
+    The sky is not wired into /timemap yet, and the failures it is prone to are invisible from the
+    outside: a sky that is a mirror of itself, a sky that stops existing past a certain zoom, a sky
+    that quietly paints over the planet. So this exists to MEASURE it. Everything here reads pixels
+    with gl.readPixels from INSIDE a custom layer's render — the only place it works, because the
+    browser pane runs with preserveDrawingBuffer off and a post-frame drawImage comes back pure
+    black whatever was on the screen.
+
+        npm run dev -- --port 5183 --strictPort
+        then open  http://127.0.0.1:5183/dev/sky-lab.html
+
+    Its own port because several worktrees run vite at once and 5173-5175 are usually taken. Note
+    that vite does not serve Laravel's public directory at the root, so the sky assets are loaded
+    from /public/... here; in the app they are the layer's own defaults.
+  -->
+  <script>
+    /**
+     * requestAnimationFrame, for a page that is never painted.
+     *
+     * This bench runs inside a browser pane with document.hidden true, and a hidden page gets no
+     * animation frames at all. That is not merely "the sky does not animate": MapLibre defers its
+     * STYLE LOAD onto an animation frame, so the map never finishes loading, `isStyleLoaded()`
+     * stays false forever, no custom layer is ever added and the bench comes up blank. It looked
+     * intermittent, which was worse — the browser hands out an odd frame just after navigation, so
+     * roughly half the reloads worked.
+     *
+     * A timer stands in. Nothing here depends on frames arriving at any particular rate; the
+     * measurements drive their own frames through map._render.
+     */
+    if (document.hidden) {
+      window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), 16)
+      window.cancelAnimationFrame = (handle) => window.clearTimeout(handle)
+    }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #cbd5e1; font: 13px/1.5 ui-monospace, monospace; }
+    #map { position: absolute; inset: 0; }
+    #panel {
+      position: absolute; top: 10px; left: 10px; z-index: 2; background: rgba(2, 6, 23, 0.82);
+      border: 1px solid #1e293b; border-radius: 8px; padding: 10px 12px; max-width: 46ch;
+    }
+    #panel button { font: inherit; margin: 1px 2px 1px 0; padding: 2px 7px; background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; cursor: pointer; }
+    #readout { white-space: pre-wrap; margin-top: 8px; max-height: 46vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <div id="zooms"></div>
+    <div>
+      <button data-probe>probe</button>
+      <button data-sweep>zoom sweep</button>
+      <button data-rays>check rays vs unproject</button>
+      <button data-occlusion>check the earth hole</button>
+      <button data-stars>find the real stars</button>
+    </div>
+    <div id="readout">ready</div>
+  </div>
+
+  <script type="module">
+    import maplibregl from 'maplibre-gl'
+    import 'maplibre-gl/dist/maplibre-gl.css'
+    import { createStarfieldLayer } from '/resources/js/timemap/starfield.js'
+    import { viewRayBasis, rayThrough, earthHit } from '/resources/js/timemap/sky-camera.js'
+    import { EARTH_RADIUS_M, cameraAltitudeMetres } from '/resources/js/timemap/planet-mesh.js'
+    import { j2000ToPlanet, planetToJ2000, skyFrameMatrix } from '/resources/js/timemap/celestial.js'
+
+    // Bare module specifiers do not resolve from the console, so the bench's own imports are put
+    // where an ad-hoc measurement can reach them.
+    window.lab = { maplibregl, viewRayBasis, rayThrough, earthHit, cameraAltitudeMetres, j2000ToPlanet, planetToJ2000, skyFrameMatrix }
+
+    const readout = document.getElementById('readout')
+    const say = (text) => { readout.textContent = text; console.log(text) }
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      // Below zero so the camera can be pulled far past where the old sky sphere sat.
+      minZoom: -6,
+      maxZoom: 10,
+      zoom: 1.6,
+      center: [10, 25],
+      style: {
+        version: 8,
+        projection: { type: 'globe' },
+        sources: {},
+        // A plain filled globe rather than the app's vector tiles. Vite's dev server does not serve
+        // Laravel's public directory, and for measuring a sky the earth only has to be opaque and
+        // in the right place — an unmistakable flat colour is easier to tell from sky than
+        // coastlines are.
+        layers: [
+          { id: 'earth', type: 'background', paint: { 'background-color': '#2b3a55' } },
+        ],
+      },
+    })
+    window.map = map
+
+    // Vite's dev server does not serve Laravel's public directory at the root, so the assets are
+    // reached through their real path on disk. In the app these are the layer's own defaults.
+    const sky = createStarfieldLayer({
+      date: new Date(Date.UTC(1492, 9, 12, 5)),
+      textureUrl: '/public/img/map/sky/milkyway-4k.webp',
+      placeholderUrl: '/public/img/map/sky/milkyway-1k.webp',
+      catalogueUrl: '/public/data/sky/bright-stars.bin',
+    })
+    window.sky = sky
+
+    /**
+     * The probe. A custom layer that draws nothing and reads the frame, added AFTER the sky so it
+     * sees the composited result: earth, sky, stars.
+     */
+    let pending = null
+    const probeLayer = {
+      id: 'tm-probe', type: 'custom', renderingMode: '3d',
+      onAdd () {}, onRemove () {},
+      render (gl) {
+        if (!pending) return
+        const { width, height } = map.getCanvas()
+        const pixels = new Uint8Array(width * height * 4)
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+        const resolve = pending
+        pending = null
+        resolve({ pixels, width, height })
+      },
+    }
+
+    /**
+     * Draw a frame, by hand.
+     *
+     * The browser pane runs this page with document.hidden true, so requestAnimationFrame never
+     * fires and MapLibre never draws — every custom layer's render is called exactly zero times and
+     * the sky measures as black with nothing wrong with it. `triggerRepaint` does not help; it only
+     * schedules the frame that never comes. So the frame is driven directly.
+     */
+    const draw = () => map._render(performance.now())
+
+    const frame = () => new Promise((resolve, reject) => {
+      pending = resolve
+      draw()
+      if (pending) { pending = null; reject(new Error('the probe layer did not run — no frame was drawn')) }
+    })
+
+    /**
+     * Added on `style.load`, not on `load`.
+     *
+     * `load` waits for the map to have rendered once, and rendering needs requestAnimationFrame,
+     * which a hidden page does not get. It fires sometimes and not others, which is worse than
+     * never: the bench comes up with no sky layer on it and nothing to say why.
+     */
+    const setup = () => {
+      try {
+        if (!map.style || !map.isStyleLoaded() || map.getLayer('tm-starfield')) return false
+      } catch { return false }
+      map.addLayer(sky)
+      map.addLayer(probeLayer)
+      draw()
+      say('loaded. the sky is drawn for 12 October 1492, 05:00 UT.')
+      return true
+    }
+    // Polled rather than driven by an event, because the events that would do it either need a
+    // rendered frame or fire before this line runs, and both failures look identical: a bench with
+    // no sky on it.
+    const poll = setInterval(() => { if (setup()) clearInterval(poll) }, 100)
+    // Assets arrive asynchronously and there is no animation loop to pick them up.
+    setInterval(draw, 500)
+
+    // From MapLibre's own camera vector, not from `cameraAltitudeMetres`, which is wrong under
+    // pitch — the same trap `sky-camera.js` documents.
+    const radii = () => Math.hypot(...map.transform.cameraPosition)
+    const altitudeKm = () => Math.round((radii() - 1) * EARTH_RADIUS_M / 1000)
+
+    /** Sky pixels are the ones the earth is not on. Told apart analytically, not by colour. */
+    const classify = ({ pixels, width, height }) => {
+      const fov = map.transform.fov ? map.transform.fov * Math.PI / 180 : 0.6435
+      const basis = viewRayBasis(map, maplibregl, fov, width / height)
+      let skyLit = 0, skyDark = 0, skyTotal = 0, earthTotal = 0, earthLit = 0
+      let sum = 0, peak = 0
+      // Every fourth pixel each way: a quarter million samples is plenty and costs nothing.
+      for (let y = 0; y < height; y += 4) {
+        for (let x = 0; x < width; x += 4) {
+          const i = (y * width + x) * 4
+          const luma = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]
+          const ndcX = (x + 0.5) / width * 2 - 1
+          const ndcY = (y + 0.5) / height * 2 - 1
+          const onEarth = earthHit(basis.origin, rayThrough(basis, ndcX, ndcY)) !== null
+          if (onEarth) { earthTotal++; if (luma > 8) earthLit++; continue }
+          skyTotal++
+          sum += luma
+          if (luma > peak) peak = luma
+          if (luma > 3) skyLit++; else skyDark++
+        }
+      }
+      return { skyTotal, skyLit, skyDark, earthTotal, earthLit, meanSky: sum / Math.max(1, skyTotal), peak }
+    }
+
+    const report = async () => {
+      const shot = await frame()
+      const c = classify(shot)
+      return `z${map.getZoom().toFixed(2)}  camera ${altitudeKm().toLocaleString()} km (${radii().toFixed(2)} earth radii)\n` +
+        `  sky area   ${c.skyTotal} samples, ${(100 * c.skyLit / Math.max(1, c.skyTotal)).toFixed(1)}% lit, ` +
+        `mean ${c.meanSky.toFixed(1)}, peak ${c.peak}\n` +
+        `  earth area ${c.earthTotal} samples, ${(100 * c.earthLit / Math.max(1, c.earthTotal)).toFixed(1)}% lit`
+    }
+
+    document.querySelector('[data-probe]').onclick = async () => say(await report())
+
+    document.querySelector('[data-sweep]').onclick = async () => {
+      const lines = []
+      for (const zoom of [4, 2, 1, 0, -1, -2, -3, -4]) {
+        map.setZoom(zoom)
+        lines.push(await report())
+      }
+      say(lines.join('\n'))
+    }
+
+    /**
+     * The ray reconstruction against MapLibre's own projection.
+     *
+     * If these disagree the sky is drawn on the wrong part of the sky, and nothing else would ever
+     * say so — the picture is a perfectly convincing sky either way.
+     */
+    document.querySelector('[data-rays]').onclick = () => {
+      const canvas = map.getCanvas()
+      const fov = map.transform.fov ? map.transform.fov * Math.PI / 180 : 0.6435
+      const basis = viewRayBasis(map, maplibregl, fov, canvas.width / canvas.height)
+      const dpr = canvas.width / canvas.clientWidth
+      const lines = []
+      let worst = 0
+      for (const [fx, fy] of [[0.5, 0.5], [0.35, 0.35], [0.65, 0.35], [0.35, 0.65], [0.65, 0.65], [0.5, 0.3]]) {
+        const cssPoint = [canvas.clientWidth * fx, canvas.clientHeight * fy]
+        const ndcX = fx * 2 - 1
+        const ndcY = (1 - fy) * 2 - 1
+        const hit = earthHit(basis.origin, rayThrough(basis, ndcX, ndcY))
+        if (!hit) { lines.push(`${fx},${fy}: off the globe`); continue }
+        const lng = Math.atan2(hit[2], hit[0]) * 180 / Math.PI
+        const lat = Math.asin(hit[1]) * 180 / Math.PI
+        const theirs = map.unproject(cssPoint)
+        const dLng = Math.abs(((lng - theirs.lng + 540) % 360) - 180)
+        const dLat = Math.abs(lat - theirs.lat)
+        worst = Math.max(worst, dLng, dLat)
+        lines.push(`  ${fx},${fy}  ours ${lng.toFixed(3)},${lat.toFixed(3)}   maplibre ${theirs.lng.toFixed(3)},${theirs.lat.toFixed(3)}   off by ${Math.max(dLng, dLat).toFixed(4)}°`)
+      }
+      say(`ray reconstruction vs map.unproject (dpr ${dpr})\n${lines.join('\n')}\nworst ${worst.toFixed(4)}°`)
+    }
+
+    /** Does the hole in the sky sit exactly on the earth? Checked at the limb, where it matters. */
+    document.querySelector('[data-occlusion]').onclick = async () => {
+      const shot = await frame()
+      const { pixels, width, height } = shot
+      const fov = map.transform.fov ? map.transform.fov * Math.PI / 180 : 0.6435
+      const basis = viewRayBasis(map, maplibregl, fov, width / height)
+      // Walk a horizontal line through the middle and find where the earth starts and stops, both
+      // by the analytic test and by the picture.
+      const y = Math.floor(height / 2)
+      let analytic = [], drawn = []
+      for (let x = 0; x < width; x++) {
+        const ndcX = (x + 0.5) / width * 2 - 1
+        const ndcY = (y + 0.5) / height * 2 - 1
+        const onEarth = earthHit(basis.origin, rayThrough(basis, ndcX, ndcY)) !== null
+        const i = (y * width + x) * 4
+        // The globe is painted #2b3a55: more blue than red, and nothing in the sky is.
+        const isLand = pixels[i + 2] > 60 && pixels[i] * 1.3 < pixels[i + 2]
+        if (onEarth) analytic.push(x)
+        if (isLand) drawn.push(x)
+      }
+      const span = (xs) => xs.length ? `${xs[0]}..${xs[xs.length - 1]}` : 'none'
+      say(`scanline y=${y}\n  earth by geometry  ${span(analytic)}  (${analytic.length}px)\n` +
+        `  earth by pixels    ${span(drawn)}  (${drawn.length}px)\n` +
+        `  a sky that leaks over the planet shows up as the second span being shorter than the first.`)
+    }
+
+    /**
+     * The measurement this whole exercise is for: are the real stars where the real stars are?
+     *
+     * For each named star, work out where it ought to land on the screen from the catalogue and the
+     * frame, then read the pixels there. A star should be a bright spot against sky that is not.
+     * A sky that is mirrored, rotated, or simply decorative fails this and passes every other check
+     * there is, including looking completely convincing.
+     */
+    document.querySelector('[data-stars]').onclick = async () => {
+      /**
+       * Which catalogue stars are actually on screen right now.
+       *
+       * Naming a favourite star and looking for it does not work from orbit: the field of view is
+       * 37° and the middle of it is always the planet, so the sky is only ever the ring around the
+       * limb. So the catalogue itself is asked which of its stars are in that ring, and the
+       * brightest of those are the ones measured.
+       */
+      const table = new Float32Array(await (await fetch('/public/data/sky/bright-stars.bin')).arrayBuffer())
+      const NAMED = []
+      for (let i = 0; i < table.length / 4; i++) {
+        if (table[i * 4 + 2] > 2.2) continue    // the properly bright ones only
+        NAMED.push([`mag ${table[i * 4 + 2].toFixed(2)}`, table[i * 4], table[i * 4 + 1]])
+      }
+      const { pixels, width, height } = await frame()
+      const fov = map.transform.fov ? map.transform.fov * Math.PI / 180 : 0.6435
+      const basis = viewRayBasis(map, maplibregl, fov, width / height)
+      const luma = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return null
+        const i = (Math.round(y) * width + Math.round(x)) * 4
+        return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]
+      }
+      const peakNear = (x, y, r) => {
+        let best = 0
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const v = luma(x + dx, y + dy)
+          if (v !== null && v > best) best = v
+        }
+        return best
+      }
+
+      const lines = []
+      let found = 0, visible = 0
+      for (const [name, ra, dec] of NAMED) {
+        const dir = j2000ToPlanet(ra, dec, sky.getOptions().date)
+        const depth = dir[0] * basis.forward[0] + dir[1] * basis.forward[1] + dir[2] * basis.forward[2]
+        if (depth <= 0) continue
+        const sx = (dir[0] * basis.rightUnit[0] + dir[1] * basis.rightUnit[1] + dir[2] * basis.rightUnit[2]) / depth / (Math.tan(fov / 2) * width / height)
+        const sy = (dir[0] * basis.upUnit[0] + dir[1] * basis.upUnit[1] + dir[2] * basis.upUnit[2]) / depth / Math.tan(fov / 2)
+        if (Math.abs(sx) > 0.97 || Math.abs(sy) > 0.97) continue
+        if (earthHit(basis.origin, rayThrough(basis, sx, sy))) continue
+        visible++
+        const px = (sx + 1) / 2 * width
+        const py = (sy + 1) / 2 * height
+        // The control sits two degrees away along the screen: far enough to be a different piece of
+        // sky, near enough to be the same part of the Milky Way behind it.
+        const offset = Math.tan(2 * Math.PI / 180) / Math.tan(fov / 2) * height / 2
+        const there = peakNear(px, py, 5)
+        const left = peakNear(px - offset, py, 5)
+        const right = peakNear(px + offset, py, 5)
+        const control = Math.max(left, right)
+        const hit = there > control * 1.2 + 4
+        if (hit) found++
+        lines.push(`  ${name.padEnd(9)} at ${String(Math.round(px)).padStart(5)},${String(Math.round(py)).padStart(4)}  peak ${there.toFixed(0).padStart(4)}   two degrees off ${control.toFixed(0).padStart(4)}   ${hit ? 'FOUND' : '—'}`)
+      }
+      say(`stars brighter than magnitude 2.2 in shot, ${sky.getOptions().date.toISOString().slice(0, 10)}\n` +
+        `${lines.slice(0, 14).join('\n')}\n  ${found}/${visible} found where the catalogue says they are`)
+    }
+
+    const zooms = document.getElementById('zooms')
+    for (const z of [6, 4, 2, 1, 0, -1, -2, -3, -4]) {
+      const button = document.createElement('button')
+      button.textContent = `z${z}`
+      button.onclick = () => { map.setZoom(z); draw() }
+      zooms.append(button)
+    }
+  </script>
+</body>
+</html>
