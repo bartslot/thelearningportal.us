@@ -196,20 +196,26 @@ float waterDepthMetres(vec3 unitPos, float coastKm) {
   // constant at both poles, so forcing it constant changes nothing today and makes the swap to
   // tiles safe. The sphere mesh reaches ±89.999°, so without this the smear would be drawn.
   //
-  // THE CAPS ARE CONSTANTS, NOT FADES, AND THEY POINT OPPOSITE WAYS. Past 85.05° the north is
-  // entirely the Arctic Ocean and the south is entirely the Antarctic plateau — measured on the
-  // baked field, 0.191% of the earth apiece: the north 100% water with no shelf in it at all, the
-  // south 0.000% water. So there is nothing to fade TO up there, only a constant to fill with, and
-  // the two constants are deep water and land.
+  // THE ARCTIC CAP IS A CONSTANT, AND IT IS EXACT RATHER THAN A COMPROMISE.
   //
-  // Only the north needs saying here. The south is land, and the coastline field already discards
-  // it before this function is reached, which is what carrying extent separately buys.
+  // Past 85.0511° mercator has no tiles and never will, so a tiled depth source has nothing to say
+  // there. The cap is 0.191% of the earth and 100% water — no coastline in it, no land/water call
+  // to make — but that alone does NOT license a constant, and the tile session was right to say so:
+  // the basin runs from the Lomonosov crest down to −4393 m, and flattening that would be the same
+  // class of error as flattening Antarctica for a shading term.
   //
-  // A two degree fade over the band below is fine, and an earlier claim of mine that it was not is
-  // withdrawn: I read 49% of the southern fade band's WATER as shelf and called it a real loss,
-  // without checking that the band is only 0.010% water to begin with. In absolute terms it is
-  // 0.0033% of the earth's surface — about a hundred and seventy z12 tiles, at a latitude where
-  // they are mostly under permanent ice shelf. Not worth its own constant.
+  // It is licensed by something else. This ramp saturates at 200 m, so the whole range up there is
+  // already one colour: 700 m against 4393 m differs by 3e-11 of an 8-bit level, and every depth
+  // past 250 m sits within 0.002 of a level of this fill. A constant is not an approximation of the
+  // Arctic bathymetry here — it is indistinguishable from having all of it.
+  //
+  // THE CONDITION, since it is the thing that would quietly stop being true: this holds only while
+  // nothing above 85°N is shallower than about 250 m. Measured, 0.0% of the water up there is
+  // within the shelf band and the shallowest known feature is around 700 m, so the margin is wide.
+  // A ramp that ever gained deep-water structure — a bathymetric mode, say — would break it.
+  //
+  // Only the north needs saying. The south is land, and the coastline field discards it before this
+  // function is reached, which is what carrying extent separately buys.
   const float SIN_FADE_START = 0.994522;   // 84°, one degree of run-up; tiledSphereCoverage replaces this
   const float SIN_MERCATOR_EDGE = 0.996272;
   const float ARCTIC_BASIN_M = 400.0;      // past the colour model's saturation at ~200 m
