@@ -150,12 +150,14 @@ float coastDistanceKm(vec3 unitPos) {
  * −3,415 m mid-Atlantic — so real depth costs no new data pipeline, only the half of that tile the
  * relief pass throws away. When it arrives, this function body is the whole change.
  *
- * WHERE ZERO IS, WHICH IS THE TRAP TO AVOID HERE. A channel encoded as x*0.5+0.5 lands zero on
- * byte 127.5, which rounds to 128, and a decoder reading texel*2-1 then returns 0.0039 rather
- * than 0. On the terrain normals that is a constant tilt worth one 8-bit level over open ocean.
- * On THIS channel it would be 0.784 m of false depth at the shoreline, and because the ramp is at
- * its steepest there — 92 levels per metre — that is 51.6 levels of colour error along every coast
- * on the planet. Decode so that sea level is exactly zero, or the shore turns to open ocean.
+ * WHERE ZERO IS, IF THE DEPTH EVER ARRIVES BYTE-ENCODED. It does not from the tile pyramid, which
+ * carries signed height in metres with no encode step — so there is nothing to undo there, and
+ * applying a decode would introduce the very bias one exists to remove. The hazard is real for any
+ * BAKED byte channel: a field encoded as x*0.5+0.5 lands zero on byte 127.5, which rounds to 128,
+ * and a decoder reading texel*2-1 returns 0.0039 rather than 0. On terrain normals that is a
+ * constant tilt worth one 8-bit level. Here it would be 0.784 m of false depth at the shoreline,
+ * where the ramp is steepest at 92 levels per metre — 51.6 levels of colour error along every coast
+ * on the planet, fifty times what it costs the normals.
  *
  * The coastline field above does not have this problem and must not be "fixed" to match: its
  * encode and decode are both centred on 127.5, so they agree, and recentring only the decode would
@@ -179,6 +181,11 @@ float waterDepthMetres(vec3 unitPos, float coastKm) {
 
   // ABOVE THE MERCATOR LIMIT, SATURATE RATHER THAN SAMPLE.
   //
+  // A STAND-IN, to be deleted at integration. The pyramid ships tiledSphereCoverage(vec3) for
+  // exactly this, and three layers each choosing their own fade latitude is how one globe ends up
+  // with the same edge drawn in three places. Multiply the ramp by that instead of this, and take
+  // the argument about where the fade belongs to them rather than settling it here.
+  //
   // Mercator stops at 85.0511°, so a tiled source has nothing past it — every sample clamps to the
   // same edge row. Under a colour ramp a smeared row does not read as blur, it reads as a band of
   // sea changing shade along a latitude line, which is the one artefact this layer cannot afford.
@@ -188,6 +195,12 @@ float waterDepthMetres(vec3 unitPos, float coastKm) {
   // with 0.0% inside the shelf band; south of 85° is 0% water, being Antarctica. The ramp is already
   // constant at both poles, so forcing it constant changes nothing today and makes the swap to
   // tiles safe. The sphere mesh reaches ±89.999°, so without this the smear would be drawn.
+  //
+  // The fade runs ONE degree, not two, and the difference matters in the south. Shelf water inside
+  // the fade band, measured: 84-85°N is 0.0% of its water, so the north costs nothing either way —
+  // but 84-85°S is 49% shelf water and 83-84°S is 29%, the Ross and Filchner-Ronne fronts. A two
+  // degree fade flattens real shallow water down there; one degree halves the exposure and is still
+  // wide enough to hide the seam.
   const float SIN_84 = 0.994522;      // where the fade starts
   const float SIN_MERCATOR_EDGE = 0.996272;
   const float BEYOND_THE_RAMP_M = 400.0;   // past the colour model's saturation at ~200 m
