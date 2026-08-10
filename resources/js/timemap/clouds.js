@@ -26,9 +26,56 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, buildProgram, EARTH_RADIUS_M, EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-clouds'
+
+/**
+ * How the deck should be drawn at the camera's current height.
+ *
+ * A cloud layer built for the globe falls apart on approach, and it does it quietly: the field is
+ * 2048x1024 — about 19.5 km per pixel — so it is magnified 16x by z7 and 256x by z11, and long
+ * before that it has stopped being weather and become a smooth grey wash sitting on top of sharp
+ * ground. Nothing errors. It just looks wrong, and worse the closer you get.
+ *
+ * Three numbers come out of this, all driven by how much ground one screen pixel covers:
+ *
+ *  - `frequency` holds the procedural cells at a roughly constant size ON SCREEN, so there is
+ *    always structure at the scale being looked at rather than one cell filling the window.
+ *  - `amount` hands the noise more of the work as the field runs out of pixels, until at close
+ *    range the field only says where cloud is and the noise says what it looks like.
+ *  - `fade` retires the deck entirely once the camera is below it, because at that height there
+ *    is no honest way to draw it — you would be under the clouds, not looking down on them.
+ *
+ * @param {number} zoom  MapLibre zoom
+ * @param {number} lat   latitude at the centre, for the mercator scale
+ */
+export const deckDetailFor = (zoom, lat) => {
+  const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
+
+  // The real cloud field's own resolution, at the equator.
+  const FIELD_METRES_PER_PIXEL = 19543
+  // 1 while one screen pixel still covers a whole field pixel; falls away as it is magnified.
+  const fieldQuality = Math.min(1, metresPerPixel / FIELD_METRES_PER_PIXEL)
+
+  // Cloud cells roughly this many screen pixels across — big enough to read as cloud, small
+  // enough that several fit on screen.
+  const CELL_PIXELS = 110
+  const wanted = EARTH_RADIUS_M / Math.max(1, metresPerPixel * CELL_PIXELS)
+
+  return {
+    // The floor is the globe-view value this layer was tuned at; the ceiling keeps the noise from
+    // aliasing into static once the cells approach a pixel.
+    frequency: Math.min(2600, Math.max(9, wanted)),
+    amount: 0.14 + (1 - fieldQuality) * 0.42,
+    fade: 1 - smoothstep(8.5, 11.5, zoom),
+  }
+}
+
+const smoothstep = (edge0, edge1, x) => {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
 // Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
 // exaggerated until the shell parallaxes against the ground as the camera moves.
 const ALTITUDE_M = 90000
@@ -94,6 +141,9 @@ uniform sampler2D u_wind;     // real wind field: R = eastward, G = southward, 0
 uniform float u_windAmount;   // 0 = the field sits still, 1 = fully advected
 uniform float u_windScale;    // how far the flow carries per cycle, in UV
 uniform float u_windRate;     // cycles per second
+uniform float u_detailFreq;   // noise cycles per unit sphere; rises as the camera descends
+uniform float u_detailAmount; // how much of the structure the noise carries, vs the real field
+uniform float u_deckFade;     // 0 once the camera is below the deck and clouds stop making sense
 ${NOISE_GLSL}
 ${EQUIRECT_GLSL}
 ${TERMINATOR_GLSL}
@@ -128,17 +178,33 @@ float advectedField(vec2 uv, float lat) {
 
 void main() {
   vec3 p = normalize(v_sphere);
-  // Fine noise, used either as the detail that breaks up the real field's edges or as an octave of
-  // the procedural fallback. Sampled on the SPHERE, so cloud cells stay the same size at Iceland as
-  // at the equator and the field wraps seamlessly across ±180°.
-  float detail = fbm(p * 9.0 - vec3(0.0, u_time * 0.01, 0.0));
+
+  // ── Detail ────────────────────────────────────────────────────────────────────────────────
+  // Sampled on the SPHERE, so cloud cells stay the same size at Iceland as at the equator and the
+  // field wraps seamlessly across ±180°.
+  //
+  // The frequency is NOT fixed. A fixed one is what makes the deck fall apart on approach: the
+  // real field is 2048x1024, about 19.5 km per pixel, so it is already magnified 16x by z7 and
+  // 256x by z11. Past that it is a smooth gradient, the noise on top of it is far too coarse to
+  // read, and the whole deck becomes a milky wash over sharp ground. u_detailFreq rises as the
+  // camera descends to hold cloud cells at a roughly constant size ON SCREEN, so there is always
+  // structure to look at.
+  //
+  // The warp is what makes it look like weather rather than blobs: displacing the sample point by
+  // a lower-frequency noise stretches the cells into filaments and hooks, which is the shape air
+  // actually leaves. One extra fbm buys most of the difference.
+  float warp = fbm(p * u_detailFreq * 0.35 + vec3(0.0, 0.0, u_time * 0.003));
+  float detail = fbm(p * u_detailFreq
+                     + vec3(warp, warp * 0.7, -warp * 0.4) * 0.6
+                     - vec3(0.0, u_time * 0.01, 0.0));
 
   float coverage;
   if (u_fieldAmount > 0.0) {
-    // Real weather. The texture decides WHERE cloud is; the noise decides what its edges look like,
-    // which is the only part a 39 km-per-pixel field cannot tell us.
+    // Real weather. The texture decides WHERE cloud is; the noise decides what its edges look
+    // like — and as the field runs out of resolution, u_detailAmount hands the noise more of the
+    // job, until at close range it is carrying the structure on its own.
     float field = advectedField(equirectUV(p, u_drift), asin(clamp(p.y, -1.0, 1.0)));
-    coverage = smoothstep(0.16, 0.62, field + 0.14 * (detail - 0.5));
+    coverage = smoothstep(0.16, 0.62, field + u_detailAmount * (detail - 0.5));
   } else {
     float cover = fbm(p * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004)) + 0.35 * detail;
     // Earth's cloud is banded, not evenly scattered: a wet belt at the equator, the clear
@@ -172,7 +238,9 @@ void main() {
   const float NIGHT_FLOOR = 0.05;
   base *= NIGHT_FLOOR + (1.0 - NIGHT_FLOOR) * day;
 
-  float alpha = coverage * u_opacity;
+  // Below the deck there is no deck. A cloud shell drawn over a street is not weather, it is a
+  // fog filter, and no amount of detail rescues it — so it fades out rather than being faked.
+  float alpha = coverage * u_opacity * u_deckFade;
   if (alpha < 0.002) discard;
   // MapLibre blends custom layers with gl.ONE / gl.ONE_MINUS_SRC_ALPHA, i.e. PREMULTIPLIED alpha.
   // Returning straight alpha here is what makes a custom layer glow white over dark ground.
@@ -230,6 +298,9 @@ export const createCloudLayer = ({
         windAmount: gl.getUniformLocation(program, 'u_windAmount'),
         windScale: gl.getUniformLocation(program, 'u_windScale'),
         windRate: gl.getUniformLocation(program, 'u_windRate'),
+        detailFreq: gl.getUniformLocation(program, 'u_detailFreq'),
+        detailAmount: gl.getUniformLocation(program, 'u_detailAmount'),
+        deckFade: gl.getUniformLocation(program, 'u_deckFade'),
         // Projection uniforms the prelude declares. Only the globe variant has the last four, so
         // every one of these is allowed to come back null.
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
@@ -345,6 +416,11 @@ export const createCloudLayer = ({
       if (uniforms.windAmount) gl.uniform1f(uniforms.windAmount, windReady ? state.windAmount : 0)
       if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
       if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.animate ? state.windRate : 0)
+
+      const detail = deckDetailFor(map.getZoom(), map.getCenter().lat)
+      if (uniforms.detailFreq) gl.uniform1f(uniforms.detailFreq, detail.frequency)
+      if (uniforms.detailAmount) gl.uniform1f(uniforms.detailAmount, detail.amount)
+      if (uniforms.deckFade) gl.uniform1f(uniforms.deckFade, detail.fade)
       if (windReady && uniforms.wind) {
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, windTexture)

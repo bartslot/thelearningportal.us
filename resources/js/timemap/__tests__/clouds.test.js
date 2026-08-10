@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createCloudLayer, CLOUD_LAYER_ID } from '../clouds.js'
+import { createCloudLayer, deckDetailFor, CLOUD_LAYER_ID } from '../clouds.js'
 import { buildSphereMesh, latFromMercatorY, planetSpacePosition } from '../planet-mesh.js'
 
 /**
@@ -40,6 +40,7 @@ const glStub = () => {
 
 const mapStub = () => ({
   getCenter: () => ({ lng: 0, lat: 40 }),
+  getZoom: () => 2,
   transform: { getCameraLngLat: () => ({ lng: 0, lat: 40 }), getCameraAltitude: () => 5e6 },
   triggerRepaint: vi.fn(),
 })
@@ -151,6 +152,55 @@ describe('planetSpacePosition', () => {
 
   it('never lets a negative altitude put the camera inside the planet', () => {
     expect(Math.hypot(...planetSpacePosition(10, 10, -500))).toBeCloseTo(1, 9)
+  })
+})
+
+describe('deckDetailFor', () => {
+  /**
+   * The deck was built for the globe and quietly fell apart on approach: the real field is
+   * 2048x1024, so by z7 it is magnified sixteen times and by z11 two hundred and fifty six, and
+   * long before that it has stopped being weather and become a grey wash over sharp ground.
+   * Nothing errors — it just looks worse the closer you get, which is why it went unnoticed.
+   */
+  const at = (zoom, lat = 0) => deckDetailFor(zoom, lat)
+
+  it('leaves the globe view exactly as it was tuned', () => {
+    // The floor matters: this is the look that was measured and approved at globe zoom, and a
+    // detail pass for close range must not quietly restyle it.
+    expect(at(1.4).frequency).toBe(9)
+    expect(at(2).frequency).toBe(9)
+    expect(at(1.4).fade).toBe(1)
+    expect(at(1.4).amount).toBeCloseTo(0.14, 2)
+  })
+
+  it('raises the detail frequency as the camera comes down', () => {
+    const zooms = [3, 5, 7, 9, 11]
+    const freqs = zooms.map((z) => at(z).frequency)
+    for (let i = 1; i < freqs.length; i++) expect(freqs[i]).toBeGreaterThanOrEqual(freqs[i - 1])
+    // By mid zoom it must have actually moved, not just crept off the floor.
+    expect(at(7).frequency).toBeGreaterThan(20)
+  })
+
+  it('caps the frequency so the noise never aliases into static', () => {
+    for (const z of [14, 18, 22]) expect(at(z).frequency).toBeLessThanOrEqual(2600)
+  })
+
+  it('hands the noise more of the job as the field runs out of pixels', () => {
+    expect(at(2).amount).toBeLessThan(at(7).amount)
+    expect(at(7).amount).toBeLessThanOrEqual(at(11).amount)
+    // Never so much that the real weather stops deciding where cloud is.
+    expect(at(14).amount).toBeLessThan(0.6)
+  })
+
+  it('retires the deck once the camera is below it', () => {
+    expect(at(6).fade).toBe(1)          // voyages are read at this range: leave it alone
+    expect(at(10).fade).toBeLessThan(1)
+    expect(at(12).fade).toBe(0)         // a cloud shell over a street is a fog filter, not weather
+  })
+
+  it('accounts for latitude, where a zoom level covers less ground', () => {
+    // Mercator scale shrinks with cos(lat), so the same zoom is closer to the ground at Oslo.
+    expect(at(7, 60).frequency).toBeGreaterThan(at(7, 0).frequency)
   })
 })
 

@@ -52,6 +52,7 @@ const glStub = () => {
 
 const mapStub = () => ({
   getCenter: () => ({ lng: 0, lat: 40 }),
+  getZoom: () => 2,
   getCanvas: () => ({ width: 1200, height: 800 }),
   transform: { getCameraLngLat: () => ({ lng: 0, lat: 40 }), getCameraAltitude: () => 9e6 },
   triggerRepaint: vi.fn(),
