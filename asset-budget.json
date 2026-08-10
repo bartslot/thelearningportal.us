@@ -39,5 +39,12 @@
   "optional": {
     "//": "Reachable but not loaded by default, so outside the surface totals. Listed so the dimension rule still applies and so nothing is silently untracked.",
     "assets": ["public/img/map/city-lights.png"]
+  },
+
+  "scan": {
+    "//": "A budget only sees what it is told about. Without this, a texture nobody declares passes silently — the same shape as every other bug this programme has produced: correct for the reader who added it, invisible to everyone downstream. So the directories are scanned and anything undeclared FAILS. Declaring an asset is then a deliberate act with a surface attached, rather than the default being untracked.",
+    "//later": "The honest version derives the asset list from the code that loads it. That waits until the tile pyramid stops the asset set moving; this is the cheap 80% that needs only a directory listing.",
+    "directories": ["public/img/map"],
+    "extensions": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".ktx2", ".basis"]
   }
 }

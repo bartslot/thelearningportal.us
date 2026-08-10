@@ -21,7 +21,7 @@
  * Deliberately not clever: a JSON of limits and a header parser. Run it where the build runs.
  */
 
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -104,6 +104,25 @@ for (const path of everything) {
   if (Math.max(width, height) > budget.maxDimension) {
     failures.push(`${path} is ${width}x${height}, over the ${budget.maxDimension} dimension ceiling — above a device's MAX_TEXTURE_SIZE this does not look worse, it fails to bind`)
   }
+}
+
+// An undeclared texture is not a small omission — it is the budget silently not applying. Scan the
+// directories and fail on anything nobody has claimed, so that being tracked is the default and
+// being untracked takes a deliberate edit.
+const declared = new Set(everything)
+const undeclared = []
+for (const dir of budget.scan.directories) {
+  for (const entry of readdirSync(resolve(root, dir), { withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    if (!budget.scan.extensions.some((ext) => entry.name.toLowerCase().endsWith(ext))) continue
+    const path = `${dir}/${entry.name}`
+    if (!declared.has(path)) undeclared.push(path)
+  }
+}
+if (undeclared.length) {
+  failures.push(
+    `undeclared textures — add each to a surface in asset-budget.json, or to "optional" if it is not loaded by default:\n${undeclared.map((p) => `      ${p}`).join('\n')}`,
+  )
 }
 
 console.log(report.join('\n'))
