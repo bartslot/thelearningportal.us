@@ -139,6 +139,76 @@ which are the only places that touch a texture — enforced by a test. Swapping 
 streamed tiles is a change to those two and to nothing else, and `shelfFraction` is also where real
 bathymetry replaces the distance proxy if that reverses.
 
+## What the ocean needs from a depth channel
+
+Answering the tiled-LOD session's two questions with measurements rather than preference.
+
+### The range is 0 to −200 m, and that is the whole of it
+
+Beer-Lambert saturates. How far a given depth sits from open-ocean colour, on its strongest
+channel, in 8-bit levels:
+
+| depth | distance from open ocean | sensitivity |
+|---|---|---|
+| 0 m | 102 levels | 91.8 levels/m |
+| 5 m | 45.5 | 5.5 levels/m |
+| 20 m | 19.5 | 0.90 levels/m |
+| 50 m | 5.9 | 0.24 levels/m |
+| 100 m | 0.79 | 0.03 levels/m |
+| 200 m | **0.015** | ~0 |
+| 1000 m | 1e-16 | 0 |
+
+Past 200 m every depth renders as the same colour, so storing range beyond it buys nothing. More
+than nine tenths of the signal lives in the first 50 m. **Do not spread precision evenly to 11 km** —
+spend it all in the shallows.
+
+### 8 bits linear will not do it
+
+Worst-case banding across the encoding's own step, over 0 to −200 m:
+
+| encoding | worst banding | where |
+|---|---|---|
+| 8-bit linear | **72 levels** | at the surface |
+| 8-bit sqrt | 4.8 levels | 0.5 m |
+| 16-bit linear | **0.28 levels** | at the surface |
+
+Banding on a smooth sea floor reads as contour rings, and the shallows where it is worst are the
+part anyone looks at. **16 bits over 0..−200 m is the ask.** If only 8 are available, square-root
+code them and expect a visible ring in the first metre or two — the shoreline fade masks some of it,
+but not all.
+
+### GPU block compression is not safe for this channel
+
+BC/ETC/ASTC share an endpoint pair across a 4×4 block, which is exactly the operation that turns a
+smooth gradient into steps. At 92 levels per metre of sensitivity at the surface, that is guaranteed
+contour rings. There is precedent in this very layer: lossy WebP on the coastline distance field —
+visually lossless on anything meant for eyes — displaced the coastline by 1.05 km mean, 4.1 km at
+p99. A field is not a picture, and codecs tuned for pictures damage fields in ways that look fine.
+
+### No, depth cannot retire the coastline field
+
+Asked directly, and the answer is no, with a measurement. Calling water "where height crosses zero"
+floods the Netherlands:
+
+| place | truth | terrarium |
+|---|---|---|
+| Flevoland | land, a whole province | **−5.7 m** |
+| Zuidplaspolder | land, lowest point in NL | **−7.4 m** |
+| Dead Sea shore | land | −414.9 m |
+
+This also condemns the alpha shoreline ramp for a **second, independent reason** to the one that
+retired it. It was dropped because ±64 m saturates too early for a depth ramp — true — but being
+derived from HEIGHT at all is the deeper problem: a polder at −7.4 m sits well inside that ramp and
+comes out as sea. If a height-derived water mask is ever reintroduced for another consumer, it will
+carry the same flaw.
+
+**So no separate coastline path is needed in the pyramid.** The existing global distance field
+stays, and the reason it can is the one this document opens with: a boundary encoded as a distance
+field does not degrade with magnification the way a continuous-tone field does — measured still
+sharp at 38 device pixels per texel. The argument for tiling clouds and normals genuinely does not
+apply to it. Its residual error is source-limited (Natural Earth 50m, 12 km median), which tiling
+cannot fix and only better coastline data can.
+
 ## Two notes for the sessions this touches
 
 **The shared loader.** `equirect-texture.js` is the right home for this layer's texture and a third

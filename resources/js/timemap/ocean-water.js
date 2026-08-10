@@ -150,6 +150,13 @@ float coastDistanceKm(vec3 unitPos) {
  * −3,415 m mid-Atlantic — so real depth costs no new data pipeline, only the half of that tile the
  * relief pass throws away. When it arrives, this function body is the whole change.
  *
+ * WHAT THE SOURCE HAS TO DELIVER: metres over 0 to −200 m, and nothing past that. The colour model
+ * saturates — 200 m sits 0.015 of an 8-bit level from open ocean, 1,000 m sits 1e-16 — so range
+ * beyond it is wasted, while the first 50 m carries over nine tenths of the signal at up to 92
+ * levels per metre. Eight bits spread linearly across that range band by 72 levels at the surface;
+ * sixteen band by 0.28. See docs/globe-overlay-resolution.md for the table and for why block
+ * compression is not safe on this channel.
+ *
  * IT RETURNS A VALUE, AND IT MUST STAY THAT WAY. Hillshade the sea floor and the Atlantic becomes a
  * bathymetric chart: ridges and abyssal plains are not visible through three kilometres of water,
  * and drawing them reads as a map rather than an ocean. Depth belongs in the colour, under a lit
