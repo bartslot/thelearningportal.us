@@ -238,6 +238,29 @@ describe('the ocean layer', () => {
     expect(source).toContain('mix(180.0, 26.0, sea)')
   })
 
+  it('touches a texture in exactly two places, so a tiled source is a two-function change', () => {
+    /**
+     * The tiled/LOD overlay system will stream z/x/y tiles in place of the one baked field. That is
+     * a change to coastDistanceKm and shelfFraction and to nothing else — PROVIDED the lighting
+     * never samples for itself. A stray fetch in the glint or the shelf colour is a second place
+     * the source has to be swapped, and it would be found only when the tiles land.
+     */
+    const shader = read('ocean-water.js')
+    // The LAST main() is the fragment shader's; the vertex shader has one too, earlier.
+    const body = shader.slice(shader.lastIndexOf('void main() {'))
+    expect(body).not.toContain('texture2D')
+    expect((shader.match(/texture2D\(/g) || []).length).toBe(1)
+    expect(shader).toContain('float coastDistanceKm(vec3 unitPos)')
+    expect(shader).toContain('float shelfFraction(vec3 unitPos, float coastKm)')
+  })
+
+  it('keeps the requested edge remap off, because it paints the Sahara', () => {
+    // Measured at 1: Sahara +11.1 blue and -7.9 red, Taklamakan -12.8 luma. A floor of 0.1 means
+    // no fragment discards, so every land pixel on the planet takes ocean colour.
+    expect(createOceanWaterLayer().getOptions().edgeRemap).toBe(0)
+    expect(read('ocean-water.js')).toContain('0.3 * water + 0.1')
+  })
+
   it('takes its noise from the shared module rather than keeping a second copy', () => {
     // Two copies of value noise drift the moment either is tuned, and the sea and the cloud deck
     // would then disagree about where the weather is.

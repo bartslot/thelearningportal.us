@@ -103,6 +103,42 @@ coastline:
 2. A finer bake, up to where the source saturates.
 3. The encoding — already done, and it is what decoupled sharpness from both of the above.
 
+## The direct answer, for tile sizing
+
+Asked: what metres-per-pixel does a coastline need to stay sharp at z8, z11, z14? The question has
+two answers because it contains two requirements, and for an SDF they are far apart.
+
+Screen resolution, device pixels at DPR 2, equator:
+
+| zoom | m per device pixel |
+|---|---|
+| z8 | 305.7 |
+| z11 | 38.2 |
+| z14 | 4.8 |
+
+**For sharpness alone, the requirement is nearly nothing.** Measured sharp at 38 device pixels per
+texel, and that was not the breaking point — it is just the coarsest ratio tested. Sharpness is
+essentially free with this encoding.
+
+**Shape is what binds.** Taking a coastal feature spanning ~8 device pixels as the smallest that
+reads as a shape rather than a speck, the requirement is texel ≤ 4 device pixels:
+
+| map zoom | texel needed | global-equivalent width | 512² tiles at that level |
+|---|---|---|---|
+| z8 | 1.22 km | 32,768 | 64 × 32 = 2,048 |
+| z11 | 153 m | 262,144 | 512 × 256 = 131,072 |
+| z14 | 19 m | 2,097,152 | 4,096 × 2,048 = 8.4M |
+
+So the coastline pyramid runs about **two levels shallower than the map zoom it serves** — an SDF
+tile at level *n* looks as sharp as a mask tile at level *n+2*. A 512² single-channel tile is 256 KB
+raw and compresses to roughly 20–60 KB lossless, since most tiles are entirely land or entirely
+open sea and saturate flat.
+
+Sampling in the shader goes through exactly two functions, `coastDistanceKm` and `shelfFraction`,
+which are the only places that touch a texture — enforced by a test. Swapping the baked field for
+streamed tiles is a change to those two and to nothing else, and `shelfFraction` is also where real
+bathymetry replaces the distance proxy if that reverses.
+
 ## Cost
 
 Re-baking at any resolution is `python3 scripts/build-ocean-sdf.py`, about 16 seconds. Nothing here

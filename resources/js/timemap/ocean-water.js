@@ -84,6 +84,13 @@ uniform vec3 u_sky;         // what the water mirrors at a glancing angle
 uniform float u_water;      // how strongly the water colour is painted at all
 uniform float u_fade;       // 1 from orbit, 0 close up where real imagery takes over
 uniform float u_opacity;    // master
+// Sangil Lee's reflectRatio remap, water -> 0.3 * water + 0.1, requested for evaluation. It stops a
+// BINARY mask reading as a cut-out by giving land a little sheen and capping the sea below a full
+// mirror. Measured here at 1: the Sahara gains 11.1 blue while losing 7.9 red, and the Taklamakan
+// darkens by 12.8 luma — ocean colour on desert hundreds of kilometres from any coast, because a
+// floor of 0.1 means no fragment ever discards. It softens an edge this layer no longer has, the
+// distance field having put the coastline inside the texel. 0 by default; turn it up to see it.
+uniform float u_edgeRemap;
 ${EQUIRECT_GLSL}
 ${NOISE_GLSL}
 ${FACING_CAMERA_GLSL}
@@ -109,6 +116,34 @@ float seaState(vec3 p) {
   return clamp(u_roughness + u_windPatch * (weather - 0.5) * 2.0, 0.04, 1.0);
 }
 
+// ── The two source seams ──────────────────────────────────────────────────────────────────────
+// Everything below this pair is lighting and knows nothing about where the data came from. These
+// two functions are the ONLY places that touch a texture, so moving from one baked equirectangular
+// field to streamed z/x/y tiles is a change to these and to nothing else. Keep it that way: a
+// texture fetch that creeps into the lighting is a second place the source has to be swapped, and
+// it will be found the hard way.
+
+/** Kilometres to the nearest coast, negative inland. */
+float coastDistanceKm(vec3 unitPos) {
+  return oceanDistanceKm(texture2D(u_field, equirectUV(unitPos, 0.0)).r, u_rangeKm);
+}
+
+/**
+ * How shallow the water is: 0 in open ocean, 1 at the shore.
+ *
+ * Today this is derived from distance to the coast, which is a PROXY for depth and an honest one at
+ * this scale — the shelf really does track the coastline. If real bathymetry arrives it replaces
+ * the body of this function and nothing else: the colour model, the Fresnel term and the glint
+ * riding on top all consume this one scalar and do not care how it was obtained.
+ *
+ * Squared so the turquoise hugs the coast instead of washing halfway to the horizon — the real
+ * gradient is steep, and so is the Blue Marble shadow artifact this is correcting.
+ */
+float shelfFraction(vec3 unitPos, float coastKm) {
+  float t = 1.0 - smoothstep(0.0, u_shelfKm, max(coastKm, 0.0));
+  return t * t;
+}
+
 void main() {
   vec3 normal = normalize(v_sphere);
 
@@ -118,10 +153,12 @@ void main() {
   // a flickering quilt of tile-shaped patches. See FACING_CAMERA_GLSL.
   if (u_globeness > 0.5 && !facesCamera(normal, u_camera)) discard;
 
-  float km = oceanDistanceKm(texture2D(u_field, equirectUV(normal, 0.0)).r, u_rangeKm);
+  float km = coastDistanceKm(normal);
   // u_shoreKm tracks the screen pixel, so this transition is always about a pixel and a half wide:
   // crisp on approach, and self-antialiasing at globe zoom where the coast is far below a texel.
   float water = smoothstep(-u_shoreKm, u_shoreKm, km);
+  // Requested remap, off by default — see the u_edgeRemap note above for what it measures.
+  water = mix(water, 0.3 * water + 0.1, u_edgeRemap);
   if (water < 0.004) discard;                    // land: leave the imagery alone
 
   vec3 view = normalize(u_camera - normal);
@@ -132,10 +169,8 @@ void main() {
   float day = daylightFraction(sunAngle);        // shared with the night and the clouds
   float lambert = max(sunAngle, 0.0);
 
-  // Shallow water. Squared so the turquoise hugs the coast instead of washing halfway to the
-  // horizon — the real gradient is steep, and so is the shadow artifact this is correcting.
-  float shelf = 1.0 - smoothstep(0.0, u_shelfKm, max(km, 0.0));
-  vec3 body = mix(u_deep, u_shallow, shelf * shelf) * (0.08 + 0.92 * lambert);
+  float shelf = shelfFraction(normal, km);
+  vec3 body = mix(u_deep, u_shallow, shelf) * (0.08 + 0.92 * lambert);
 
   vec3 skyTerm = u_sky * fresnel * day;
 
@@ -204,6 +239,7 @@ export const pickSdfSource = (maxTextureSize, sources = OCEAN_SDF_SOURCES) =>
  * @param {number} [opts.roughness]  0 glassy, 1 whipped up — widens the glitter path
  * @param {number[]} [opts.sun]      direction TO the sun, planet space; share it with the clouds
  * @param {object[]} [opts.sources]  candidate distance fields, widest first
+ * @param {number} [opts.edgeRemap] 0..1 of the Lee reflectRatio remap; 0, and the shader says why
  */
 export const createOceanWaterLayer = ({
   opacity = 1,
@@ -213,6 +249,7 @@ export const createOceanWaterLayer = ({
   // what makes a computed glint look computed.
   windPatch = 0.3,
   windScale = 14,        // cycles per unit sphere: cells of weather roughly 900 km across
+  edgeRemap = 0,         // the Lee reflectRatio remap; see u_edgeRemap for what it measures
   sun = [0.4, 0.5, 0.75],
   water = 1,
   deep = [0.020, 0.075, 0.160],    // open ocean: dark, with a touch of green in the blue
@@ -232,7 +269,7 @@ export const createOceanWaterLayer = ({
   let fieldReady = false
   const programs = new Map()
   let state = {
-    opacity, strength, roughness, windPatch, windScale, sun, water, deep, shallow, sky,
+    opacity, strength, roughness, windPatch, windScale, edgeRemap, sun, water, deep, shallow, sky,
     shelfKm, shoreSoftnessKm, fadeInAbove, fadeOutBelow, sources,
   }
 
@@ -266,6 +303,7 @@ export const createOceanWaterLayer = ({
         sky: gl.getUniformLocation(program, 'u_sky'),
         fade: gl.getUniformLocation(program, 'u_fade'),
         opacity: gl.getUniformLocation(program, 'u_opacity'),
+        edgeRemap: gl.getUniformLocation(program, 'u_edgeRemap'),
         // Projection uniforms the prelude declares. Only the globe variant has the last four, so
         // every one of these is allowed to come back null.
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
@@ -449,6 +487,7 @@ export const createOceanWaterLayer = ({
       if (uniforms.shallow) gl.uniform3f(uniforms.shallow, ...state.shallow)
       if (uniforms.sky) gl.uniform3f(uniforms.sky, ...state.sky)
       if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
+      if (uniforms.edgeRemap) gl.uniform1f(uniforms.edgeRemap, state.edgeRemap)
       if (uniforms.fade) {
         gl.uniform1f(uniforms.fade, altitudeFadeFor(cameraAltitudeMetres(map, maplibregl), state))
       }
