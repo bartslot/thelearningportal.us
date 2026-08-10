@@ -23,11 +23,18 @@
  * much that costs (0.031° for the moon at 1492) and is deliberately not applied here.
  */
 
+import { J2000, wrapDegrees, wrapDegreesSigned } from './orbit.js'
+
 const DEG = Math.PI / 180
 const ARCSEC = 1 / 3600
 
-/** J2000.0 — 2000-01-01 12:00 UTC. */
-export const J2000 = Date.UTC(2000, 0, 1, 12)
+// J2000 and the angle wrappers live in orbit.js, the layer below this one, so the two modules
+// cannot drift apart on what the epoch is. Re-exported because callers of the frame chain want
+// them and should not have to know which file they came from.
+export { J2000, wrapDegrees }
+
+/** Fold degrees into [-180, 180) — the convention every lng in this app uses. */
+export const wrapLongitude = wrapDegreesSigned
 
 /** Days since J2000, fractional and signed. Historical dates are large and negative. */
 export const daysSinceJ2000 = (date) => (date.getTime() - J2000) / 86400000
@@ -82,12 +89,6 @@ export const precessEclipticToDate = ({ longitude, latitude }, date) => {
     latitude: Math.asin(c) / DEG,
   }
 }
-
-/** Fold degrees into [0, 360). */
-export const wrapDegrees = (angle) => ((angle % 360) + 360) % 360
-
-/** Fold degrees into [-180, 180) — the convention every lng in this app uses. */
-export const wrapLongitude = (angle) => wrapDegrees(angle + 180) - 180
 
 /**
  * Ecliptic to equatorial: tilt the frame by the obliquity about the line of equinoxes.
