@@ -150,6 +150,17 @@ float coastDistanceKm(vec3 unitPos) {
  * −3,415 m mid-Atlantic — so real depth costs no new data pipeline, only the half of that tile the
  * relief pass throws away. When it arrives, this function body is the whole change.
  *
+ * WHERE ZERO IS, WHICH IS THE TRAP TO AVOID HERE. A channel encoded as x*0.5+0.5 lands zero on
+ * byte 127.5, which rounds to 128, and a decoder reading texel*2-1 then returns 0.0039 rather
+ * than 0. On the terrain normals that is a constant tilt worth one 8-bit level over open ocean.
+ * On THIS channel it would be 0.784 m of false depth at the shoreline, and because the ramp is at
+ * its steepest there — 92 levels per metre — that is 51.6 levels of colour error along every coast
+ * on the planet. Decode so that sea level is exactly zero, or the shore turns to open ocean.
+ *
+ * The coastline field above does not have this problem and must not be "fixed" to match: its
+ * encode and decode are both centred on 127.5, so they agree, and recentring only the decode would
+ * introduce the very bias this warns about. Test-pinned both ways.
+ *
  * WHAT THE SOURCE HAS TO DELIVER: metres over 0 to −200 m, and nothing past that. The colour model
  * saturates — 200 m sits 0.015 of an 8-bit level from open ocean, 1,000 m sits 1e-16 — so range
  * beyond it is wasted, while the first 50 m carries over nine tenths of the signal at up to 92

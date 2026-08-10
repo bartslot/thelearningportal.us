@@ -117,6 +117,40 @@ describe('the distance coding', () => {
     }
   })
 
+  it('is antisymmetric through real bytes, so the coast has no systematic bias', () => {
+    /**
+     * The decode-centre trap, from the terrain session: a field encoded with `*0.5+0.5` puts zero
+     * on byte 127.5, which rounds to 128, and a decoder reading `texel*2-1` then returns 0.0039
+     * instead of 0. On a NORMAL map that is a constant tilt across every flat texel — one whole
+     * 8-bit level over open ocean, measured.
+     *
+     * It does not bite a distance field, and the reason is worth keeping: a normal is zero over
+     * vast flat AREAS, so a fixed offset is a visible DC shift, while a distance is zero only along
+     * the coastline itself — a curve, not a region — and the encode/decode pair is antisymmetric
+     * about the same 127.5 either side of it. Every non-zero distance and its negation sum to
+     * exactly zero through the real bytes.
+     *
+     * This test also guards the other direction, which is the likelier accident: applying the
+     * terrain session's fix here would recentre the decode on byte 128 while the baker still
+     * rounds about 127.5, introducing the half-level bias this field does not currently have.
+     */
+    const byteOf = (km) => Math.round(storeOceanDistanceKm(km) * 255)
+    const throughBytes = (km) => oceanDistanceKm(byteOf(km) / 255)
+    for (const km of [0.125, 0.5, 2, 8, 20, 31]) {
+      expect(throughBytes(km) + throughBytes(-km)).toBeCloseTo(0, 10)
+    }
+  })
+
+  it('puts the interpolated coast on the true midpoint, through real bytes', () => {
+    // The continuous round trip is already pinned above; this is the same claim after quantisation,
+    // which is where a centring error would actually live.
+    const TEXEL_KM = 4.892
+    const decodeByte = (km) => oceanDistanceKm(Math.round(storeOceanDistanceKm(km) * 255) / 255)
+    const a = decodeByte(-0.5 * TEXEL_KM)
+    const b = decodeByte(0.5 * TEXEL_KM)
+    expect((0 - a) / (b - a)).toBeCloseTo(0.5, 10)
+  })
+
   it('saturates rather than wrapping, so mid-ocean cannot read as land', () => {
     expect(storeOceanDistanceKm(1e6)).toBe(1)
     expect(storeOceanDistanceKm(-1e6)).toBe(0)
