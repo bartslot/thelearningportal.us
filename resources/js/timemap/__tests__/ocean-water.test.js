@@ -267,6 +267,40 @@ describe('the water column', () => {
     expect(g).toBeLessThan(b)
   })
 
+  /** How far this depth sits from open ocean, in 8-bit levels, on its strongest channel. */
+  const residualLevels = (depthM) => Math.max(...columnAt(depthM).map((v, i) => Math.abs(v - scatter[i]) * 255))
+  /** How far two depths sit from each other, in 8-bit levels. */
+  const separationLevels = (a, b) => Math.max(...columnAt(a).map((v, i) => Math.abs(v - columnAt(b)[i]) * 255))
+
+  it('is blind below about 200 m, so a clamp deeper than that cannot touch a pixel', () => {
+    /**
+     * `scripts/lib/elevation.mjs` clamped every decoded height to -1000 m, flattening most of the
+     * ocean floor. Catastrophic for terrain; for this layer, invisible — worth establishing which,
+     * rather than assuming the worst and recalibrating against nothing.
+     *
+     * Light does not come back from a kilometre down. By 200 m the bottom already contributes
+     * 0.015 of one 8-bit level, so every depth past it renders identically to every other. This
+     * layer could not have seen that clamp even if it had been reading through it.
+     */
+    expect(residualLevels(200)).toBeLessThan(0.02)
+    expect(residualLevels(1000)).toBeLessThan(1e-10)
+  })
+
+  it('is sharply sensitive in the first tens of metres, where depth data has to be good', () => {
+    // The corollary, and the thing to hand the tiling session: all the precision this layer needs
+    // sits in the shallows — exactly the band where a global bathymetry source is coarsest. The
+    // first five metres are worth about a hundred levels; everything past 200 m is worth none.
+    expect(separationLevels(0, 5)).toBeGreaterThan(50)
+    expect(separationLevels(5, 20)).toBeGreaterThan(20)
+    expect(separationLevels(200, 4000)).toBeLessThan(0.02)
+  })
+
+  it('stays finite at the bottom of the Challenger Deep', () => {
+    // Now that the decode reaches -11500 m, the exponent reaches -10350. exp() of that underflows
+    // to zero rather than producing NaN, and a NaN here would blacken the whole ocean.
+    columnAt(11500).forEach((v) => expect(Number.isFinite(v)).toBe(true))
+  })
+
   it('computes the path as twice the depth, not once', () => {
     // Light goes down AND comes back. Halving this is a plausible-looking bug that makes every
     // shelf twice as bright as it should be.
