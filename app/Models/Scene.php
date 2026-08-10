@@ -189,6 +189,35 @@ class Scene extends Model
     }
 
     /** Anything a layer can sit on: a generated image, a map, a panorama, a chosen colour. */
+    /**
+     * This scene's narration, at a URL that changes when the narration does.
+     *
+     * GenerateSceneAudio always writes to `…/scenes/{id}/narration.{ext}` — a path derived from the
+     * scene, not from its contents — so a regenerated clip overwrites the old one at a byte-for-byte
+     * identical URL. Nothing anywhere cache-busted it. A teacher who corrected "loopt" to "vaart",
+     * waited for the job and pressed play heard "loopt", forever, in the editor AND in the player,
+     * while the database recorded the new script and a matching audio_script_hash. The one thing in
+     * this app where being wrong is invisible: the words on screen were right.
+     *
+     * The hash is the version rather than a timestamp on purpose — it changes exactly when the audio
+     * changes, so a scene nobody has touched keeps its cache instead of being re-downloaded by every
+     * child in the class on every visit.
+     *
+     * Six callers built this URL by hand before this existed. If you are adding a seventh, use this.
+     */
+    public function audioUrl(): ?string
+    {
+        if (! $this->audio_path) {
+            return null;
+        }
+
+        $version = $this->audio_script_hash
+            ? substr((string) $this->audio_script_hash, 0, 8)
+            : (string) ($this->updated_at?->timestamp ?? '');
+
+        return asset('storage/'.$this->audio_path).($version !== '' ? '?v='.$version : '');
+    }
+
     public function hasBackdrop(): bool
     {
         return filled($this->image_path)

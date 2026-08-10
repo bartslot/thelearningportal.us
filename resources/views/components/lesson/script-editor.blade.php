@@ -16,7 +16,7 @@
     // One editable box per PARAGRAPH (blank-line separated). Single Enter = soft newline within a
     // paragraph; double Enter splits into a new paragraph (its own timecode + TTS topic).
     $paragraphs = $scene?->scriptParagraphs() ?? [];
-    $audioUrl = $scene && $scene->audio_path ? asset('storage/'.$scene->audio_path) : null;
+    $audioUrl = $scene?->audioUrl();
 @endphp
 
 {{-- {{ $attributes }} carries the wire:key="script-{sceneId}" from the parent so a scene change

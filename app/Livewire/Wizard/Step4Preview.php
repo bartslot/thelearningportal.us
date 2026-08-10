@@ -109,7 +109,7 @@ class Step4Preview extends Component
         return [
             'sceneId' => $scene->id,
             'imageUrl' => $scene->image_path ? asset('storage/'.$scene->image_path) : null,
-            'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
+            'audioUrl' => $scene->audioUrl(),
             'animationClipUrl' => $this->animationGlbUrlFor($scene, $clips),
             'year' => $scene->year,
             'location' => $scene->location,
@@ -136,7 +136,7 @@ class Step4Preview extends Component
 
     /**
      * @param  \Illuminate\Support\Collection<int,AnimationClip>|null  $clips
-     *   Preloaded clips, so building payloads for every scene is not one query per scene.
+     *                                                                         Preloaded clips, so building payloads for every scene is not one query per scene.
      */
     private function animationGlbUrlFor(Scene $scene, ?\Illuminate\Support\Collection $clips = null): ?string
     {

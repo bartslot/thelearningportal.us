@@ -80,7 +80,7 @@
                 'branch_choice_label' => $s->branch_choice_label,
                 'game_type'   => $s->game_type,
                 'scene_view'  => $s->scene_view,
-                'audio_url'   => $s->audio_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->audio_path) : null,
+                'audio_url'   => $s->audioUrl(),
                 'script'      => $s->script_segment,
                 'image_url'   => $s->image_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->image_path) : null,
                 // Attribution for a sourced painting or photograph. Commons images are mostly CC BY

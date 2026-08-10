@@ -310,7 +310,7 @@ class Step3SceneConfigurator extends Component
             'imageUrl' => $imagePath ? asset('storage/'.$imagePath).'?v='.$ts : null,
             'shots' => $this->serializeShots($scene),
             'hasSkyboxImage' => ! empty($scene->skybox_image_path),
-            'audioUrl' => $scene->audio_path ? asset('storage/'.$scene->audio_path) : null,
+            'audioUrl' => $scene->audioUrl(),
             // The Script panel spins while narration is being made; without these it had no way to
             // learn the job had failed and kept spinning for good.
             'status' => (string) $scene->status,
@@ -416,7 +416,7 @@ class Step3SceneConfigurator extends Component
             return;
         }
         $this->dispatch('scene:play', payload: [
-            'audioUrl' => asset('storage/'.$s->audio_path),
+            'audioUrl' => $s->audioUrl(),
             'alignment' => $s->audio_alignment ?? [],
         ]);
     }
@@ -4462,6 +4462,14 @@ class Step3SceneConfigurator extends Component
             'world' => $this->generateWorld($scene->id),
             default => null,
         };
+
+        // Re-select so scene:load fires and the panel shows the scene as it now is — generating,
+        // with no stale Play button offering to play the clip that is being replaced. generateWorld
+        // below already did this; regenerate did not, so pressing Regenerate left the editor holding
+        // the state from before the click and the transport simply disappeared.
+        if ($this->selectedSceneId === $sceneId) {
+            $this->selectSceneInternal($sceneId);
+        }
     }
 
     public function generateWorld(int $sceneId): void
