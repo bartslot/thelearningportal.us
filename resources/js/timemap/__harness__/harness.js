@@ -26,7 +26,8 @@ import { createDaylightLayer } from '../daylight.js'
 import { createCloudLayer } from '../clouds.js'
 import { sunDirection } from '../sun.js'
 import { deepestEclipse } from '../eclipse.js'
-import { equirectMetresPerPixel } from '../terrain-normals.js'
+import { equirectMetresPerPixel, encodeNormals } from '../terrain-normals.js'
+import { planetSpacePosition } from '../planet-mesh.js'
 
 const RELIEF_URL = '/img/map/earth-normal-8192.webp'
 const RELIEF_WIDTH = 8192
@@ -272,6 +273,76 @@ const differenceImage = (a, b) => {
   return out
 }
 
+// ── The absolute anchor ──────────────────────────────────────────────────────────────────────
+
+/** A whole equirectangular normal map holding one normal, as a data URL the loader can take. */
+const uniformNormalMap = (bytes) => {
+  const width = 64
+  const height = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  const image = context.createImageData(width, height)
+  for (let k = 0; k < width * height; k++) {
+    image.data[k * 4] = bytes[0]
+    image.data[k * 4 + 1] = bytes[1]
+    image.data[k * 4 + 2] = bytes[2]
+    image.data[k * 4 + 3] = 255
+  }
+  context.putImageData(image, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
+const waitForRelief = () => new Promise((resolve) => {
+  const check = () => (daylight.hasRelief ? resolve() : setTimeout(check, 40))
+  check()
+})
+
+const smoothstep = (edge0, edge1, x) => {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * The whole daylight shader, on the CPU, for one point.
+ *
+ * Written from the physics rather than transcribed from the GLSL — the point is to have two
+ * independent statements of the same thing. Transcribing it would make this a test that the shader
+ * equals itself.
+ */
+const predictShadedPixel = ({ point, sun, tangent, power, background }) => {
+  const normal = planetSpacePosition(point[0], point[1], 0)
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+  // The frame equirectangular UV implies: east, south, up.
+  const cross = (a, b) => [
+    a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0],
+  ]
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l) }
+  const east = norm(cross(normal, [0, 1, 0]))
+  const south = cross(normal, east)
+  const perturbed = norm([0, 1, 2].map((c) =>
+    east[c] * tangent[0] + south[c] * tangent[1] + normal[c] * tangent[2]))
+
+  const sunlight = smoothstep(-0.31, 0.09, dot(normal, sun))
+  const change = sunlight * power * (dot(perturbed, sun) - dot(normal, sun))
+  const day = Math.min(1, Math.max(0, sunlight + Math.min(0, change)))
+  const lit = Math.max(0, change)
+  const night = 1 - day
+
+  const twilight = (1 - Math.abs(sunlight * 2 - 1)) ** 2
+  const NIGHT = [0.02, 0.035, 0.07]
+  const TWILIGHT = [0.85, 0.35, 0.12]
+  const shade = NIGHT.map((c, i) => c + (TWILIGHT[i] - c) * twilight * 0.85)
+  const alpha = night * 0.965
+  const emitted = [1, 0.97, 0.92].map((c) => c * lit)
+
+  // Premultiplied over whatever the flat frame left there: src + dst*(1-a).
+  return shade.map((c, i) =>
+    Math.round(c * alpha * 255 + emitted[i] * 255 + background[i] * (1 - alpha)))
+}
+
 // ── The measurements ─────────────────────────────────────────────────────────────────────────
 
 const EARTH_RADIUS_KM = 6371.0088
@@ -477,6 +548,55 @@ const measurements = async () => {
     })
   }
   map.setZoom(4)
+  await capture()
+
+  // ── 4c. An ABSOLUTE anchor for the relief term ─────────────────────────────────────────────
+  /**
+   * Every other relief figure here is relative — this ridge against that plateau, this
+   * magnification against that one. A uniformly wrong scale factor satisfies all of them, which is
+   * exactly how moon.js carried a twenty-degree error through a suite of self-consistent tests.
+   *
+   * So: a normal map with ONE known tilt in every texel, a known sun, and the whole shader worked
+   * out in closed form on the CPU. If the rendered pixel matches the arithmetic, the relief term
+   * has the right magnitude and not merely the right shape.
+   */
+  const KNOWN_TILT_DEG = 12
+  const anchorPoint = [40, 10]
+  const anchorSun = sunFor(anchorPoint[0] + 80, 0)   // low in the east, so the west-leaning face shades
+
+  const tilt = KNOWN_TILT_DEG * Math.PI / 180
+  // Leaning WEST: negative east component, which is what ground rising to the east produces.
+  const ideal = new Float32Array([-Math.sin(tilt), 0, Math.cos(tilt)])
+  // Predict from the bytes the texture will actually hold, not from the ideal — the encode rounds.
+  const bytes = encodeNormals(ideal)
+  const tangent = [0, 1, 2].map((c) => (bytes[c] / 255 - 128 / 255) * 2)
+
+  map.jumpTo({ center: anchorPoint, zoom: 3 })
+  daylight.setOptions({ reliefUrl: uniformNormalMap(bytes), reliefWidth: NO_FADE })
+  await waitForRelief()
+
+  const flat = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun: anchorSun }, clouds: { opacity: 0 },
+  })
+  const tilted = await frameWith({
+    daylight: { reliefPower: 1.5, cloudShadow: 0, sun: anchorSun }, clouds: { opacity: 0 },
+  })
+
+  const at = pixelAt(...anchorPoint)
+  const index = (at.y * flat.width + at.x) * 4
+  report.absoluteAnchor = {
+    tiltDegrees: KNOWN_TILT_DEG,
+    predicted: predictShadedPixel({
+      point: anchorPoint, sun: anchorSun, tangent, power: 1.5,
+      background: [...flat.pixels.slice(index, index + 3)],
+    }),
+    measured: [...tilted.pixels.slice(index, index + 3)],
+  }
+
+  // Back to the real map for everything that follows.
+  daylight.setOptions({ reliefUrl: RELIEF_URL, reliefWidth: RELIEF_WIDTH })
+  await waitForRelief()
+  map.jumpTo({ center: HIMALAYA, zoom: 4 })
   await capture()
 
   // ── 5. What each setting of reliefPower actually buys ──────────────────────────────────────

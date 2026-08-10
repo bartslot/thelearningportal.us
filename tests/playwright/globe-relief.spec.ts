@@ -30,6 +30,7 @@ type Report = {
     devicePixelRatio: number;
     samples: { zoom: number; pixelsPerTexel: number; amplitude: number; detail: number }[];
   };
+  absoluteAnchor: { tiltDegrees: number; predicted: number[]; measured: number[] };
   screen: { metresPerPixel: number };
   cloudShadow: Shadow & { strength: number };
   cloudShadowSunInEast: Shadow;
@@ -103,6 +104,28 @@ test.describe('mountain relief along the terminator', () => {
     expect(z7).toBeGreaterThan(z4 * 0.8);
     expect(z9).toBeLessThan(0.2);
     expect(z11).toBe(0);
+  });
+});
+
+test.describe('the relief term has the right magnitude, not just the right shape', () => {
+  /**
+   * Every other relief assertion in this file is RELATIVE — this ridge against that plateau, this
+   * magnification against that one — and a uniformly wrong scale factor satisfies all of them. That
+   * is exactly how moon.js carried a twenty-degree error through a suite of perfectly self-
+   * consistent tests: every fact it checked happened to be a relationship.
+   *
+   * This one is absolute. A normal map holding ONE known tilt in every texel, a known sun, and the
+   * whole shader worked out in closed form on the CPU from the physics rather than transcribed from
+   * the GLSL — transcribing it would only prove the shader equals itself.
+   */
+  test('matches a closed-form prediction of the whole shader, to the byte', () => {
+    const { predicted, measured, tiltDegrees } = report.absoluteAnchor;
+    expect(tiltDegrees).toBeGreaterThan(0);
+    for (let channel = 0; channel < 3; channel++) {
+      expect(Math.abs(measured[channel] - predicted[channel]),
+        `channel ${channel}: predicted ${predicted[channel]}, measured ${measured[channel]}`)
+        .toBeLessThanOrEqual(1);
+    }
   });
 });
 
