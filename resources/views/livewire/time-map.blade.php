@@ -51,7 +51,18 @@
                 }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); });
+                    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); })
+                    {{-- No catch at all before this: when the endpoint failed, the promise rejected,
+                         `loading` stayed true and the panel span forever with nothing in it. The
+                         corpus database went away on production and every region click became an
+                         infinite spinner, which reads as a hung page rather than a broken lookup.
+                         A failure has to be visible AND leave the panel usable. --}}
+                    .catch(e => {
+                        loading = false;
+                        polity = { label: $event.detail.name || '', summary: null, lookup_failed: true };
+                        console.warn('timemap: polity lookup failed', e);
+                    });
            "
            {{-- Mobile: start below the settings cog (right-4 top-4, z-30) — at w-80 on a phone the
                 cog lands exactly on the panel's ✕ close button and steals its taps. --}}
@@ -69,6 +80,11 @@
                     </div>
                     <button class="btn btn-ghost btn-xs" x-on:click="polity = null; window.__timemapStopSpeak && window.__timemapStopSpeak()">✕</button>
                 </div>
+                {{-- The lookup failed. Say so, and keep the territory's own name on screen so the
+                     click still did something: the teacher at least learns what they clicked. --}}
+                <template x-if="polity.lookup_failed">
+                    <p class="mt-2 text-sm opacity-70">{{ __('We could not load the details for this region just now.') }}</p>
+                </template>
                 {{-- Both years scrub the timeline to that era. --}}
                 <p class="text-xs opacity-70">
                     <template x-if="polity.inception != null">

@@ -699,7 +699,20 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         this.uTime = gl.getUniformLocation(program, 'u_time');
         this.indexCount = indices.length;
       },
-      render(gl, matrix) {
+      render(gl, args) {
+        // MapLibre v5 passes an OPTIONS OBJECT here; v4 passed the matrix itself. This layer still
+        // said `render(gl, matrix)` and handed that object straight to uniformMatrix4fv, which threw
+        // "The object must have a callable @@iterator property" on EVERY FRAME — before drawElements,
+        // so the clouds have not been drawn once since the upgrade, only logged.
+        //
+        // Read the matrix out of whichever shape arrived, and draw nothing rather than throw if it is
+        // a shape we do not recognise: an exception in a render loop costs far more than a missing
+        // decorative layer, and this one buried a real bug (the polity panel) under its noise.
+        const matrix = (Array.isArray(args) || ArrayBuffer.isView(args))
+          ? args
+          : (args?.defaultProjectionData?.mainMatrix ?? args?.modelViewProjectionMatrix ?? null);
+        if (!matrix) return;
+
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.LEQUAL);
         gl.enable(gl.BLEND);
