@@ -28,6 +28,17 @@ class LessonCopier
             $lesson = $source->replicate(['lesson_code', 'game_pack_path']);
             $lesson->teacher_id = $owner->id;
             $lesson->scheduled_publish_at = null;
+
+            // A copy is PRIVATE. Never inherit the original's visibility: whether a lesson belongs
+            // in the public catalogue is a decision its owner makes about their own work, and the
+            // person copying it has not made that decision yet.
+            //
+            // This was inherited, and the demo lesson is public — so every anonymous visitor who
+            // pressed "Configure" on the landing page published another copy of it. Four turned up
+            // on production in one morning, listed side by side in the public catalogue under the
+            // same name, one of them linked from the home page.
+            $lesson->is_public = false;
+
             $lesson->forceFill($overrides);
             $lesson->save();
 

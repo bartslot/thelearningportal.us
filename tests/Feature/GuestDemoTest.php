@@ -41,6 +41,10 @@ class GuestDemoTest extends TestCase
             'subject' => 'history',
             'grade_level' => '7',
             'status' => LessonStatus::Published,
+            // Load-bearing. The real demo lesson is public, and the bug was that a sandbox copy
+            // inherited that. With a private source the visibility assertion below passes whether
+            // the copier is fixed or not, which is a test that proves nothing.
+            'is_public' => true,
         ]);
 
         Scene::create([
@@ -71,8 +75,12 @@ class GuestDemoTest extends TestCase
         $this->assertTrue($guest->isTeacher());
         $this->assertSame($demo->title, $copy->title);
         $this->assertSame(1, $copy->scenes()->count());
-        // A copy is never a second published lesson in the public catalogue.
+        // A copy is never a second published lesson in the public catalogue. This asserted only the
+        // STATUS, and the demo lesson is public, so `is_public` was replicated straight onto every
+        // sandbox: four anonymous visits to /try on production put four copies of "The Punic Wars"
+        // in the public catalogue, side by side under the same name, one linked from the home page.
         $this->assertSame(LessonStatus::Configuring, $copy->status);
+        $this->assertFalse((bool) $copy->is_public, 'a sandbox copy must never reach the public catalogue');
         $this->assertNotSame($demo->lesson_code, $copy->lesson_code);
     }
 
