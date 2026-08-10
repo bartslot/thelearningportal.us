@@ -218,6 +218,73 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     try { map.keyboard.disableRotation && map.keyboard.disableRotation(); } catch (_) { /* noop */ }
   }
 
+  // ── Route handles appear on the route, not on the map ──────────────────────────────────────
+  //
+  // The editor used to draw every handle permanently: the destination X, a dot on each bend and a
+  // ghost dot at every midpoint, all sitting on top of the landfall photographs and the gallery
+  // pins. Bart: "route editing and images on map are now mixing together." Two different jobs were
+  // competing for the same pixels the whole time, and the one you were not doing always won.
+  //
+  // So the handles are chrome for an intention: hover the ROUTE LINE and they come out. Held open
+  // through a drag, because a handle that vanishes the instant you grab it is worse than one that
+  // is always there, and given a short grace period on the way out so crossing a gap between two
+  // dots does not flicker them away underneath the cursor.
+  let handlesShown = false;
+  let handleHold = 0;          // >0 while a drag owns the handles
+  let handleLinger = null;
+  const HANDLE_HIT_PX = 14;    // how near the line counts as "on" it — a 2px line needs help
+  const HANDLE_LINGER_MS = 400;
+
+  const paintHandles = () => {
+    const on = handlesShown || handleHold > 0;
+    hud.querySelectorAll('[data-voyage-handle],[data-voyage-endpoint]').forEach((el) => {
+      el.style.opacity = on ? '1' : '0';
+      el.style.pointerEvents = on ? 'auto' : 'none';
+      el.style.transition = 'opacity 140ms ease-out';
+    });
+  };
+  // Called by the handle builders too, so a rebuild mid-hover does not flash every dot back on.
+  const setHandlesShown = (on) => {
+    if (on === handlesShown) return paintHandles();
+    handlesShown = on;
+    paintHandles();
+  };
+  // Handles stay put while a drag owns them, whatever the pointer is over.
+  const holdHandles = (on) => { handleHold = Math.max(0, handleHold + (on ? 1 : -1)); paintHandles(); };
+
+  if (editable) {
+    // Hit-test the line the TEACHER can see, which is the sailed trail. `voyage-edit-line` is the
+    // obvious-looking candidate and the wrong one: it sits at visibility 'none' except during a drag
+    // preview, and queryRenderedFeatures does not return features from a hidden layer — so a hit test
+    // against it can never once succeed, and the handles would simply never appear.
+    const ROUTE_LAYERS = ['voyage-trail', 'voyage-edit-line'];
+    const overRoute = (point) => {
+      const layers = ROUTE_LAYERS.filter((l) => map.getLayer(l));
+      if (!layers.length) return false;
+      const box = [
+        [point.x - HANDLE_HIT_PX, point.y - HANDLE_HIT_PX],
+        [point.x + HANDLE_HIT_PX, point.y + HANDLE_HIT_PX],
+      ];
+      try { return map.queryRenderedFeatures(box, { layers }).length > 0; } catch (_) { return false; }
+    };
+    map.on('mousemove', (e) => {
+      if (overRoute(e.point)) {
+        clearTimeout(handleLinger);
+        handleLinger = null;
+        setHandlesShown(true);
+
+        return;
+      }
+      if (!handlesShown || handleLinger) return;
+      handleLinger = setTimeout(() => { handleLinger = null; setHandlesShown(false); }, HANDLE_LINGER_MS);
+    });
+    map.on('mouseout', () => {
+      clearTimeout(handleLinger);
+      handleLinger = null;
+      setHandlesShown(false);
+    });
+  }
+
   let ships = null;
   let fog = null;
   // Kills the prefetch when the tour is torn down, so a scene change never leaves a few hundred
@@ -745,6 +812,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           const wasMoved = moved; const d = desc; const g = geo;
           down = null; moved = false; desc = null; geo = null;
           el.style.cursor = 'grab';
+          holdHandles(false);
           document.removeEventListener('keydown', onKey, true);
           window.removeEventListener('pointerup', onWindowUp);
           window.removeEventListener('pointercancel', onWindowCancel);
@@ -768,6 +836,7 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           desc = describe();
           if (!desc) return;
           down = { x: e.clientX, y: e.clientY }; moved = false; geo = null;
+          holdHandles(true);          // released in finish(), so the set cannot fade mid-drag
           try { el.setPointerCapture(e.pointerId); } catch (_) { /* older Safari */ }
           document.addEventListener('keydown', onKey, true);
           window.addEventListener('pointerup', onWindowUp);
@@ -948,6 +1017,11 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
           h._px = { x: mid.x, y: mid.y };
         });
       };
+
+      // Every handle now exists, so give the freshly built set the CURRENT hover state. This editor
+      // rebuilds on every live route edit, and without this a rebuild while the cursor is resting on
+      // the route would flash all of them back on over the landfall photographs.
+      paintHandles();
     }
 
     placeMarkers = () => {
