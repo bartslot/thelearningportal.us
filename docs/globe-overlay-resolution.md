@@ -177,6 +177,34 @@ part anyone looks at. **16 bits over 0..−200 m is the ask.** If only 8 are ava
 code them and expect a visible ring in the first metre or two — the shoreline fade masks some of it,
 but not all.
 
+### What the depth ramp needs from `targetPixelsPerTexel`: nothing extra
+
+Relief measured that it needs texel ≤ 2 device pixels; the coastline field stays sharp at 38. Nobody
+had measured the depth ramp, and the worry was banding — a colour gradient rendered in steps reads
+as contour rings.
+
+Measured against real bathymetry, z12 terrarium, colour change across ONE texel in 8-bit levels:
+
+| site | p95 | p99 | max |
+|---|---|---|---|
+| North Sea | 0.02 | 0.03 | 0.04 |
+| Dogger Bank | 0.02 | 0.03 | 0.04 |
+| Hawaii drop-off | 5.54 | 23.9 | 341 |
+| Florida Keys reef | 1.97 | 45.4 | 1367 |
+| Bahama shelf edge | 56.0 | 185 | 334 |
+
+The distribution is bimodal and that is the whole answer. **Most shallow water by area is dead flat**
+— a z12 texel moves the colour by four hundredths of a level, so depth would tolerate being five
+zoom levels coarser before anything banded. The steep sites are not banding at all: at a reef edge
+the sea really does go from turquoise to navy in a few tens of metres, and a coarse texel there
+loses genuine detail rather than inventing a step. Blurring is not banding, and only banding is a
+defect.
+
+So: **the depth ramp imposes no constraint tighter than relief's.** Do not raise the tile budget on
+its account — 1 or 2 pixels per texel are both comfortable, and since depth rides in the same RGBA
+tile as the normals it gets whatever relief asks for anyway. Where detail is genuinely lost is at
+drop-offs, and there the binding limit is terrarium ending at z12, not the selection metric.
+
 ### GPU block compression is not safe for this channel
 
 BC/ETC/ASTC share an endpoint pair across a 4×4 block, which is exactly the operation that turns a
