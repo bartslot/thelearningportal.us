@@ -11,10 +11,21 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { PNG } from 'pngjs'
+import { decodeTerrarium, clampTerrainHeight } from '../../resources/js/timemap/terrain-normals.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const Z = 4                                   // 16×16 tiles → 4096² grid, ~10 km/px
 const CACHE = resolve(__dirname, '../../storage/app/elevation')
+
+/**
+ * Bump when the DECODED CONTENT changes, or a stale cache is served forever with no way to tell.
+ *
+ * v1 clamped the sea floor at -1000 m, which flattens roughly two thirds of the ocean — every
+ * abyssal plain and every trench. That was invisible while the only readers wanted land. It is not
+ * invisible to a depth-coloured ocean, and a machine holding a v1 file would have gone on getting
+ * a flat sea floor with nothing to explain it.
+ */
+const GRID_VERSION = 'v2'
 const TILE_URL = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`
 
 /** Side of the square mercator grid a given tile zoom produces, in pixels. */
@@ -49,8 +60,10 @@ async function buildGrid (zoom) {
           for (let py = 0; py < 256; py++) {
             for (let px = 0; px < 256; px++) {
               const i = (py * 256 + px) * 4
-              const e = png.data[i] * 256 + png.data[i + 1] + png.data[i + 2] / 256 - 32768
-              grid[(ty * 256 + py) * size + (tx * 256 + px)] = Math.max(-1000, Math.min(9000, Math.round(e)))
+              const e = decodeTerrarium(png.data[i], png.data[i + 1], png.data[i + 2])
+              // NOT clamped to sea level. The relief bake drops the depths itself, and the ocean
+              // layer is built on them — flatten them here and it loses its only source, silently.
+              grid[(ty * 256 + py) * size + (tx * 256 + px)] = clampTerrainHeight(e)
             }
           }
         } catch (_) { /* leave as 0 */ }
@@ -62,7 +75,7 @@ async function buildGrid (zoom) {
   await Promise.all(Array.from({ length: CONC }, () => worker(queue)))
   process.stderr.write('\n')
   mkdirSync(CACHE, { recursive: true })
-  writeFileSync(resolve(CACHE, `dem-z${zoom}.bin`), Buffer.from(grid.buffer))
+  writeFileSync(resolve(CACHE, `dem-z${zoom}-${GRID_VERSION}.bin`), Buffer.from(grid.buffer))
   return grid
 }
 
@@ -74,7 +87,7 @@ async function buildGrid (zoom) {
  * relief normal map — want the grid itself.
  */
 export async function loadHeightGrid (zoom = Z) {
-  const bin = resolve(CACHE, `dem-z${zoom}.bin`)
+  const bin = resolve(CACHE, `dem-z${zoom}-${GRID_VERSION}.bin`)
   if (existsSync(bin)) return new Int16Array(readFileSync(bin).buffer.slice())
   console.error(`building elevation grid from terrain tiles at z${zoom} (one-time)…`)
   return buildGrid(zoom)

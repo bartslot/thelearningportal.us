@@ -28,6 +28,7 @@ import { PNG } from 'pngjs'
 import { loadHeightGrid, gridSizeForZoom } from './lib/elevation.mjs'
 import {
   equirectHeightGrid, normalsFromHeights, encodeNormals, equirectMetresPerPixel,
+  heightsAboveSeaLevel,
 } from '../resources/js/timemap/terrain-normals.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -55,8 +56,10 @@ console.error(`relief normal map: ${width}x${height} equirectangular, from terra
 console.error(`  ${Math.round(equirectMetresPerPixel(width, 0))} m per texel at the equator`)
 
 const raw = await loadHeightGrid(zoom)
-const source = new Float32Array(raw.length)
-for (let i = 0; i < raw.length; i++) source[i] = raw[i]
+// Sea level FIRST, then resample. The shared grid keeps true ocean depth because the ocean layer
+// is built on it; averaging those depths in with the land would drag every coastal texel below
+// zero and flatten the ranges that run to the sea. See heightsAboveSeaLevel.
+const source = heightsAboveSeaLevel(raw)
 
 console.error('  resampling mercator -> equirectangular…')
 const heights = equirectHeightGrid(source, sourceSize, width, height)

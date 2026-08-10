@@ -7,6 +7,10 @@ import {
   equirectMetresPerPixel,
   reliefDetailFor,
   RELIEF_GLSL,
+  clampTerrainHeight,
+  heightsAboveSeaLevel,
+  MIN_ELEVATION_M,
+  MAX_ELEVATION_M,
 } from '../terrain-normals.js'
 
 /**
@@ -42,6 +46,53 @@ describe('terrarium decoding', () => {
   it('puts the deepest ocean and the highest peak inside the encodable range', () => {
     expect(decodeTerrarium(0, 0, 0)).toBe(-32768)
     expect(decodeTerrarium(255, 255, 255)).toBeGreaterThan(8848)
+  })
+})
+
+describe('the range a decoded height is allowed to keep', () => {
+  /**
+   * The relief bake throws the sea floor away, and is right to — you cannot see it through three
+   * kilometres of water. But the OCEAN layer is built on exactly that discarded half, so the
+   * depths have to survive the shared decode and be dropped by each reader separately.
+   *
+   * The shared loader used to clamp at -1000 m, which flattens about two thirds of the ocean by
+   * area. Nothing noticed, because every reader at the time wanted land.
+   */
+  it('keeps the deep ocean, which another reader is built on', () => {
+    expect(clampTerrainHeight(-3800)).toBe(-3800)     // mid-Atlantic abyssal plain
+    expect(clampTerrainHeight(-10935)).toBe(-10935)   // Challenger Deep
+  })
+
+  it('keeps the highest ground', () => {
+    expect(clampTerrainHeight(8849)).toBe(8849)
+  })
+
+  it('rejects values no point on earth can have', () => {
+    expect(clampTerrainHeight(-40000)).toBe(MIN_ELEVATION_M)
+    expect(clampTerrainHeight(30000)).toBe(MAX_ELEVATION_M)
+  })
+
+  it('stays inside a 16-bit grid, which is what stores it', () => {
+    expect(MIN_ELEVATION_M).toBeGreaterThan(-32768)
+    expect(MAX_ELEVATION_M).toBeLessThan(32767)
+  })
+
+  it('flattens water BEFORE the grid is averaged down, or the coast loses its mountains', () => {
+    /**
+     * The ordering trap. A coastal texel covering half a 2,000 m massif and half a 4,000 m trench
+     * averages to -1,000 m while the depths are still signed; clamp that afterwards and it is
+     * zero, and a mountain range that runs to the sea has quietly gone flat.
+     *
+     * This hid for as long as the shared DEM floor was -1,000 m — the error was there, just small
+     * enough to pass as coastline softness. Restoring true ocean depth made it four times worse.
+     */
+    const source = gridOf(2, 2, (i) => (i === 0 ? 2000 : -4000))
+
+    const clampedFirst = equirectHeightGrid(heightsAboveSeaLevel(source), 2, 1, 1)
+    expect(clampedFirst[0]).toBeCloseTo(1000, 6)
+
+    const clampedAfter = Math.max(0, equirectHeightGrid(source, 2, 1, 1)[0])
+    expect(clampedAfter).toBe(0)     // the massif, gone
   })
 })
 

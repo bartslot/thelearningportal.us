@@ -120,6 +120,47 @@ export const CLOUD_SHADOW_GLSL = /* glsl */`
  */
 export const decodeTerrarium = (r, g, b) => (r * 256 + g + b / 256) - 32768
 
+/**
+ * The range a real elevation can be in, in metres: Challenger Deep to Everest, with headroom.
+ *
+ * THE FLOOR IS NOT DECORATION. Terrarium tiles carry bathymetry, and the relief bake throws it
+ * away on purpose — you cannot see the sea floor through three kilometres of water. But the ocean
+ * layer is being built on exactly that discarded half, so the depths have to SURVIVE the decode
+ * and be dropped by each reader instead. A shared grid that arrives pre-flattened leaves the ocean
+ * with no data and no error: relief still looks perfect, and the Atlantic quietly has no floor.
+ *
+ * This used to clamp at -1000 m, which flattens everything below the continental shelf — about
+ * two thirds of the ocean by area, including every abyssal plain and every trench.
+ */
+export const MIN_ELEVATION_M = -11500
+export const MAX_ELEVATION_M = 9000
+
+/**
+ * Fit a decoded height into the range a 16-bit grid stores, rejecting nonsense without discarding
+ * anything real. Clamp to sea level at the CONSUMER that wants land only, never here.
+ */
+export const clampTerrainHeight = (metres) =>
+  Math.round(Math.min(MAX_ELEVATION_M, Math.max(MIN_ELEVATION_M, metres)))
+
+/**
+ * Water as a flat surface at 0 m, ready to be resampled.
+ *
+ * THE ORDER MATTERS AND IT IS NOT OBVIOUS. Sea level has to be applied BEFORE the grid is averaged
+ * down, not after. A coastal texel covering half a 2,000 m massif and half a 4,000 m trench
+ * averages to -1,000 m if the depths are still signed, and clamping that afterwards gives zero —
+ * the mountain is simply gone. Clamp first and the same texel averages to 1,000 m, which is what a
+ * surface model of that ground actually is.
+ *
+ * This stayed hidden while the shared DEM floor was -1,000 m, because the error was small enough
+ * to look like coastline softness. Restoring true ocean depth for the ocean layer made it four
+ * times worse and visible.
+ */
+export const heightsAboveSeaLevel = (heights) => {
+  const out = new Float32Array(heights.length)
+  for (let i = 0; i < heights.length; i++) out[i] = Math.max(0, heights[i])
+  return out
+}
+
 /** Metres of ground one texel of a `width`-wide equirectangular map covers, at a given latitude. */
 export const equirectMetresPerPixel = (width, lat) =>
   (2 * Math.PI * EARTH_RADIUS_M * Math.cos(lat * Math.PI / 180)) / width
