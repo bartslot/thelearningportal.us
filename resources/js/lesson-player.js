@@ -1543,20 +1543,50 @@ Alpine.data('lessonGame', (lesson) => ({
       })
     },
 
-    // ── Voyage carousel: side arrows + auto-advance after 10s ──────────────
+    // ── Voyage carousel: side arrows + auto-advance once the leg has been told ─────────────
+    //
+    // A stop must outlast its own narration. This used to advance on a flat ten seconds from the
+    // moment the ship arrived, with the narration playing as a fire-and-forget track whose duration
+    // nothing ever read — so a leg with thirty seconds to say got ten, and the voice was cut
+    // mid-sentence. On the Tasman lesson the class heard "hij is om Australië heen gevaren zonder
+    // het te zien," and never heard what he had actually proved.
+    //
+    // So the clock does not decide any more; the voice does. Ten seconds is the FLOOR, for a leg
+    // with no narration at all.
     _startVoyageAuto () {
       if (lesson.game_type !== 'voyage') return
       this._cancelVoyageAuto()
-      const DUR = 10000
+
+      const FLOOR = 10000        // a silent leg still gets a beat to be looked at
+      const TAIL = 1200          // a breath after the last word, before the map moves on
+      const CEILING = 180000     // audio that never ends must not strand the class on one stop
+
       let elapsed = 0
       let last = performance.now()
+      let silentAt = null        // when the narration finished, measured on the same clock
+
       const tick = (now) => {
-        // Hold the countdown while the landfall gallery modal is open, or while the student
-        // has paused — an auto-advance that fires on a paused stage is just a lost stop.
+        // Hold the countdown while the landfall gallery is open, or while the student has paused —
+        // an auto-advance that fires on a paused stage is just a lost stop.
         if (!window.__voyageGalleryOpen && !this.playbackPaused) elapsed += now - last
         last = now
-        this.autoAdvanceProgress = Math.min(1, elapsed / DUR)
-        if (elapsed >= DUR) { this.advanceMap(); return }
+
+        // `ended` rather than `paused`: a student who pauses mid-sentence has not finished hearing
+        // it, and must not have the stop taken away when they come back. `error` is here because a
+        // track that fails to load never ends, and without it the lesson would simply stop.
+        const audio = this._audio
+        const speaking = audio && !audio.ended && !audio.error
+        if (!speaking && silentAt === null) silentAt = elapsed
+
+        const readyAt = silentAt === null ? null : Math.max(FLOOR, silentAt + TAIL)
+
+        // While the voice is still going the bar creeps but never fills, because a full bar that
+        // then does not advance reads as a stuck lesson.
+        this.autoAdvanceProgress = readyAt === null
+          ? Math.min(0.92, elapsed / FLOOR)
+          : Math.min(1, elapsed / readyAt)
+
+        if (elapsed >= (readyAt ?? CEILING)) { this.advanceMap(); return }
         _autoAdvanceRaf = requestAnimationFrame(tick)
       }
       _autoAdvanceRaf = requestAnimationFrame(tick)

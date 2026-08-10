@@ -273,13 +273,10 @@
 
     {{-- ── LAYER 2: Three.js canvas (avatar) ───────────────────────────── --}}
     <canvas id="lesson-avatar-canvas" class="absolute inset-0 z-20 w-full h-full pointer-events-none"></canvas>
-    {{-- 2D narrator portrait — small reminder badge during PLAYBACK only. The title screen has its
-         own framed narrator card (below), so hide this there to avoid a dark, duplicate portrait. --}}
-    @if ($lesson->narrator && ($narratorImg = $lesson->narrator->thumbnailUrl() ?? $lesson->narrator->portraitUrl()))
-        <img src="{{ $narratorImg }}" alt="{{ $lesson->narrator->name }}"
-             x-show="phase !== 'TITLE_SCREEN'" x-cloak
-             class="pointer-events-none absolute bottom-6 right-6 z-30 h-[150px] w-[150px] rounded-xl object-cover shadow-2xl ring-1 ring-white/15">
-    @endif
+    {{-- The narrator's face belongs to the title screen, which already has a framed card for it
+         (below). A 150px portrait pinned to the corner for the whole lesson sat on top of the map,
+         the paintings and the route, and told the class nothing they did not already know from
+         hearing the voice. Bart: "Remove the avatar image when a lesson is playing." --}}
 
     {{-- ── LAYER 3: UI overlay ──────────────────────────────────────────── --}}
     <div class="absolute inset-0 z-30 pointer-events-none">
