@@ -121,18 +121,14 @@
         @endif
 
         <div class="flex flex-col items-center sm:items-start">
+            {{-- Kept word for word in step with components/landing/hero.blade.php. This page exists to
+                 preview that hero, so copy that drifts here previews something nobody ships. --}}
             <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
-                {{ __('Your lesson is ready') }}
+                {{ $demoLesson?->title ?? __('Where storytelling meets learning.') }}
             </h1>
 
-            {{-- Names what was just built, for the class it was just built for: the two answers
-                 the demo typed, handed back. --}}
             <p data-reveal-item class="mt-5 max-w-md text-balance text-sm leading-relaxed text-white/60 sm:text-base">
-                @if ($demoLesson)
-                    {{ __('Check out :lesson for :grade', ['lesson' => $demoLesson->title, 'grade' => $demoPick]) }}
-                @else
-                    {{ __('We use storytelling to engage learners and make history come alive.') }}
-                @endif
+                {{ __('Created with AI, then taken further by teachers. Real paintings, a story your class will want to finish, and a game at the end of it.') }}
             </p>
 
             <div data-reveal-item class="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">

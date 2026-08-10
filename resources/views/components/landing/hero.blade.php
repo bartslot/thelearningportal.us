@@ -205,18 +205,29 @@
 
         @unless ($isLaunch)
         <div class="flex flex-col items-center sm:items-start">
+            {{-- The lesson's own name, and nothing else. This is the payoff of the whole animation:
+                 the class watched a lesson get built, and here is the thing itself, named.
+
+                 Not run through the translator. It used to be, with a key that was nothing but the
+                 placeholder itself: there is nothing in that to translate, and every language
+                 reported it as a permanently missing string. (Nor can the key be written out here,
+                 even in a comment: lang:audit scans the file as text and would find it again.)
+
+                 The null guard is load-bearing. `$demoLesson->title` was read unguarded, so the
+                 moment DemoLesson::resolve() found nothing playable the ENTIRE LANDING PAGE threw
+                 "Attempt to read property title on null". The front door of the product, 500ing
+                 because a lesson was mid-rebuild. --}}
             <h1 data-reveal-item class="text-balance text-4xl leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
-                {{ __(':lesson for :grade', ['lesson' => $demoLesson->title, 'grade' => $demoPick]) }}
+                {{ $demoLesson?->title ?? __('Where storytelling meets learning.') }}
             </h1>
 
-            {{-- Names what was just built, for the class it was just built for: the two answers
-                 the demo typed, handed back. --}}
+            {{-- What the product IS, under the name of what it just made. This used to read "Check
+                 out The Punic Wars for Grade 12", which only repeated the title above it and sold
+                 nothing. A visitor who has just watched a lesson assemble itself is at the exact
+                 moment they wonder how, so this is where the answer goes: made with AI, finished by
+                 a teacher, and delivered as pictures, a story and a game. --}}
             <p data-reveal-item class="mt-5 max-w-md text-balance text-sm leading-relaxed text-white/60 sm:text-base">
-                @if ($demoLesson)
-                    {{ __('Check out :lesson for :grade', ['lesson' => $demoLesson->title, 'grade' => $demoPick]) }}
-                @else
-                    {{ __('We use storytelling to engage learners and make history come alive.') }}
-                @endif
+                {{ __('Created with AI, then taken further by teachers. Real paintings, a story your class will want to finish, and a game at the end of it.') }}
             </p>
 
             <div data-reveal-item class="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
