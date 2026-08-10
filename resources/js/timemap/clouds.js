@@ -26,7 +26,10 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, buildProgram, EARTH_RADIUS_M, EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL } from './planet-mesh.js'
+import {
+  buildSphereMesh, buildProgram, cameraAltitudeMetres, EARTH_RADIUS_M,
+  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL,
+} from './planet-mesh.js'
 import { CLOUD_ALTITUDE_M, CLOUD_FIELD_GLSL, CLOUD_FIELD_UNIFORMS, setCloudFieldUniforms } from './cloud-field.js'
 import { acquireEquirectTexture } from './equirect-texture.js'
 
@@ -46,13 +49,26 @@ const LAYER_ID = 'tm-clouds'
  *    always structure at the scale being looked at rather than one cell filling the window.
  *  - `amount` hands the noise more of the work as the field runs out of pixels, until at close
  *    range the field only says where cloud is and the noise says what it looks like.
- *  - `fade` retires the deck entirely once the camera is below it, because at that height there
- *    is no honest way to draw it — you would be under the clouds, not looking down on them.
+ *  - `fade` retires the deck BEFORE the camera reaches it, because at that height there is no
+ *    honest way to draw it — you would be under the clouds, not looking down on them.
  *
- * @param {number} zoom  MapLibre zoom
- * @param {number} lat   latitude at the centre, for the mercator scale
+ * THE FADE IS IN ALTITUDE, NOT IN ZOOM, and that distinction was a real bug. It used to be
+ * `1 - smoothstep(8.5, 11.5, zoom)`, which sounds equivalent and is not: the thing being avoided is
+ * the camera reaching a shell at a FIXED HEIGHT, and zoom is only loosely coupled to height because
+ * the mercator scale carries cos(lat). Measured, the camera crossed the 90 km deck at z10.01 with
+ * the deck still 50% opaque — so you flew through a half-solid shell that filled the view and
+ * clipped against the near plane. Reported as "the clouds are glitchy when flying through them",
+ * which is precisely what it was.
+ *
+ * Worse, the crossing moved a whole zoom level with latitude: z10.03 at the equator, z9.03 at 60°,
+ * where the deck was 92% opaque. No pair of zoom constants can be right everywhere. An altitude
+ * ratio is right everywhere for free.
+ *
+ * @param {number} zoom       MapLibre zoom
+ * @param {number} lat        latitude at the centre, for the mercator scale
+ * @param {number} altitudeM  camera height above the surface; see cameraAltitudeMetres
  */
-export const deckDetailFor = (zoom, lat) => {
+export const deckDetailFor = (zoom, lat, altitudeM) => {
   const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
 
   // The real cloud field's own resolution, at the equator.
@@ -70,7 +86,14 @@ export const deckDetailFor = (zoom, lat) => {
     // aliasing into static once the cells approach a pixel.
     frequency: Math.min(2600, Math.max(9, wanted)),
     amount: 0.14 + (1 - fieldQuality) * 0.42,
-    fade: 1 - smoothstep(8.5, 11.5, zoom),
+    // Gone by 1.35 deck heights, full again by 2.75. Both ends are strictly ABOVE the deck, so the
+    // shell has stopped being drawn before the camera can reach it — a deck at even 0.02 opacity
+    // still writes and still clips, so "nearly gone" is not gone.
+    //
+    // No altitude means no deck. A NaN here would reach a uniform and draw who-knows-what, and of
+    // the two ways to be wrong, "the clouds are missing" is loud and safe while "the clouds are
+    // always drawn" is silent and is the exact bug this replaced.
+    fade: Number.isFinite(altitudeM) ? smoothstep(1.35, 2.75, altitudeM / CLOUD_ALTITUDE_M) : 0,
   }
 }
 
@@ -353,7 +376,7 @@ export const createCloudLayer = ({
       // shadows land under the clouds that cast them.
       setCloudFieldUniforms(gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind }, 0, 1)
 
-      const detail = deckDetailFor(map.getZoom(), map.getCenter().lat)
+      const detail = deckDetailFor(map.getZoom(), map.getCenter().lat, cameraAltitudeMetres(map, maplibregl))
       if (uniforms.detailFreq) gl.uniform1f(uniforms.detailFreq, detail.frequency)
       if (uniforms.detailAmount) gl.uniform1f(uniforms.detailAmount, detail.amount)
       if (uniforms.deckFade) gl.uniform1f(uniforms.deckFade, detail.fade)
