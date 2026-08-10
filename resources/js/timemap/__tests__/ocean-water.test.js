@@ -254,6 +254,23 @@ describe('the ocean layer', () => {
     expect(shader).toContain('float shelfFraction(vec3 unitPos, float coastKm)')
   })
 
+  it('takes depth as a value, never as terrain to be shaded', () => {
+    /**
+     * The trap waiting on the other side of "bring bathymetry back": hillshade the sea floor and
+     * the Atlantic becomes a bathymetric chart. It was measured independently on the terrarium DEM,
+     * which carries bathymetry and had to be clamped to zero before the relief pass left open water
+     * flat. Depth belongs in the colour ramp under a lit surface, so nothing here may take its
+     * gradient — and a derivative is exactly the edit that would look like an improvement.
+     */
+    const shader = read('ocean-water.js')
+    const shelf = shader.slice(shader.indexOf('float shelfFraction('), shader.lastIndexOf('void main() {'))
+    for (const derivative of ['dFdx', 'dFdy', 'fwidth', 'cross(']) {
+      expect(shelf).not.toContain(derivative)
+    }
+    // The one consumer, and it is a colour mix.
+    expect(shader).toContain('mix(u_deep, u_shallow, shelf)')
+  })
+
   it('keeps the requested edge remap off, because it paints the Sahara', () => {
     // Measured at 1: Sahara +11.1 blue and -7.9 red, Taklamakan -12.8 luma. A floor of 0.1 means
     // no fragment discards, so every land pixel on the planet takes ocean colour.

@@ -139,6 +139,23 @@ which are the only places that touch a texture — enforced by a test. Swapping 
 streamed tiles is a change to those two and to nothing else, and `shelfFraction` is also where real
 bathymetry replaces the distance proxy if that reverses.
 
+## Two notes for the sessions this touches
+
+**The shared loader.** `equirect-texture.js` is the right home for this layer's texture and a third
+loader is not. One change is needed first: it uploads RGBA, which for the 8192 field is 134 MB of
+VRAM against 33 MB single-channel, for one byte of real data per texel. An optional format argument
+covers it. A second objection — that `new Image()` lets the browser colour-manage what are numbers
+rather than colours — was **measured and does not hold**: both decode paths were read back through a
+framebuffer and agreed on all 131,072 texels tested, these files carrying no ICC profile. Worth
+keeping the explicit flag as insurance against a tagged file, not worth blocking on.
+
+**Depth is a colour ramp, not terrain.** Confirmed independently from two directions: the terrarium
+DEM carries bathymetry and had to be clamped to zero before a relief pass would leave open water
+flat, and shading the sea floor turns the Atlantic into a chart. `shelfFraction` may sample depth
+and may never differentiate it — there is a test asserting no derivative appears in it. The likely
+source is that same terrarium DEM, whose negative elevations at sea mean depth costs no new data
+pipeline, just the values clamped the other way round.
+
 ## Cost
 
 Re-baking at any resolution is `python3 scripts/build-ocean-sdf.py`, about 16 seconds. Nothing here

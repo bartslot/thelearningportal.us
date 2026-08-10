@@ -136,6 +136,18 @@ float coastDistanceKm(vec3 unitPos) {
  * the body of this function and nothing else: the colour model, the Fresnel term and the glint
  * riding on top all consume this one scalar and do not care how it was obtained.
  *
+ * IT RETURNS A VALUE, AND IT MUST STAY THAT WAY. The trap with bathymetry is treating the sea floor
+ * as terrain: take its slope, hillshade it, and the Atlantic turns into a bathymetric chart —
+ * measured independently on the terrarium DEM, which carries bathymetry and had to be clamped to
+ * zero before the relief pass would leave open water flat. Ridges and abyssal plains are not
+ * visible through three kilometres of water and drawing them reads as a map, not as an ocean. What
+ * makes depth read as depth is COLOUR — deep blue to shallow turquoise — under a lit surface. So
+ * this function may sample depth; it may never differentiate it.
+ *
+ * That also names the likely source: the terrarium DEM this map already loads has negative
+ * elevations at sea, so depth costs no new data pipeline — just the values, clamped the other way
+ * round from the relief pass.
+ *
  * Squared so the turquoise hugs the coast instead of washing halfway to the horizon — the real
  * gradient is steep, and so is the Blue Marble shadow artifact this is correcting.
  */
@@ -369,13 +381,21 @@ export const createOceanWaterLayer = ({
   /**
    * Fetch and decode the field.
    *
-   * Deliberately NOT `new Image()`, for two reasons that both bite silently. The browser is free to
-   * COLOUR-MANAGE a decoded image, and this one is not a picture — a few levels of gamma correction
-   * applied to a distance field moves the coastline. `colorSpaceConversion: 'none'` is the only way
-   * to say "these are numbers, not colours". The second is decode timing: an 8192x4096 image
-   * decoded on the main thread stalls it for a visible beat, and a hidden document may not decode
-   * an `<img>` at all until something paints it — which is a page that never finishes loading in
-   * any automated pane. `createImageBitmap` decodes off-thread, on demand, and answers either way.
+   * `createImageBitmap` rather than `new Image()`, for decode timing: an 8192x4096 image decoded on
+   * the main thread stalls it for a visible beat, and a hidden document may not decode an `<img>`
+   * at all until something paints it — which is a page that never finishes loading in any automated
+   * pane. This decodes off-thread and on demand.
+   *
+   * `colorSpaceConversion: 'none'` says "these are numbers, not colours", since a browser is free to
+   * colour-manage a decoded image and a level here is 125 m of coastline. MEASURED, it changes
+   * nothing: both decode paths were read back through a framebuffer and agreed on all 131,072
+   * texels tested, these files carrying no ICC profile. It is kept as cheap insurance against a
+   * tagged file or a wide-gamut display, not because anything is known to need it.
+   *
+   * WHEN THE BRANCHES MEET this should become `acquireEquirectTexture` from equirect-texture.js —
+   * refcounting is the right answer and a third loader is not. The one thing that module would need
+   * first is an optional single-channel upload: it uses RGBA, which for the 8192 field is 134 MB of
+   * VRAM against 33 MB here, for one byte of actual data per texel.
    */
   const loadField = () => {
     const source = pickSdfSource(gl.getParameter(gl.MAX_TEXTURE_SIZE), state.sources)
