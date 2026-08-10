@@ -16,12 +16,35 @@
  * v = 0 at the north pole, so a shader that builds its basis from that lookup gets south for free;
  * baking green as north would mean a flip in the shader that nothing would ever remind us about.
  *
- * WHY THE SEA FLOOR IS FLATTENED. Terrarium tiles carry bathymetry, and it is real data — but
- * three kilometres of water is opaque and shading the ridges under it turns the Atlantic into a
- * bathymetric chart. The satellite imagery already avoids exactly this by using NASA's plain
- * shaded-relief variant rather than the bathymetry one; the normal map has to make the same choice
- * or it puts back what the imagery took out. Heights are clamped at sea level before any slope is
- * measured, which leaves open water perfectly flat and costs it no shading at all.
+ * WHY THE SEA FLOOR IS FLATTENED — TWO REASONS, AND BOTH HAVE TO STAY.
+ *
+ * Either one alone looks like it might be covered elsewhere, which is how a clamp like this gets
+ * relaxed by someone who believes they are improving deep-water rendering. Sea-floor structure
+ * coming back would look to them like the improvement, not the regression.
+ *
+ * 1. MEASURED. Terrarium tiles carry bathymetry, and it is real data — but three kilometres of
+ *    water is opaque, and shading the ridges under it turns the Atlantic into a bathymetric chart.
+ *    The satellite imagery already avoids exactly this by using NASA's plain shaded-relief variant
+ *    rather than the bathymetry one; the normal map has to make the same choice or it puts back
+ *    what the imagery took out.
+ *
+ * 2. INSTRUCTED. Bart, looking at rendered bathymetric structure, ruled on it directly:
+ *
+ *      "why is there a normal map for the sea bed. i don't want that. it's not realistic if you
+ *       look from space to the real earth."
+ *
+ *    That is a product decision, not an inference, and it does not expire when the renderer gets
+ *    better. Note what it does NOT cover: depth still drives the water's COLOUR for the ocean
+ *    layer, shallow turquoise through deep blue. What is excluded is any shading, normal or slope
+ *    term read off the sea floor. Values, not relief.
+ *
+ * A REFERENCE IMAGE IS NOT A LICENCE. A Google Earth screenshot showing visible sea floor was read
+ * once as endorsing bathymetry here, and an argument was built on it to bring it back. It is an
+ * endorsement of the WHOLE, not of every element in it. Do not let the next screenshot reopen this
+ * either.
+ *
+ * Heights are clamped at sea level before any slope is measured — see `heightsAboveSeaLevel`, and
+ * note the clamp must come BEFORE any downsample, not after.
  */
 
 import { EARTH_RADIUS_M, mercatorYFromLat } from './planet-mesh.js'
@@ -145,6 +168,12 @@ export const clampTerrainHeight = (metres) =>
 /**
  * Water as a flat surface at 0 m, ready to be resampled.
  *
+ * THIS IS THE CLAMP, and it is load-bearing twice over — a measured artefact and an explicit
+ * product decision, quoted in full in the file header. Read both before relaxing it. In short:
+ * shading the sea floor turns the Atlantic into a bathymetric chart, and Bart has ruled directly
+ * that he does not want a normal map for the sea bed at all. Depth still drives the ocean's
+ * COLOUR; what is excluded is any shading read off the sea floor.
+ *
  * THE ORDER MATTERS AND IT IS NOT OBVIOUS. Sea level has to be applied BEFORE the grid is averaged
  * down, not after. A coastal texel covering half a 2,000 m massif and half a 4,000 m trench
  * averages to -1,000 m if the depths are still signed, and clamping that afterwards gives zero —
@@ -258,7 +287,8 @@ export const equirectHeightGrid = (source, size, outWidth, outHeight) => {
  */
 export const normalsFromHeights = (heights, width, height) => {
   const out = new Float32Array(width * height * 3)
-  // Water is opaque; the sea floor is not terrain we can see. See the file header.
+  // Water is opaque, and Bart has ruled that the sea bed gets no normal map at all. Two reasons,
+  // both quoted in the file header — do not relax this on either one alone.
   const land = (index) => Math.max(0, heights[index])
 
   const dySouthM = (Math.PI * EARTH_RADIUS_M) / height

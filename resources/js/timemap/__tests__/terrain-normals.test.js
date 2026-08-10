@@ -189,9 +189,20 @@ describe('normals from an equirectangular height grid', () => {
   })
 
   it('treats the sea floor as flat water, not as terrain', () => {
-    // Terrarium carries bathymetry. Shading it draws mid-ocean ridges onto the surface of the
-    // Atlantic, which is exactly the "bathymetric chart, not water" failure the satellite source
-    // already avoids.
+    /**
+     * If you are here because this test failed, it is guarding two separate things and you need
+     * both before changing it.
+     *
+     * MEASURED: terrarium carries bathymetry, and shading it draws mid-ocean ridges onto the
+     * surface of the Atlantic — the "bathymetric chart, not water" failure the satellite source
+     * already avoids by using the plain shaded-relief variant.
+     *
+     * INSTRUCTED: Bart ruled on it directly, looking at rendered sea-floor structure — "why is
+     * there a normal map for the sea bed. i don't want that. it's not realistic if you look from
+     * space to the real earth." A product decision, not an inference.
+     *
+     * Depth still drives the ocean layer's COLOUR. What is excluded is shading read off the floor.
+     */
     const w = 32, h = 16
     const heights = gridOf(w, h, (i) => -1000 * i)
     const n = normalsFromHeights(heights, w, h)
