@@ -77,6 +77,38 @@ export const visibleDiscFraction = (separation, discRadius, blockerRadius) => {
   return clamp(1 - lens / (Math.PI * r * r), 0, 1)
 }
 
+/**
+ * Limb darkening, the standard quadratic law with visible-light coefficients.
+ *
+ *   I(mu)/I(0) = 1 - u1*(1 - mu) - u2*(1 - mu)^2
+ *
+ * `mu` is the cosine of the angle between the line of sight and the local surface normal, so on a
+ * disc of normalised radius rho it is simply sqrt(1 - rho^2) — the sphere does the geometry.
+ *
+ * These two numbers are the physics, and they are defined ONCE and templated into the shader,
+ * because a JS copy for tests and a GLSL copy for rendering is exactly the pair that drifts: the
+ * tests keep passing against a curve nothing draws any more.
+ */
+export const LIMB_DARKENING = { u1: 0.93, u2: -0.23 }
+
+/** The same law in JS. @param {number} rho 0 at the disc's centre, 1 at its limb */
+export const limbDarkening = (rho) => {
+  const mu = Math.sqrt(Math.max(0, 1 - rho * rho))
+  const t = 1 - mu
+  return Math.max(0, 1 - LIMB_DARKENING.u1 * t - LIMB_DARKENING.u2 * t * t)
+}
+
+/** A float GLSL will accept, negatives parenthesised so `a - -0.23` never has to be parsed. */
+const glslFloat = (value) => (value < 0 ? `(${value.toFixed(4)})` : value.toFixed(4))
+
+const LIMB_DARKENING_GLSL = /* glsl */`
+  float limbDarkening(float rho) {
+    float mu = sqrt(max(1.0 - rho * rho, 0.0));
+    float t = 1.0 - mu;
+    return max(1.0 - ${glslFloat(LIMB_DARKENING.u1)} * t - ${glslFloat(LIMB_DARKENING.u2)} * t * t, 0.0);
+  }
+`
+
 // A billboard the size of the whole GLOW, not of the disc. The disc is a fraction of it, so one
 // quad carries both and the halo needs no second draw.
 const CORNERS = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1])
@@ -109,12 +141,14 @@ uniform vec3 u_right;               // the billboard's basis, same space
 uniform vec3 u_up;
 uniform float u_glow_angle;         // angular radius of the whole quad, radians
 uniform float u_disc_fraction;      // where the sun's limb falls, as a fraction of the quad
+uniform float u_disc_gain;          // exposure: how far above clipping the disc's centre sits
 uniform float u_visible;            // how much of the disc the planet leaves showing, 0..1
 uniform float u_brightness;
 uniform float u_halo_strength;
 uniform vec3 u_core_colour;
 uniform vec3 u_halo_colour;
 ${SPHERE_SPAN_GLSL}
+${LIMB_DARKENING_GLSL}
 
 void main() {
   float r = length(v_corner);
@@ -124,6 +158,25 @@ void main() {
   // Anti-aliased over a twelfth of its own radius. At eleven pixels across a hard cut is a
   // visible staircase, and one wide enough to hide it turns the sun into a smudge.
   float disc = 1.0 - smoothstep(u_disc_fraction * 0.94, u_disc_fraction * 1.06, r);
+
+  // LIMB DARKENING. The sun is not a flat white circle: its edge is about 30% as bright as its
+  // centre in visible light, because looking at the limb you see only the thin, cool top of the
+  // photosphere while at the centre you see down into the hotter gas below. It is the reason a
+  // filtered photograph of the sun has a soft grey rim, and at twenty pixels across it reads.
+  //
+  //   I(mu)/I(0) = 1 - u1*(1-mu) - u2*(1-mu)^2,  mu = cos(angle between sight line and normal)
+  //
+  // with the standard visible-light coefficients. On a disc of normalised radius rho, mu is just
+  // sqrt(1 - rho^2), because the sphere is doing the geometry for us.
+  //
+  // The GAIN is what makes it look right rather than dirty. Radiance is computed first and clipped
+  // afterwards, exactly as an over-exposed photograph does it, so the disc saturates to white
+  // across most of its face and only the outer quarter of the radius visibly falls away. Turn the
+  // gain up and the darkening disappears into the clip; turn it down and the sun goes grey. The
+  // physics is in the law, not in the gain.
+  float rho = clamp(r / max(u_disc_fraction, 1e-6), 0.0, 1.0);
+  float limb = limbDarkening(rho);
+  disc *= limb * u_disc_gain;
 
   // Bitten off by the planet, per pixel. The view ray for this fragment, then the oldest test
   // there is: does it meet the earth before it gets anywhere.
@@ -166,6 +219,12 @@ void main() {
   float toCore = clamp(disc + smoothstep(0.35, 0.95, glow), 0.0, 1.0);
   vec3 colour = mix(u_halo_colour, u_core_colour, toCore);
 
+  // LIMB REDDENING, which is the same fact as the darkening seen in colour: the shallow gas at the
+  // limb is cooler, so it is not merely dimmer but redder. Driven by the darkening term rather than
+  // given a control of its own, because the two cannot disagree: one temperature gradient makes both.
+  // (No backticks in here. This is a template literal, and one would end the shader.)
+  colour = mix(colour, colour * vec3(1.0, 0.88, 0.7), (1.0 - limb) * step(rho, 1.0));
+
   // MapLibre blends custom layers ONE / ONE_MINUS_SRC_ALPHA, so colour goes out premultiplied.
   gl_FragColor = vec4(colour * intensity, intensity);
 }`
@@ -175,6 +234,9 @@ void main() {
  * @param {Date}   [opts.date]           the moment to place the sun at
  * @param {number} [opts.haloScale]      how far the glow reaches, in solar radii
  * @param {number} [opts.haloStrength]   0 leaves a bare disc; 1 is the tuned aureole
+ * @param {number} [opts.discGain]       exposure of the disc. 1 shows the full limb-darkening
+ *                                       curve and looks grey; higher clips the middle to white and
+ *                                       leaves the darkening only at the edge, as a photograph does
  * @param {number} [opts.brightness]     0 switches the layer off entirely, and it then costs nothing
  * @param {number[]} [opts.coreColour]   linear RGB of the disc
  * @param {number[]} [opts.haloColour]   linear RGB of the outer glow
@@ -183,6 +245,12 @@ export const createSunLayer = ({
   date = new Date(),
   haloScale = DEFAULT_HALO_SCALE,
   haloStrength = 1,
+  // 1.15 puts the clip at 87% of centre brightness, which the law reaches at about half the radius:
+  // a white core over the inner half and a visible falloff across the outer half, which is what a
+  // filtered photograph of the sun looks like. Measured at 1.45 the darkening survived only in the
+  // outer two pixels of a twenty-pixel disc, which is the physics being computed and then thrown
+  // away by the exposure.
+  discGain = 1.15,
   brightness = 1,
   coreColour = [1, 0.985, 0.95],
   // The theme's own amber (#f59e0b), lifted a little so it stays amber rather than going brown
@@ -193,7 +261,7 @@ export const createSunLayer = ({
   let gl = null
   let buffers = null
   const programs = new Map()
-  let state = { date, haloScale, haloStrength, brightness, coreColour, haloColour }
+  let state = { date, haloScale, haloStrength, discGain, brightness, coreColour, haloColour }
 
   const programFor = (shaderData) => {
     const key = shaderData.variantName
@@ -213,6 +281,7 @@ export const createSunLayer = ({
         up: gl.getUniformLocation(program, 'u_up'),
         glowAngle: gl.getUniformLocation(program, 'u_glow_angle'),
         discFraction: gl.getUniformLocation(program, 'u_disc_fraction'),
+        discGain: gl.getUniformLocation(program, 'u_disc_gain'),
         visible: gl.getUniformLocation(program, 'u_visible'),
         brightness: gl.getUniformLocation(program, 'u_brightness'),
         haloStrength: gl.getUniformLocation(program, 'u_halo_strength'),
@@ -343,6 +412,7 @@ export const createSunLayer = ({
       }
       if (uniforms.glowAngle) gl.uniform1f(uniforms.glowAngle, glowAngle)
       if (uniforms.discFraction) gl.uniform1f(uniforms.discFraction, 1 / state.haloScale)
+      if (uniforms.discGain) gl.uniform1f(uniforms.discGain, state.discGain)
 
       // ── How much of it the planet leaves ───────────────────────────────────────────────────
       // Two discs in the sky: the sun, and the earth as seen from the camera. Their overlap is the

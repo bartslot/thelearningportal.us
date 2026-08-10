@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSunLayer, SUN_LAYER_ID, visibleDiscFraction } from '../sun-disc.js'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { createSunLayer, SUN_LAYER_ID, visibleDiscFraction, limbDarkening, LIMB_DARKENING } from '../sun-disc.js'
 import { sunDistance, sunAngularRadius, solarPosition, subsolarPoint } from '../sun.js'
 
 /**
@@ -47,6 +49,60 @@ describe('sunAngularRadius', () => {
 
   it('is bigger when the sun is nearer, which is the only reason it varies at all', () => {
     expect(sunAngularRadius(utc(2026, 1, 3))).toBeGreaterThan(sunAngularRadius(utc(2026, 7, 4)))
+  })
+})
+
+describe('limb darkening', () => {
+  /**
+   * The sun is not a flat white circle. Its edge is about 30% as bright as its centre in visible
+   * light, because at the limb you see only the thin cool top of the photosphere while at the
+   * centre you see down into the hotter gas below. Same fact, in colour, makes the limb redder.
+   */
+  it('is full brightness at the centre', () => {
+    expect(limbDarkening(0)).toBeCloseTo(1, 6)
+  })
+
+  it('leaves the limb at about 30% of the centre, which is the measured figure', () => {
+    expect(limbDarkening(1)).toBeGreaterThan(0.28)
+    expect(limbDarkening(1)).toBeLessThan(0.32)
+  })
+
+  it('falls monotonically outward, and slowly at first', () => {
+    const samples = [0, 0.25, 0.5, 0.7, 0.85, 0.95, 1].map(limbDarkening)
+    for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeLessThan(samples[i - 1])
+    // Shallow across the middle of the face and then steep: halfway out it has lost about 12%,
+    // and the remaining 58% goes in the outer half. That shape is why the sun reads as a solid
+    // white disc with a soft rim rather than as a gradient.
+    expect(limbDarkening(0.5)).toBeCloseTo(0.88, 2)
+    expect(limbDarkening(0.9)).toBeLessThan(0.72)
+  })
+
+  it('is the same curve the shader draws, not a second copy that can drift', () => {
+    // The coefficients ARE the physics; a JS twin for the tests and a GLSL literal for rendering
+    // is the classic pair that comes apart, leaving tests passing against a curve nothing draws.
+    const source = readFileSync(resolve(process.cwd(), 'resources/js/timemap/sun-disc.js'), 'utf8')
+    expect(source).toContain('${glslFloat(LIMB_DARKENING.u1)}')
+    expect(source).toContain('${glslFloat(LIMB_DARKENING.u2)}')
+    expect(LIMB_DARKENING.u1).toBeCloseTo(0.93, 6)
+    expect(LIMB_DARKENING.u2).toBeCloseTo(-0.23, 6)
+  })
+})
+
+describe('the disc exposure', () => {
+  it('defaults to clipping the middle of the face, so the darkening reads only at the edge', () => {
+    /**
+     * The gain is an exposure choice, not physics. At 1 the whole limb-darkening curve is visible
+     * and the sun looks grey and dirty; the honest look is an over-exposed photograph, where the
+     * face clips to white and only the outer part falls away. This pins where that crossover lands.
+     */
+    const gain = createSunLayer().getOptions().discGain
+    expect(gain).toBeGreaterThan(1)
+    const clipsAt = [...Array(101).keys()].map((i) => i / 100).find((rho) => limbDarkening(rho) * gain < 1)
+    // Measured on a 20 px disc: at gain 1.45 the crossover sits at rho 0.77 and the darkening
+    // survives in the outer two pixels only, which is the physics being computed and then thrown
+    // away by the exposure. It has to start inside the middle of the face to be legible at all.
+    expect(clipsAt).toBeGreaterThan(0.35)     // still a clean white core
+    expect(clipsAt).toBeLessThan(0.65)        // and a falloff across the whole outer half
   })
 })
 

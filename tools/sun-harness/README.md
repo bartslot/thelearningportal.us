@@ -37,6 +37,37 @@ esbuild, not Vite, and no Laravel: the point is to exercise the MapLibre custom 
 so a broken PHP install can never be the reason the sun did not appear. The app's `public/` is
 served underneath, which is where the land tiles come from.
 
+## Frame cost
+
+```bash
+node tools/sun-harness/perf.mjs --w 2560 --h 1440 --frames 400
+```
+
+Measured on an M3 Pro (ANGLE Metal), 2560×1440, whole frame bracketed by `gl.finish()`:
+
+| | mean ms/frame |
+|---|---|
+| all layers | 0.309 |
+| without bloom | 0.233 |
+| without sun or bloom | 0.185 |
+| **bloom pass** | **0.075** |
+| **sun layer** | **0.049** |
+
+Two things make that number honest rather than flattering. **A plain CPU timer around a repaint is
+worthless**: WebGL commands are queued, so it stops before the GPU has started — it has been
+measured reporting a 49 ms layer as 0.28 ms. The clock is therefore two custom layers, one first
+and one last, each calling `gl.finish()`. And **`triggerRepaint` alone is not a frame**: MapLibre
+can decide nothing changed, and a skipped frame still runs the clock, filling the samples with
+sub-millisecond readings that drag the median down until everything looks free. The benchmark
+nudges the bearing by a hundredth of a degree per frame to force a real one.
+
+Report the MEAN for anything cheap. `performance.now()` is clamped to 100 µs in Chromium, so a pass
+costing less than that has a median of either 0 or 0.1 and a difference of exactly nothing.
+
+Run it with `perf.mjs`, not in the agent's browser pane. Pixels read there are trustworthy; time is
+not — the page is held hidden and its scheduling is throttled, which inflated these same figures by
+roughly an order of magnitude.
+
 ## Four things that will waste your day
 
 Every one of these fails **silently** — no exception, no console message, no failed request. The

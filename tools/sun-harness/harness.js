@@ -108,6 +108,90 @@ const luminanceOf = ({ pixels, width, height }) => {
 const round = (v, places = 4) => Number(v.toFixed(places))
 
 /**
+ * Frame timing that is actually worth quoting.
+ *
+ * A CPU timer wrapped around a repaint is worthless here: WebGL commands are queued, so the timer
+ * stops long before the GPU has done anything and reports a 49 ms layer as 0.28 ms.
+ * `EXT_disjoint_timer_query_webgl2` is no better in a hidden page — measured, it produced incoherent
+ * results, including a frame that got FASTER when a layer was removed.
+ *
+ * So the frame is bracketed by two custom layers, one added first and one added last, each calling
+ * `gl.finish()`. That blocks until the GPU has actually drained, which is expensive and exactly why
+ * it is only done while benchmarking: it makes the number honest. What comes out is the wall-clock
+ * cost of one full frame, everything included, and it is a per-frame cost rather than a frame RATE
+ * — the pane's throttling changes how OFTEN frames happen, never how long one takes.
+ */
+const clock = { active: false, start: 0, samples: [] }
+
+const frameStart = {
+  id: 'tm-frame-start',
+  type: 'custom',
+  renderingMode: '2d',
+  onAdd() {},
+  render(gl) {
+    if (!clock.active) return
+    gl.finish()                    // drain the previous frame so it cannot land in this one
+    clock.start = performance.now()
+  },
+}
+
+const frameEnd = {
+  id: 'tm-frame-end',
+  type: 'custom',
+  renderingMode: '2d',
+  onAdd() {},
+  render(gl) {
+    if (!clock.active || !clock.start) return
+    gl.finish()
+    clock.samples.push(performance.now() - clock.start)
+    clock.start = 0
+  },
+}
+
+/**
+ * Time `count` frames and return the distribution.
+ *
+ * The median rather than the mean: one scheduling hiccup in a hidden page skews an average badly,
+ * and the 95th percentile is reported separately because that is the number a stutter comes from.
+ */
+const benchmark = async (count = 90, { move = true } = {}) => {
+  clock.active = true
+  clock.samples = []
+  clock.start = 0
+  const bearing = map.getBearing()
+  for (let i = 0; i < count + 10; i++) {          // ten warm-up frames, discarded below
+    // NUDGE THE CAMERA. `triggerRepaint` alone lets MapLibre decide there is nothing to redraw, and
+    // a skipped frame still runs the clock layers — so the sample set fills with sub-millisecond
+    // readings that drag the median down and make everything look free. A hundredth of a degree of
+    // bearing is invisible and forces a genuine frame.
+    if (move) map.setBearing(bearing + i * 0.01)
+    map.triggerRepaint()
+    await frames(1)
+  }
+  if (move) map.setBearing(bearing)
+  clock.active = false
+  const samples = clock.samples.slice(10).sort((a, b) => a - b)
+  if (!samples.length) return { frames: 0 }
+  const at = (q) => samples[Math.min(samples.length - 1, Math.floor(samples.length * q))]
+  return {
+    frames: samples.length,
+    medianMs: round(at(0.5), 3),
+    /**
+     * The mean is here for one specific reason: `performance.now()` is clamped to 100 microseconds
+     * in Chromium, so a pass costing less than that measures as either 0 or 0.1 and its median is
+     * whichever it hit more often. Averaging hundreds of samples dithers across the clamp and
+     * recovers the sub-tick figure, which is the only way to say how much a cheap pass really costs
+     * rather than "under the clock's resolution".
+     */
+    meanMs: round(samples.reduce((sum, v) => sum + v, 0) / samples.length, 4),
+    p95Ms: round(at(0.95), 3),
+    minMs: round(samples[0], 3),
+    impliedFps: Math.round(1000 / at(0.5)),
+    canvas: [map.getCanvas().width, map.getCanvas().height],
+  }
+}
+
+/**
  * One frame, read back from inside the pass that drew it.
  *
  * The watchdog is not paranoia: a dropped repaint leaves the promise pending forever and the whole
@@ -171,6 +255,8 @@ const contribution = async ({
   let discPixels = 0
   let glowPixels = 0
   let minX = width, maxX = -1, minY = height, maxY = -1
+  let sumX = 0
+  let sumY = 0
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const d = diff[y * width + x]
@@ -178,6 +264,8 @@ const contribution = async ({
       // threshold of zero and the report claims a disc the size of the canvas.
       if (peak > 0 && d >= discThreshold * peak) {
         discPixels++
+        sumX += x
+        sumY += y
         if (x < minX) minX = x
         if (x > maxX) maxX = x
         if (y < minY) minY = y
@@ -185,6 +273,11 @@ const contribution = async ({
       } else if (d >= glowThreshold) glowPixels++
     }
   }
+  // The CENTROID of the disc, not its brightest pixel. A limb-darkened disc clips flat across its
+  // middle, so "the brightest pixel" is an arbitrary one somewhere in that plateau, and a scan
+  // started there is off-centre by an unknown few pixels — which is exactly enough to make the
+  // darkening curve look like it is not there.
+  const centre = discPixels ? [Math.round(sumX / discPixels), Math.round(sumY / discPixels)] : [cx, cy]
 
   return {
     canvas: { width, height },
@@ -200,8 +293,19 @@ const contribution = async ({
       boundsPx: maxX < 0 ? null : [maxX - minX + 1, maxY - minY + 1],
     },
     glowPixels,
-    profile: radialProfile(diff, width, height, cx, cy),
+    profile: radialProfile(diff, width, height, centre[0], centre[1]),
+    /** A horizontal cut through the disc's centre — where limb darkening is legible. */
+    scan: lineScan(diff, width, centre, Math.max(12, Math.ceil(discPixels ? 0.8 * (maxX - minX) : 12))),
   }
+}
+
+/** The differential along a horizontal line through `centre`, out to `reach` pixels either side. */
+const lineScan = (diff, width, [cx, cy], reach) => {
+  const row = []
+  for (let dx = -reach; dx <= reach; dx++) {
+    row.push({ dx, gain: round(diff[cy * width + cx + dx] ?? 0, 4) })
+  }
+  return row
 }
 
 /**
@@ -299,17 +403,20 @@ map.on('error', (e) => window.sunHarnessErrors.push(String(e && e.error ? e.erro
 window.sunHarnessMap = map
 
 map.on('load', () => {
+  map.addLayer(frameStart)   // first, so the clock brackets everything
   map.addLayer(layers.starfield)
   map.addLayer(layers.daylight)
   map.addLayer(layers.atmosphere)
   map.addLayer(layers.sun)
   map.addLayer(layers.bloom)
   map.addLayer(probe)      // after the bloom, so a reading is of the finished frame
+  map.addLayer(frameEnd)   // last of all, so the clock closes on a drained GPU
   window.sunHarness = {
     map,
     layers,
     capture,
     contribution,
+    benchmark,
     view,
     settled,
     frames,

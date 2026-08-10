@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createBloomLayer, BLOOM_LAYER_ID, bloomTargetSizes } from '../bloom.js'
+import { createBloomLayer, BLOOM_LAYER_ID, BLOOM_LEVELS } from '../bloom.js'
 
 /**
  * The bloom pass is not a globe overlay, so it is not in `globe-layers.test.js`.
@@ -71,20 +71,11 @@ const mapStub = (width = 1280, height = 720) => ({
 
 const v5Args = () => ({ farZ: 1e7, nearZ: 1, fov: 0.6435, shaderData: { variantName: 'globe' } })
 
-describe('bloomTargetSizes', () => {
-  it('halves for the first level and eighths for the second', () => {
-    expect(bloomTargetSizes(1280, 720)).toEqual([{ width: 640, height: 360 }, { width: 160, height: 90 }])
-  })
-
-  it('never produces a zero-sized target, however small the canvas gets', () => {
-    // A pane collapsing to a sliver during a resize would otherwise ask for a 0×0 texture, which
-    // is an INVALID_VALUE on every driver and takes the whole map's GL context down with it.
-    for (const [w, h] of [[1, 1], [3, 2], [7, 900], [0, 0]]) {
-      for (const size of bloomTargetSizes(w, h)) {
-        expect(size.width).toBeGreaterThanOrEqual(1)
-        expect(size.height).toBeGreaterThanOrEqual(1)
-      }
-    }
+describe('the chain', () => {
+  it('goes five levels deep, so the widest scale reaches a fifth of the way across the screen', () => {
+    // One gaussian has one scale and reads as fog. The point of the chain is that the coarsest
+    // level is a thirty-second of the screen, so its nine taps span a fifth of it.
+    expect(BLOOM_LEVELS).toBe(5)
   })
 })
 
@@ -94,13 +85,45 @@ describe('the bloom layer', () => {
     expect(BLOOM_LAYER_ID).toBe('tm-bloom')
   })
 
-  it('draws its passes: bright, two blurs per level, and the composite', () => {
+  it('draws its passes: bright, down the chain, back up it, and the composite', () => {
     const { gl, calls } = glStub()
     const layer = createBloomLayer()
     layer.onAdd(mapStub(), gl)
     layer.render(gl, v5Args())
-    // 1 bright + (H + V) × 2 levels + 1 composite
-    expect(calls.drawArrays).toBe(6)
+    // 1 bright + 4 downsamples + 4 upsamples + 1 composite
+    expect(calls.drawArrays).toBe(2 * BLOOM_LEVELS)
+  })
+
+  it('tints the wide scales warm and leaves the tight ones alone', () => {
+    /**
+     * Real optics do not scatter evenly across wavelengths: the aureole around a bright source is
+     * measurably redder further out. Each upsample carries its own tint, coarsest first, so the
+     * order matters — reversed, the bloom goes warm in the core and neutral in the skirt, which is
+     * the wrong way round and still looks like a deliberate colour choice.
+     */
+    const { gl } = glStub()
+    const tints = []
+    gl.uniform3f = (name, r, g, b) => { if (name === 'u_tint') tints.push([r, g, b]) }
+    const layer = createBloomLayer()
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+
+    expect(tints).toHaveLength(BLOOM_LEVELS - 1)
+    // Upsampling runs coarsest first, so warmth has to fall away across the sequence.
+    const warmth = tints.map(([r, , b]) => r - b)
+    for (let i = 1; i < warmth.length; i++) expect(warmth[i]).toBeLessThan(warmth[i - 1])
+    expect(warmth[0]).toBeGreaterThan(0.3)
+    expect(warmth.at(-1)).toBeLessThan(0.1)
+  })
+
+  it('goes neutral when the chromatic falloff is switched off, for an A/B', () => {
+    const { gl } = glStub()
+    const tints = []
+    gl.uniform3f = (name, r, g, b) => { if (name === 'u_tint') tints.push([r, g, b]) }
+    const layer = createBloomLayer({ chromatic: false })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    tints.forEach((tint) => expect(tint).toEqual([1, 1, 1]))
   })
 
   it('puts MapLibre\'s framebuffer and viewport back exactly as it found them', () => {
@@ -169,10 +192,11 @@ describe('the bloom layer', () => {
     layer.onAdd(mapStub(), gl)
     layer.render(gl, v5Args())
     layer.onRemove()
-    expect(calls.deleteProgram).toBe(3)          // bright, blur, composite
+    expect(calls.deleteProgram).toBe(4)                  // bright, down, up, composite
     expect(calls.deleteBuffer).toBe(1)
-    expect(calls.deleteTexture).toBe(5)          // scene + two targets per level
-    expect(calls.deleteFramebuffer).toBe(4)
+    expect(calls.deleteTexture).toBe(BLOOM_LEVELS + 1)   // the chain, plus the scene grab
+    // The scene grab has no framebuffer: it is only ever copied INTO, by copyTexImage2D.
+    expect(calls.deleteFramebuffer).toBe(BLOOM_LEVELS)
   })
 
   it('survives being removed before it was ever added', () => {
