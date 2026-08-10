@@ -22,10 +22,22 @@
  */
 
 const DEG = Math.PI / 180
-const J2000 = Date.UTC(2000, 0, 1, 12) // the epoch these series are measured from
+/**
+ * J2000.0 — 2000-01-01 12:00 UTC. Correct FOR THIS FILE, and deliberately different from moon.js.
+ *
+ * The series below are the Astronomical Almanac's low-precision solar formulae, which are measured
+ * from J2000. moon.js uses Schlyter's elements, which count from "2000 January 0.0" — 1999-12-31
+ * 00:00 UTC, a day and a half earlier. Two neighbouring files, two epochs, and nothing in either
+ * one says so on its face.
+ *
+ * That is not a tidy-up waiting to happen: unifying them breaks whichever series does not own the
+ * epoch. It cost a 20 degree moon once (see sky-absolute.test.js) and then nearly cost a 1.5 degree
+ * sun when the fix was applied here too, out of symmetry rather than evidence.
+ */
+const EPOCH = Date.UTC(2000, 0, 1, 12)
 
-/** Days since J2000, fractional. */
-const daysSinceEpoch = (date) => (date.getTime() - J2000) / 86400000
+/** Days since the epoch above, fractional. */
+const daysSinceEpoch = (date) => (date.getTime() - EPOCH) / 86400000
 
 /**
  * The sun's declination and the equation of time, from the low-precision series in the

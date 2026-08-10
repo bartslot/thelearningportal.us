@@ -29,6 +29,23 @@ const LAYER_ID = 'tm-moon'
 const EARTH_RADIUS_M = 6371008.8
 const MOON_RADIUS_M = 1737400
 const DEG = Math.PI / 180
+/**
+ * Schlyter's elements are epoch "2000 January 0.0", which is 1999-12-31 00:00 UTC — NOT J2000
+ * (2000-01-01 12:00). The two differ by a day and a half, and using the wrong one is silent: the
+ * series still run, the output still looks like a sky. The moon moves 13.18 deg/day, so it lands
+ * about 20 degrees from where it belongs, and the sun about 1.5. It put the August 2026 eclipse on
+ * the 14th.
+ */
+const EPOCH = Date.UTC(1999, 11, 31, 0)
+/**
+ * And a SECOND epoch, in the same function, because this file mixes two conventions.
+ *
+ * The sidereal-time formula below is the standard one and counts from J2000, while the orbital
+ * elements count from Schlyter's epoch above. They must each get their own day count. Driving both
+ * from one constant is what makes this trap so effective: fixing the elements silently rotates the
+ * earth under the moon by half a turn, and the moon still moves at the right rate while sitting in
+ * the wrong place.
+ */
 const J2000 = Date.UTC(2000, 0, 1, 12)
 
 const sind = (deg) => Math.sin(deg * DEG)
@@ -45,7 +62,7 @@ const cosd = (deg) => Math.cos(deg * DEG)
  * @returns {{lng: number, lat: number, distance: number}} sub-lunar point in degrees, distance in metres
  */
 export const moonPosition = (date = new Date()) => {
-  const d = (date.getTime() - J2000) / 86400000
+  const d = (date.getTime() - EPOCH) / 86400000
 
   // Orbital elements at date.
   const N = 125.1228 - 0.0529538083 * d        // longitude of the ascending node
@@ -95,7 +112,8 @@ export const moonPosition = (date = new Date()) => {
   const declination = Math.atan2(ze, Math.hypot(xe, ye)) / DEG
 
   // Equatorial to a point on the turning earth: subtract the sidereal rotation to get longitude.
-  const gmst = (18.697374558 + 24.06570982441908 * d) % 24
+  const dJ2000 = (date.getTime() - J2000) / 86400000
+  const gmst = (18.697374558 + 24.06570982441908 * dJ2000) % 24
   let lng = rightAscension - gmst * 15
   lng = ((lng % 360) + 540) % 360 - 180
 
