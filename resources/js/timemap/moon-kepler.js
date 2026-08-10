@@ -9,6 +9,11 @@
  * general solver can reproduce a body whose position is checked against four independent
  * astronomical facts, it can be trusted on a body that is checked against nothing but an ephemeris.
  *
+ * THERE IS NOW A BETTER OPTION. `elp2000.js` is the real lunar theory and is fifteen to twenty
+ * times more accurate — 0.35 arcminutes at 1492 against this module's five. Prefer it for anything
+ * a lesson will show. This one stays because it is small, dependency-free, and demonstrates that
+ * the general solver in `orbit.js` reproduces a real body.
+ *
  * ELEMENTS: the classical low-precision set (Schlyter), referred to the ecliptic and mean equinox
  * OF DATE — the node and perigee terms carry precession inside them. So nothing here is precessed;
  * `fromJ2000` stays false all the way through. The JPL planetary elements in `planets.js` are the

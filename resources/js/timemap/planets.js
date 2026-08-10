@@ -6,6 +6,13 @@
  * an annalist wrote down, Venus crossing the sun while Cook watched from Tahiti — all of those are
  * dated, and a dated sky is computable.
  *
+ * THERE IS NOW A BETTER OPTION, and this file is kept for the cases where it is still the right
+ * one. `vsop87.js` solves the real perturbation theory and is 36 to 1281 times more accurate over
+ * the historical range. Prefer it for anything a lesson will show. What this module still has is
+ * independence and size: eight small element sets rather than a megabyte of series, no ΔT
+ * dependency, and a plain Keplerian ellipse that anyone can read. It is also the general machinery
+ * — `orbit.js` will solve a comet or a spacecraft, and VSOP87 will not.
+ *
  * ELEMENTS: E. M. Standish, "Keplerian Elements for Approximate Positions of the Major Planets"
  * (JPL Solar System Dynamics), Table 2a and 2b — the set fitted for 3000 BC to 3000 AD rather than
  * the tighter 1800-2050 set, because history is the point here. Referred to the mean ecliptic and

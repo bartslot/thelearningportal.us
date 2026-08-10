@@ -6,20 +6,29 @@
  * planet for as long as there has been a moon, and the accumulated difference is not small. At the
  * time of Columbus's landfall the two clocks were about three and a half minutes apart.
  *
- * NOTHING IN THIS MODULE IS APPLIED AUTOMATICALLY. `celestial-frames.js` takes a UTC Date and uses
- * it for both the series and the rotation, exactly as `sun.js` and `moon.js` already do, so all
- * four modules stay in one convention. This is here to say how large the resulting error is, and
- * to be available to a caller who wants to correct for it.
+ * WHO APPLIES IT, AND WHY THEY DIFFER. This is the one place in the directory where two modules
+ * deliberately disagree, and the reason is the size of their own error bars.
  *
- * SIZE OF THE ERROR. Feeding UT to a series that wants TT evaluates the body ΔT early. The
- * position error is ΔT multiplied by the body's own apparent motion, so it is worst for the moon:
+ *   APPLIED, by `vsop87.js` and `elp2000.js`. Those are good to about an arcsecond, and ΔT at 1492
+ *   is 200 seconds — 110 arcseconds of moon and 34 of Mercury. Ignoring it would swamp the theory
+ *   completely and make the whole exercise pointless.
+ *
+ *   NOT APPLIED, by `celestial-frames.js`, `sun.js`, `moon.js` and `moon-kepler.js`. Those are
+ *   good to a tenth of a degree at best, where ΔT is worth 0.031° for the moon and less for
+ *   everything else — an order of magnitude inside their own noise. Applying it there would add a
+ *   dependency and change nothing measurable.
+ *
+ * SIZE OF THE ERROR, if you skip it. Feeding UT to a series that wants TT evaluates the body ΔT
+ * early, so the position error is ΔT times the body's own apparent motion:
  *
  *     moon      0.55°/hour  →  0.031° at 1492 (ΔT ≈ 200 s), about a sixteenth of a moon's width
  *     sun       0.041°/hour →  0.0023° at 1492
  *     planets   under 0.04°/hour → below 0.003° at 1492
  *
- * All of which sit an order of magnitude below the accuracy of the element sets themselves, which
- * is why leaving it out is defensible rather than merely convenient.
+ * A WARNING ABOUT PRECISION. ΔT before telescopes is not a computed quantity, it is a fit to
+ * observed eclipses, and the observations run out. Different published models disagree by tens of
+ * seconds in the fifteenth century. So for the moon before roughly 1600 the limit on knowing where
+ * it was is not the ephemeris at all — it is ΔT, and no better lunar theory will move it.
  *
  * Polynomials: Espenak & Meeus, as published with the NASA Five Millennium Canon of Solar Eclipses.
  */
