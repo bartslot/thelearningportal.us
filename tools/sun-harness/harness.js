@@ -22,6 +22,7 @@
 import maplibregl from 'maplibre-gl'
 import { cameraInPlanetSpace } from '../../resources/js/timemap/planet-mesh.js'
 import { createSunLayer } from '../../resources/js/timemap/sun-disc.js'
+import { createBloomLayer } from '../../resources/js/timemap/bloom.js'
 import { createStarfieldLayer } from '../../resources/js/timemap/starfield.js'
 import { createAtmosphereLayer } from '../../resources/js/timemap/atmosphere.js'
 import { createDaylightLayer } from '../../resources/js/timemap/daylight.js'
@@ -69,6 +70,8 @@ const layers = {
   daylight: createDaylightLayer({ sun, nightDarkness: 0.82 }),
   atmosphere: createAtmosphereLayer({ sun, strength: 1 }),
   sun: createSunLayer({ date: DATE }),
+  // Last of the drawing layers, because it blooms whatever is underneath it.
+  bloom: createBloomLayer(),
 }
 
 /**
@@ -138,12 +141,15 @@ const capture = () => new Promise((resolve, reject) => {
  * frames and subtracts to zero, so what is left is exactly the sun's contribution, and the disc's
  * size and the glow's falloff can be read straight off it.
  */
-const contribution = async ({ discThreshold = 0.5, glowThreshold = 0.01 } = {}) => {
-  const before = layers.sun.getOptions().brightness
-  layers.sun.setOptions({ brightness: 0 })
+const contribution = async ({
+  layer = 'sun', option = 'brightness', discThreshold = 0.5, glowThreshold = 0.01,
+} = {}) => {
+  const subject = layers[layer]
+  const before = subject.getOptions()[option]
+  subject.setOptions({ [option]: 0 })
   await frames(2)
   const dark = luminanceOf(await capture())
-  layers.sun.setOptions({ brightness: before || 1 })
+  subject.setOptions({ [option]: before || 1 })
   await frames(2)
   const frame = await capture()
   const lit = luminanceOf(frame)
@@ -297,7 +303,8 @@ map.on('load', () => {
   map.addLayer(layers.daylight)
   map.addLayer(layers.atmosphere)
   map.addLayer(layers.sun)
-  map.addLayer(probe)
+  map.addLayer(layers.bloom)
+  map.addLayer(probe)      // after the bloom, so a reading is of the finished frame
   window.sunHarness = {
     map,
     layers,

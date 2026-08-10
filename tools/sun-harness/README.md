@@ -12,10 +12,25 @@ from the console:
 ```js
 await sunHarness.view({ beyondLimb: 0.9, radii: 5 })   // camera pose, in degrees past the earth's limb
 await sunHarness.contribution()                        // what the sun layer added to the frame
+await sunHarness.contribution({ layer: 'bloom', option: 'strength' })   // ...or any other layer
 await sunHarness.shot('my-shot')                       // PNG into tools/sun-harness/shots/
 sunHarness.expected()                                  // what the disc SHOULD measure, from geometry
 sunHarness.geometry()                                  // where the camera ended up, in earth radii
 sunHarness.run(async () => { ... })                    // long jobs -> window.sunHarnessReport
+```
+
+Layers are on `sunHarness.layers`: `starfield`, `daylight`, `atmosphere`, `sun`, `bloom`. The bloom
+pass goes last, because it blooms whatever is underneath it, and the measurement probe goes after
+even that so a reading is of the finished frame.
+
+Note what an empty bloom reading means. In a night-side scene — the only kind in which the sun is on
+screen at all — the sun is usually the only thing above the bloom threshold, so
+`contribution({ layer: 'bloom', option: 'strength' })` with the sun switched off correctly reports
+zero. That is the scene being dark, not the pass being broken. To see it working on something else,
+make something else bright:
+
+```js
+sunHarness.map.setPaintProperty('ocean', 'background-color', '#ffffff')
 ```
 
 esbuild, not Vite, and no Laravel: the point is to exercise the MapLibre custom layers on their own,

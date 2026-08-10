@@ -156,9 +156,15 @@ void main() {
   float intensity = clamp(disc + glow * u_halo_strength, 0.0, 1.0) * u_brightness;
   if (intensity < 0.003) discard;
 
-  // White at the core, warming outward — the disc itself is far too bright for any eye or sensor
-  // to read as anything but white, and only the wings keep their colour.
-  vec3 colour = mix(u_halo_colour, u_core_colour, clamp(disc + glow * glow * 2.0, 0.0, 1.0));
+  // White at the core, amber everywhere else.
+  //
+  // The disc is far too bright for any eye or sensor to read as anything but white, and only the
+  // wings keep a colour — so the question is how fast the white gives way, and the honest answer is
+  // "almost at once". Blending on the glow's own value drags white out through the bright part of
+  // the aureole and leaves the halo nearly neutral; a smoothstep with its foot near the limb's
+  // brightness confines white to about a solar radius and hands the whole skirt to the amber.
+  float toCore = clamp(disc + smoothstep(0.35, 0.95, glow), 0.0, 1.0);
+  vec3 colour = mix(u_halo_colour, u_core_colour, toCore);
 
   // MapLibre blends custom layers ONE / ONE_MINUS_SRC_ALPHA, so colour goes out premultiplied.
   gl_FragColor = vec4(colour * intensity, intensity);
@@ -179,7 +185,9 @@ export const createSunLayer = ({
   haloStrength = 1,
   brightness = 1,
   coreColour = [1, 0.985, 0.95],
-  haloColour = [1, 0.78, 0.46],
+  // The theme's own amber (#f59e0b), lifted a little so it stays amber rather than going brown
+  // once the falloff has taken most of the intensity out of it.
+  haloColour = [1, 0.65, 0.2],
 } = {}) => {
   let map = null
   let gl = null
