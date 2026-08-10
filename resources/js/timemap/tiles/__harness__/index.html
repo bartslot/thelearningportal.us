@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tiled LOD harness</title>
+  <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: #04070f; color: #cbd5e1; font: 13px/1.5 ui-monospace, monospace; }
+    #map { position: absolute; inset: 0; }
+    #readout { position: absolute; right: 0; top: 0; z-index: 2; max-width: 46ch; padding: 12px 16px;
+               background: rgba(4, 7, 15, 0.86); white-space: pre; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <pre id="readout">booting</pre>
+  <!--
+    A hidden tab gets no requestAnimationFrame at all, and MapLibre never even parses its style
+    without one — the map simply never loads, with no error to explain it. Measured here: zero rAF
+    callbacks in 300 ms, and a setTimeout(300) that took 796 ms because timers are clamped to about
+    one a second as well.
+
+    A MessageChannel is not throttled, so it can carry the frame callbacks instead. This must run
+    BEFORE the module below: ES module imports are hoisted and execute ahead of any module body, so
+    a shim installed inside harness.js would be installed after MapLibre had already read the
+    original. Inline and classic, on purpose.
+  -->
+  <script>
+    if (document.hidden) {
+      const channel = new MessageChannel()
+      let queue = []
+      channel.port1.onmessage = () => {
+        const due = queue
+        queue = []
+        const stamp = performance.now()
+        due.forEach((callback) => { try { callback(stamp) } catch (error) { console.error(error) } })
+      }
+      let nextId = 1
+      window.requestAnimationFrame = (callback) => {
+        queue.push(callback)
+        channel.port2.postMessage(0)
+        return nextId++
+      }
+      window.cancelAnimationFrame = () => {}
+    }
+  </script>
+  <script type="module" src="./harness.js"></script>
+</body>
+</html>
