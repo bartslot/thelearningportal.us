@@ -279,37 +279,54 @@ describe('how much ground a texel covers', () => {
 
 describe('when the relief map runs out of pixels', () => {
   /**
-   * The lesson the cloud deck already taught: a globe-tuned texture becomes a smooth wash on
-   * approach and nothing errors. An 8192-wide normal map is 4.9 km per texel, so it is magnified
-   * 8x by z8 — by then the relief term is a low-frequency blob laid over sharp imagery that
-   * already carries its own baked-in shading. It has to retire rather than smear.
+   * Retuned against measurement rather than intuition. The first curve used the MERCATOR scale to
+   * decide how magnified the map was, and MapLibre's globe draws at exactly half that — so it was
+   * wrong by a whole LOD level, and it retired an effect that still had full amplitude and a fifth
+   * of its detail left.
    */
   const WIDTH = 8192
+
+  it('reports magnification in the tiling system\'s own metric', () => {
+    // 8192 wide is 4,887 m per texel at the equator, and the globe at z4 is 4,892 m per device
+    // pixel — so z4 is where one texel covers one pixel, and each zoom doubles it from there.
+    expect(reliefDetailFor(4, 0, WIDTH).pixelsPerTexel).toBeCloseTo(1, 1)
+    expect(reliefDetailFor(6, 0, WIDTH).pixelsPerTexel).toBeCloseTo(4, 1)
+    expect(reliefDetailFor(8, 0, WIDTH).pixelsPerTexel).toBeCloseTo(16, 1)
+  })
 
   it('runs at full strength while the globe is the picture', () => {
     expect(reliefDetailFor(0, 0, WIDTH).strength).toBeCloseTo(1, 5)
     expect(reliefDetailFor(4, 0, WIDTH).strength).toBeCloseTo(1, 5)
   })
 
-  it('has retired by the time the imagery is sharper than the relief map', () => {
-    expect(reliefDetailFor(9, 0, WIDTH).strength).toBe(0)
+  it('keeps going well past one texel per pixel, because amplitude does not decay', () => {
+    // Measured: amplitude is 11.5 of 255 at one pixel per texel and still 11.5 at eight. Only the
+    // crispness trades. Retiring here would throw away a working effect.
+    expect(reliefDetailFor(6, 0, WIDTH).strength).toBeCloseTo(1, 5)
+    expect(reliefDetailFor(7, 0, WIDTH).strength).toBeCloseTo(1, 5)
+  })
+
+  it('has let go once a texel covers thirty-two pixels', () => {
+    // z9 lands a hair inside the taper's end rather than exactly on it — the texel is 4,886.5 m,
+    // not a round 4,892 — so this is "gone" rather than identically zero. Past that it is exact.
+    expect(reliefDetailFor(9, 0, WIDTH).strength).toBeLessThan(0.01)
     expect(reliefDetailFor(11, 0, WIDTH).strength).toBe(0)
   })
 
   it('fades rather than switching off, so the terminator never pops', () => {
-    const mid = reliefDetailFor(6.5, 0, WIDTH).strength
+    const mid = reliefDetailFor(8, 0, WIDTH).strength
     expect(mid).toBeGreaterThan(0)
     expect(mid).toBeLessThan(1)
   })
 
   it('holds on longer for a wider map, because a wider map has the pixels', () => {
-    expect(reliefDetailFor(7, 0, 16384).strength).toBeGreaterThan(reliefDetailFor(7, 0, 4096).strength)
+    expect(reliefDetailFor(9, 0, 16384).strength).toBeGreaterThan(reliefDetailFor(9, 0, 4096).strength)
   })
 
   it('fades at the same zoom at every latitude — screen and texel shrink together', () => {
     // Both the screen scale and the equirectangular texel carry the same cos(lat), so the ratio
     // that drives the fade does not. A fade that moved with latitude would mean one of the two
     // had lost its cosine.
-    expect(reliefDetailFor(6.5, 60, WIDTH).strength).toBeCloseTo(reliefDetailFor(6.5, 0, WIDTH).strength, 6)
+    expect(reliefDetailFor(8, 60, WIDTH).strength).toBeCloseTo(reliefDetailFor(8, 0, WIDTH).strength, 6)
   })
 })

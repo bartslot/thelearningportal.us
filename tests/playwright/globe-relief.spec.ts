@@ -25,7 +25,11 @@ type Difference = { mean: number; max: number; samples: number };
 type Report = {
   terminatorRidge: { himalaya: Difference; tibet: Difference; ocean: Difference };
   sunOverhead: { himalaya: Difference };
-  zoomFade: { z4: number; z6: number; z7: number; z9: number };
+  zoomFade: { z4: number; z7: number; z9: number; z11: number };
+  magnification: {
+    devicePixelRatio: number;
+    samples: { zoom: number; pixelsPerTexel: number; amplitude: number; detail: number }[];
+  };
   screen: { metresPerPixel: number };
   cloudShadow: Shadow & { strength: number };
   cloudShadowSunInEast: Shadow;
@@ -90,14 +94,55 @@ test.describe('mountain relief along the terminator', () => {
       .toBeLessThan(report.terminatorRidge.himalaya.mean / 2);
   });
 
-  test('retires as the camera descends past the relief map\'s resolution', () => {
-    // The lesson the cloud deck taught the expensive way: a globe-tuned texture becomes a smooth
-    // wash on approach and nothing errors.
-    const { z4, z6, z7, z9 } = report.zoomFade;
+  test('survives magnification and retires only when it is a wash', () => {
+    // Retuned against the magnification table below. The first curve retired relief by z7.5 on the
+    // theory that a magnified normal map stops working; measurement says its amplitude does not
+    // decay at all, so z7 is still carrying the full effect.
+    const { z4, z7, z9, z11 } = report.zoomFade;
     expect(z4).toBeGreaterThan(2);
-    expect(z6).toBeLessThan(z4);
-    expect(z7).toBeLessThan(z6);
+    expect(z7).toBeGreaterThan(z4 * 0.8);
     expect(z9).toBeLessThan(0.2);
+    expect(z11).toBe(0);
+  });
+});
+
+test.describe('what magnification costs the relief', () => {
+  /**
+   * The measurement the tiled-LOD system sizes its tile budget on, and the one that had to be
+   * redone twice.
+   *
+   * First attempt measured against the MERCATOR scale — but this is a globe, which MapLibre draws
+   * at exactly half that, so every magnification figure was out by a factor of two, a whole LOD
+   * level. Second attempt measured mean absolute shading change, which is blind to blur: relief
+   * came out immortal, 11.1 at one pixel per texel and 12.3 at sixteen, and very nearly went out
+   * as a resolution answer.
+   *
+   * Amplitude genuinely does not decay — a magnified normal map shades the ground by exactly the
+   * same amount, just smoothly. What magnification destroys is structure at the pixel scale, so
+   * that is what is measured now.
+   */
+  test('costs crispness and not presence', () => {
+    const byMagnification = new Map(report.magnification.samples.map((s) => [s.pixelsPerTexel, s]));
+    const one = byMagnification.get(1);
+    const sixteen = byMagnification.get(16);
+    expect(one, 'a 1:1 sample').toBeDefined();
+    expect(sixteen, 'a 16:1 sample').toBeDefined();
+
+    // Amplitude flat within a fifth across a sixteen-fold magnification.
+    expect(sixteen!.amplitude).toBeGreaterThan(one!.amplitude * 0.8);
+    // Detail down by roughly the magnification factor: a clean 1/n trade, no cliff.
+    expect(sixteen!.detail).toBeLessThan(one!.detail * 0.2);
+  });
+
+  test('halves its detail for every doubling, with no threshold to find', () => {
+    // The shape matters more than any single number: a smooth 1/n decay means there is no
+    // "correct" target pixels-per-texel, only a cost/quality dial for the tiling system to set.
+    const samples = [...report.magnification.samples].sort((a, b) => a.pixelsPerTexel - b.pixelsPerTexel);
+    for (let i = 1; i < samples.length; i++) {
+      const ratio = samples[i].detail / samples[i - 1].detail;
+      expect(ratio, `detail ratio at ${samples[i].pixelsPerTexel} px/texel`).toBeGreaterThan(0.4);
+      expect(ratio).toBeLessThan(0.75);
+    }
   });
 });
 

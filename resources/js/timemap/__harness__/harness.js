@@ -26,6 +26,7 @@ import { createDaylightLayer } from '../daylight.js'
 import { createCloudLayer } from '../clouds.js'
 import { sunDirection } from '../sun.js'
 import { deepestEclipse } from '../eclipse.js'
+import { equirectMetresPerPixel } from '../terrain-normals.js'
 
 const RELIEF_URL = '/img/map/earth-normal-8192.webp'
 const RELIEF_WIDTH = 8192
@@ -237,6 +238,31 @@ const bestShift = (a, b, frame, centre, halfWidth, search) => {
   return best
 }
 
+/**
+ * How much STRUCTURE a difference-image still has at the pixel scale.
+ *
+ * Mean absolute change is blind to blur — a normal map magnified sixteen times shades the ground
+ * by exactly the same amount, it just does it smoothly. Measured that way relief looked immortal:
+ * 11.1 at one pixel per texel and 12.3 at sixteen, which is nonsense as a resolution answer and
+ * very nearly went out as one.
+ *
+ * What magnification actually destroys is detail between neighbouring pixels, so that is what this
+ * measures: the mean step from one pixel to the next. Ridges have it, a smooth bulge does not.
+ */
+const detailOver = (image, frame, centre, halfWidth) => {
+  let total = 0
+  let samples = 0
+  for (let py = centre.y - halfWidth; py <= centre.y + halfWidth; py++) {
+    for (let px = centre.x - halfWidth; px < centre.x + halfWidth; px++) {
+      if (px < 0 || py < 0 || px + 1 >= frame.width || py >= frame.height) continue
+      const k = py * frame.width + px
+      total += Math.abs(image[k + 1] - image[k])
+      samples++
+    }
+  }
+  return samples ? total / samples : 0
+}
+
 /** A frame reduced to "how much did this pixel change", which is what every measurement wants. */
 const differenceImage = (a, b) => {
   const out = new Float32Array(a.width * a.height)
@@ -343,7 +369,9 @@ const measurements = async () => {
     })
     return round(differenceOver(off, on, boxAround(off, ...HIMALAYA, 24)).mean, 3)
   }
-  report.zoomFade = { z4: await atZoom(4), z6: await atZoom(6), z7: await atZoom(7), z9: await atZoom(9) }
+  // The shipped fade curve, as actually rendered. Full strength well past one texel per pixel now
+  // that amplitude is known not to decay — see the magnification table below for why.
+  report.zoomFade = { z4: await atZoom(4), z7: await atZoom(7), z9: await atZoom(9), z11: await atZoom(11) }
   map.setZoom(4)
   await capture()
 
@@ -403,6 +431,53 @@ const measurements = async () => {
     correlation: eastShift.score,
     interior: eastShift.interior,
   }
+
+  // ── 4b. How much magnification relief actually survives ────────────────────────────────────
+  /**
+   * The number the tiling system sizes itself on, and the one I got wrong the first time.
+   *
+   * The earlier answer came from reliefDetailFor, which measures magnification against the
+   * MERCATOR scale — and this is a globe, where the real scale is about 2.3x finer. Worse, the
+   * zoom sweep above was measuring my own CPU-side fade curve rather than the texture running out
+   * of pixels: the fade had already cut the term to 0.90 at z6, so what looked like "relief
+   * degrading" was mostly policy I had chosen.
+   *
+   * So: fade forced off (a huge reliefWidth pins its strength at 1), the real 8192 texture, and
+   * magnification computed from the scale measured on the actual projection. That isolates the
+   * only thing in question — how soft a normal map can get before the terminator stops raking.
+   */
+  const NO_FADE = 1e9
+  const sun = sunFor(-3.1, 0)
+  report.magnification = { devicePixelRatio: window.devicePixelRatio, samples: [] }
+
+  for (const zoom of [4, 5, 6, 7, 8]) {
+    map.setZoom(zoom)
+    await capture()
+    const scale = metresPerPixelAt(...HIMALAYA)
+    const texelMetres = equirectMetresPerPixel(RELIEF_WIDTH, HIMALAYA[1])
+    // Keep the SAME GROUND under the box at every zoom, or this measures different mountains.
+    const halfWidth = Math.min(300, Math.round(24 * 2 ** (zoom - 4)))
+
+    const off = await frameWith({
+      daylight: { reliefPower: 0, reliefWidth: NO_FADE, cloudShadow: 0, sun }, clouds: { opacity: 0 },
+    })
+    const on = await frameWith({
+      daylight: { reliefPower: 1.5, reliefWidth: NO_FADE, cloudShadow: 0, sun }, clouds: { opacity: 0 },
+    })
+    const measured = differenceOver(off, on, boxAround(off, ...HIMALAYA, halfWidth))
+    report.magnification.samples.push({
+      zoom,
+      metresPerDevicePixel: Math.round(scale),
+      // Screen pixels one texel covers — the tiling system's own selection metric.
+      pixelsPerTexel: round(texelMetres / scale, 2),
+      // How hard the ground is shaded. Insensitive to blur, so NOT the resolution answer.
+      amplitude: round(measured.mean, 2),
+      // How much of that shading survives at the pixel scale. This is the resolution answer.
+      detail: round(detailOver(differenceImage(off, on), off, pixelAt(...HIMALAYA), halfWidth), 3),
+    })
+  }
+  map.setZoom(4)
+  await capture()
 
   // ── 5. What each setting of reliefPower actually buys ──────────────────────────────────────
   // A dial with numbers on it, so the default is a judgement rather than a guess. Watch `max` as

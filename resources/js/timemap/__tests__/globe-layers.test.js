@@ -319,10 +319,13 @@ describe('relief and cloud shadow on the ground', () => {
       layer.render(gl, v5Args())
       return uniforms.u_reliefPower
     }
+    // Retuned against measurement: relief keeps full amplitude well past one texel per pixel, so
+    // it holds to z7 and lets go by z11 rather than retiring at z7.5 as the first curve did.
     expect(at(2)).toBeCloseTo(1.5, 5)
-    expect(at(6.5)).toBeGreaterThan(0)
-    expect(at(6.5)).toBeLessThan(1.5)
-    expect(at(9)).toBe(0)
+    expect(at(7)).toBeCloseTo(1.5, 5)
+    expect(at(8)).toBeGreaterThan(0)
+    expect(at(8)).toBeLessThan(1.5)
+    expect(at(11)).toBe(0)
   })
 
   it('throws the shadow from the height the deck is actually drawn at', () => {

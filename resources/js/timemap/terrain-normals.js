@@ -330,14 +330,36 @@ export const encodeNormals = (normals) => {
  * @param {number} textureWidth  width of the baked normal map
  */
 export const reliefDetailFor = (zoom, lat, textureWidth) => {
-  const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
-  const texelMetres = equirectMetresPerPixel(textureWidth, lat)
-  // 1 while one screen pixel still covers a whole texel; falls away as the map is magnified.
-  const quality = Math.min(1, metresPerPixel / texelMetres)
+  /**
+   * MapLibre's globe draws at exactly HALF the mercator scale for a given zoom. Measured, not
+   * assumed: 4,315 m per device pixel at z4 over 28°N against the formula's 8,638, and the same
+   * 0.500 ratio again at z8. The first version of this used the mercator figure and was therefore
+   * wrong by a factor of two about how magnified the map was — which is a whole LOD level.
+   */
+  const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom) / 2
+  const pixelsPerTexel = equirectMetresPerPixel(textureWidth, lat) / metresPerPixel
+
+  /**
+   * How much relief survives that magnification — measured off the framebuffer, not guessed.
+   *
+   * Two quantities behave completely differently, and conflating them is what made the first
+   * version of this fade far too aggressive:
+   *
+   *   pixels per texel      1     2     4     8    16
+   *   amplitude          11.1  11.5  11.5  11.5  12.3    how hard the ground is shaded
+   *   detail              6.90  4.17  2.31  1.21  0.67    how much survives at the pixel scale
+   *
+   * AMPLITUDE DOES NOT DECAY. A magnified normal map shades the ground by exactly the same amount;
+   * it just does it smoothly. So the planet goes on reading as a lit planet rather than a lit ball
+   * at every magnification, and there is no cliff to fall off — detail simply halves per doubling,
+   * a clean 1/n trade with no threshold in it anywhere.
+   *
+   * The old curve retired the effect entirely by z7.5, which measurement says was throwing away
+   * something still carrying full amplitude and a fifth of its detail. This holds full strength to
+   * 8 pixels per texel and lets go by 32.
+   */
   return {
-    quality,
-    // Gone by about 5x magnification, full until roughly 2x. Between those the terminator's relief
-    // fades out instead of popping, which is the only part a viewer would notice.
-    strength: smoothstep(0.18, 0.55, quality),
+    pixelsPerTexel,
+    strength: 1 - smoothstep(3, 5, Math.log2(Math.max(pixelsPerTexel, 1e-6))),
   }
 }
