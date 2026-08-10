@@ -228,8 +228,55 @@ export const cameraInPlanetSpace = (map, maplibregl) => {
   return planetSpacePosition(lngLat.lng, lngLat.lat, cameraAltitudeMetres(map, maplibregl))
 }
 
-/** Compile and link a program, throwing with the driver's own message rather than a blank screen. */
-export const buildProgram = (gl, vertexSource, fragmentSource, label = 'layer') => {
+/** WebGL2 or not. `texStorage2D` exists only on the 2 context and is cheaper than instanceof. */
+export const isWebGL2 = (gl) => typeof gl.texStorage2D === 'function'
+
+/**
+ * Compile a GLSL ES 1.00 source as GLSL ES 3.00, without a second copy of the source.
+ *
+ * The tiled LOD pyramid's shader paste is ES 3.00 — `in`/`out`, `texture()`, a declared colour
+ * output — so any layer sampling it has to be compiled in ES 3.00 mode throughout. But MapLibre
+ * still falls back to a WebGL1 context where that mode does not exist (`getContext('webgl2') ||
+ * getContext('webgl')`, verified in its source), and an ES 3.00-only layer there does not degrade,
+ * it fails to compile and draws nothing at all.
+ *
+ * So the shader body is written ONCE, in the older dialect, and these adapt it upward. This is
+ * three.js's approach verbatim and it is load-bearing there on every browser; the alternative is
+ * two hand-maintained copies of every shader, which drift the first time either is tuned.
+ *
+ * MapLibre's own projection prelude passes through untouched — checked: it declares only functions
+ * and uniforms, with no `attribute`, `varying` or `texture2D` anywhere in either variant.
+ */
+export const ES300_VERTEX_PREAMBLE = `#version 300 es
+#define attribute in
+#define varying out
+#define texture2D texture
+`
+
+export const ES300_FRAGMENT_PREAMBLE = `#version 300 es
+#define varying in
+#define texture2D texture
+out highp vec4 tm_fragColour;
+#define gl_FragColor tm_fragColour
+`
+
+/**
+ * Compile and link a program, throwing with the driver's own message rather than a blank screen.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.es300]  compile as GLSL ES 3.00 where the context allows it. Required for
+ *   any layer that pastes in the tile pyramid's GLSL; a no-op on a WebGL1 context, which is exactly
+ *   where `pyramid.supported` is false and the layer is on its global-texture fallback anyway.
+ */
+export const buildProgram = (gl, vertexSource, fragmentSource, label = 'layer', { es300 = false } = {}) => {
+  if (es300 && isWebGL2(gl)) {
+    vertexSource = ES300_VERTEX_PREAMBLE + vertexSource
+    fragmentSource = ES300_FRAGMENT_PREAMBLE + fragmentSource
+  }
+  return linkProgram(gl, vertexSource, fragmentSource, label)
+}
+
+const linkProgram = (gl, vertexSource, fragmentSource, label) => {
   const compile = (type, source) => {
     const shader = gl.createShader(type)
     gl.shaderSource(shader, source)

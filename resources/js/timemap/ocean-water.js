@@ -53,7 +53,7 @@
 import maplibregl from 'maplibre-gl'
 import {
   buildSphereMesh, buildProgram, cameraInPlanetSpace, cameraAltitudeMetres,
-  EQUIRECT_GLSL, NOISE_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
+  EQUIRECT_GLSL, NOISE_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL, isWebGL2,
 } from './planet-mesh.js'
 import { OCEAN_SDF_RANGE_KM, OCEAN_SDF_SOURCES, OCEAN_SDF_DECODE_GLSL } from './ocean-sdf-manifest.js'
 
@@ -317,7 +317,10 @@ export const createOceanWaterLayer = ({
   const programFor = (shaderData) => {
     const key = shaderData.variantName
     if (programs.has(key)) return programs.get(key)
-    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(), 'tm-ocean')
+    // ES 3.00 wherever the context allows it: the tile pyramid's GLSL is ES 3.00, and the depth
+    // field arrives through it. On WebGL1 this is a no-op and the global-texture path is the one
+    // in use anyway, since the pyramid reports itself unsupported there.
+    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(), 'tm-ocean', { es300: true })
     const entry = {
       program,
       attribs: {
@@ -386,11 +389,17 @@ export const createOceanWaterLayer = ({
     gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
 
+    // NOTE: this asks isWebGL2 a DIFFERENT question from the one the shader asks it. There the
+    // answer picks a GLSL dialect; here it picks a texture format. In production they coincide, but
+    // they are independent decisions, and forcing the ES 1.00 shader path on a WebGL2 context to
+    // compare the two also drags the upload to LUMINANCE — whose mipmaps are invalid on WebGL2, so
+    // the field silently reads black and the sea vanishes. That is a debugging trap, not a bug.
+    //
     // One byte per texel, not four: the 8192 field is 33 MB as single-channel and 134 MB as RGBA.
     // WebGL2 needs the SIZED format for that — generateMipmap there requires a colour-renderable
     // format, and unsized LUMINANCE is not one, so the failure would land on the mipmap rather
     // than on the upload. WebGL1 has no R8, and LUMINANCE is fine.
-    if (typeof gl.texStorage2D === 'function') {
+    if (isWebGL2(gl)) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, bitmap)
     } else {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, bitmap)

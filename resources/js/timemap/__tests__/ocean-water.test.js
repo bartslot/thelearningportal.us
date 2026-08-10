@@ -7,6 +7,7 @@ import {
 import {
   OCEAN_SDF_RANGE_KM, OCEAN_SDF_SOURCES, oceanDistanceKm, storeOceanDistanceKm,
 } from '../ocean-sdf-manifest.js'
+import { ES300_VERTEX_PREAMBLE, ES300_FRAGMENT_PREAMBLE } from '../planet-mesh.js'
 
 /**
  * What is actually hard about lighting the sea is not the lighting. It is knowing where the sea is.
@@ -149,6 +150,63 @@ describe('how soft the shoreline is drawn', () => {
 
   it('stops shrinking once it reaches the floor, where the field runs out of precision', () => {
     expect(shoreSoftnessKmFor(14, 0, 0.8)).toBe(0.8)
+  })
+})
+
+describe('compiling as GLSL ES 3.00', () => {
+  /**
+   * The tile pyramid's shader paste is ES 3.00, so a layer that samples it has to be compiled in
+   * that mode throughout. MapLibre still falls back to a WebGL1 context — `getContext('webgl2') ||
+   * getContext('webgl')` in its own source — and there an ES 3.00 shader does not degrade, it fails
+   * to compile and the sea simply never appears.
+   */
+  const capturingGl = ({ webgl2 }) => {
+    const { gl } = glStub({ webgl2 })
+    const sources = []
+    gl.shaderSource = (_shader, source) => sources.push(source)
+    if (webgl2) gl.texStorage2D = () => {}
+    return { gl, sources }
+  }
+
+  it('asks for ES 3.00 on a WebGL2 context, with the version on the very first line', () => {
+    // `#version` is only legal as the first thing in the file — not after a comment, not after a
+    // blank line. Prepending anything ahead of it is a compile error on every driver.
+    const { gl, sources } = capturingGl({ webgl2: true })
+    const layer = createOceanWaterLayer()
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    expect(sources.length).toBeGreaterThan(0)
+    sources.forEach((source) => expect(source.startsWith('#version 300 es\n')).toBe(true))
+  })
+
+  it('leaves the shader alone on WebGL1, where ES 3.00 does not exist', () => {
+    const { gl, sources } = capturingGl({ webgl2: false })
+    const layer = createOceanWaterLayer()
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    expect(sources.length).toBeGreaterThan(0)
+    sources.forEach((source) => expect(source).not.toContain('#version'))
+  })
+
+  it('adapts the three constructs the layers actually use, and no others', () => {
+    // Checked against every globe layer: gl_FragColor, texture2D, attribute/varying. Nothing uses
+    // textureCube or gl_FragData, which would each need their own line here.
+    const vertex = ES300_VERTEX_PREAMBLE, fragment = ES300_FRAGMENT_PREAMBLE
+    expect(vertex).toContain('#define attribute in')
+    expect(vertex).toContain('#define varying out')
+    expect(fragment).toContain('#define varying in')
+    expect(fragment).toContain('#define texture2D texture')
+    expect(fragment).toContain('#define gl_FragColor tm_fragColour')
+    // The output has to be DECLARED as well as aliased, or gl_FragColor resolves to nothing.
+    expect(fragment).toContain('out highp vec4 tm_fragColour;')
+  })
+
+  it('keeps one copy of the shader body rather than two dialects of it', () => {
+    // The alternative to adapting is a hand-written ES 3.00 twin, which drifts the first time
+    // either is tuned — and shader drift shows up as a rendering difference nobody attributes.
+    const shader = read('ocean-water.js')
+    expect(shader).not.toContain('#version 300 es')
+    expect((shader.match(/gl_FragColor/g) || []).length).toBe(1)
   })
 })
 
