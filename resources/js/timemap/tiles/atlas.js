@@ -29,7 +29,7 @@
  * there is one code path rather than two.
  */
 
-import { keyOf, tileMercatorBounds } from './scheme.js'
+import { MERCATOR_CIRCUMFERENCE_M, keyOf, tileMercatorBounds } from './scheme.js'
 
 /** Slot indices travel through a byte of the page table, so this is the ceiling on residency. */
 const MAX_SLOTS = 255
@@ -48,6 +48,10 @@ export const createTileAtlas = (gl, {
   layers = 128,
   pageResolution = 32,
   fadeMs = 260,
+  channels = 'rgba',
+  // Metres: the minimum a stored height can be, and the span above it. Only meaningful for a
+  // height source; harmless otherwise, since nothing samples it unless the shader asks.
+  heightRange = [0, 1],
   now = () => performance.now(),
 } = {}) => {
   // WebGL1 has no texture arrays and no way to fake one. Callers keep their global-texture path
@@ -65,6 +69,8 @@ export const createTileAtlas = (gl, {
   let retained = new Set()
   let extent = [0, 0, 1, 1]
   let shortfall = 0
+  /** The finest level on screen. Sets the ground baseline every level measures its slope over. */
+  let finestLevel = 0
   let disposed = false
 
   let tiles = null
@@ -97,10 +103,24 @@ export const createTileAtlas = (gl, {
     ancestorPage = new Uint8Array(width * height * 4)
   }
 
+  /**
+   * Two channels or four.
+   *
+   * The DEM needs sixteen bits of height and nothing else, and an RG8 array is half the VRAM of an
+   * RGBA8 one for exactly the same data. On the machine this has to run on — a school Chromebook,
+   * not the machine it was written on — that is the difference between holding twice as much of the
+   * world resident and not.
+   */
+  const twoChannel = channels === 'rg'
+  const bytesPerTexel = twoChannel ? 2 : 4
+
   if (supported) {
     tiles = gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, tiles)
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, tileSize, tileSize, slotCount)
+    gl.texStorage3D(
+      gl.TEXTURE_2D_ARRAY, 1, twoChannel ? gl.RG8 : gl.RGBA8,
+      tileSize, tileSize, slotCount,
+    )
     // CLAMP, not REPEAT: a tile's own edge is the end of it. Wrapping would fetch the far side of
     // the same tile, which is ground thousands of kilometres away.
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -161,7 +181,7 @@ export const createTileAtlas = (gl, {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.texSubImage3D(
       gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot,
-      tileSize, tileSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels,
+      tileSize, tileSize, 1, twoChannel ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, pixels,
     )
     resident.set(key, { slot, z: tile.z, x: tile.x, y: tile.y, uploadedAt: now() })
     return slot
@@ -200,6 +220,7 @@ export const createTileAtlas = (gl, {
     // One page texel per finest-level tile, in each axis independently — the extent is a box of
     // whole tiles, so both counts are integers and the grids line up exactly.
     const finest = drawable.reduce((deepest, tile) => Math.max(deepest, tile.z), 0)
+    finestLevel = finest
     const across = Math.max(1, Math.round((1 / invWidth) * 2 ** finest))
     const down = Math.max(1, Math.round((1 / invHeight) * 2 ** finest))
     pageAligned = across <= pageResolution && down <= pageResolution
@@ -266,6 +287,10 @@ export const createTileAtlas = (gl, {
     bindOne(gl.TEXTURE_2D, ancestorTexture, uniforms.ancestor, 2)
     if (uniforms.extent) gl.uniform4f(uniforms.extent, ...extent)
     if (uniforms.shortfall) gl.uniform1f(uniforms.shortfall, shortfall)
+    if (uniforms.heightRange) gl.uniform2f(uniforms.heightRange, heightRange[0], heightRange[1])
+    if (uniforms.tileSize) gl.uniform1f(uniforms.tileSize, tileSize)
+    if (uniforms.circumference) gl.uniform1f(uniforms.circumference, MERCATOR_CIRCUMFERENCE_M)
+    if (uniforms.slopeStep) gl.uniform1f(uniforms.slopeStep, 1 / (2 ** finestLevel * tileSize))
   }
 
   return {
@@ -299,7 +324,10 @@ export const createTileAtlas = (gl, {
       // tiles again and blocks near boundaries may be indexed to a neighbour. Surfaced rather than
       // silent, because the artefact looks like a tile-seam problem and is really an indexing one.
       pageAligned,
-      atlasBytes: slotCount * tileSize * tileSize * 4,
+      channels,
+      // The number that belongs in a VRAM budget: this is the whole atlas, and it does not grow
+      // with zoom. A tiled pyramid is bounded by the screen, not by the world.
+      atlasBytes: slotCount * tileSize * tileSize * bytesPerTexel,
     }),
 
     dispose() {
@@ -351,6 +379,10 @@ uniform sampler2D u_tm_page;          // r = slot, g = level, b = fade
 uniform sampler2D u_tm_pageAncestor;  // r = slot, g = level
 uniform vec4 u_tm_pageExtent;         // x0, y0, 1/width, 1/height
 uniform float u_tm_shortfall;         // 0 = the pyramid has the detail, 1 = it ran out
+uniform vec2 u_tm_heightRange;        // metres at step zero, and metres per step
+uniform float u_tm_tileSize;          // texels along a tile's edge
+uniform float u_tm_circumference;     // metres round the equator, for ground scale
+uniform float u_tm_slopeStep;         // mercator step for slope, one texel of the FINEST level
 
 /** One tile of the array, at a point given in mercator 0..1. */
 vec4 tm_sampleLayer(vec2 mercatorUV, float slot, float level) {
@@ -382,6 +414,107 @@ vec4 tiledSampleSphere(vec3 unitPos) {
     lng / 6.28318530718 + 0.5,
     0.5 - log(tan(0.78539816339 + lat * 0.5)) / 6.28318530718
   ));
+}
+
+// ── Terrain ───────────────────────────────────────────────────────────────────────────────────
+// For the DEM source, whose tiles carry a 16-bit SIGNED height and nothing else. Relief and the
+// ocean want opposite halves of that number, so neither clamp is baked in — each takes its own.
+
+/**
+ * Signed height in metres. Below zero is sea floor, and it is real data, not a gap.
+ *
+ * Fixed point, three steps to the metre, anchored so that sea level is exactly zero rather than
+ * half a step off it. u_tm_heightRange is (metres at step zero, metres per step).
+ */
+float tiledHeight(vec2 mercatorUV) {
+  vec2 packed = tiledSample(mercatorUV).rg;
+  float raw = packed.r * 255.0 * 256.0 + packed.g * 255.0;
+  return u_tm_heightRange.x + raw * u_tm_heightRange.y;
+}
+
+/** Metres of water. Zero on land — the ocean's half of the same number. */
+float tiledDepth(vec2 mercatorUV) { return max(0.0, -tiledHeight(mercatorUV)); }
+
+/** Which LOD level covers this point. Needed to step by exactly one texel of the resident tile. */
+float tiledLevel(vec2 mercatorUV) {
+  vec2 page = clamp((mercatorUV - u_tm_pageExtent.xy) * u_tm_pageExtent.zw, 0.0, 1.0);
+  return texture(u_tm_page, page).g * 255.0;
+}
+
+/**
+ * A height difference along one axis, and the number of steps it spans.
+ *
+ * Two-sided where both neighbours are at the same LOD level as the centre; one-sided where a
+ * neighbour is not. Returning the span rather than assuming it is what keeps a one-sided difference
+ * from reading as half the slope, which would be a soft bright band instead of a dark line — better
+ * hidden, just as wrong.
+ */
+vec2 tm_slope(vec2 uv, vec2 offset, float level, float here) {
+  vec2 forward = uv + offset;
+  vec2 back = uv - offset;
+  bool hasForward = tiledLevel(forward) == level;
+  bool hasBack = tiledLevel(back) == level;
+  float high = hasForward ? max(0.0, tiledHeight(forward)) : here;
+  float low = hasBack ? max(0.0, tiledHeight(back)) : here;
+  float span = (hasForward ? 1.0 : 0.0) + (hasBack ? 1.0 : 0.0);
+  return vec2(high - low, max(1.0, span));
+}
+
+/**
+ * The surface normal, in the frame terrain-normals.js defines: +R east, +G SOUTH, +B up.
+ *
+ * DERIVED HERE RATHER THAN BAKED, and that is what disposes of the tile-edge seam. A normal baked
+ * per tile has to difference across its own edge with a one-sided stencil, because a terrarium tile
+ * has no overlap — measured elsewhere in this fleet at p99 8 shading levels against an 11 mean
+ * effect, i.e. a visible line along ridges exactly at the terminator, which is where relief is
+ * supposed to earn its place. The usual fix is to bake a one-texel apron, and that works when you
+ * bake tiles offline. We do not: tiles are fetched as published, so an apron would mean fetching
+ * neighbours.
+ *
+ * There is no need. Each tap here goes through the page table, so a tap that crosses a tile
+ * boundary is routed into the NEIGHBOURING tile's slot and lands at the right place inside it. The
+ * difference is two-sided everywhere, including at edges — exact, no apron, no extra bytes and no
+ * extra requests. It costs four taps instead of one.
+ *
+ * MERCATOR IS WHAT MAKES THIS SIMPLE. It is conformal, so one texel of u and one texel of v cover
+ * the same ground, and a single spacing serves both axes. The pole-crowding correction an
+ * equirectangular grid needs — where texels narrow to 30 m against a 19 km source and manufacture
+ * an 87 degree cliff around the Arctic — has no analogue here. Past ±85.0511° there are no tiles at
+ * all; see the "capped" flag in scheme.js, and fill the caps yourself.
+ *
+ * Heights are clamped to sea level PER TAP, before differencing, so open water comes out exactly
+ * flat. Clamping after averaging is the documented way to delete a mountain.
+ */
+vec3 tiledNormal(vec2 mercatorUV) {
+  // ONE GROUND BASELINE FOR EVERY LEVEL, not one texel of whichever tile happens to be here.
+  //
+  // Stepping by the resident tile's own texel measures a z9 tile's slope over twice the ground a
+  // z10 tile's is measured over, and a coarser DEM is genuinely smoother, so the two disagree about
+  // how bright the same hillside is. Where they meet that shows as a straight brightness step down
+  // the level boundary — measured over the Alps as two visible vertical lines, with no tile-edge
+  // artefact left to blame. Measuring both over the SAME distance of ground removes the step: the
+  // coarse side simply carries less detail, which is the truth, instead of different lighting.
+  float texel = u_tm_slopeStep;
+  float here = max(0.0, tiledHeight(mercatorUV));
+  float level = tiledLevel(mercatorUV);
+
+  // ACROSS A LEVEL BOUNDARY, DO NOT DIFFERENCE. A z9 tile and a z10 tile do not agree about the
+  // height along their shared edge — they sampled the same ground at different resolutions — and
+  // differencing across that disagreement turns a resampling difference of tens of metres into a
+  // slope over one texel. Measured over the Alps as a hard dark line down every level boundary.
+  //
+  // Ordinary same-level tile boundaries are NOT affected: the field really is continuous there, the
+  // tap crosses through the page table into the neighbour, and the difference stays two-sided. Only
+  // the handful of edges where the level changes fall back to one sided.
+  vec2 dx = tm_slope(mercatorUV, vec2(texel, 0.0), level, here);
+  vec2 dy = tm_slope(mercatorUV, vec2(0.0, texel), level, here);
+
+  // Ground metres one texel covers here. Mercator stretches with latitude, so this is not constant.
+  float lat = atan(sinh(3.14159265359 * (1.0 - 2.0 * mercatorUV.y)));
+  float ground = max(1.0, u_tm_circumference * cos(lat) * texel);
+
+  // A height field's normal: the gradient, negated, over a unit rise.
+  return normalize(vec3(-dx.x / (dx.y * ground), -dy.x / (dy.y * ground), 1.0));
 }
 
 /**

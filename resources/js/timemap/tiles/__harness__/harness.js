@@ -88,11 +88,13 @@ void main() {
   // inside the depth buffer's precision at orbital distance.
   if (!facesCamera(p, u_camera)) discard;
 
-  vec4 tile = tiledSample(v_merc);
-  vec3 normal = normalize(tile.rgb * 2.0 - 1.0);
+  // Height signed, normal derived in the shader — the tile bakes neither clamp.
+  float height = tiledHeight(v_merc);
+  vec3 normal = tiledNormal(v_merc);
   float shade = clamp(dot(normal, normalize(u_sun)), 0.0, 1.0);
+  float land = step(0.0, height);
   // Land shaded by its own relief, sea flat. The gradient of THIS is what gets measured.
-  vec3 colour = mix(vec3(0.03, 0.09, 0.20), vec3(0.15 + 0.85 * shade), tile.a);
+  vec3 colour = mix(vec3(0.03, 0.09, 0.20), vec3(0.15 + 0.85 * shade), land);
   // MapLibre blends custom layers ONE / ONE_MINUS_SRC_ALPHA: premultiplied.
   fragColor = vec4(colour, 1.0);
 }`
@@ -121,6 +123,10 @@ void main() {
         ancestor: gl.getUniformLocation(program, 'u_tm_pageAncestor'),
         extent: gl.getUniformLocation(program, 'u_tm_pageExtent'),
         shortfall: gl.getUniformLocation(program, 'u_tm_shortfall'),
+        heightRange: gl.getUniformLocation(program, 'u_tm_heightRange'),
+        tileSize: gl.getUniformLocation(program, 'u_tm_tileSize'),
+        circumference: gl.getUniformLocation(program, 'u_tm_circumference'),
+        slopeStep: gl.getUniformLocation(program, 'u_tm_slopeStep'),
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
         tileMercatorCoords: gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
         clippingPlane: gl.getUniformLocation(program, 'u_projection_clipping_plane'),

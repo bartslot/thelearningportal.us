@@ -23,6 +23,7 @@ const gl2Stub = () => {
     NEAREST: 9728, LINEAR: 9729, CLAMP_TO_EDGE: 33071,
     MAX_ARRAY_TEXTURE_LAYERS: 35071,
     TEXTURE0: 33984,
+    RG8: 33323, RG: 33319,
     createTexture: () => { calls.createTexture++; return { id: calls.createTexture } },
     deleteTexture: () => { calls.deleteTexture++ },
     bindTexture: (target, texture) => calls.bindTexture.push([target, texture]),
@@ -68,6 +69,18 @@ describe('allocating the array', () => {
     expect(width).toBe(4)
     expect(height).toBe(4)
     expect(layers).toBe(4)
+  })
+
+  it('uses a two-channel array when the source only needs sixteen bits', () => {
+    // Half the VRAM for the same data. On a school Chromebook that is the difference between
+    // holding twice as much of the world resident and not.
+    const { gl, calls } = gl2Stub()
+    const atlas = createTileAtlas(gl, { tileSize: 256, layers: 128, channels: 'rg' })
+    expect(calls.texStorage3D[0][2]).toBe(gl.RG8)
+    expect(atlas.stats().atlasBytes).toBe(128 * 256 * 256 * 2)
+
+    const four = createTileAtlas(gl2Stub().gl, { tileSize: 256, layers: 128 })
+    expect(four.stats().atlasBytes).toBe(128 * 256 * 256 * 4)
   })
 
   it('will not ask for more layers than the driver allows', () => {
@@ -261,11 +274,59 @@ describe('the page table', () => {
 })
 
 describe('the shader side', () => {
-  it('offers the three functions the overlay layers were promised', () => {
+  it('offers the functions the overlay layers were promised', () => {
     const { atlas } = atlasWith()
     expect(atlas.glsl).toContain('vec4 tiledSample(vec2')
     expect(atlas.glsl).toContain('vec4 tiledSampleSphere(vec3')
     expect(atlas.glsl).toContain('float tiledShortfall()')
+    expect(atlas.glsl).toContain('float tiledHeight(vec2')
+    expect(atlas.glsl).toContain('float tiledDepth(vec2')
+    expect(atlas.glsl).toContain('vec3 tiledNormal(vec2')
+  })
+
+  it('bakes neither clamp into the shader path that both consumers share', () => {
+    /**
+     * Relief wants max(h, 0); the ocean wants the negative half as depth. `tiledHeight` must hand
+     * back the signed number so each takes its own — a clamp here would leave the ocean with a flat
+     * sea floor, no error anywhere, and relief still looking perfect.
+     */
+    const { atlas } = atlasWith()
+    const height = atlas.glsl.slice(atlas.glsl.indexOf('float tiledHeight('), atlas.glsl.indexOf('float tiledDepth('))
+    expect(height).not.toContain('max(0.0')
+    expect(atlas.glsl).toContain('float tiledDepth(vec2 mercatorUV) { return max(0.0, -tiledHeight')
+  })
+
+  it('derives the normal from taps that route through the page table, not from an apron', () => {
+    // Each tap is a full tiledHeight call, so one that crosses a tile boundary lands in the
+    // neighbouring tile rather than clamping — which is what removes the edge seam without
+    // fetching neighbours or baking a border.
+    const { atlas } = atlasWith()
+    const slope = atlas.glsl.slice(atlas.glsl.indexOf('vec2 tm_slope('), atlas.glsl.indexOf('vec3 tiledNormal('))
+    expect(slope.match(/tiledHeight\(/g)).toHaveLength(2)
+    // Clamped per tap, before differencing: clamping after averaging deletes coastal mountains.
+    expect(slope.match(/max\(0\.0, tiledHeight/g)).toHaveLength(2)
+  })
+
+  it('refuses to difference across a level boundary, and divides by the span it actually used', () => {
+    /**
+     * Neighbouring tiles at different levels disagree about the height along their shared edge,
+     * because they sampled the same ground at different resolutions. Differencing across that turns
+     * a resampling difference into a slope and draws a dark line down every level boundary.
+     *
+     * The second half matters as much: a one-sided difference divided by the two-sided baseline
+     * reads as half the true slope, which is a soft bright band rather than a hard dark line —
+     * better hidden and just as wrong.
+     */
+    const { atlas } = atlasWith()
+    const slope = atlas.glsl.slice(atlas.glsl.indexOf('vec2 tm_slope('), atlas.glsl.indexOf('vec3 tiledNormal('))
+    expect(slope).toContain('tiledLevel(forward) == level')
+    expect(slope).toContain('tiledLevel(back) == level')
+    expect(slope).toContain('max(1.0, span)')
+    // The normal divides by that span, not by a hardcoded 2.
+    const normal = atlas.glsl.slice(atlas.glsl.indexOf('vec3 tiledNormal('))
+    expect(normal).toContain('dx.y')
+    expect(normal).toContain('dy.y')
+    expect(normal).not.toContain('2.0 * ground')
   })
 
   it('samples the array, not a flat texture', () => {

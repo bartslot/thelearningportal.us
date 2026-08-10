@@ -22,10 +22,14 @@
 import { TILE_PYRAMID_GLSL, createTileAtlas } from './atlas.js'
 import { cacheApiStore, createTileCache, memoryStore } from './cache.js'
 import { selectTiles } from './selection.js'
-import { TERRARIUM_TERRAIN, decodeTerrainTile, tileUrl } from './sources.js'
+import { HEIGHT_DECODE, TERRARIUM_TERRAIN, decodeTerrainTile, tileUrl } from './sources.js'
 
-export { TERRARIUM_TERRAIN, decodeTerrainTile, decodeTerrarium, terrainTextureFromHeights, tileUrl } from './sources.js'
-export { selectTiles, pixelsPerTexel } from './selection.js'
+export {
+  ELEVATION_RANGE_M, HEIGHT_DECODE, HEIGHT_STEPS_PER_M, MAX_ELEVATION_M, MIN_ELEVATION_M,
+  TERRARIUM_TERRAIN, decodeHeightTexel, decodeTerrainTile, decodeTerrarium,
+  heightTextureFromHeights, tileUrl,
+} from './sources.js'
+export { selectTiles, pixelsPerTexel, magnificationOf } from './selection.js'
 export { createTileCache, cacheApiStore, memoryStore } from './cache.js'
 export { createTileAtlas, TILE_PYRAMID_GLSL } from './atlas.js'
 export * from './scheme.js'
@@ -115,7 +119,13 @@ export const createTilePyramid = ({
 
     onAdd(glContext) {
       gl = glContext
-      atlas = createTileAtlas(gl, { tileSize: source.tileSize, layers, pageResolution })
+      atlas = createTileAtlas(gl, {
+        tileSize: source.tileSize,
+        layers,
+        pageResolution,
+        channels: source.channels ?? 'rgba',
+        heightRange: HEIGHT_DECODE,
+      })
     },
 
     /**

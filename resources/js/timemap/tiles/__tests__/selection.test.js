@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pixelsPerTexel, selectTiles } from '../selection.js'
+import { magnificationOf, pixelsPerTexel, selectTiles } from '../selection.js'
 import { keyOf, tilesPerAxis } from '../scheme.js'
 
 /**
@@ -60,6 +60,45 @@ describe('the error metric', () => {
     const middle = { z: level, x: span / 2, y: span / 2 }
     const nearLimb = { z: level, x: Math.round(span * 0.32), y: span / 2 }
     expect(pixelsPerTexel(nearLimb, view, DEM)).toBeLessThan(pixelsPerTexel(middle, view, DEM))
+  })
+})
+
+describe('a source that is not tiled at all', () => {
+  /**
+   * The cloud deck's field is one 2048-wide equirectangular texture. It is not in the pyramid and
+   * never will be — real cloud fraction is dated weather data, and 2026's weather over a 1642 map
+   * is the anachronism this project deleted four drawn atlases to avoid.
+   *
+   * But the deck still needs to know how magnified that texture is, so it can hand the work over to
+   * procedural noise. Describing it as a one-level source gets that number out of the same
+   * arithmetic, honestly, instead of the hardcoded `FIELD_METRES_PER_PIXEL` it guesses with today.
+   *
+   * `selectTiles` fetches nothing and touches no GL, so this costs nothing and streams nothing.
+   */
+  const CLOUD_FIELD = { minzoom: 0, maxzoom: 0, tileSize: 2048 }
+
+  it('reports how magnified a single global texture is, without streaming anything', () => {
+    const close = magnificationOf(camera({ zoom: 11 }), CLOUD_FIELD)
+    const far = magnificationOf(camera({ zoom: 2 }), CLOUD_FIELD)
+    expect(close).toBeGreaterThan(far)
+    expect(far).toBeLessThan(1.5)      // at globe zoom a 2048 field is about right
+    expect(close).toBeGreaterThan(10)  // by z11 it is a smooth wash
+  })
+
+  it('is a supported descriptor, not something that happens to work', () => {
+    const report = selectTiles(camera({ zoom: 9 }), CLOUD_FIELD, { maxTiles: 64 })
+    expect(report.tiles).toHaveLength(1)
+    expect(report.maxLevel).toBe(0)
+    // Starved from the first frame, because there is no finer level to ask for — and the AMOUNT is
+    // what a deck needs, since it wants to fade rather than switch.
+    expect(report.starved).toBe(true)
+    expect(report.worstPixelsPerTexel).toBeGreaterThan(1)
+  })
+
+  it('agrees with the selection it would have made', () => {
+    const view = camera({ zoom: 7 })
+    const report = selectTiles(view, CLOUD_FIELD, { maxTiles: 64 })
+    expect(magnificationOf(view, CLOUD_FIELD)).toBeCloseTo(report.worstPixelsPerTexel, 6)
   })
 })
 

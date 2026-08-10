@@ -24,6 +24,7 @@ import {
   groundMetresPerScreenPixel,
   groundMetresPerTexel,
   keyOf,
+  tileForLngLat,
   tileLngLatBounds,
   tileMercatorBounds,
   tilesPerAxis,
@@ -246,6 +247,26 @@ export const selectTiles = (camera, source, options = {}) => {
     worstPixelsPerTexel: tiles.reduce((max, tile) => Math.max(max, tile.pixelsPerTexel), 0),
     starved,
   }
+}
+
+/**
+ * How magnified a source is under this camera, as screen pixels per texel of its best level.
+ *
+ * For sources that are IN the pyramid this is `worstPixelsPerTexel` and tracks the target. Its
+ * real use is the other case: a source with `{minzoom: 0, maxzoom: 0}` and its true width as
+ * `tileSize` describes a single global texture that is not tiled at all, and this returns the
+ * honest magnification of it — which is what a layer should fade its procedural detail in against,
+ * instead of a hardcoded metres-per-pixel constant that was always a guess.
+ *
+ * A supported use, not an accident: `selectTiles` fetches nothing and touches no GL, so asking it
+ * for arithmetic about a texture it will never stream is free and exact.
+ *
+ * 1 means one texel per screen pixel. Above 1 the source is being magnified and is losing detail.
+ */
+export const magnificationOf = (camera, source) => {
+  const level = Math.max(source.minzoom ?? 0, Math.min(source.maxzoom ?? 0, Math.ceil(camera.zoom)))
+  const tile = tileForLngLat(camera.center.lng, camera.center.lat, level)
+  return pixelsPerTexel(tile, camera, source)
 }
 
 /** Children, with x wrapped — a tile on the last column has children on the first. */

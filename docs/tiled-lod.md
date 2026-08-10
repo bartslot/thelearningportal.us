@@ -91,10 +91,24 @@ pyramid.onRemove()
 Your fragment shader pastes in `pyramid.glsl` (a string) and calls:
 
 ```glsl
-vec4  tiledSample(vec2 mercatorUV);      // cross-faded across LOD levels
+vec4  tiledSample(vec2 mercatorUV);      // raw texel, cross-faded across LOD levels
 vec4  tiledSampleSphere(vec3 unitPos);   // sphere direction → mercator → sample
 float tiledShortfall();                  // 0 = pyramid has the detail, 1 = starved
+
+// For the DEM source, whose tiles carry a 16-bit SIGNED height and nothing else:
+float tiledHeight(vec2 mercatorUV);      // metres, signed — below zero is sea floor
+float tiledDepth(vec2 mercatorUV);       // metres of water, zero on land
+vec3  tiledNormal(vec2 mercatorUV);      // +R east, +G SOUTH, +B up
 ```
+
+**Neither clamp is baked in.** Relief takes `max(h, 0)` because three kilometres of water is opaque
+and shading the sea floor turns the Atlantic into a bathymetric chart; the ocean takes the negative
+half as depth. Baking either into the tile would leave the other consumer with nothing — and the
+ocean's failure would be silent, since relief would still look perfect.
+
+`tiledNormal` already clamps to sea level per tap, before differencing. Clamping after averaging is
+how you delete a coastal mountain: half a 2,000 m massif and half a 4,000 m trench averages to
+−1,000 m and then to zero.
 
 `tiledSample` takes mercator 0..1 — the same space `buildSphereMesh` lays its vertices out in, so
 you already have it as `a_pos`. For a raymarch, convert from the unit sphere with
@@ -208,20 +222,24 @@ range, which separates "smooth but real" from "flat fill". Every row was capture
 
 | zoom | detail, 2048 field | detail, pyramid | gain | level | tiles |
 |---:|---:|---:|---:|---:|---:|
-| z2  | 6.765 | 6.869 | 1.0× | 3 → 4 | 16 → 19 |
-| z8  | 0.111 | 13.689 | **123×** | 3 → 9 | 1 → 62 |
-| z11 | 0.022 | 4.959 | **228×** | 3 → 12 | 1 → 62 |
-| z14 | 0.000 | 0.398 | flat → real | 3 → 12 | 1 → 4 |
+| z2  | 6.29 | 6.82 | 1.1× | 3 → 4 | 16 → 19 |
+| z8  | 0.091 | 13.84 | **153×** | 3 → 9 | 1 → 62 |
+| z11 | 0.018 | 7.46 | **412×** | 3 → 12 | 1 → 62 |
+| z14 | 0.002 | 1.27 | **605×** | 3 → 12 | 1 → 4 |
 
-Spread tells the same story: at z11 the global field spans 5 luminance levels against the pyramid's
-214, and at z14 it is 0 — a literally featureless fill — against 51.
+Spread tells the same story: at z11 the global field spans 4 luminance levels against the pyramid's
+215, and at z14 it is 1 — a featureless fill — against 61.
 
 **z2 is the control, and it matters.** At globe zoom a 2048-wide field is genuinely enough, and the
-pyramid returns the same picture. The fix changes nothing where nothing was broken.
+pyramid returns essentially the same picture. The fix changes nothing where nothing was broken.
 
 z14 is past the DEM's last level, so both runs are starved. The pyramid still shows real terrain
 magnified 8× (`worstPixelsPerTexel: 8`, `shortfall: 0.875`); the global field shows nothing at all.
 That is exactly the case `tiledShortfall()` exists for.
+
+The z11 and z14 figures are roughly double an earlier build of this module that baked an 8-bit
+normal per tile. Deriving the normal in the shader instead removed the quantisation and the
+one-sided edge stencil at once.
 
 ### Cache
 
@@ -234,38 +252,192 @@ The warm row is the persistent store doing its job: a full reload of a four-zoom
 network requests**. Within one session, descending z11 → z14 also cost zero fetches, because the
 z12 tiles were already resident.
 
-96 MB budget, 128 atlas slots. The sweep held 35.8 MB decoded across 143 tiles and 32 MB of atlas,
-with 0 evictions and 0 failures.
+96 MB budget, 128 atlas slots. The sweep held 17.9 MB decoded across 143 tiles and 16.0 MiB of
+atlas, with 0 evictions and 0 failures.
 
-## Known artefact, not yet fixed
+### VRAM, which is the real argument
 
-At a level boundary — a z9 tile beside a z10 one — there is a soft brightness step. It is not an
-indexing bug (that was the page-table alignment, fixed above): a coarser DEM genuinely has gentler
-slopes, so its normals are honestly flatter. Rendering a uniform single level makes it vanish
-entirely, which is how it was isolated.
+A texture uploaded from an `<img>` is RGBA8 whatever the file said, and mipmaps add a third again.
+A global field costs what its resolution costs, everywhere, forever:
 
-The standard fix is to blend toward the parent near boundaries rather than switching at them. It is
-small, visible only on shaded relief, and it does not block anyone building against this interface,
-so it is written down rather than rushed.
+| global single texture | resident | tiled pyramid | resident |
+|---|---:|---|---:|
+| 2048 × 1024 | 10.7 MiB | atlas, 128 slots of RG8 | **16.0 MiB** |
+| 4096 × 2048 | 42.7 MiB | decoded tiles in memory | 17.9 MiB |
+| 8192 × 4096 | 170.7 MiB | | |
+| 16384 × 8192 | 682.7 MiB | | |
+
+The tiled figure **does not change between z2 and z14** — it is bounded by the screen, not by the
+world, which is the whole point. The global column doubles with every level of detail you ask for
+and is resident whether you are looking at Utrecht or at the Pacific.
+
+Two consequences worth stating plainly:
+
+- An 8192 × 4096 fallback does not fit a 96 MB budget on its own (170.7 MiB). On a WebGL1 machine
+  the largest global map that leaves room for anything else is 4096 × 2048 at 42.7 MiB.
+- The DEM's tiles are two-channel (`RG8`), because a height needs sixteen bits and no more. That
+  halves the atlas against an RGBA one for identical data — 16 MiB rather than 32.
+
+## Tile edges: why there is no apron
+
+The fleet's ruling was to bake a 1-texel apron — 258 × 258 carrying 256 × 256 — after Realistic
+Earth measured that a one-sided difference at every tile edge costs p99 8 shading levels at the
+terminator, against an 11.1 mean relief effect. That measurement stands and it is the reason the
+naive answer is not good enough.
+
+**The apron is not built, because this pyramid does not need one.** An apron is the right fix when
+tiles are baked offline and the shader has only the tile it is given. Here the normal is derived in
+the shader, and every tap goes through the page table — so a tap that crosses a tile boundary is
+routed into the neighbouring tile's slot and lands at the correct place inside it. The difference is
+two-sided at tile edges, exactly, with:
+
+- no apron and no border texels,
+- **zero extra bytes** (against the apron's 1.6%),
+- zero extra requests, same as the apron,
+- and no bake step, which matters because our tiles are fetched as published rather than baked.
+
+It costs four texture taps instead of one. Verified by rendering a uniform single level over the
+Alps: the tile-edge seams that were visible before are gone.
+
+If tiles are ever baked ahead of time (see compression, below), the apron becomes worth revisiting —
+it would let a consumer difference locally without four page lookups.
+
+## Level boundaries: a real artefact, and what was done about it
+
+Where a z9 tile meets a z10 one, the two disagree about the height along their shared edge: they
+sampled the same ground at different resolutions. Two things came out of that, in order:
+
+1. **A broad brightness step.** Measuring slope over each tile's *own* texel means a z9 tile's slope
+   is measured over twice the ground, and a coarser DEM is genuinely smoother, so the two sides are
+   lit differently. Fixed by measuring every level over the same ground baseline — one texel of the
+   finest level in view. The coarse side then simply carries less detail, which is the truth,
+   instead of different lighting.
+2. **A hard dark line.** With a fine baseline the disagreement stops being spread out and
+   concentrates into one texel, which is worse: a resampling difference of tens of metres becomes a
+   slope over 38 m of ground. Fixed by not differencing across a level change at all — `tm_slope`
+   checks the neighbour's level and falls back to a one-sided difference there, dividing by the span
+   it actually used rather than by the two-sided baseline.
+
+Ordinary same-level tile boundaries are untouched by that fallback: the field really is continuous
+there, and the difference stays two-sided. Only the handful of edges where the level changes lose a
+side.
+
+## Where this lands
+
+**Not in the lesson-map bundle.** That bundle just had about 1 MB of glyph chunks and three tilesets
+removed for load time, because a class opens it on school wifi.
+
+The measured cost of the module itself is small — six files, no dependencies beyond `planet-mesh.js`
+and `terrain-normals.js`, no library — but bundle size is the wrong number to argue from anyway. The
+real cost is that a pyramid streams tiles: 128 network requests for a four-zoom sweep, cold. A
+lesson map that opens on a fixed view and stays there gains nothing from LOD and pays for it in
+requests at exactly the moment thirty children open it at once.
+
+The Time-Map is a teacher research tool where someone zooms from the globe to a city, which is the
+case this exists for. That is where it goes.
+
+If it is ever wanted in the lesson map, the argument should come with a bundle-size delta and a
+cold-load number measured on that page, not from here.
 
 ## Open questions for the PM
 
-1. **Clouds have no tiled cloud source.** NASA GIBS publishes cloud fraction as WMTS tiles in the
-   same z/x/y scheme, which would drop straight in. Worth confirming that is wanted before I wire
-   it, or clouds keep the global field for coverage and use the pyramid only for `starved`.
-2. **Normal-map seams at tile edges.** Terrarium tiles have no overlap, so a normal computed at a
-   tile's edge is missing one neighbour row. Options are a half-texel seam (19 m at z12, and not
-   visible in the renders above), or fetching the 8 neighbours per tile at 8× the requests. I plan
-   the seam unless the shadow session says it shows.
-3. **Budget.** 96 MB of decoded tiles is my default; the four-zoom sweep used 35.8 MB. If the
-   mountain-shadow session wants a lot of z12 resident at once, say so and I will raise it.
+All three of the original questions are settled: no tiled cloud source (keep the global field, and
+use `magnificationOf` for the honest magnification number), tile edges need no apron here (see
+above), and the 96 MB budget stands — the sweep uses 17.9 MB of decoded tiles and 16.0 MiB of atlas.
+
+Still open:
+
+1. **`planet-mesh.js` and `terrain-normals.js` are on this branch verbatim, copied.** Both are owned
+   elsewhere in the fleet and are imported here rather than re-derived, which was the point — but
+   until the branches merge there are two files that happen to agree. **They must resolve to one
+   module each at merge, not two copies.** Flagging rather than resolving unilaterally, since
+   neither is mine.
+2. **Which regions get baked**, if compression goes ahead. That decision comes before the
+   compression work, not after — see below.
+
+## As a plugin: what the interface may and may not assume
+
+This is meant to serve products that are not History Portal, so the public surface was audited
+against that. It assumes: WebGL2, a MapLibre v5 custom layer's `render` arguments, and web-mercator
+z/x/y tiles. It assumes nothing about a lesson player, a Livewire component, this repo's scene
+model, a database, or History Portal at all. `createTilePyramid` / `onAdd` / `update` / `bind` /
+`onRemove` take a GL context, a plain camera object and a source descriptor — no framework types
+cross the boundary.
+
+Two places where an assumption could still hide, both deliberate:
+
+- **The GLSL paste** names its uniforms `u_tm_*`. That prefix is the only namespace collision risk a
+  consumer inherits, and it is documented rather than generated so a layer can grep for it.
+- **The camera adapter** (`cameraFromMap`) is the one MapLibre-shaped thing, and it is a separate
+  export precisely so a non-MapLibre host can build the plain camera object itself and never import
+  it.
+
+### Tiles that vary by date
+
+Not built, and worth flagging before anything forecloses it: tectonic movement and generated
+historical cities would mean a tile at the same z/x/y differs by DATE — a 200-million-year-old
+coastline is not the modern one. Nothing in the current design prevents that. The tile key is
+`z/x/y`, produced by `keyOf` in one place and consumed as an opaque string by the cache, the atlas
+and the page table. Adding a date would mean extending that key and the source's URL template, and
+nothing else would need to know. The persistent store is keyed by URL, so dated tiles would cache
+separately for free. **The one thing that would make it hard is baking the date into the atlas slot
+allocator or the page table**, and neither knows what a key means today. Keep it that way.
+
+## Adaptive quality tiers
+
+The detection and the budget live here; the policy does not. What the pyramid already knows or can
+report:
+
+- `pyramid.supported` — false without WebGL2 texture arrays.
+- `stats().slots` — clamped to the driver's `MAX_ARRAY_TEXTURE_LAYERS`.
+- `stats().atlasBytes` — exact VRAM for the atlas, and it does not grow with zoom.
+- `stats().bytes` / `budgetBytes` — decoded tiles held, against the ceiling.
+- `stats().hitRate`, `networkFetches` — whether the network or the GPU is the constraint.
+- `targetPixelsPerTexel` — the cost dial. Measured by the relief consumer: amplitude does not decay
+  with magnification, only crispness does, at a clean 1/n. So 2 costs a quarter of the tiles for
+  about 60% of the detail, and 4 costs a sixteenth for a third. There is no threshold to clear,
+  which makes this a pure quality/cost lever rather than a correctness one.
+
+A tier is therefore a triple of `layers`, `budgetBytes` and `targetPixelsPerTexel`, all already
+constructor options. The 96 MB budget becomes a per-tier number rather than one constant.
 
 ## GPU texture compression
 
-KTX2/Basis was asked about. Feasibility, briefly: it would cut atlas VRAM roughly 4–6× and let far
-more tiles stay resident at the quality Bart wants. It needs a transcoder in the bundle (~200 KB
-wasm) and, more awkwardly, our tiles are **derived** — normals and land masks computed at runtime
-from PNG DEM — so there is nothing pre-compressed to fetch. Compressing at runtime is not viable.
-The real win would need a build step that bakes and compresses tiles ahead of time, which is a
-different piece of work. **Recommendation: not now, and not blocking.** Revisit if VRAM becomes the
-limit rather than bandwidth.
+Costed properly now that a build step is in scope rather than a blocker.
+
+**What it would buy, against today's measured figures.** The atlas is 16.0 MiB (128 slots of
+256 × 256 RG8) and decoded tiles in memory are 17.9 MiB. Transfer is one 256 × 256 terrarium PNG per
+tile, about 40–60 KB.
+
+| | now | with KTX2/Basis |
+|---|---:|---:|
+| atlas VRAM, 128 slots | 16.0 MiB | 4.0 MiB (BC5/EAC-RG, 4:1) |
+| transfer per tile | 40–60 KB PNG | 32 KB, and no decode |
+| main-thread decode | PNG → canvas → repack | transcode only |
+
+**What the build step involves.** Fetch terrarium z0–z12 for the regions we care about, decode,
+repack to the fixed-point RG encoding, compress to KTX2 with an RG-capable format, and publish.
+Whole-world z12 is 16.7 M tiles and is not on the table; per-region bakes around the places lessons
+actually visit are, and that is exactly the "generate only that portion of the world" instinct the
+pyramid already implements at runtime.
+
+**What it costs to maintain.** Three things, and the third is the real one:
+1. A transcoder in the bundle, roughly 200 KB of wasm, loaded once.
+2. A publish pipeline and storage for the baked set, plus a cache-busting version in the tile URL.
+3. **A second source of truth.** Baked tiles can drift from the runtime decoder, and a stale baked
+   tile behind a corrected decoder is unfalsifiable — the Realistic Earth session hit exactly this
+   and had to add a cache version bump to make it falsifiable again. Any bake needs its encoding
+   version in the URL from day one, not added later.
+
+**One caution specific to us.** BC5/EAC-RG is a *lossy, block-based* format, and our two channels
+are not colour — they are one 16-bit number split across them. Compressing the high and low bytes
+independently, lossily, corrupts heights in a way that is not a small error: an error of one in the
+high byte is 85 metres. **A naive KTX2 pass on this payload is not merely lower quality, it is
+wrong.** The viable routes are a single-channel 16-bit format, or splitting into a coarse channel
+plus a residual so lossy compression degrades gracefully. That is a design task, not a flag.
+
+**Recommendation.** Worth doing, not yet. The cheap half is already taken: RG8 rather than RGBA8
+halved the atlas for nothing. Compression should follow a decision about which regions get baked,
+because the bake is what makes it possible, and it needs the encoding question above answered
+first. Nothing about the current design forecloses it — the atlas takes an internal format, and the
+cache stores opaque bytes.

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
-  SEA_BAND_M,
+  MAX_ELEVATION_M,
+  MIN_ELEVATION_M,
   TERRARIUM_TERRAIN,
+  decodeHeightTexel,
   decodeTerrainTile,
   decodeTerrarium,
-  seaLevelRamp,
-  terrainTextureFromHeights,
+  heightTextureFromHeights,
   tileUrl,
 } from '../sources.js'
 
@@ -56,113 +57,78 @@ describe('decoding terrarium', () => {
   })
 })
 
-describe('sea level', () => {
-  it('puts the shoreline exactly in the middle of the ramp', () => {
-    expect(seaLevelRamp(0)).toBeCloseTo(0.5, 6)
-  })
-
-  it('is linear through the band, so filtering between texels lands where the coast really is', () => {
-    /**
-     * A hard 0/1 mask is what makes the current baked mask step along every shore: linear filtering
-     * across a binary edge puts the coastline at the texel boundary rather than where the land
-     * actually stops. A ramp in METRES interpolates to the true crossing.
-     */
-    const quarter = seaLevelRamp(SEA_BAND_M / 2)
-    expect(quarter).toBeCloseTo(0.75, 6)
-    expect(seaLevelRamp(-SEA_BAND_M / 2)).toBeCloseTo(0.25, 6)
-  })
-
-  it('saturates outside the band rather than running away', () => {
-    expect(seaLevelRamp(8848)).toBe(1)
-    expect(seaLevelRamp(-10935)).toBe(0)
-  })
-})
-
-describe('normals from heights', () => {
-  const SIZE = 8
-  const METRES_PER_TEXEL = 100
-
-  const unpack = (rgba, size, x, y) => {
-    const i = (y * size + x) * 4
-    return {
-      x: (rgba[i] / 255) * 2 - 1,
-      y: (rgba[i + 1] / 255) * 2 - 1,
-      z: (rgba[i + 2] / 255) * 2 - 1,
-      land: rgba[i + 3] / 255,
+describe('storing a height', () => {
+  /**
+   * Sixteen bits of signed height, and NO clamp baked in. Relief takes `max(h, 0)` and the ocean
+   * takes the negative half; a tile that arrived pre-flattened would leave the ocean with no data
+   * and no error, while relief carried on looking perfect.
+   */
+  it('round-trips a height through two bytes', () => {
+    for (const metres of [0, 1, -1, 8848, -10935, 250.5, -3200]) {
+      const packed = heightTextureFromHeights(Float32Array.from([metres]), 1)
+      expect(decodeHeightTexel(packed[0], packed[1])).toBeCloseTo(metres, 0)
     }
-  }
-
-  it('points straight up over flat ground', () => {
-    const flat = terrainTextureFromHeights(decodeTerrarium(demImage(SIZE, () => 500), SIZE), SIZE, METRES_PER_TEXEL)
-    const n = unpack(flat, SIZE, 4, 4)
-    expect(n.x).toBeCloseTo(0, 2)
-    expect(n.y).toBeCloseTo(0, 2)
-    expect(n.z).toBeCloseTo(1, 2)
   })
 
-  it('tilts away from a slope that rises to the east', () => {
-    // Ground climbing eastward has a normal leaning west, which is negative x.
-    const heights = decodeTerrarium(demImage(SIZE, (x) => x * 50), SIZE)
-    const n = unpack(terrainTextureFromHeights(heights, SIZE, METRES_PER_TEXEL), SIZE, 4, 4)
-    expect(n.x).toBeLessThan(-0.3)
-    expect(n.y).toBeCloseTo(0, 2)
+  it('keeps the sea floor, which is the ocean layer\'s only data source', () => {
+    const packed = heightTextureFromHeights(Float32Array.from([-4000]), 1)
+    expect(decodeHeightTexel(packed[0], packed[1])).toBeLessThan(-3900)
   })
 
-  it('tilts the other way for a slope rising to the south', () => {
-    const heights = decodeTerrarium(demImage(SIZE, (_x, y) => y * 50), SIZE)
-    const n = unpack(terrainTextureFromHeights(heights, SIZE, METRES_PER_TEXEL), SIZE, 4, 4)
-    expect(n.y).toBeLessThan(-0.3)
-    expect(n.x).toBeCloseTo(0, 2)
+  it('resolves better than a metre, so a depth ramp does not band into contour rings', () => {
+    const a = heightTextureFromHeights(Float32Array.from([-100]), 1)
+    const b = heightTextureFromHeights(Float32Array.from([-100.5]), 1)
+    expect(decodeHeightTexel(a[0], a[1])).not.toBeCloseTo(decodeHeightTexel(b[0], b[1]), 4)
+    const step = Math.abs(decodeHeightTexel(a[0], a[1]) - decodeHeightTexel(b[0], b[1]))
+    expect(step).toBeLessThan(1)
   })
 
-  it('leans harder where the ground is steeper', () => {
-    const gentle = decodeTerrarium(demImage(SIZE, (x) => x * 5), SIZE)
-    const steep = decodeTerrarium(demImage(SIZE, (x) => x * 200), SIZE)
-    const a = unpack(terrainTextureFromHeights(gentle, SIZE, METRES_PER_TEXEL), SIZE, 4, 4)
-    const b = unpack(terrainTextureFromHeights(steep, SIZE, METRES_PER_TEXEL), SIZE, 4, 4)
-    expect(Math.abs(b.x)).toBeGreaterThan(Math.abs(a.x))
+  it('holds the whole real range without saturating at either end', () => {
+    const deep = heightTextureFromHeights(Float32Array.from([MIN_ELEVATION_M]), 1)
+    const high = heightTextureFromHeights(Float32Array.from([MAX_ELEVATION_M]), 1)
+    expect(decodeHeightTexel(deep[0], deep[1])).toBeCloseTo(MIN_ELEVATION_M, 0)
+    expect(decodeHeightTexel(high[0], high[1])).toBeCloseTo(MAX_ELEVATION_M, 0)
+    // Challenger Deep and Everest both sit inside it with room to spare.
+    expect(MIN_ELEVATION_M).toBeLessThan(-10935)
+    expect(MAX_ELEVATION_M).toBeGreaterThan(8848)
   })
 
-  it('reads the same slope as steeper where texels cover less ground', () => {
+  it('writes two bytes per texel, not four', () => {
+    // Half the VRAM of an RGBA tile for exactly the same data, which is what decides how much of
+    // the world stays resident on a school Chromebook.
+    expect(heightTextureFromHeights(new Float32Array(64), 8)).toHaveLength(8 * 8 * 2)
+  })
+
+  it('clips nonsense rather than wrapping it into a mountain', () => {
+    // Saturates at the ends of the fixed-point range, which is wider than the real one — what
+    // matters is that an absurd value cannot wrap round into a plausible mountain.
+    const high = heightTextureFromHeights(Float32Array.from([500000]), 1)
+    const low = heightTextureFromHeights(Float32Array.from([-500000]), 1)
+    expect(decodeHeightTexel(high[0], high[1])).toBeGreaterThanOrEqual(MAX_ELEVATION_M)
+    expect(decodeHeightTexel(low[0], low[1])).toBeLessThanOrEqual(MIN_ELEVATION_M)
+  })
+
+  it('puts sea level close enough to zero that open water stays flat', () => {
     /**
-     * The same height difference across 38 m of ground (z12) is a far steeper hill than across
-     * 611 m (z8). Forgetting to scale by the tile's own resolution makes every level look like a
-     * different planet, and it is invisible until two levels are on screen at once.
+     * The bias class that bit the baked normal map: flat ground encoded to byte 128 and decoded
+     * with `texel*2-1` to 0.0039 rather than 0 — a constant tilt over every flat texel on earth,
+     * measured as a whole 8-bit level of shading across open ocean. It survives every relative
+     * check, because everything is wrong by the same amount.
+     *
+     * A height grid cannot have that failure in the same form, since nothing is centred on 128 —
+     * but the round-trip still has to land near zero or every ocean texel gets a small slope. It
+     * lands within a millimetre, which over 38 m of ground at z12 is a slope of 3e-5 degrees.
      */
-    const heights = decodeTerrarium(demImage(SIZE, (x) => x * 50), SIZE)
-    const coarse = unpack(terrainTextureFromHeights(heights, SIZE, 600), SIZE, 4, 4)
-    const fine = unpack(terrainTextureFromHeights(heights, SIZE, 40), SIZE, 4, 4)
-    expect(Math.abs(fine.x)).toBeGreaterThan(Math.abs(coarse.x))
+    const packed = heightTextureFromHeights(Float32Array.from([0]), 1)
+    expect(Math.abs(decodeHeightTexel(packed[0], packed[1]))).toBeLessThan(0.001)
   })
 
-  it('carries the coastline in the alpha channel, so one tile serves shadow and ocean alike', () => {
-    const heights = decodeTerrarium(demImage(SIZE, (x) => (x < 4 ? -500 : 500)), SIZE)
-    const rgba = terrainTextureFromHeights(heights, SIZE, METRES_PER_TEXEL)
-    expect(unpack(rgba, SIZE, 1, 4).land).toBeCloseTo(0, 2)
-    expect(unpack(rgba, SIZE, 6, 4).land).toBeCloseTo(1, 2)
-  })
-
-  it('produces a full RGBA image with nothing out of range or NaN', () => {
-    const heights = decodeTerrarium(demImage(SIZE, (x, y) => Math.sin(x) * 900 + y * 30), SIZE)
-    const rgba = terrainTextureFromHeights(heights, SIZE, METRES_PER_TEXEL)
-    expect(rgba).toHaveLength(SIZE * SIZE * 4)
-    rgba.forEach((value) => {
-      expect(Number.isFinite(value)).toBe(true)
-      expect(value).toBeGreaterThanOrEqual(0)
-      expect(value).toBeLessThanOrEqual(255)
-    })
-  })
-
-  it('clamps at the tile edge rather than reading off the end of the array', () => {
-    // Terrarium tiles do not overlap, so an edge texel is missing a neighbour row. Clamping costs
-    // a half-texel seam; reading past the end would wrap a normal from the far side of the tile.
-    const heights = decodeTerrarium(demImage(SIZE, (x) => x * 50), SIZE)
-    const rgba = terrainTextureFromHeights(heights, SIZE, METRES_PER_TEXEL)
-    for (const [x, y] of [[0, 0], [SIZE - 1, 0], [0, SIZE - 1], [SIZE - 1, SIZE - 1]]) {
-      const n = unpack(rgba, SIZE, x, y)
-      expect(Number.isFinite(n.x)).toBe(true)
-      expect(n.z).toBeGreaterThan(0)
-    }
+  it('never writes past the end of the texture, whatever it is handed', () => {
+    // A size that disagrees with the array length is a caller bug, but it must not corrupt memory
+    // beyond the tile — that reads back as NaN and looks like a decode fault.
+    const bytes = heightTextureFromHeights(new Float32Array(16), 2)
+    expect(bytes).toHaveLength(8)
+    bytes.forEach((value) => expect(Number.isFinite(value)).toBe(true))
   })
 })
 
@@ -197,25 +163,26 @@ describe('turning fetched PNG bytes into a tile', () => {
     lastImageDataSize = null
   })
 
-  it('produces one RGBA texel per DEM pixel, at the source tile size', async () => {
+  it('produces two bytes per DEM pixel, at the source tile size', async () => {
     stubBrowserDecode(() => 250)
     const { data, bytes } = await decodeTerrainTile(new ArrayBuffer(8), { z: 6, x: 33, y: 21 })
     expect(lastImageDataSize).toEqual([SIZE, SIZE])
-    expect(data).toHaveLength(SIZE * SIZE * 4)
-    expect(bytes).toBe(SIZE * SIZE * 4)
+    expect(data).toHaveLength(SIZE * SIZE * 2)
+    expect(bytes).toBe(SIZE * SIZE * 2)
   })
 
-  it('scales the normals by the tile\'s own ground resolution, not a fixed one', async () => {
+  it('carries the height through unchanged, whatever level the tile is at', async () => {
     /**
-     * The same DEM read at z4 and at z11 is the same heights across wildly different ground. If the
-     * spacing did not come from the tile, one of those two levels would be a different planet — and
-     * cross-level blending puts both on screen at once.
+     * The decode must not depend on the tile's zoom. It used to: normals were baked here and scaled
+     * by the tile's ground resolution. Now the tile is raw height and the scaling happens in the
+     * shader, which is what lets a single tile serve both relief and the ocean.
      */
-    stubBrowserDecode((x) => x * 40)
+    stubBrowserDecode(() => -3200)
     const { data: coarse } = await decodeTerrainTile(new ArrayBuffer(8), { z: 4, x: 8, y: 5 })
     const { data: fine } = await decodeTerrainTile(new ArrayBuffer(8), { z: 11, x: 1050, y: 670 })
-    const nx = (rgba) => rgba[(4 * SIZE + 4) * 4] / 255
-    expect(Math.abs(nx(fine) - 0.5)).toBeGreaterThan(Math.abs(nx(coarse) - 0.5))
+    const middle = (bytes) => decodeHeightTexel(bytes[(4 * SIZE + 4) * 2], bytes[(4 * SIZE + 4) * 2 + 1])
+    expect(middle(coarse)).toBeCloseTo(-3200, 0)
+    expect(middle(fine)).toBeCloseTo(middle(coarse), 6)
   })
 
   it('releases the decoded bitmap rather than leaking one per tile', async () => {
@@ -232,6 +199,10 @@ describe('the source descriptor', () => {
     expect(TERRARIUM_TERRAIN.url).toBe('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png')
     expect(TERRARIUM_TERRAIN.maxzoom).toBe(12)
     expect(TERRARIUM_TERRAIN.tileSize).toBe(256)
+  })
+
+  it('asks for a two-channel texture, because height needs sixteen bits and no more', () => {
+    expect(TERRARIUM_TERRAIN.channels).toBe('rg')
   })
 
   it('fills a tile into its url template', () => {
