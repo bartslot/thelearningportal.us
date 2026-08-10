@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { moonPosition, moonVector, moonPhase } from '../moon.js'
 import { sunDirection } from '../sun.js'
+import { gmstDegrees, wrapLongitude } from '../celestial-frames.js'
+import horizons from './fixtures/horizons-j2000-ecliptic.json'
 
 /**
  * Where the moon is.
@@ -9,6 +11,12 @@ import { sunDirection } from '../sun.js'
  * perigee and apogee, it goes round in a synodic month, it drifts eastward against the stars, and
  * it is never further from the equator than the earth's tilt plus its own orbital inclination. A
  * better ephemeris swapped in later still has to satisfy every one of these.
+ *
+ * EVERY ONE OF THOSE IS INVARIANT UNDER A SHIFT IN TIME, which is how this file passed for months
+ * while the moon sat twenty degrees from where it belonged: the elements were being read on the
+ * wrong epoch, and a moon that is consistently wrong satisfies consistency checks perfectly. The
+ * last block is the fix for the suite as well as for the code — an ABSOLUTE position, checked
+ * against JPL Horizons, which is the only kind of assertion that can see that class of error.
  */
 
 const utc = (y, m, d, h = 0) => new Date(Date.UTC(y, m - 1, d, h))
@@ -123,5 +131,29 @@ describe('moonPhase', () => {
     const sun = sunDirection(best.date)
     const cosElongation = (moon[0] * sun[0] + moon[1] * sun[1] + moon[2] * sun[2]) / length
     expect(Math.acos(cosElongation) * 180 / Math.PI).toBeGreaterThan(168)
+  })
+})
+
+describe('where the moon actually was', () => {
+  it('is where JPL Horizons puts it, at six dates spanning 1492 to 2026', () => {
+    // The assertion this file was missing. Horizons gives apparent right ascension for the equinox
+    // of date; subtracting sidereal time turns it into the sub-lunar longitude this module returns.
+    // Anything that moves the moon in time — a wrong epoch above all — shows up here immediately.
+    for (const [index, epoch] of horizons.epochs.entries()) {
+      const date = new Date(epoch.iso)
+      const [rightAscension, declination] = horizons.apparentEquatorial.moon[index]
+      const { lng, lat } = moonPosition(date)
+      expect(Math.abs(wrapLongitude(lng - wrapLongitude(rightAscension - gmstDegrees(date)))))
+        .toBeLessThan(0.3)
+      expect(Math.abs(lat - declination)).toBeLessThan(0.3)
+    }
+  })
+
+  it('gets the distance right, not merely inside the perigee/apogee band', () => {
+    for (const [index, epoch] of horizons.epochs.entries()) {
+      const [x, y, z] = horizons.geocentric.moon[index]
+      const referenceM = Math.hypot(x, y, z) * 149597870700
+      expect(Math.abs(moonPosition(new Date(epoch.iso)).distance - referenceM)).toBeLessThan(1300000)
+    }
   })
 })
