@@ -128,9 +128,38 @@ undo, and undoing it anyway would introduce the very bias it was written to remo
 texels and smears it across the final five degrees, with no flag to return.
 
 `tiledSphereCoverage(vec3 unitPos)` is that flag: 1 where the pyramid can speak for the ground,
-falling to 0 across the caps. Multiply by it rather than writing a per-layer latitude test, so every
-overlay lets go of the pole at the same latitude. It matters most for relief — Antarctica is a
-four-kilometre dome and the terminator crosses it for months.
+falling to 0 across the caps. Use it rather than writing a per-layer latitude test, so every overlay
+lets go of the pole at the same latitude.
+
+**It is a cross-fade weight, not just a fade to nothing.** If a layer has a global fallback, the
+better use is `mix(fallback, pyramid, tiledSphereCoverage(n))` — the pyramid where it has tiles, the
+global asset where it does not, and no seam between them. That is worth more than a fade, because
+the caps are not empty.
+
+The fade band is the two degrees below ±85.0511°. Realistic Earth measured what that costs, off the
+baked map, area-weighted as a share of all the relief on earth:
+
+| band | share of earth's relief | steepest |
+|---|---:|---:|
+| 83–85.05 N | 0.036% | 3.8° |
+| 85.05–90 N | 0.000% | 0.0° |
+| 83–85.05 S | 0.400% | 9.1° |
+| 85.05–90 S | 0.583% | **10.9°** |
+
+### The two caps are not the same, and neither is empty
+
+They are homogeneous in opposite directions, which makes both cheap to fill:
+
+- **North of 85.05° is entirely ocean.** Zero relief and zero maximum slope in the measurement
+  above, and the northernmost land on earth is Kaffeklubben Island at 83.67°N — below the fade band.
+  A layer that needs an answer there can substitute a constant: deep water, no coastline, no relief.
+- **South of 85.05° is entirely land**, and it is the steepest polar band of the six. That is the
+  Antarctic plateau, and it is the one place the pyramid genuinely drops something the baked global
+  map has — in the region the terminator sits over for months.
+
+So the cap that hurts a **relief** layer is the southern one, and the cap that hurts an **ocean**
+layer is the northern one. They are not interchangeable, and a layer with no global fallback should
+fill each with the constant that cap actually is rather than fading out.
 
 `tiledSample` takes mercator 0..1 — the same space `buildSphereMesh` lays its vertices out in, so
 you already have it as `a_pos`. For a raymarch, convert from the unit sphere with
