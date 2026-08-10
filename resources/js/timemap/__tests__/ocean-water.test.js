@@ -225,6 +225,29 @@ describe('the ocean layer', () => {
     expect(source).toContain('daylightFraction(')
   })
 
+  it('masks the glint by daylight, so the night side has no highlight to explain', () => {
+    expect(read('ocean-water.js')).toMatch(/glint\s*=.*\bday\b/)
+  })
+
+  it('varies the sea state across the ocean, so the glitter path is not one smooth blob', () => {
+    const source = read('ocean-water.js')
+    // The two-lobe exponents must read the LOCAL sea state. Feeding them u_roughness directly is
+    // the regression this guards: it still renders, still looks like a glint, and is a blob.
+    expect(source).toContain('float sea = seaState(normal);')
+    expect(source).toContain('mix(2400.0, 260.0, sea)')
+    expect(source).toContain('mix(180.0, 26.0, sea)')
+  })
+
+  it('takes its noise from the shared module rather than keeping a second copy', () => {
+    // Two copies of value noise drift the moment either is tuned, and the sea and the cloud deck
+    // would then disagree about where the weather is.
+    for (const file of ['ocean-water.js', 'clouds.js']) {
+      expect(read(file)).toContain('NOISE_GLSL')
+      expect(read(file)).not.toContain('float hash(vec3 p)')
+    }
+    expect(read('planet-mesh.js')).toContain('float hash(vec3 p)')
+  })
+
   it('clamps the polar cap rows on the flat map, where there is no cap to cover', () => {
     // buildSphereMesh carries rows outside the mercator square. Projecting them unclamped under
     // mercator throws them off the top and bottom of the world.

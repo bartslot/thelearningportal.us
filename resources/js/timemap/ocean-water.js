@@ -45,7 +45,7 @@
 import maplibregl from 'maplibre-gl'
 import {
   buildSphereMesh, buildProgram, cameraInPlanetSpace, cameraAltitudeMetres,
-  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
+  EQUIRECT_GLSL, NOISE_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
 } from './planet-mesh.js'
 import { OCEAN_SDF_RANGE_KM, OCEAN_SDF_SOURCES, OCEAN_SDF_DECODE_GLSL } from './ocean-sdf-manifest.js'
 
@@ -75,7 +75,9 @@ uniform float u_rangeKm;    // kilometres at which that field saturates
 uniform float u_shoreKm;    // half-width of the shoreline transition
 uniform float u_shelfKm;    // how far out the shallow-water colour reaches
 uniform float u_strength;   // glint intensity
-uniform float u_roughness;  // 0 glassy, 1 whipped up
+uniform float u_roughness;  // 0 glassy, 1 whipped up — the sea's AVERAGE state
+uniform float u_windPatch;  // how far the local sea state strays from that average
+uniform float u_windScale;  // cycles of weather per unit sphere
 uniform vec3 u_deep;        // open-ocean colour
 uniform vec3 u_shallow;     // over the shelf, where the bottom scatters light back
 uniform vec3 u_sky;         // what the water mirrors at a glancing angle
@@ -83,9 +85,29 @@ uniform float u_water;      // how strongly the water colour is painted at all
 uniform float u_fade;       // 1 from orbit, 0 close up where real imagery takes over
 uniform float u_opacity;    // master
 ${EQUIRECT_GLSL}
+${NOISE_GLSL}
 ${FACING_CAMERA_GLSL}
 ${TERMINATOR_GLSL}
 ${OCEAN_SDF_DECODE_GLSL}
+
+/**
+ * The local sea state — how rough the water is HERE, rather than everywhere at once.
+ *
+ * A single roughness makes the glitter path a smooth analytic blob, and that is the tell that it
+ * was computed rather than photographed. In a real orbital picture the glint is mottled: streaks
+ * and calm patches inside the bright area, where wind and slicks have left the surface rougher or
+ * smoother than its average.
+ *
+ * The perturbation is on ROUGHNESS, not on the normal. Displacing the normal at wave scale is the
+ * usual trick and it is meaningless here: one screen pixel covers twenty to forty kilometres from
+ * orbit, so wave facets are millions to a pixel and any wave-scale noise aliases into static. What
+ * genuinely survives at this scale is the weather, which varies over tens to hundreds of
+ * kilometres — low frequency, so it neither aliases nor needs a screen-space derivative to tame.
+ */
+float seaState(vec3 p) {
+  float weather = noise(p * u_windScale) * 0.65 + noise(p * u_windScale * 2.7) * 0.35;
+  return clamp(u_roughness + u_windPatch * (weather - 0.5) * 2.0, 0.04, 1.0);
+}
 
 void main() {
   vec3 normal = normalize(v_sphere);
@@ -119,8 +141,9 @@ void main() {
 
   vec3 halfway = normalize(u_sun + view);
   float alignment = max(dot(normal, halfway), 0.0);
-  float sharp = pow(alignment, mix(2400.0, 260.0, u_roughness));
-  float broad = pow(alignment, mix(180.0, 26.0, u_roughness));
+  float sea = seaState(normal);
+  float sharp = pow(alignment, mix(2400.0, 260.0, sea));
+  float broad = pow(alignment, mix(180.0, 26.0, sea));
   // The highlight outlives the water colour on the way down — a square root rather than the fade
   // itself — so it survives the handover to Sentinel-2 instead of blinking out mid-descent.
   float glint = (sharp + 0.35 * broad) * day * u_strength * sqrt(u_fade);
@@ -186,6 +209,10 @@ export const createOceanWaterLayer = ({
   opacity = 1,
   strength = 0.9,
   roughness = 0.55,
+  // The glitter path is mottled, not a smooth blob. 0 gives one sea state everywhere, which is
+  // what makes a computed glint look computed.
+  windPatch = 0.3,
+  windScale = 14,        // cycles per unit sphere: cells of weather roughly 900 km across
   sun = [0.4, 0.5, 0.75],
   water = 1,
   deep = [0.020, 0.075, 0.160],    // open ocean: dark, with a touch of green in the blue
@@ -205,7 +232,7 @@ export const createOceanWaterLayer = ({
   let fieldReady = false
   const programs = new Map()
   let state = {
-    opacity, strength, roughness, sun, water, deep, shallow, sky,
+    opacity, strength, roughness, windPatch, windScale, sun, water, deep, shallow, sky,
     shelfKm, shoreSoftnessKm, fadeInAbove, fadeOutBelow, sources,
   }
 
@@ -231,6 +258,8 @@ export const createOceanWaterLayer = ({
         shelfKm: gl.getUniformLocation(program, 'u_shelfKm'),
         strength: gl.getUniformLocation(program, 'u_strength'),
         roughness: gl.getUniformLocation(program, 'u_roughness'),
+        windPatch: gl.getUniformLocation(program, 'u_windPatch'),
+        windScale: gl.getUniformLocation(program, 'u_windScale'),
         water: gl.getUniformLocation(program, 'u_water'),
         deep: gl.getUniformLocation(program, 'u_deep'),
         shallow: gl.getUniformLocation(program, 'u_shallow'),
@@ -413,6 +442,8 @@ export const createOceanWaterLayer = ({
       if (uniforms.shelfKm) gl.uniform1f(uniforms.shelfKm, state.shelfKm)
       if (uniforms.strength) gl.uniform1f(uniforms.strength, state.strength)
       if (uniforms.roughness) gl.uniform1f(uniforms.roughness, state.roughness)
+      if (uniforms.windPatch) gl.uniform1f(uniforms.windPatch, state.windPatch)
+      if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
       if (uniforms.water) gl.uniform1f(uniforms.water, state.water)
       if (uniforms.deep) gl.uniform3f(uniforms.deep, ...state.deep)
       if (uniforms.shallow) gl.uniform3f(uniforms.shallow, ...state.shallow)

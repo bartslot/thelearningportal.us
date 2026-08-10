@@ -142,6 +142,46 @@ export const TERMINATOR_GLSL = /* glsl */`
 `
 
 /**
+ * Value noise and fbm over the unit sphere — shared by the cloud deck and the sea.
+ *
+ * Sampled in SPHERE space, not in mercator, which is what keeps a cell the same size at Iceland as
+ * at the equator and makes the field wrap seamlessly across ±180°. Cheap value noise rather than
+ * gradient noise: at the scales these layers use it, nothing can tell them apart.
+ */
+export const NOISE_GLSL = /* glsl */`
+  float hash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float n000 = hash(i);
+    float n100 = hash(i + vec3(1.0, 0.0, 0.0));
+    float n010 = hash(i + vec3(0.0, 1.0, 0.0));
+    float n110 = hash(i + vec3(1.0, 1.0, 0.0));
+    float n001 = hash(i + vec3(0.0, 0.0, 1.0));
+    float n101 = hash(i + vec3(1.0, 0.0, 1.0));
+    float n011 = hash(i + vec3(0.0, 1.0, 1.0));
+    float n111 = hash(i + vec3(1.0, 1.0, 1.0));
+    return mix(
+      mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+      mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+      f.z);
+  }
+  float fbm(vec3 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 5; i++) {
+      value += amplitude * noise(p);
+      p *= 2.0;
+      amplitude *= 0.5;
+    }
+    return value;
+  }
+`
+
+/**
  * Is a point on the unit sphere on the half facing the camera?
  *
  * For a unit sphere the horizon is exactly the plane dot(p, camera) = 1, so this is the whole test
