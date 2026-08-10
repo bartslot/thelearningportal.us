@@ -213,16 +213,48 @@ contour rings. There is precedent in this very layer: lossy WebP on the coastlin
 visually lossless on anything meant for eyes — displaced the coastline by 1.05 km mean, 4.1 km at
 p99. A field is not a picture, and codecs tuned for pictures damage fields in ways that look fine.
 
+### Is 33 cm per step enough? Below 10 m, no — but more bits are not the fix
+
+Fixed point at 3 steps per metre, measured against the ramp's own steepness:
+
+| depth | colour step across one 33 cm bucket |
+|---|---|
+| 0 m | **30.6 levels** |
+| 1 m | 12.4 |
+| 2 m | 5.1 |
+| 5 m | 1.8 |
+| **10 m** | **1.0** |
+| 20 m | 0.30 |
+| 50 m | 0.08 |
+
+So quantisation is invisible deeper than 10 m and increasingly visible above it, reaching thirty
+levels at the waterline. That is real, and it lands on tidal flats, lagoons, reef tops and the
+Wadden — water people look at.
+
+**Do not re-scale on this account, though.** The encoding shares one 16-bit number with relief, so
+the shallow half cannot be given a finer step without splitting the payload, and the binding limit
+above 10 m is almost certainly the source's own vertical accuracy rather than the coding —
+terrarium's shallow bathymetry comes from a global compilation with metre-scale error, so finer
+buckets would quantise noise. The mitigation belongs on this side: soften the ramp's steepest
+couple of metres, where the shoreline coverage is already partial. To be measured against real
+tiles rather than guessed, using `stats().completeness` so it is not measured on a half-loaded frame.
+
 ### No, depth cannot retire the coastline field
 
-Asked directly, and the answer is no, with a measurement. Calling water "where height crosses zero"
-floods the Netherlands:
+Asked three times now, so here it is as an area rather than as anecdotes. Sampling a grid over the
+Netherlands and keeping only the points the coastline field calls LAND, then asking terrarium for
+their height:
 
-| place | truth | terrarium |
-|---|---|---|
-| Flevoland | land, a whole province | **−5.7 m** |
-| Zuidplaspolder | land, lowest point in NL | **−7.4 m** |
-| Dead Sea shore | land | −414.9 m |
+> **37.2% of Dutch land reads below zero** — 294 of 790 land points.
+
+That is what a height-zero shoreline would flood. Not an edge case, not a rounding error: more than
+a third of the country, including the province of Flevoland (−5.7 m) and the Zuidplaspolder
+(−7.4 m). The Dead Sea shore reads −414.9 m for the same reason.
+
+Unclamped signed height makes this **more** clear-cut, not less: the zero crossing of `tiledHeight`
+is exactly elevation = 0, which is precisely the contour that produces that 37.2%. A DEM's zero
+contour is not a coastline; it is a level set that happens to coincide with one wherever nobody has
+built a dyke.
 
 This also condemns the alpha shoreline ramp for a **second, independent reason** to the one that
 retired it. It was dropped because ±64 m saturates too early for a depth ramp — true — but being
