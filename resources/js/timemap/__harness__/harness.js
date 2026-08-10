@@ -718,25 +718,93 @@ const measurements = async () => {
 
 // ── Wiring ───────────────────────────────────────────────────────────────────────────────────
 
-const ready = () => new Promise((resolve) => {
+/**
+ * Wait for everything the measurements need, and SAY WHAT IS MISSING while waiting.
+ *
+ * The first version printed one frozen line and waited forever. In the hidden browser pane that is
+ * indistinguishable from a broken feature: the assets were all 200, the relief map decoded in
+ * 224 ms, there were no console errors, and the page simply sat there. It cost someone else an
+ * hour before the pane being hidden was the answer.
+ *
+ * A hidden document fires no requestAnimationFrame at all, so MapLibre never completes a frame and
+ * `map.loaded()` never turns true however healthy everything else is. That is not a bug in the
+ * page, but a rig that hangs without saying so is the same failure class as everything else here —
+ * no error, nothing to explain it, and it looks like the thing under test is broken.
+ */
+const OUTSTANDING = [
+  ['relief map', () => daylight.hasRelief],
+  ['cloud field', () => clouds.hasField],
+  ['first rendered frame', () => map.loaded()],
+]
+
+const ready = () => new Promise((resolve, reject) => {
+  const startedAt = performance.now()
   const check = () => {
-    if (daylight.hasRelief && clouds.hasField && map.loaded()) return resolve()
-    setTimeout(check, 60)
+    const missing = OUTSTANDING.filter(([, done]) => !done()).map(([name]) => name)
+    if (!missing.length) return resolve()
+
+    const seconds = (performance.now() - startedAt) / 1000
+    say(`waiting for: ${missing.join(', ')}   (${seconds.toFixed(0)}s)`)
+
+    if (seconds > 20) {
+      const hidden = document.hidden || document.visibilityState !== 'visible'
+      return reject(new Error(
+        `gave up after ${seconds.toFixed(0)}s waiting for: ${missing.join(', ')}\n\n` +
+        (hidden
+          ? 'THIS TAB IS HIDDEN. A hidden document fires no requestAnimationFrame, so MapLibre\n' +
+            'never finishes a frame and never reports itself loaded — however healthy the assets\n' +
+            'are. Nothing here is broken. Bring the tab to the front, or run the measurements\n' +
+            'under Playwright:\n\n' +
+            '    npx playwright test tests/playwright/globe-relief.spec.ts'
+          : 'The tab is visible, so this is NOT the hidden-pane problem. Check the network panel\n' +
+            'for the asset named above, and the console for a shader compile error.')))
+    }
+    setTimeout(check, 250)
   }
   check()
 })
 
+/**
+ * A watchdog that does NOT hang off `load`.
+ *
+ * MapLibre's `load` fires only after a frame has been rendered, so in a hidden tab it may never
+ * fire at all — and then nothing downstream of it runs, including anything that would have
+ * explained why. The one thing that must always report is the thing that says nothing is
+ * reporting, so it starts here rather than inside the handler.
+ */
+let started = false
+setTimeout(() => {
+  if (started || window.__measured) return
+  const hidden = document.hidden || document.visibilityState !== 'visible'
+  say(`the map never finished loading — its 'load' event has not fired after 20s.\n\n` +
+    (hidden
+      ? 'THIS TAB IS HIDDEN, and a hidden document fires no requestAnimationFrame, so MapLibre\n' +
+        'never renders a frame and never emits load. Nothing is broken. Bring the tab to the\n' +
+        'front, or run the measurements under Playwright:\n\n' +
+        '    npx playwright test tests/playwright/globe-relief.spec.ts'
+      : 'The tab is visible, so this is not the hidden-tab problem. Check the console for a\n' +
+        'style or shader error.'))
+}, 20000)
+
 map.on('load', async () => {
+  started = true
   map.addLayer(daylight)
   map.addLayer(clouds)
   map.addLayer(probe)
-  say('waiting for the relief map and the cloud field…')
-  await ready()
-  say('measuring…')
-  window.__report = await measurements()
-  say(JSON.stringify(window.__report, null, 2))
-  window.__measured = true
-  if (params.get('imagery')) readout.classList.add('hidden')
+  try {
+    await ready()
+    say('measuring…')
+    window.__report = await measurements()
+    say(JSON.stringify(window.__report, null, 2))
+    window.__measured = true
+    if (params.get('imagery')) readout.classList.add('hidden')
+  } catch (error) {
+    // Loudly, and on the page — a rig that fails silently is the failure class this whole harness
+    // exists to catch.
+    say(String(error.message || error))
+    window.__harnessError = String(error.message || error)
+    console.error(error)
+  }
 })
 
 // Driven from the browser tools as well as by eye.
