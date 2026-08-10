@@ -285,6 +285,35 @@ the code on purpose:
 Injecting a half-tile offset into `tileForLngLat` fails 4 tests; reinstating the fixed 32×32 page
 grid fails 3, including the absolute one. A test that has never been seen to fail is not evidence.
 
+### Fixtures, for rigs that must not touch the network
+
+`fixtures.js` plugs into the `fetch` and `decode` hooks and generates tiles from their own z/x/y.
+Nothing is fetched and the same camera gives the same pixels on every machine — a rig measuring
+shading against live AWS tiles is measuring the network too, and a flaky measurement suite is worse
+than none when measurements are the only thing standing between a programme and plausible-looking
+wrong answers.
+
+```js
+const source = syntheticSource({ tileSize: 256 })
+const { fetch, decode } = syntheticTerrain(ridgeTerrain({ amplitudeM: 1200, cycles: 64 }))
+const pyramid = createTilePyramid({ source, fetch, decode })
+```
+
+The surfaces have a normal in closed form, so a rig can assert what a pixel **should** be rather
+than that it changed:
+
+| fixture | for |
+|---|---|
+| `flatTerrain()` | flat ground must shade to exactly nothing — catches the constant-bias failure |
+| `oceanTerrain()` | water left alone rather than shaded |
+| `ridgeTerrain()` | `normalAt(mx, my)` gives the analytic normal, for absolute shading assertions |
+| `coastTerrain()` | a shoreline at an exactly known longitude, for the ocean's depth ramp |
+
+Height is a function of the ground rather than of the tile, so tiles agree across their edges by
+construction — a fixture that generated per tile would manufacture the very seam a seam test is
+looking for. `ridgeTerrain` is a bounded sinusoid rather than a tilted plane on purpose: a plane
+runs to hundreds of kilometres of rise across a z0 tile, which the encoder clamps into a staircase.
+
 ### Cache
 
 | | requests | network | store hits | hit rate |

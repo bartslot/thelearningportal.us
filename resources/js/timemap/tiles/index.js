@@ -32,6 +32,9 @@ export {
 export { selectTiles, pixelsPerTexel, magnificationOf } from './selection.js'
 export { createTileCache, cacheApiStore, memoryStore } from './cache.js'
 export { createTileAtlas, TILE_PYRAMID_GLSL } from './atlas.js'
+export {
+  coastTerrain, flatTerrain, oceanTerrain, ridgeTerrain, syntheticSource, syntheticTerrain,
+} from './fixtures.js'
 export * from './scheme.js'
 
 /**
