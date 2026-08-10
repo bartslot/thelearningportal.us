@@ -25,6 +25,7 @@ import maplibregl from 'maplibre-gl'
 import { createDaylightLayer } from '../daylight.js'
 import { createCloudLayer } from '../clouds.js'
 import { sunDirection } from '../sun.js'
+import { deepestEclipse } from '../eclipse.js'
 
 const RELIEF_URL = '/img/map/earth-normal-8192.webp'
 const RELIEF_WIDTH = 8192
@@ -445,6 +446,73 @@ const measurements = async () => {
     warmerThanGroundBy: round(warmth(noonShadowed, shadowed) - warmth(noonClear, shadowed), 2),
   }
 
+  // ── 7. The moon's shadow, on a date it really happened ─────────────────────────────────────
+  // 12 August 2026: Greenland, Iceland, Spain at sunset. The umbra has to be a SMALL dark patch in
+  // the middle of an otherwise ordinary daylit hemisphere — if the whole day side dims, the shader
+  // is using one global moon direction instead of the moon's position, and the parallax that makes
+  // totality a hundred-kilometre track has been thrown away.
+  const eclipseDate = new Date(Date.UTC(2026, 7, 12, 17, 46))
+  const eclipseSun = sunDirection(eclipseDate)
+  const umbra = deepestEclipse(eclipseDate)
+  // Far enough out that the WHOLE disc is on screen. At z3 the globe is about 1,500 px across and
+  // the canvas sees only its middle — which is roughly the width of a real penumbra, so the first
+  // run of this reported the shadow covering 100% of the visible planet and looked like the exact
+  // bug it was meant to catch. The framing was wrong, not the shader.
+  map.jumpTo({ center: [umbra.lng, umbra.lat], zoom: 1.8 })
+  await capture()
+
+  const noEclipse = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun: eclipseSun, eclipse: false, date: eclipseDate },
+    clouds: { opacity: 0, sun: eclipseSun },
+  })
+  const withEclipse = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun: eclipseSun, eclipse: true, date: eclipseDate },
+    clouds: { opacity: 0, sun: eclipseSun },
+  })
+
+  /**
+   * How much of the visible planet the shadow actually covers.
+   *
+   * A fixed control box is the wrong instrument here — at globe zoom it falls off the disc and
+   * silently measures nothing, which is what the first version of this did (441 samples at the
+   * umbra, 0 samples for the control, and a report that looked like a pass). Counting changed
+   * pixels against lit pixels asks the question directly: is this a patch, or is it the
+   * hemisphere? One global moon direction gives the hemisphere.
+   */
+  let litPixels = 0
+  let penumbra = 0
+  let totality = 0
+  for (let k = 0; k < noEclipse.width * noEclipse.height; k++) {
+    const base = luma(noEclipse.pixels, k * 4)
+    if (base < 20) continue                     // space, or the night side
+    litPixels++
+    const lost = Math.abs(base - luma(withEclipse.pixels, k * 4))
+    if (lost > 5) penumbra++
+    if (lost > 100) totality++
+  }
+
+  report.eclipse = {
+    predictedSunLeft: round(umbra.fraction, 4),
+    umbraLngLat: [round(umbra.lng, 2), round(umbra.lat, 2)],
+    atUmbra: differenceOver(noEclipse, withEclipse, boxAround(noEclipse, umbra.lng, umbra.lat, 10)),
+    litPixels,
+    // The penumbra is genuinely enormous — thousands of kilometres — so a large share here is
+    // correct. It is TOTALITY that has to be a speck: that is the part the moon's parallax buys,
+    // and the part a single global moon direction would smear across the hemisphere.
+    penumbraShare: round(penumbra / Math.max(1, litPixels), 4),
+    totalityShare: round(totality / Math.max(1, litPixels), 5),
+  }
+
+  const clear = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun: eclipseSun, eclipse: true, date: new Date(Date.UTC(2026, 7, 26, 12)) },
+    clouds: { opacity: 0, sun: eclipseSun },
+  })
+  report.eclipse.onAnOrdinaryDay =
+    differenceOver(noEclipse, clear, boxAround(noEclipse, umbra.lng, umbra.lat, 10))
+
+  map.jumpTo({ center: HIMALAYA, zoom: 4 })
+  await capture()
+
   // Back to something worth photographing.
   await frameWith({
     daylight: { reliefPower: 1.5, cloudShadow: 0.5, sun: sunFor(-3.1, 0) },
@@ -482,3 +550,6 @@ window.__daylight = daylight
 window.__clouds = clouds
 window.__sunFor = sunFor
 window.__frameWith = frameWith
+// The real solar direction for a date, so a screenshot can be of a moment rather than of a look.
+window.__sunOn = (iso) => sunDirection(new Date(iso))
+window.__deepestEclipse = (iso) => deepestEclipse(new Date(iso))

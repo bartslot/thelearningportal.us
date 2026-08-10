@@ -53,6 +53,8 @@ import {
   EQUIRECT_GLSL, SHELL_PROJECT_GLSL, FACING_CAMERA_GLSL, TERMINATOR_GLSL,
 } from './planet-mesh.js'
 import { TANGENT_FRAME_GLSL, RELIEF_GLSL, CLOUD_SHADOW_GLSL, reliefDetailFor } from './terrain-normals.js'
+import { ECLIPSE_GLSL, MOON_RADIUS_EARTHS, solarAngularRadius, eclipseIsPossible } from './eclipse.js'
+import { moonVector } from './moon.js'
 import { CLOUD_ALTITUDE_M, CLOUD_FIELD_GLSL, CLOUD_FIELD_UNIFORMS, setCloudFieldUniforms } from './cloud-field.js'
 import { acquireEquirectTexture } from './equirect-texture.js'
 
@@ -88,12 +90,15 @@ uniform sampler2D u_relief;    // baked terrain normals, equirectangular; see te
 uniform float u_reliefPower;   // 0 when there is no relief map, or the camera is too close for it
 uniform float u_cloudShadow;   // how much of the light a full cloud takes away
 uniform float u_cloudAltitude; // deck height in earth radii — sets how far a shadow is thrown
+uniform vec3 u_moon;           // the moon's POSITION in earth radii, not its direction
+uniform float u_sunRadius;     // the sun's angular radius; 0 on any date without an eclipse
 ${EQUIRECT_GLSL}
 ${FACING_CAMERA_GLSL}
 ${TERMINATOR_GLSL}
 ${TANGENT_FRAME_GLSL}
 ${RELIEF_GLSL}
 ${CLOUD_SHADOW_GLSL}
+${ECLIPSE_GLSL}
 // The same field, wind and clock the deck in clouds.js draws itself from.
 ${CLOUD_FIELD_GLSL}
 
@@ -146,6 +151,17 @@ void main() {
     lit *= 1.0 - shadow;
   }
 
+  // ── Eclipse ───────────────────────────────────────────────────────────────────────────────
+  // The moon covering some fraction of the sun's disc, worked out for THIS point rather than for
+  // the planet: the moon is only sixty radii away, and that parallax is the whole reason totality
+  // is a hundred-kilometre track instead of a hemisphere. Costs one comparison on the millions of
+  // dates with no eclipse, because u_sunRadius is 0 on all of them.
+  if (u_sunRadius > 0.0) {
+    float remaining = eclipseLight(normal, sunDir, u_moon, u_sunRadius, ${MOON_RADIUS_EARTHS.toFixed(8)});
+    day *= remaining;
+    lit *= remaining;
+  }
+
   day = clamp(day, 0.0, 1.0);
   float night = 1.0 - day;
 
@@ -191,6 +207,10 @@ void main() {
  *   point the relief either vanishes early or smears into a low-frequency bulge over sharp ground.
  * @param {number} [opts.reliefPower]      how hard terrain leans on the light. 0 switches it off.
  * @param {number} [opts.cloudShadow]      0..1, how much light a fully clouded sky takes away
+ * @param {boolean} [opts.eclipse]         put the moon's shadow on the earth when there is one
+ * @param {Date} [opts.date]               the moment the eclipse geometry is computed for. Pass the
+ *   lesson's own date and the shadow lands where it actually landed — 1919 off West Africa, 1999
+ *   across Europe. This is not a look; it is a dated event, which is why it is worth computing.
  * @param {string} [opts.fieldUrl]         cloud cover; shared with clouds.js, pass them the same URL
  * @param {string} [opts.windUrl]          wind field, likewise
  * @param {string} [opts.lightsUrl]        equirectangular city-lights image (NASA Black Marble)
@@ -209,6 +229,8 @@ export const createDaylightLayer = ({
   reliefWidth = 8192,
   reliefPower = 1.5,
   cloudShadow = 0.5,
+  eclipse = true,
+  date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same
   // values or the shadows drift away from the clouds casting them.
   fieldUrl = null, windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
@@ -225,7 +247,7 @@ export const createDaylightLayer = ({
   const programs = new Map()
   let state = {
     sun, nightDarkness, lightsUrl, lightsAmount, nightColour, twilightColour,
-    reliefUrl, reliefWidth, reliefPower, cloudShadow,
+    reliefUrl, reliefWidth, reliefPower, cloudShadow, eclipse, date,
     fieldUrl, windUrl, windAmount, windScale, windRate, driftRate, animate,
   }
 
@@ -254,6 +276,8 @@ export const createDaylightLayer = ({
         reliefPower: gl.getUniformLocation(program, 'u_reliefPower'),
         cloudShadow: gl.getUniformLocation(program, 'u_cloudShadow'),
         cloudAltitude: gl.getUniformLocation(program, 'u_cloudAltitude'),
+        moon: gl.getUniformLocation(program, 'u_moon'),
+        sunRadius: gl.getUniformLocation(program, 'u_sunRadius'),
         // time, drift, field, fieldAmount, wind, windAmount, windScale, windRate
         ...Object.fromEntries(CLOUD_FIELD_UNIFORMS.map((name) =>
           [name, gl.getUniformLocation(program, `u_${name}`)])),
@@ -362,6 +386,14 @@ export const createDaylightLayer = ({
       if (uniforms.reliefPower) gl.uniform1f(uniforms.reliefPower, state.reliefPower * reliefFade)
       if (uniforms.cloudShadow) gl.uniform1f(uniforms.cloudShadow, state.cloudShadow)
       if (uniforms.cloudAltitude) gl.uniform1f(uniforms.cloudAltitude, CLOUD_ALTITUDE_M / EARTH_RADIUS_M)
+
+      // The eclipse block is skipped entirely unless the moon is actually near the sun today, and
+      // that is decided here rather than per fragment — a cheap geocentric test on the CPU, once a
+      // frame, in place of trigonometry on every pixel of the planet for the whole of history.
+      const eclipseDate = state.eclipse ? state.date : null
+      const moon = eclipseDate && eclipseIsPossible(eclipseDate) ? moonVector(eclipseDate) : null
+      if (uniforms.sunRadius) gl.uniform1f(uniforms.sunRadius, moon ? solarAngularRadius(eclipseDate) : 0)
+      if (moon && uniforms.moon) gl.uniform3f(uniforms.moon, ...moon)
 
       setCloudFieldUniforms(gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind },
         UNIT.field, UNIT.wind)

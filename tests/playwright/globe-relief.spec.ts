@@ -30,6 +30,12 @@ type Report = {
   cloudShadow: Shadow & { strength: number };
   cloudShadowSunInEast: Shadow;
   noonShadowColour: { shadowedPixels: number; warmerThanGroundBy: number };
+  eclipse: {
+    predictedSunLeft: number; umbraLngLat: [number, number];
+    atUmbra: { mean: number; max: number };
+    litPixels: number; penumbraShare: number; totalityShare: number;
+    onAnOrdinaryDay: { mean: number; max: number };
+  };
 };
 type Shadow = {
   shiftEastPx: number; shiftNorthPx: number; correlation: number; interior: boolean;
@@ -138,5 +144,36 @@ test.describe('cloud shadows on the ground', () => {
     const { shadowedPixels, warmerThanGroundBy } = report.noonShadowColour;
     expect(shadowedPixels).toBeGreaterThan(1000);
     expect(warmerThanGroundBy).toBeLessThan(1);
+  });
+});
+
+test.describe('the moon\'s shadow on 12 August 2026', () => {
+  test('goes total where the ephemeris says it will', () => {
+    expect(report.eclipse.predictedSunLeft).toBeLessThan(0.05);
+    // 255 is the whole dynamic range of the grey the shell is drawn over.
+    expect(report.eclipse.atUmbra.mean).toBeGreaterThan(100);
+  });
+
+  test('is a patch on the planet, not a dimmer on the hemisphere', () => {
+    /**
+     * The measurement that says the moon's PARALLAX survived into the shader. The moon is only
+     * sixty earth radii away, so its direction genuinely differs across the disc, and that is the
+     * entire reason totality is a narrow track. Feed the shader one global moon direction and it
+     * still renders a perfectly convincing eclipse — covering half the planet.
+     *
+     * The penumbra legitimately covers most of the lit face; a real one is thousands of kilometres
+     * across. It is totality that has to be small.
+     */
+    expect(report.eclipse.litPixels).toBeGreaterThan(100_000);
+    expect(report.eclipse.penumbraShare).toBeGreaterThan(0.05);
+    expect(report.eclipse.penumbraShare).toBeLessThan(0.9);
+    expect(report.eclipse.totalityShare).toBeLessThan(0.15);
+    expect(report.eclipse.totalityShare).toBeGreaterThan(0);
+  });
+
+  test('leaves the planet completely alone on a date with no eclipse', () => {
+    // Not "small" — exactly zero. Eclipses are rare, and a globe that dims slightly on every
+    // ordinary afternoon would be a permanent, invisible wrongness.
+    expect(report.eclipse.onAnOrdinaryDay.max).toBe(0);
   });
 });
