@@ -465,6 +465,11 @@
         const onIconDrop = (e) => {
             if (carriesFile(e)) {
                 e.preventDefault()
+                // Both the canvas root and the stage host listen, and on a map scene one sits
+                // inside the other — so a single drop bubbled through both and uploaded the
+                // picture TWICE, leaving two identical layers stacked on the same spot. The
+                // teacher sees one picture and finds two objects in the list.
+                e.stopPropagation()
                 const file = e.dataTransfer.files[0]
                 // Livewire's JS upload API, not a wire:model input: this whole region is wire:ignore,
                 // so there is no bound field here to put the file into. Where it lands — a layer on
