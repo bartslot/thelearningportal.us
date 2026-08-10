@@ -152,6 +152,70 @@ describe('how soft the shoreline is drawn', () => {
   })
 })
 
+describe('the water column', () => {
+  const { absorption, scatter, bottom } = createOceanWaterLayer().getOptions()
+
+  /**
+   * Beer-Lambert, worked independently of the shader: what colour comes back from water this deep.
+   * Down to the bottom and back up, so the path is twice the depth.
+   */
+  const columnAt = (depthM) => {
+    const path = 2 * depthM
+    return absorption.map((k, i) => {
+      const transmitted = Math.exp(-k * path)
+      return scatter[i] + (bottom[i] - scatter[i]) * transmitted
+    })
+  }
+
+  it('absorbs red fastest and blue slowest, which is the whole reason the sea grades', () => {
+    // If these ever came out equal the model would collapse to a grey ramp and the turquoise would
+    // have to be hand-painted back in — which is the two-colour lerp this replaced.
+    expect(absorption[0]).toBeGreaterThan(absorption[1])
+    expect(absorption[1]).toBeGreaterThan(absorption[2])
+    expect(absorption[0] / absorption[2]).toBeGreaterThan(10)
+  })
+
+  it('turns shallow water turquoise without anyone choosing a turquoise', () => {
+    // Nothing in the options is cyan: the floor is sand and the deep colour is navy. Two metres of
+    // water on sand has to come out green-cyan on its own, or the physics is not doing the work.
+    const [r, g, b] = columnAt(2)
+    expect(g).toBeGreaterThan(r * 2)
+    expect(b).toBeGreaterThan(r * 2)
+    expect(g).toBeGreaterThan(0.2)
+  })
+
+  it('converges to the deep colour once the bottom stops coming back', () => {
+    const deep = columnAt(150)
+    deep.forEach((v, i) => expect(Math.abs(v - scatter[i])).toBeLessThan(0.01))
+  })
+
+  it('darkens monotonically with depth, with no muddy middle', () => {
+    // A lerp between two colours passes through their average, which for sand-to-navy is a
+    // grey-brown nobody wants. An absorption curve cannot: each channel only ever falls.
+    const depths = [0, 1, 2, 5, 10, 20, 40, 80, 150]
+    const columns = depths.map(columnAt)
+    for (let c = 0; c < 3; c++) {
+      for (let i = 1; i < columns.length; i++) {
+        expect(columns[i][c]).toBeLessThanOrEqual(columns[i - 1][c] + 1e-9)
+      }
+    }
+  })
+
+  it('loses red before green and green before blue, as depth increases', () => {
+    // The ordering that makes a shelf read as a shelf: at 10 m there is still blue and green and
+    // essentially no red.
+    const [r, g, b] = columnAt(10)
+    expect(r).toBeLessThan(g)
+    expect(g).toBeLessThan(b)
+  })
+
+  it('computes the path as twice the depth, not once', () => {
+    // Light goes down AND comes back. Halving this is a plausible-looking bug that makes every
+    // shelf twice as bright as it should be.
+    expect(read('ocean-water.js')).toContain('float path = 2.0 * depthM / max(facing, 0.25);')
+  })
+})
+
 describe('choosing a texture the GPU will accept', () => {
   it('takes the widest bake that fits', () => {
     expect(pickSdfSource(16384, OCEAN_SDF_SOURCES).width).toBe(8192)
@@ -251,7 +315,7 @@ describe('the ocean layer', () => {
     expect(body).not.toContain('texture2D')
     expect((shader.match(/texture2D\(/g) || []).length).toBe(1)
     expect(shader).toContain('float coastDistanceKm(vec3 unitPos)')
-    expect(shader).toContain('float shelfFraction(vec3 unitPos, float coastKm)')
+    expect(shader).toContain('float waterDepthMetres(vec3 unitPos, float coastKm)')
   })
 
   it('takes depth as a value, never as terrain to be shaded', () => {
@@ -263,12 +327,12 @@ describe('the ocean layer', () => {
      * gradient — and a derivative is exactly the edit that would look like an improvement.
      */
     const shader = read('ocean-water.js')
-    const shelf = shader.slice(shader.indexOf('float shelfFraction('), shader.lastIndexOf('void main() {'))
+    const depth = shader.slice(shader.indexOf('float waterDepthMetres('), shader.lastIndexOf('void main() {'))
     for (const derivative of ['dFdx', 'dFdy', 'fwidth', 'cross(']) {
-      expect(shelf).not.toContain(derivative)
+      expect(depth).not.toContain(derivative)
     }
-    // The one consumer, and it is a colour mix.
-    expect(shader).toContain('mix(u_deep, u_shallow, shelf)')
+    // The one consumer, and it is an absorption curve, not a hillshade.
+    expect(shader).toContain('vec3 transmitted = exp(-u_absorption * path);')
   })
 
   it('keeps the requested edge remap off, because it paints the Sahara', () => {

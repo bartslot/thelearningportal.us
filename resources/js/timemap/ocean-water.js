@@ -11,11 +11,13 @@
  *  1. WATER COLOUR. The base imagery's ocean is near-black on purpose (see map-imagery.js: the
  *     bathymetry variant drew the sea floor, which is not something you can see from orbit). This
  *     paints it back as water — one deep colour, no terrain in it.
- *  2. SHALLOW WATER. Within a few tens of kilometres of land the bottom scatters light back and the
- *     sea reads turquoise. Blue Marble gets this exactly backwards — its relief shading treats the
- *     coast as a cliff and casts a shadow onto the water, so its imagery is DARKER at the shore
- *     than in open ocean (measured: 4.8 luma against 8.9, where Sentinel-2 runs 46.6 against 38.7).
- *     This term is what puts the shelf back the right way round.
+ *  2. DEPTH. Water absorbs red within metres and blue only after tens of them, so a shelf and the
+ *     open ocean are the same water at two path lengths — not two paints. Beer-Lambert per channel
+ *     over twice the depth gives the real turquoise-to-navy gradient, and the greens in between,
+ *     which a two-colour lerp can never do: it always passes through a muddy average on the way.
+ *     It also overrides a defect in the imagery rather than inheriting it — Blue Marble treats the
+ *     coast as a cliff and hillshades a shadow ONTO the water, so its coastal sea reads DARKER than
+ *     open ocean (4.8 luma against 8.9) when reality is the exact opposite.
  *  3. SKY REFLECTION. Water reflects about 2% of the light when you look straight down and nearly
  *     all of it at a glancing angle (Fresnel). That is why the ocean below the camera is near-black
  *     and the ocean out toward the limb is bright silver-blue, and it is the single biggest reason
@@ -28,8 +30,14 @@
  *     tight one for the core and a broad one for the smear, which is cheaper than a real
  *     distribution and indistinguishable at this scale.
  *
- * WHERE THE SEA IS. A custom layer cannot sample the raster tiles underneath it, so the coastline
- * has to be carried in a texture of its own. It is a SIGNED DISTANCE FIELD — kilometres to the
+ * WHERE THE SEA IS — WHICH IS NOT WHAT DEPTH SAYS. It is tempting to drop the coastline entirely
+ * once there is bathymetry and call water "wherever elevation is below zero". Measured on the
+ * terrarium DEM, that floods the Netherlands: Flevoland reads −5.7 m and the Zuidplaspolder −7.4 m,
+ * both of them dry land, one of them a province. The Dead Sea shore reads −414.9 m. Depth says how
+ * deep water IS, never where it is, and for this product in particular that distinction is not a
+ * corner case.
+ *
+ * So extent comes from a texture of its own. It is a SIGNED DISTANCE FIELD — kilometres to the
  * nearest coast, negative inland — and not a mask, which is what the first attempt used and what
  * made it unusable. A mask holds one bit per texel, so the only thing bilinear filtering can do
  * between two texels is ramp across the whole texel, and every shore came out of the magnifier as
@@ -78,8 +86,10 @@ uniform float u_strength;   // glint intensity
 uniform float u_roughness;  // 0 glassy, 1 whipped up — the sea's AVERAGE state
 uniform float u_windPatch;  // how far the local sea state strays from that average
 uniform float u_windScale;  // cycles of weather per unit sphere
-uniform vec3 u_deep;        // open-ocean colour
-uniform vec3 u_shallow;     // over the shelf, where the bottom scatters light back
+uniform vec3 u_scatter;     // the water body's own colour — what deep water converges to
+uniform vec3 u_bottom;      // sea-floor albedo, seen only where the water is shallow enough
+uniform vec3 u_absorption;  // how fast each channel is absorbed, per metre of water
+uniform float u_shelfDepthM; // depth the shelf proxy reaches at its outer edge
 uniform vec3 u_sky;         // what the water mirrors at a glancing angle
 uniform float u_water;      // how strongly the water colour is painted at all
 uniform float u_fade;       // 1 from orbit, 0 close up where real imagery takes over
@@ -129,31 +139,44 @@ float coastDistanceKm(vec3 unitPos) {
 }
 
 /**
- * How shallow the water is: 0 in open ocean, 1 at the shore.
+ * How deep the water is, in metres.
  *
- * Today this is derived from distance to the coast, which is a PROXY for depth and an honest one at
- * this scale — the shelf really does track the coastline. If real bathymetry arrives it replaces
- * the body of this function and nothing else: the colour model, the Fresnel term and the glint
- * riding on top all consume this one scalar and do not care how it was obtained.
+ * Today this is a shelf profile inferred from distance to the coast — a PROXY, and a defensible one
+ * at this scale, because a real shelf does broadly track the coastline. Squared so it deepens slowly
+ * inshore and then falls away, which is the shape of a real shelf and its break.
  *
- * IT RETURNS A VALUE, AND IT MUST STAY THAT WAY. The trap with bathymetry is treating the sea floor
- * as terrain: take its slope, hillshade it, and the Atlantic turns into a bathymetric chart —
- * measured independently on the terrarium DEM, which carries bathymetry and had to be clamped to
- * zero before the relief pass would leave open water flat. Ridges and abyssal plains are not
- * visible through three kilometres of water and drawing them reads as a map, not as an ocean. What
- * makes depth read as depth is COLOUR — deep blue to shallow turquoise — under a lit surface. So
- * this function may sample depth; it may never differentiate it.
+ * THE SOURCE SWAPS HERE AND NOWHERE ELSE. The terrarium DEM this map already streams carries
+ * bathymetry as negative elevation — measured: −32 m in the North Sea, −21 m on Dogger Bank,
+ * −3,415 m mid-Atlantic — so real depth costs no new data pipeline, only the half of that tile the
+ * relief pass throws away. When it arrives, this function body is the whole change.
  *
- * That also names the likely source: the terrarium DEM this map already loads has negative
- * elevations at sea, so depth costs no new data pipeline — just the values, clamped the other way
- * round from the relief pass.
- *
- * Squared so the turquoise hugs the coast instead of washing halfway to the horizon — the real
- * gradient is steep, and so is the Blue Marble shadow artifact this is correcting.
+ * IT RETURNS A VALUE, AND IT MUST STAY THAT WAY. Hillshade the sea floor and the Atlantic becomes a
+ * bathymetric chart: ridges and abyssal plains are not visible through three kilometres of water,
+ * and drawing them reads as a map rather than an ocean. Depth belongs in the colour, under a lit
+ * surface. This function may sample depth; it may never differentiate it.
  */
-float shelfFraction(vec3 unitPos, float coastKm) {
-  float t = 1.0 - smoothstep(0.0, u_shelfKm, max(coastKm, 0.0));
-  return t * t;
+float waterDepthMetres(vec3 unitPos, float coastKm) {
+  float t = clamp(max(coastKm, 0.0) / u_shelfKm, 0.0, 1.0);
+  return u_shelfDepthM * t * t;
+}
+
+/**
+ * The colour of the water column itself, from how far light gets through it.
+ *
+ * NOT a lerp between a shallow colour and a deep one. Water absorbs light at wildly different rates
+ * by wavelength — red is gone within a couple of metres, blue penetrates tens — so the turquoise of
+ * a shelf and the navy of open ocean are the SAME water at two path lengths, not two paints. Beer-
+ * Lambert per channel gets that for free, and gets the intermediate greens right, which is what a
+ * two-colour lerp can never do: it always passes through a muddy average on the way.
+ *
+ * Light goes down, bounces off the bottom, and comes back up, so the path is twice the depth,
+ * lengthened again when the water is seen at a slant. What survives that trip is the bottom; what
+ * does not is replaced by the water's own scattered colour, which is what deep water converges to.
+ */
+vec3 waterColumn(float depthM, float facing) {
+  float path = 2.0 * depthM / max(facing, 0.25);
+  vec3 transmitted = exp(-u_absorption * path);
+  return mix(u_scatter, u_bottom, transmitted);
 }
 
 void main() {
@@ -181,8 +204,8 @@ void main() {
   float day = daylightFraction(sunAngle);        // shared with the night and the clouds
   float lambert = max(sunAngle, 0.0);
 
-  float shelf = shelfFraction(normal, km);
-  vec3 body = mix(u_deep, u_shallow, shelf) * (0.08 + 0.92 * lambert);
+  float depthM = waterDepthMetres(normal, km);
+  vec3 body = waterColumn(depthM, facing) * (0.08 + 0.92 * lambert);
 
   vec3 skyTerm = u_sky * fresnel * day;
 
@@ -264,10 +287,15 @@ export const createOceanWaterLayer = ({
   edgeRemap = 0,         // the Lee reflectRatio remap; see u_edgeRemap for what it measures
   sun = [0.4, 0.5, 0.75],
   water = 1,
-  deep = [0.020, 0.075, 0.160],    // open ocean: dark, with a touch of green in the blue
-  shallow = [0.075, 0.230, 0.290], // over the shelf, where the bottom throws light back
-  sky = [0.34, 0.50, 0.76],        // daylight sky, what the sea mirrors near the limb
-  shelfKm = 22,                    // the turquoise band; the field saturates a little past this
+  // Clear ocean water, absorption per metre by channel (Smith & Baker / Pope & Fry, near 620,
+  // 550 and 450 nm). Red is gone in metres and blue survives tens, which is the whole reason the
+  // sea grades turquoise to navy. Coastal water is far more turbid than this; that is not modelled.
+  absorption = [0.45, 0.060, 0.020],
+  scatter = [0.020, 0.075, 0.160],  // what deep water converges to once nothing returns from below
+  bottom = [0.42, 0.40, 0.33],      // sand and carbonate: the floor, where it can still be seen
+  sky = [0.34, 0.50, 0.76],         // daylight sky, what the sea mirrors near the limb
+  shelfKm = 22,                     // how far the shelf proxy reaches before it is open ocean
+  shelfDepthM = 90,                 // and how deep it is by then — past this the bottom is unlit
   shoreSoftnessKm = 0.8,
   fadeInAbove = 900000,            // metres: fully painted above this
   fadeOutBelow = 180000,           // metres: gone below this, where real imagery has the detail
@@ -281,8 +309,9 @@ export const createOceanWaterLayer = ({
   let fieldReady = false
   const programs = new Map()
   let state = {
-    opacity, strength, roughness, windPatch, windScale, edgeRemap, sun, water, deep, shallow, sky,
-    shelfKm, shoreSoftnessKm, fadeInAbove, fadeOutBelow, sources,
+    opacity, strength, roughness, windPatch, windScale, edgeRemap, sun, water,
+    absorption, scatter, bottom, sky, shelfKm, shelfDepthM, shoreSoftnessKm,
+    fadeInAbove, fadeOutBelow, sources,
   }
 
   const programFor = (shaderData) => {
@@ -310,8 +339,10 @@ export const createOceanWaterLayer = ({
         windPatch: gl.getUniformLocation(program, 'u_windPatch'),
         windScale: gl.getUniformLocation(program, 'u_windScale'),
         water: gl.getUniformLocation(program, 'u_water'),
-        deep: gl.getUniformLocation(program, 'u_deep'),
-        shallow: gl.getUniformLocation(program, 'u_shallow'),
+        scatter: gl.getUniformLocation(program, 'u_scatter'),
+        bottom: gl.getUniformLocation(program, 'u_bottom'),
+        absorption: gl.getUniformLocation(program, 'u_absorption'),
+        shelfDepthM: gl.getUniformLocation(program, 'u_shelfDepthM'),
         sky: gl.getUniformLocation(program, 'u_sky'),
         fade: gl.getUniformLocation(program, 'u_fade'),
         opacity: gl.getUniformLocation(program, 'u_opacity'),
@@ -503,8 +534,10 @@ export const createOceanWaterLayer = ({
       if (uniforms.windPatch) gl.uniform1f(uniforms.windPatch, state.windPatch)
       if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
       if (uniforms.water) gl.uniform1f(uniforms.water, state.water)
-      if (uniforms.deep) gl.uniform3f(uniforms.deep, ...state.deep)
-      if (uniforms.shallow) gl.uniform3f(uniforms.shallow, ...state.shallow)
+      if (uniforms.scatter) gl.uniform3f(uniforms.scatter, ...state.scatter)
+      if (uniforms.bottom) gl.uniform3f(uniforms.bottom, ...state.bottom)
+      if (uniforms.absorption) gl.uniform3f(uniforms.absorption, ...state.absorption)
+      if (uniforms.shelfDepthM) gl.uniform1f(uniforms.shelfDepthM, state.shelfDepthM)
       if (uniforms.sky) gl.uniform3f(uniforms.sky, ...state.sky)
       if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
       if (uniforms.edgeRemap) gl.uniform1f(uniforms.edgeRemap, state.edgeRemap)
