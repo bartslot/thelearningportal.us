@@ -457,13 +457,15 @@ describe('the ocean layer', () => {
      */
     const shader = read('ocean-water.js')
     const depth = shader.slice(shader.indexOf('float waterDepthMetres('), shader.indexOf('vec3 waterColumn('))
-    expect(depth).toContain('smoothstep(SIN_84, SIN_MERCATOR_EDGE, abs(unitPos.y))')
+    expect(depth).toContain('smoothstep(SIN_FADE_START, SIN_MERCATOR_EDGE, unitPos.y)')
     // The thresholds are sines of latitude, and a wrong one puts the seam somewhere visible.
-    expect(depth).toContain(`SIN_84 = ${Math.sin(84 * Math.PI / 180).toFixed(6)}`)
+    expect(depth).toContain(`SIN_FADE_START = ${Math.sin(84 * Math.PI / 180).toFixed(6)}`)
     expect(depth).toContain(`SIN_MERCATOR_EDGE = ${Math.sin(85.0511287798066 * Math.PI / 180).toFixed(6)}`)
     // Whatever it saturates to has to be past where the colour model stops responding.
-    expect(depth).toMatch(/BEYOND_THE_RAMP_M = (\d+)\.0/)
-    expect(Number(depth.match(/BEYOND_THE_RAMP_M = (\d+)\.0/)[1])).toBeGreaterThan(200)
+    expect(depth).toMatch(/ARCTIC_BASIN_M = (\d+)\.0/)
+    expect(Number(depth.match(/ARCTIC_BASIN_M = (\d+)\.0/)[1])).toBeGreaterThan(200)
+    // North only: the southern cap is land, and the coastline field discards it first.
+    expect(depth).not.toContain('abs(unitPos.y)')
   })
 
   it('takes depth as a value, never as terrain to be shaded', () => {

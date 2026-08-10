@@ -196,16 +196,25 @@ float waterDepthMetres(vec3 unitPos, float coastKm) {
   // constant at both poles, so forcing it constant changes nothing today and makes the swap to
   // tiles safe. The sphere mesh reaches ±89.999°, so without this the smear would be drawn.
   //
-  // The fade runs ONE degree, not two, and the difference matters in the south. Shelf water inside
-  // the fade band, measured: 84-85°N is 0.0% of its water, so the north costs nothing either way —
-  // but 84-85°S is 49% shelf water and 83-84°S is 29%, the Ross and Filchner-Ronne fronts. A two
-  // degree fade flattens real shallow water down there; one degree halves the exposure and is still
-  // wide enough to hide the seam.
-  const float SIN_84 = 0.994522;      // where the fade starts
+  // THE CAPS ARE CONSTANTS, NOT FADES, AND THEY POINT OPPOSITE WAYS. Past 85.05° the north is
+  // entirely the Arctic Ocean and the south is entirely the Antarctic plateau — measured on the
+  // baked field, 0.191% of the earth apiece: the north 100% water with no shelf in it at all, the
+  // south 0.000% water. So there is nothing to fade TO up there, only a constant to fill with, and
+  // the two constants are deep water and land.
+  //
+  // Only the north needs saying here. The south is land, and the coastline field already discards
+  // it before this function is reached, which is what carrying extent separately buys.
+  //
+  // A two degree fade over the band below is fine, and an earlier claim of mine that it was not is
+  // withdrawn: I read 49% of the southern fade band's WATER as shelf and called it a real loss,
+  // without checking that the band is only 0.010% water to begin with. In absolute terms it is
+  // 0.0033% of the earth's surface — about a hundred and seventy z12 tiles, at a latitude where
+  // they are mostly under permanent ice shelf. Not worth its own constant.
+  const float SIN_FADE_START = 0.994522;   // 84°, one degree of run-up; tiledSphereCoverage replaces this
   const float SIN_MERCATOR_EDGE = 0.996272;
-  const float BEYOND_THE_RAMP_M = 400.0;   // past the colour model's saturation at ~200 m
-  float polar = smoothstep(SIN_84, SIN_MERCATOR_EDGE, abs(unitPos.y));
-  return mix(depth, max(depth, BEYOND_THE_RAMP_M), polar);
+  const float ARCTIC_BASIN_M = 400.0;      // past the colour model's saturation at ~200 m
+  float polar = smoothstep(SIN_FADE_START, SIN_MERCATOR_EDGE, unitPos.y);
+  return mix(depth, max(depth, ARCTIC_BASIN_M), polar);
 }
 
 /**
