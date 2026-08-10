@@ -114,13 +114,16 @@ const NOISE_GLSL = /* glsl */`
   }
 `
 
-const vertexSource = (shaderData) => `${shaderData.vertexShaderPrelude}
+// GLSL ES 3.00 — required of every tile-pyramid consumer, and the deck shares CLOUD_FIELD_GLSL
+// with the ground, so the two convert together or neither does. See daylight.js for the details.
+const vertexSource = (shaderData) => `#version 300 es
 ${shaderData.define}
-attribute vec2 a_pos;
-attribute vec3 a_sphere;
+${shaderData.vertexShaderPrelude}
+in vec2 a_pos;
+in vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
-varying vec3 v_sphere;
+out vec3 v_sphere;
 ${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
@@ -128,8 +131,10 @@ void main() {
   gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
-const fragmentSource = () => `precision highp float;
-varying vec3 v_sphere;
+const fragmentSource = () => `#version 300 es
+precision highp float;
+in vec3 v_sphere;
+out vec4 fragColour;
 uniform float u_opacity;
 uniform vec3 u_sun;           // direction TO the sun
 uniform float u_detailFreq;   // noise cycles per unit sphere; rises as the camera descends
@@ -209,7 +214,7 @@ void main() {
   if (alpha < 0.002) discard;
   // MapLibre blends custom layers with gl.ONE / gl.ONE_MINUS_SRC_ALPHA, i.e. PREMULTIPLIED alpha.
   // Returning straight alpha here is what makes a custom layer glow white over dark ground.
-  gl_FragColor = vec4(base * alpha, alpha);
+  fragColour = vec4(base * alpha, alpha);
 }`
 
 /**

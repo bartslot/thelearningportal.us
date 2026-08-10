@@ -63,21 +63,32 @@ const LAYER_ID = 'tm-daylight'
 /** Texture units. Field and wind match clouds.js, because they are literally the same textures. */
 const UNIT = { field: 0, wind: 1, relief: 2, lights: 3 }
 
-const vertexSource = (shaderData) => `${shaderData.vertexShaderPrelude}
+/**
+ * GLSL ES 3.00, which the tile pyramid requires of every consumer.
+ *
+ * `#version 300 es` has to be the literal first line — not the first non-blank line, the first
+ * line. MapLibre's own prelude carries no version directive and uses none of the removed keywords,
+ * so it compiles unchanged under either version, and v5 asks for a webgl2 context first. The
+ * define goes before the prelude so anything version-dependent inside it sees GLOBE.
+ */
+const vertexSource = (shaderData) => `#version 300 es
 ${shaderData.define}
-attribute vec2 a_pos;
-attribute vec3 a_sphere;
+${shaderData.vertexShaderPrelude}
+in vec2 a_pos;
+in vec3 a_sphere;
 uniform float a_elevation_globe;
 uniform float a_elevation_mercator;
-varying vec3 v_sphere;
+out vec3 v_sphere;
 ${SHELL_PROJECT_GLSL}
 void main() {
   v_sphere = a_sphere;
   gl_Position = projectShell(a_pos, a_elevation_globe, a_elevation_mercator);
 }`
 
-const fragmentSource = () => `precision highp float;
-varying vec3 v_sphere;
+const fragmentSource = () => `#version 300 es
+precision highp float;
+in vec3 v_sphere;
+out vec4 fragColour;
 uniform vec3 u_sun;            // direction TO the sun
 uniform vec3 u_camera;         // camera in planet space, earth = unit sphere
 uniform float u_globeness;     // 1 on the globe, 0 on the flat map
@@ -129,7 +140,7 @@ void main() {
   // on the night side, where there is no sun to rake.
   float lit = 0.0;
   if (u_reliefPower > 0.0) {
-    vec3 tangentNormal = decodeTerrainNormal(texture2D(u_relief, equirectUV(normal, 0.0)).xyz);
+    vec3 tangentNormal = decodeTerrainNormal(texture(u_relief, equirectUV(normal, 0.0)).xyz);
     vec3 perturbed = normalize(equirectTangentFrame(normal) * tangentNormal);
     float change = day * (reliefLightFactor(normal, perturbed, sunDir, u_reliefPower) - 1.0);
     day = day + min(0.0, change);
@@ -182,7 +193,7 @@ void main() {
   // City lights, but only where it is genuinely dark — they have no business showing at dusk, and
   // a passing cloud is not dusk.
   if (u_lightsAmount > 0.0) {
-    float lights = texture2D(u_lights, equirectUV(normal, 0.0)).r;
+    float lights = texture(u_lights, equirectUV(normal, 0.0)).r;
     float visible = lights * smoothstep(0.25, 0.75, 1.0 - sunlight) * u_lightsAmount;
     // Added, not blended: lights EMIT. Blending them would make the cities darker than the sea.
     shade = shade + vec3(1.0, 0.86, 0.6) * visible * 1.6;
@@ -190,7 +201,7 @@ void main() {
   }
 
   // Premultiplied, matching MapLibre's ONE / ONE_MINUS_SRC_ALPHA for custom layers.
-  gl_FragColor = vec4(shade * alpha + emitted, alpha);
+  fragColour = vec4(shade * alpha + emitted, alpha);
 }`
 
 /**

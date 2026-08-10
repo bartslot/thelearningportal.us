@@ -49,7 +49,7 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   uniform float u_windRate;     // cycles per second
 
   vec2 windAt(vec2 uv, float lat) {
-    vec2 wind = texture2D(u_wind, uv).rg * 2.0 - 1.0;
+    vec2 wind = texture(u_wind, uv).rg * 2.0 - 1.0;
     // Degrees of longitude per metre grow toward the poles; without this correction the flow slows
     // to a crawl at high latitude and the polar cells stop turning.
     wind.x /= max(cos(lat), 0.25);
@@ -57,15 +57,15 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   }
 
   float advectedField(vec2 uv, float lat) {
-    if (u_windAmount <= 0.0) return texture2D(u_field, uv).r;
+    if (u_windAmount <= 0.0) return texture(u_field, uv).r;
     vec2 flow = windAt(uv, lat);
     float cycle = u_time * u_windRate;
     float phase1 = fract(cycle);
     float phase2 = fract(cycle + 0.5);
     float blend = abs(1.0 - 2.0 * phase1);       // triangle wave: 1 at the resets, 0 mid-cycle
-    float a = texture2D(u_field, uv - flow * phase1).r;
-    float b = texture2D(u_field, uv - flow * phase2).r;
-    return mix(mix(a, b, blend), texture2D(u_field, uv).r, 1.0 - u_windAmount);
+    float a = texture(u_field, uv - flow * phase1).r;
+    float b = texture(u_field, uv - flow * phase2).r;
+    return mix(mix(a, b, blend), texture(u_field, uv).r, 1.0 - u_windAmount);
   }
 `
 
