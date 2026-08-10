@@ -716,7 +716,16 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       const saved = parseFloat(localStorage.getItem('tm-clouds'));
       if (Number.isFinite(saved)) cloudOpacity = Math.min(1, Math.max(0, saved));
     } catch (e) { /* private mode */ }
-    cloudLayer = createCloudLayer({ opacity: cloudOpacity, animate: !reduceMotion });
+    // The real cloud field, not the procedural fallback. These assets have been sitting in
+    // public/img/map/ unused: without a fieldUrl the layer silently runs on noise, which is banded
+    // by latitude to imitate weather but has no actual weather in it. With them you get the real
+    // ITCZ, real frontal bands and real cyclones, carried along a real GFS wind field.
+    cloudLayer = createCloudLayer({
+      opacity: cloudOpacity,
+      animate: !reduceMotion,
+      fieldUrl: '/img/map/clouds-field.webp',
+      windUrl: '/img/map/wind-field.png',
+    });
     map.addLayer(cloudLayer, 'boundaries-label');
     // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
