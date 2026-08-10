@@ -79,7 +79,7 @@ class HeroCopyTest extends TestCase
 
         $response = $this->get('/')->assertOk();
 
-        $response->assertSee('Created with AI, then taken further by teachers', escape: false);
+        $response->assertSee('a game they finish by themselves', escape: false);
         $response->assertDontSee('Check out The Punic Wars for', escape: false);
     }
 

@@ -128,7 +128,7 @@
             </h1>
 
             <p data-reveal-item class="mt-5 max-w-md text-balance text-sm leading-relaxed text-white/60 sm:text-base">
-                {{ __('Created with AI, then taken further by teachers. Real paintings, a story your class will want to finish, and a game at the end of it.') }}
+                {{ __('Real paintings, a story your class wants the end of, and a game they finish by themselves. Made with AI, shaped by teachers.') }}
             </p>
 
             <div data-reveal-item class="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">

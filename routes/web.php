@@ -130,14 +130,14 @@ Route::view('/hero-preview', 'hero-preview')->name('hero.preview');
 // and a private copy of the demo lesson, then opens the real wizard on it. Throttled because each
 // hit writes a user + a lesson + its scenes.
 Route::get('/try', \App\Http\Controllers\GuestDemoController::class)
-    ->middleware('throttle:10,1')
+    ->middleware('throttle:guest-demo')
     ->name('demo.configure');
 
 // Quiz leaderboard (Kahoot-style, anonymous nicknames) — public like the player, throttled.
 Route::get('/lesson/{lessonCode}/leaderboard', [\App\Http\Controllers\QuizLeaderboardController::class, 'index'])
-    ->middleware('throttle:60,1')->name('lesson.leaderboard');
+    ->middleware('throttle:leaderboard')->name('lesson.leaderboard');
 Route::post('/lesson/{lessonCode}/quiz-score', [\App\Http\Controllers\QuizLeaderboardController::class, 'store'])
-    ->middleware('throttle:10,1')->name('lesson.quiz-score');
+    ->middleware('throttle:quiz-score')->name('lesson.quiz-score');
 
 // Curated historical cities as GeoJSON — public reference data for the lesson-atlas overlay
 // (labelled "Constantinople (Istanbul)" markers). No auth: shared by the composer preview and
@@ -156,7 +156,9 @@ Route::post('/stripe/webhook', \App\Http\Controllers\Billing\StripeWebhookContro
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-    Route::post('/login', [LoginController::class, 'login']);
+    // The front door had NO throttle at all: thirty wrong passwords then the right one, in nine
+    // seconds. See RateLimitServiceProvider for why this is two limits rather than one.
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:login');
 
     // Password reset. Registered here, OUTSIDE the {locale} prefix group above, for the same reason
     // login is: a reset link is emailed and clicked days later, and a locale segment in it would
@@ -167,12 +169,12 @@ Route::middleware('guest')->group(function () {
     // send mail to arbitrary people, one address at a time.
     Route::get('/forgot-password', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
     Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLink'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:password-reset')
         ->name('password.email');
 
     Route::get('/reset-password/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
     Route::post('/reset-password', [ResetPasswordController::class, 'reset'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:password-reset')
         ->name('password.update');
 });
 
@@ -196,207 +198,207 @@ Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])->get(
 Route::middleware(['auth', \App\Http\Middleware\RestrictGuestDemo::class])
     ->prefix('teacher')->name('teacher.')->group(function () {
 
-    // The dashboard IS the workspace root: /teacher. The old /teacher/dashboard URL
-    // redirects so bookmarks keep working. Lessons live on their own page below.
-    Route::get('/', DashboardController::class)->name('dashboard');
-    Route::redirect('/dashboard', '/teacher');
+        // The dashboard IS the workspace root: /teacher. The old /teacher/dashboard URL
+        // redirects so bookmarks keep working. Lessons live on their own page below.
+        Route::get('/', DashboardController::class)->name('dashboard');
+        Route::redirect('/dashboard', '/teacher');
 
-    Route::get('/lessons', \App\Http\Controllers\Teacher\LessonIndexController::class)->name('lessons.index');
+        Route::get('/lessons', \App\Http\Controllers\Teacher\LessonIndexController::class)->name('lessons.index');
 
-    // Sharing a lesson with every teacher, and taking a copy of one somebody shared. Deliberately
-    // NOT model-scoped in the route: who may share and who may copy are different questions, and
-    // LessonSharing answers each of them. See LessonSharingController.
-    Route::patch('/lessons/{lesson}/sharing', [\App\Http\Controllers\Teacher\LessonSharingController::class, 'update'])
-        ->name('lessons.sharing');
-    Route::post('/lessons/{lesson}/copy', [\App\Http\Controllers\Teacher\LessonSharingController::class, 'copy'])
-        ->name('lessons.copy');
+        // Sharing a lesson with every teacher, and taking a copy of one somebody shared. Deliberately
+        // NOT model-scoped in the route: who may share and who may copy are different questions, and
+        // LessonSharing answers each of them. See LessonSharingController.
+        Route::patch('/lessons/{lesson}/sharing', [\App\Http\Controllers\Teacher\LessonSharingController::class, 'update'])
+            ->name('lessons.sharing');
+        Route::post('/lessons/{lesson}/copy', [\App\Http\Controllers\Teacher\LessonSharingController::class, 'copy'])
+            ->name('lessons.copy');
 
-    Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
+        Route::get('/timemap', \App\Livewire\TimeMap::class)->name('timemap');
 
-    // Bulk article cache is served as a static snapshot (public/timemap/articles.json) generated by
-    // timemap:sync-cliopatria-polities — the corpus pooler is too slow to query live on page load.
+        // Bulk article cache is served as a static snapshot (public/timemap/articles.json) generated by
+        // timemap:sync-cliopatria-polities — the corpus pooler is too slow to query live on page load.
 
-    // Read a territory's summary aloud via ElevenLabs. The mp3 is cached per id so each polity is
-    // synthesised at most once (cost + latency). Returns { url } or { url: null } on failure.
-    // Read a territory's summary aloud on the Time-Map.
-    //
-    // AZURE, never ElevenLabs. This is browsing, not a lesson: a teacher clicking around the map
-    // generates a fresh territory summary on every click, and each one used to go to ElevenLabs
-    // through generateWithTimestamps — the priciest endpoint we have, called for its audio while
-    // the character timings it charges for were thrown away. Nothing here shows a subtitle.
-    //
-    // ElevenLabs is reserved for lesson narration, which is authored once and heard by a class.
-    Route::post('/timemap/speak', function (\Illuminate\Http\Request $request, \App\Services\TtsService $tts) {
-        $id = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $request->input('id'));
-        $text = trim((string) $request->input('text'));
-        if ($id === '' || $text === '') {
-            return response()->json(['url' => null]);
-        }
-        $rel = "tts/{$id}.mp3";
-        $file = public_path($rel);
-        if (! is_file($file)) {
-            // Cached per polity, so a territory is only ever synthesised once however many teachers
-            // click it. The voice follows the page's language rather than a pinned id — a Dutch
-            // teacher reading a Dutch summary should not hear it in English.
-            $voice = \App\Services\Support\NarrationVoice::azure(app()->getLocale(), '');
-            $audio = $tts->generateAudioRaw(
-                \Illuminate\Support\Str::limit($text, 700, ''),
-                $voice,
-                1.0,
-                'azure',
-            );
-            if (! $audio) {
+        // Read a territory's summary aloud via ElevenLabs. The mp3 is cached per id so each polity is
+        // synthesised at most once (cost + latency). Returns { url } or { url: null } on failure.
+        // Read a territory's summary aloud on the Time-Map.
+        //
+        // AZURE, never ElevenLabs. This is browsing, not a lesson: a teacher clicking around the map
+        // generates a fresh territory summary on every click, and each one used to go to ElevenLabs
+        // through generateWithTimestamps — the priciest endpoint we have, called for its audio while
+        // the character timings it charges for were thrown away. Nothing here shows a subtitle.
+        //
+        // ElevenLabs is reserved for lesson narration, which is authored once and heard by a class.
+        Route::post('/timemap/speak', function (\Illuminate\Http\Request $request, \App\Services\TtsService $tts) {
+            $id = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $request->input('id'));
+            $text = trim((string) $request->input('text'));
+            if ($id === '' || $text === '') {
                 return response()->json(['url' => null]);
             }
-            \Illuminate\Support\Facades\File::ensureDirectoryExists(public_path('tts'));
-            \Illuminate\Support\Facades\File::put($file, $audio);
-        }
+            $rel = "tts/{$id}.mp3";
+            $file = public_path($rel);
+            if (! is_file($file)) {
+                // Cached per polity, so a territory is only ever synthesised once however many teachers
+                // click it. The voice follows the page's language rather than a pinned id — a Dutch
+                // teacher reading a Dutch summary should not hear it in English.
+                $voice = \App\Services\Support\NarrationVoice::azure(app()->getLocale(), '');
+                $audio = $tts->generateAudioRaw(
+                    \Illuminate\Support\Str::limit($text, 700, ''),
+                    $voice,
+                    1.0,
+                    'azure',
+                );
+                if (! $audio) {
+                    return response()->json(['url' => null]);
+                }
+                \Illuminate\Support\Facades\File::ensureDirectoryExists(public_path('tts'));
+                \Illuminate\Support\Facades\File::put($file, $audio);
+            }
 
-        return response()->json(['url' => "/{$rel}"]);
-    })->name('timemap.speak');
+            return response()->json(['url' => "/{$rel}"]);
+        })->name('timemap.speak');
 
-    Route::get('/timemap/polity/{osmId}', function (\Illuminate\Http\Request $request, string $osmId) {
-        $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');
-        $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
-
-        // Lazy-enrich on a miss. Supplemental markers pass an explicit `qid` (precise); OHM
-        // features pass a `name` (Wikidata search). Prefer the QID when present.
-        if (! $p && ($request->filled('qid') || $request->filled('name'))) {
-            $resolver = app(\App\Services\WikidataPolityResolver::class);
-            // Cliopatria mistags some polygons (wrong-era or shared QIDs) — resolve through the
-            // committed override table so lazy enrichment matches what the sync would write.
-            $data = $request->filled('qid')
-                ? $resolver->resolveByQid(app(\App\Services\CliopatriaQidOverrides::class)->resolve(
-                    $request->string('qid')->toString(),
-                    $request->filled('name') ? $request->string('name')->toString() : null,
-                ))
-                : $resolver->resolve($request->string('name')->toString());
-            // Era = the Cliopatria span the tiles render by (see CliopatriaSpans), so the panel
-            // matches the map; Wikidata P571/P576 is only a fallback for non-list polities.
-            $span = app(\App\Services\CliopatriaSpans::class)->for($request->filled('qid') ? $request->string('qid')->toString() : $osmId);
-            $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
-                // Prefer the dataset's clean era-name (Cliopatria Name) over the Wikidata label so the
-                // panel title matches the map label; fall back to the Wikidata label.
-                'polity_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $data['label'],
-                'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],
-                'wikipedia_url' => $data['wikipedia_url'], 'inception' => $span['from'] ?? $data['inception'],
-                'dissolution' => $span['to'] ?? $data['dissolution'], 'predecessor' => $data['predecessor'],
-                'successor' => $data['successor'], 'sitelinks' => $data['sitelinks'],
-                'significant' => true, 'updated_at' => now(),
-            ]);
+        Route::get('/timemap/polity/{osmId}', function (\Illuminate\Http\Request $request, string $osmId) {
+            $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');
             $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
-        }
 
-        // Rulers + notable people of this polity (corpus), for the People tab cards. Rulers first,
-        // then by fame (sitelinks). The QID comes from the click payload or the stored polity.
-        $qid = $request->filled('qid') ? $request->string('qid')->toString() : $p?->wikidata_id;
-        $figures = [];
-        if ($qid) {
-            $figures = $corpus->table('public.figures')
-                ->where('parent_qid', $qid)
-                ->whereNotNull('name')
-                ->orderByRaw("CASE WHEN figure_kind = 'ruler' THEN 0 ELSE 1 END")
-                ->orderByDesc('sitelinks')
-                ->limit(12)
-                ->get(['qid', 'name', 'figure_kind', 'image_url', 'era_start', 'era_end'])
-                ->map(fn ($f) => [
-                    'qid' => $f->qid,
-                    'name' => $f->name,
-                    'kind' => $f->figure_kind,
-                    'image_url' => $f->image_url,
-                    'era' => ($f->era_start !== null || $f->era_end !== null)
-                        ? trim(($f->era_start ?? '?').'–'.($f->era_end ?? '?'), '–')
-                        : null,
-                ])->all();
-        }
+            // Lazy-enrich on a miss. Supplemental markers pass an explicit `qid` (precise); OHM
+            // features pass a `name` (Wikidata search). Prefer the QID when present.
+            if (! $p && ($request->filled('qid') || $request->filled('name'))) {
+                $resolver = app(\App\Services\WikidataPolityResolver::class);
+                // Cliopatria mistags some polygons (wrong-era or shared QIDs) — resolve through the
+                // committed override table so lazy enrichment matches what the sync would write.
+                $data = $request->filled('qid')
+                    ? $resolver->resolveByQid(app(\App\Services\CliopatriaQidOverrides::class)->resolve(
+                        $request->string('qid')->toString(),
+                        $request->filled('name') ? $request->string('name')->toString() : null,
+                    ))
+                    : $resolver->resolve($request->string('name')->toString());
+                // Era = the Cliopatria span the tiles render by (see CliopatriaSpans), so the panel
+                // matches the map; Wikidata P571/P576 is only a fallback for non-list polities.
+                $span = app(\App\Services\CliopatriaSpans::class)->for($request->filled('qid') ? $request->string('qid')->toString() : $osmId);
+                $corpus->table('public.polities')->updateOrInsert(['osm_id' => $osmId], [
+                    // Prefer the dataset's clean era-name (Cliopatria Name) over the Wikidata label so the
+                    // panel title matches the map label; fall back to the Wikidata label.
+                    'polity_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $data['label'],
+                    'wikidata_id' => $data['wikidata_id'], 'summary' => $data['summary'],
+                    'wikipedia_url' => $data['wikipedia_url'], 'inception' => $span['from'] ?? $data['inception'],
+                    'dissolution' => $span['to'] ?? $data['dissolution'], 'predecessor' => $data['predecessor'],
+                    'successor' => $data['successor'], 'sitelinks' => $data['sitelinks'],
+                    'significant' => true, 'updated_at' => now(),
+                ]);
+                $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
+            }
 
-        return response()->json([
-            // Title = the clicked feature's name (matches the map label even if a QID is shared
-            // across differently-named Cliopatria segments); QID still drives summary/flag/dates.
-            'osm_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $p?->label,
-            'summary' => $p?->summary,
-            'flag_path' => $p?->flag_path, 'wikipedia_url' => $p?->wikipedia_url,
-            'inception' => $p?->inception !== null ? (int) $p->inception : null,
-            'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
-            'predecessor' => $p?->predecessor, 'successor' => $p?->successor,
-            'figures' => $figures,
-        ])->header('Cache-Control', 'public, max-age=86400');
-    })->name('timemap.polity');
+            // Rulers + notable people of this polity (corpus), for the People tab cards. Rulers first,
+            // then by fame (sitelinks). The QID comes from the click payload or the stored polity.
+            $qid = $request->filled('qid') ? $request->string('qid')->toString() : $p?->wikidata_id;
+            $figures = [];
+            if ($qid) {
+                $figures = $corpus->table('public.figures')
+                    ->where('parent_qid', $qid)
+                    ->whereNotNull('name')
+                    ->orderByRaw("CASE WHEN figure_kind = 'ruler' THEN 0 ELSE 1 END")
+                    ->orderByDesc('sitelinks')
+                    ->limit(12)
+                    ->get(['qid', 'name', 'figure_kind', 'image_url', 'era_start', 'era_end'])
+                    ->map(fn ($f) => [
+                        'qid' => $f->qid,
+                        'name' => $f->name,
+                        'kind' => $f->figure_kind,
+                        'image_url' => $f->image_url,
+                        'era' => ($f->era_start !== null || $f->era_end !== null)
+                            ? trim(($f->era_start ?? '?').'–'.($f->era_end ?? '?'), '–')
+                            : null,
+                    ])->all();
+            }
 
-    Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
+            return response()->json([
+                // Title = the clicked feature's name (matches the map label even if a QID is shared
+                // across differently-named Cliopatria segments); QID still drives summary/flag/dates.
+                'osm_id' => $osmId, 'label' => $request->filled('name') ? $request->string('name')->toString() : $p?->label,
+                'summary' => $p?->summary,
+                'flag_path' => $p?->flag_path, 'wikipedia_url' => $p?->wikipedia_url,
+                'inception' => $p?->inception !== null ? (int) $p->inception : null,
+                'dissolution' => $p?->dissolution !== null ? (int) $p->dissolution : null,
+                'predecessor' => $p?->predecessor, 'successor' => $p?->successor,
+                'figures' => $figures,
+            ])->header('Cache-Control', 'public, max-age=86400');
+        })->name('timemap.polity');
 
-    // K-12 agentic creation chat — goal → chips → configured lesson in ~1 min.
-    Route::get('/lessons/chat', \App\Livewire\Teacher\LessonChat::class)->name('lessons.chat');
+        Route::get('/lessons/create', LessonWizard::class)->name('lessons.create');
 
-    Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
+        // K-12 agentic creation chat — goal → chips → configured lesson in ~1 min.
+        Route::get('/lessons/chat', \App\Livewire\Teacher\LessonChat::class)->name('lessons.chat');
 
-    Route::get('/lessons/{lesson}/composer', \App\Livewire\LessonComposer::class)->name('lessons.composer');
+        Route::get('/lessons/{lesson}/wizard', LessonWizard::class)->name('lessons.wizard');
 
-    // Results & analytics (spec: docs/superpowers/specs/2026-07-08-teacher-results-analytics-design.md)
-    Route::get('/lessons/{lesson}/results', \App\Livewire\Teacher\LessonReport::class)->name('lessons.results');
-    Route::get('/results', \App\Livewire\Teacher\ResultsHub::class)->name('results.hub');
+        Route::get('/lessons/{lesson}/composer', \App\Livewire\LessonComposer::class)->name('lessons.composer');
 
-    // Class management — classes + account-less rosters + lesson assignment
-    Route::get('/classes', \App\Livewire\Teacher\Classrooms::class)->name('classes.index');
-    Route::get('/classes/{classroom}', \App\Livewire\Teacher\ClassroomManage::class)->name('classes.manage');
+        // Results & analytics (spec: docs/superpowers/specs/2026-07-08-teacher-results-analytics-design.md)
+        Route::get('/lessons/{lesson}/results', \App\Livewire\Teacher\LessonReport::class)->name('lessons.results');
+        Route::get('/results', \App\Livewire\Teacher\ResultsHub::class)->name('results.hub');
 
-    Route::get('/lessons/{lesson}/results/answer-sheet', function (\App\Models\Lesson $lesson) {
-        abort_unless(auth()->user()?->canManage($lesson), 403);
-        $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
+        // Class management — classes + account-less rosters + lesson assignment
+        Route::get('/classes', \App\Livewire\Teacher\Classrooms::class)->name('classes.index');
+        Route::get('/classes/{classroom}', \App\Livewire\Teacher\ClassroomManage::class)->name('classes.manage');
 
-        return view('teacher.answer-sheet', compact('lesson', 'questions'));
-    })->name('lessons.answer-sheet');
+        Route::get('/lessons/{lesson}/results/answer-sheet', function (\App\Models\Lesson $lesson) {
+            abort_unless(auth()->user()?->canManage($lesson), 403);
+            $questions = $lesson->quizQuestions()->orderBy('scene_id')->orderBy('order')->get();
 
-    Route::get('/lessons/{lesson}/print/handout', function (\App\Models\Lesson $lesson, \App\Services\LessonPdfService $pdf) {
-        abort_unless(auth()->user()?->canManage($lesson), 403);
+            return view('teacher.answer-sheet', compact('lesson', 'questions'));
+        })->name('lessons.answer-sheet');
 
-        return response($pdf->handout($lesson), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="handout-'.$lesson->lesson_code.'.pdf"',
-        ]);
-    })->name('lessons.print.handout');
+        Route::get('/lessons/{lesson}/print/handout', function (\App\Models\Lesson $lesson, \App\Services\LessonPdfService $pdf) {
+            abort_unless(auth()->user()?->canManage($lesson), 403);
 
-    Route::get('/lessons/{lesson}/print/game-pack', function (\App\Models\Lesson $lesson) {
-        abort_unless(auth()->user()?->canManage($lesson), 403);
-        abort_unless(filled($lesson->game_pack_path)
-            && \Illuminate\Support\Facades\Storage::disk('public')->exists($lesson->game_pack_path), 404);
+            return response($pdf->handout($lesson), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="handout-'.$lesson->lesson_code.'.pdf"',
+            ]);
+        })->name('lessons.print.handout');
 
-        return response(\Illuminate\Support\Facades\Storage::disk('public')->get($lesson->game_pack_path), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="spelpakket-'.$lesson->lesson_code.'.pdf"',
-        ]);
-    })->name('lessons.print.game-pack');
+        Route::get('/lessons/{lesson}/print/game-pack', function (\App\Models\Lesson $lesson) {
+            abort_unless(auth()->user()?->canManage($lesson), 403);
+            abort_unless(filled($lesson->game_pack_path)
+                && \Illuminate\Support\Facades\Storage::disk('public')->exists($lesson->game_pack_path), 404);
 
-    // Buy narration credits. Inside this group on purpose: RestrictGuestDemo only lets a demo
-    // guest reach the wizard, so a throwaway account gets a 403 here rather than a payment screen.
-    Route::get('/credits', \App\Livewire\Teacher\BuyCredits::class)->name('credits.index');
+            return response(\Illuminate\Support\Facades\Storage::disk('public')->get($lesson->game_pack_path), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="spelpakket-'.$lesson->lesson_code.'.pdf"',
+            ]);
+        })->name('lessons.print.game-pack');
 
-    // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
-    Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
+        // Buy narration credits. Inside this group on purpose: RestrictGuestDemo only lets a demo
+        // guest reach the wizard, so a throwaway account gets a 403 here rather than a payment screen.
+        Route::get('/credits', \App\Livewire\Teacher\BuyCredits::class)->name('credits.index');
 
-    Route::post('/lessons/{lesson}/retry', function (Lesson $lesson) {
-        abort_unless(app()->environment(['local', 'testing']), 403);
-        abort_unless(auth()->user()?->canManage($lesson), 403);
-        abort_unless($lesson->status === LessonStatusEnum::Failed, 422, 'Lesson is not failed');
+        // Alias so legacy dashboard / nav links keep working — resumes wizard at lesson's last step.
+        Route::get('/lessons/{lesson}', LessonWizard::class)->name('lessons.show');
 
-        $lesson->quizQuestions()->delete();
-        $lesson->update([
-            'status' => LessonStatusEnum::Pending,
-            'error_message' => null,
-            'wikipedia_source' => null,
-            'script' => null,
-            'portrait_path' => null,
-            'audio_path' => null,
-            'duration_seconds' => null,
-        ]);
+        Route::post('/lessons/{lesson}/retry', function (Lesson $lesson) {
+            abort_unless(app()->environment(['local', 'testing']), 403);
+            abort_unless(auth()->user()?->canManage($lesson), 403);
+            abort_unless($lesson->status === LessonStatusEnum::Failed, 422, 'Lesson is not failed');
 
-        // Use the OpenAI scene pipeline (same as the wizard), not the legacy local-LLM GenerateLesson.
-        \App\Jobs\BuildLessonOutline::dispatch($lesson->id);
+            $lesson->quizQuestions()->delete();
+            $lesson->update([
+                'status' => LessonStatusEnum::Pending,
+                'error_message' => null,
+                'wikipedia_source' => null,
+                'script' => null,
+                'portrait_path' => null,
+                'audio_path' => null,
+                'duration_seconds' => null,
+            ]);
 
-        return back()->with('success', 'Lesson generation has been re-queued.');
-    })->name('lessons.retry');
+            // Use the OpenAI scene pipeline (same as the wizard), not the legacy local-LLM GenerateLesson.
+            \App\Jobs\BuildLessonOutline::dispatch($lesson->id);
 
-});
+            return back()->with('success', 'Lesson generation has been re-queued.');
+        })->name('lessons.retry');
+
+    });
 
 // ── Admin panel (role:admin only) ─────────────────────────────────────────────
 
