@@ -1,0 +1,264 @@
+import { describe, it, expect } from 'vitest'
+import {
+  decodeTerrarium,
+  equirectHeightGrid,
+  normalsFromHeights,
+  encodeNormals,
+  equirectMetresPerPixel,
+  reliefDetailFor,
+  RELIEF_GLSL,
+} from '../terrain-normals.js'
+
+/**
+ * The bake and the shader have to agree about three conventions, and every disagreement between
+ * them is silent — the globe still renders, the mountains simply lean the wrong way:
+ *
+ *  - WHICH WAY IS UP in the terrarium encoding (an off-by-32768 turns Everest into a trench).
+ *  - WHICH WAY THE GREEN CHANNEL POINTS. The classic normal-map bug. Here +G is SOUTH, matching
+ *    the direction equirectangular v increases, so the shader's tangent basis needs no flip.
+ *  - THAT A DEGREE OF LONGITUDE IS NOT A DEGREE. The same height step across one pixel is a much
+ *    steeper slope at 70°N than at the equator, because the pixel is narrower there. Skip the
+ *    cos(lat) and the poles come out suspiciously gentle.
+ */
+
+const gridOf = (width, height, fn) => {
+  const out = new Float32Array(width * height)
+  for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) out[j * width + i] = fn(i, j)
+  return out
+}
+
+describe('terrarium decoding', () => {
+  it('reads height as (R*256 + G + B/256) - 32768 metres', () => {
+    expect(decodeTerrarium(128, 0, 0)).toBe(0)
+    expect(decodeTerrarium(128, 100, 0)).toBe(100)
+    expect(decodeTerrarium(127, 156, 0)).toBe(-100)
+  })
+
+  it('resolves the fractional byte, so gentle ground is not a staircase', () => {
+    // Without B the smallest step is a whole metre, and a floodplain becomes visible terracing.
+    expect(decodeTerrarium(128, 0, 128)).toBeCloseTo(0.5, 6)
+  })
+
+  it('puts the deepest ocean and the highest peak inside the encodable range', () => {
+    expect(decodeTerrarium(0, 0, 0)).toBe(-32768)
+    expect(decodeTerrarium(255, 255, 255)).toBeGreaterThan(8848)
+  })
+})
+
+describe('mercator to equirectangular resampling', () => {
+  // A source grid whose value is its own mercator row, so the mapping is readable in the output.
+  const source = (size) => gridOf(size, size, (_i, j) => j)
+
+  it('keeps a constant field constant — no drift from the projection change', () => {
+    const out = equirectHeightGrid(gridOf(64, 64, () => 42), 64, 8, 4)
+    for (const v of out) expect(v).toBeCloseTo(42, 4)
+  })
+
+  it('lands the equator on the middle of the mercator square', () => {
+    const size = 64
+    const out = equirectHeightGrid(source(size), size, 8, 8)
+    // Output rows 3 and 4 straddle the equator; the source row there is size/2.
+    const above = out[3 * 8]
+    const below = out[4 * 8]
+    expect(above).toBeLessThan(size / 2)
+    expect(below).toBeGreaterThan(size / 2)
+    // Straddling rows average back to the middle, give or take the half-texel the row centres sit
+    // off the boundary. A projection sign error would put this at a quarter or three quarters.
+    expect(Math.abs((above + below) / 2 - size / 2)).toBeLessThan(1.5)
+  })
+
+  it('runs monotonically north to south, so nothing is mirrored', () => {
+    const out = equirectHeightGrid(source(64), 64, 8, 16)
+    for (let j = 1; j < 16; j++) expect(out[j * 8]).toBeGreaterThan(out[(j - 1) * 8])
+  })
+
+  it('fills the polar caps mercator never reaches rather than leaving them empty', () => {
+    // Mercator stops at ±85.05°. An output row at 89° has no source rows at all; it has to
+    // inherit the nearest one, or Antarctica's interior comes back as a 4 km hole.
+    const out = equirectHeightGrid(gridOf(64, 64, () => 2500), 64, 8, 180)
+    expect(out[0]).toBeCloseTo(2500, 4)                    // 89.5°N
+    expect(out[179 * 8]).toBeCloseTo(2500, 4)              // 89.5°S
+  })
+})
+
+describe('normals from an equirectangular height grid', () => {
+  const flat = (w, h) => new Float32Array(w * h)
+
+  it('gives straight up over flat ground', () => {
+    const n = normalsFromHeights(flat(16, 8), 16, 8)
+    for (let k = 0; k < 16 * 8; k++) {
+      expect(n[k * 3 + 0]).toBeCloseTo(0, 6)
+      expect(n[k * 3 + 1]).toBeCloseTo(0, 6)
+      expect(n[k * 3 + 2]).toBeCloseTo(1, 6)
+    }
+  })
+
+  it('tilts the normal WEST where the ground rises to the east', () => {
+    const w = 64, h = 32
+    const heights = gridOf(w, h, (i) => i * 100)
+    const n = normalsFromHeights(heights, w, h)
+    const at = (i, j) => n.subarray((j * w + i) * 3, (j * w + i) * 3 + 3)
+    // Mid-grid, away from the wrap seam and the poles.
+    expect(at(32, 16)[0]).toBeLessThan(0)
+    expect(at(32, 16)[1]).toBeCloseTo(0, 6)
+  })
+
+  it('tilts the normal NORTH where the ground rises to the south (+G is south)', () => {
+    const w = 64, h = 32
+    const heights = gridOf(w, h, (_i, j) => j * 100)
+    const n = normalsFromHeights(heights, w, h)
+    const k = (16 * w + 32) * 3
+    expect(n[k + 1]).toBeLessThan(0)
+    expect(n[k + 0]).toBeCloseTo(0, 6)
+  })
+
+  it('makes the same height step a steeper slope at high latitude', () => {
+    // One pixel of longitude is 3.4x narrower at 70°N than at the equator, so the same rise over
+    // it is a much steeper slope. This is the term that is easy to leave out and impossible to
+    // see afterwards.
+    const w = 360, h = 180
+    const heights = gridOf(w, h, (i) => i * 100)
+    const n = normalsFromHeights(heights, w, h)
+    const tiltAt = (j) => Math.abs(n[(j * w + 180) * 3])
+    const equator = tiltAt(90)   // 0.5°N
+    const high = tiltAt(20)      // 70.5°N
+    expect(high).toBeGreaterThan(equator * 2)
+  })
+
+  it('wraps at the antimeridian instead of flattening a stripe down the Pacific', () => {
+    const w = 64, h = 32
+    // A field that is genuinely continuous across the seam: one full cosine cycle of longitude.
+    const heights = gridOf(w, h, (i) => 1000 * Math.cos((i / w) * 2 * Math.PI))
+    const n = normalsFromHeights(heights, w, h)
+    const seam = Math.abs(n[(16 * w + 0) * 3])
+    const inland = Math.abs(n[(16 * w + 32) * 3])
+    // Both sit on the cosine's flat crest/trough, so both should be near zero and equal — a
+    // non-wrapping difference would make the seam column read a full cycle of slope.
+    expect(seam).toBeCloseTo(inland, 6)
+  })
+
+  it('treats the sea floor as flat water, not as terrain', () => {
+    // Terrarium carries bathymetry. Shading it draws mid-ocean ridges onto the surface of the
+    // Atlantic, which is exactly the "bathymetric chart, not water" failure the satellite source
+    // already avoids.
+    const w = 32, h = 16
+    const heights = gridOf(w, h, (i) => -1000 * i)
+    const n = normalsFromHeights(heights, w, h)
+    const k = (8 * w + 16) * 3
+    expect(n[k + 0]).toBeCloseTo(0, 6)
+    expect(n[k + 1]).toBeCloseTo(0, 6)
+    expect(n[k + 2]).toBeCloseTo(1, 6)
+  })
+
+  it('does not manufacture cliffs at the poles out of an oversampled grid', () => {
+    /**
+     * The equirectangular grid crowds its columns together toward the poles: at 89.9°N two
+     * neighbouring texels are thirty metres apart on the ground, while the DEM they were resampled
+     * from is nineteen kilometres coarse. Measure the slope between them and Greenland's ice edge —
+     * a real three-kilometre step — comes out as an 87° wall ringing the Arctic, which is what the
+     * first bake of this map actually produced.
+     *
+     * The slope has to be measured over a fixed distance of GROUND, not over one texel, so the
+     * stencil widens as the texels narrow.
+     */
+    const w = 512, h = 256
+    // One continent edge, identical at every latitude: 3 km of land meeting sea down a meridian.
+    const heights = gridOf(w, h, (i) => (i < w / 2 ? 3000 : 0))
+    const n = normalsFromHeights(heights, w, h)
+    const maxTiltInRow = (j) => {
+      let worst = 0
+      for (let i = 0; i < w; i++) worst = Math.max(worst, Math.abs(n[(j * w + i) * 3]))
+      return worst
+    }
+    const equator = maxTiltInRow(h / 2)
+    expect(equator).toBeGreaterThan(0)
+    // The same edge, so the same order of slope — not five hundred times it.
+    expect(maxTiltInRow(0)).toBeLessThan(equator * 3)
+    expect(maxTiltInRow(h - 1)).toBeLessThan(equator * 3)
+  })
+
+  it('returns unit normals, so the shader can trust them without renormalising', () => {
+    const w = 32, h = 16
+    const heights = gridOf(w, h, (i, j) => Math.sin(i) * 800 + Math.cos(j) * 600)
+    const n = normalsFromHeights(heights, w, h)
+    for (let k = 0; k < w * h; k++) {
+      const [x, y, z] = n.subarray(k * 3, k * 3 + 3)
+      expect(Math.hypot(x, y, z)).toBeCloseTo(1, 5)
+      expect(z).toBeGreaterThan(0)   // no overhangs on a height field
+    }
+  })
+})
+
+describe('encoding to bytes', () => {
+  it('round-trips a normal through 8 bits to within half a level', () => {
+    const n = new Float32Array([0, 0, 1, 0.6, -0.8, 0, -0.5, 0.5, Math.SQRT1_2])
+    const bytes = encodeNormals(n)
+    for (let k = 0; k < 3; k++) {
+      for (let c = 0; c < 3; c++) {
+        const decoded = (bytes[k * 3 + c] / 255) * 2 - 1
+        expect(decoded).toBeCloseTo(n[k * 3 + c], 2)
+      }
+    }
+  })
+
+  it('puts flat ground on the byte the shader decodes as exactly zero tilt', () => {
+    // The encoder and the shader have to share a centre. 128 under the usual texel*2-1 decodes to
+    // 0.0039, and that residue is applied to every flat texel on earth — a constant tilt over
+    // every ocean, which is a constant brightness offset. Measured, it moved open water by a whole
+    // 8-bit level. So the shader subtracts THIS number, and this test pins the two together.
+    const bytes = encodeNormals(new Float32Array([0, 0, 1]))
+    expect(bytes[0]).toBe(128)
+    expect(bytes[1]).toBe(128)
+    expect(bytes[2]).toBe(255)
+    expect(RELIEF_GLSL).toContain((128 / 255).toFixed(8))
+  })
+})
+
+describe('how much ground a texel covers', () => {
+  it('measures the equator texel from the earth\'s circumference', () => {
+    // Mean radius, matching EARTH_RADIUS_M — the same number clouds.js measures its own field with.
+    expect(Math.round(equirectMetresPerPixel(2048, 0))).toBe(19546)
+    expect(Math.round(equirectMetresPerPixel(8192, 0))).toBe(4887)
+  })
+
+  it('narrows toward the poles with the meridians', () => {
+    expect(equirectMetresPerPixel(8192, 60)).toBeCloseTo(equirectMetresPerPixel(8192, 0) / 2, 0)
+  })
+})
+
+describe('when the relief map runs out of pixels', () => {
+  /**
+   * The lesson the cloud deck already taught: a globe-tuned texture becomes a smooth wash on
+   * approach and nothing errors. An 8192-wide normal map is 4.9 km per texel, so it is magnified
+   * 8x by z8 — by then the relief term is a low-frequency blob laid over sharp imagery that
+   * already carries its own baked-in shading. It has to retire rather than smear.
+   */
+  const WIDTH = 8192
+
+  it('runs at full strength while the globe is the picture', () => {
+    expect(reliefDetailFor(0, 0, WIDTH).strength).toBeCloseTo(1, 5)
+    expect(reliefDetailFor(4, 0, WIDTH).strength).toBeCloseTo(1, 5)
+  })
+
+  it('has retired by the time the imagery is sharper than the relief map', () => {
+    expect(reliefDetailFor(9, 0, WIDTH).strength).toBe(0)
+    expect(reliefDetailFor(11, 0, WIDTH).strength).toBe(0)
+  })
+
+  it('fades rather than switching off, so the terminator never pops', () => {
+    const mid = reliefDetailFor(6.5, 0, WIDTH).strength
+    expect(mid).toBeGreaterThan(0)
+    expect(mid).toBeLessThan(1)
+  })
+
+  it('holds on longer for a wider map, because a wider map has the pixels', () => {
+    expect(reliefDetailFor(7, 0, 16384).strength).toBeGreaterThan(reliefDetailFor(7, 0, 4096).strength)
+  })
+
+  it('fades at the same zoom at every latitude — screen and texel shrink together', () => {
+    // Both the screen scale and the equirectangular texel carry the same cos(lat), so the ratio
+    // that drives the fade does not. A fade that moved with latitude would mean one of the two
+    // had lost its cosine.
+    expect(reliefDetailFor(6.5, 60, WIDTH).strength).toBeCloseTo(reliefDetailFor(6.5, 0, WIDTH).strength, 6)
+  })
+})

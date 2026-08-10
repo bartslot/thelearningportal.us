@@ -6,6 +6,13 @@
       "name": "serve",
       "url": "http://localhost:8000",
       "port": 8000
+    },
+    {
+      "//": "The globe lighting measurement harness (resources/js/timemap/__harness__). Standalone Vite, nothing to do with the Laravel app — it serves one page plus public/, where the relief map and cloud fields live. Its own port so it never contends with `composer dev` on :8000.",
+      "name": "globe-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.harness.config.js"],
+      "port": 5199
     }
   ]
 }

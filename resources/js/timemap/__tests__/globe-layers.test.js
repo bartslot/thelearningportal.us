@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { CLOUD_ALTITUDE_M } from '../cloud-field.js'
+import { EARTH_RADIUS_M } from '../planet-mesh.js'
 import { createAtmosphereLayer, ATMOSPHERE_LAYER_ID } from '../atmosphere.js'
 import { createDaylightLayer, DAYLIGHT_LAYER_ID } from '../daylight.js'
 import { createStarfieldLayer, STARFIELD_LAYER_ID } from '../starfield.js'
@@ -228,6 +230,162 @@ describe('equirectangular lookups', () => {
     const daylight = read('daylight.js')
     expect(daylight).toContain('equirectUV(normal, 0.0)')
     expect(daylight).not.toContain('equirectUVInside')
+  })
+})
+
+describe('relief and cloud shadow on the ground', () => {
+  /**
+   * The two things that turn a lit ball into a lit planet, and the two that are easiest to get
+   * silently wrong: relief shading that leans the wrong way, and a cloud field loaded twice.
+   */
+  let images = []
+
+  beforeEach(() => {
+    images = []
+    vi.stubGlobal('Image', class {
+      constructor() { images.push(this); this.onload = null; this.onerror = null }
+      finish() { this.onload && this.onload() }
+    })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const recordingGl = () => {
+    const uniforms = {}
+    const { gl, calls } = glStub()
+    gl.uniform1f = (name, value) => { uniforms[name] = value }
+    gl.uniform1i = (name, value) => { uniforms[name] = value }
+    gl.uniform3f = (name, x, y, z) => { uniforms[name] = [x, y, z] }
+    return { gl, calls, uniforms }
+  }
+
+  const zoomedMap = (zoom) => ({ ...mapStub(), getZoom: () => zoom })
+
+  it('loads the cloud field once, however many layers read it', () => {
+    // The deck draws the clouds; the ground shades itself with their shadow. Two loads would land
+    // on different frames, so for a moment the shadows belong to a sky that has not arrived.
+    const { gl } = glStub()
+    const deck = createCloudLayer({ fieldUrl: '/clouds.webp' })
+    const ground = createDaylightLayer({ fieldUrl: '/clouds.webp' })
+    deck.onAdd(mapStub(), gl)
+    ground.onAdd(mapStub(), gl)
+    expect(images).toHaveLength(1)
+    images[0].finish()
+    expect(deck.hasField).toBe(true)
+    deck.onRemove()
+    ground.onRemove()
+  })
+
+  it('keeps the field alive for the ground when the deck is removed', () => {
+    const { gl, calls } = glStub()
+    const deck = createCloudLayer({ fieldUrl: '/clouds.webp' })
+    const ground = createDaylightLayer({ fieldUrl: '/clouds.webp' })
+    deck.onAdd(mapStub(), gl)
+    ground.onAdd(mapStub(), gl)
+    images[0].finish()
+    deck.onRemove()
+    expect(calls.deleteTexture).toBe(0)
+    ground.onRemove()
+    expect(calls.deleteTexture).toBe(1)
+  })
+
+  it('asks for no relief at all without a relief map, so the texture is never sampled', () => {
+    const { gl, uniforms } = recordingGl()
+    const layer = createDaylightLayer({ reliefPower: 1.5 })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    expect(uniforms.u_reliefPower).toBe(0)
+    expect(layer.hasRelief).toBe(false)
+  })
+
+  it('shades with the relief once the map has arrived', () => {
+    const { gl, uniforms } = recordingGl()
+    const layer = createDaylightLayer({ reliefUrl: '/earth-normal.webp', reliefPower: 1.5 })
+    layer.onAdd(zoomedMap(2), gl)
+    images[0].finish()
+    layer.render(gl, v5Args())
+    expect(layer.hasRelief).toBe(true)
+    expect(uniforms.u_reliefPower).toBeCloseTo(1.5, 5)
+  })
+
+  it('retires the relief as the camera descends past the map\'s resolution', () => {
+    // The cloud deck already learned this: a globe-tuned texture becomes a smooth wash on approach
+    // and nothing errors. Here it would be a low-frequency bulge over imagery that already carries
+    // its own baked-in relief shading.
+    const at = (zoom) => {
+      const { gl, uniforms } = recordingGl()
+      const layer = createDaylightLayer({ reliefUrl: '/n.webp', reliefWidth: 8192, reliefPower: 1.5 })
+      layer.onAdd(zoomedMap(zoom), gl)
+      images[images.length - 1].finish()
+      layer.render(gl, v5Args())
+      return uniforms.u_reliefPower
+    }
+    expect(at(2)).toBeCloseTo(1.5, 5)
+    expect(at(6.5)).toBeGreaterThan(0)
+    expect(at(6.5)).toBeLessThan(1.5)
+    expect(at(9)).toBe(0)
+  })
+
+  it('throws the shadow from the height the deck is actually drawn at', () => {
+    // A shadow cast from a truthful 12 km, under a deck drawn at an exaggerated 90 km, separates
+    // from the cloud visibly at low sun. The two have to use one number.
+    const { gl, uniforms } = recordingGl()
+    const layer = createDaylightLayer({ fieldUrl: '/clouds.webp' })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    expect(uniforms.u_cloudAltitude).toBeCloseTo(CLOUD_ALTITUDE_M / EARTH_RADIUS_M, 9)
+  })
+
+  it('gives the ground and the deck the same clock, so shadows sit under their clouds', () => {
+    const readClock = (layer) => {
+      const { gl, uniforms } = recordingGl()
+      layer.onAdd(mapStub(), gl)
+      images[images.length - 1].finish()
+      layer.render(gl, v5Args())
+      return uniforms
+    }
+    const deck = readClock(createCloudLayer({ fieldUrl: '/c.webp', windUrl: '/w.webp', animate: false }))
+    const ground = readClock(createDaylightLayer({ fieldUrl: '/c.webp', windUrl: '/w.webp', animate: false }))
+    for (const key of ['u_time', 'u_drift', 'u_windScale', 'u_windRate', 'u_windAmount']) {
+      expect(ground[key]).toBe(deck[key])
+    }
+  })
+})
+
+describe('the relief conventions the bake and the shader share', () => {
+  /**
+   * Three things have to agree between an offline script and a fragment shader, and nothing checks
+   * them at runtime — a disagreement renders perfectly and simply lights the mountains wrong.
+   * There is no numeric output to assert on, so the source is read as text, the way the
+   * equirectangular lookups above are.
+   */
+  const read = (name) => readFileSync(resolve(process.cwd(), 'resources/js/timemap', name), 'utf8')
+
+  it('shades by the difference from the sphere, not by the terrain normal', () => {
+    // Shading by the terrain normal alone relights the whole planet and fights imagery that
+    // already carries its own relief. The difference is zero over flat ground and largest at the
+    // terminator, which is the entire reason this works.
+    expect(read('terrain-normals.js'))
+      .toContain('1.0 + power * (dot(perturbed, sunDir) - dot(up, sunDir))')
+  })
+
+  it('builds the tangent frame as east, south, up — matching R, G, B in the bake', () => {
+    const source = read('terrain-normals.js')
+    const frame = source.slice(source.indexOf('mat3 equirectTangentFrame'))
+    expect(frame).toContain('cross(up, vec3(0.0, 1.0, 0.0))')
+    expect(frame).toContain('mat3(east, cross(up, east), up)')
+  })
+
+  it('bakes green as south, the direction equirectangular v increases', () => {
+    // The classic normal-map bug. Green pointing north would put every mountain's shadow on the
+    // wrong side of the ridge, consistently and plausibly.
+    const source = read('terrain-normals.js')
+    expect(source).toContain('+G  SOUTH')
+    expect(source).toContain('out[k + 1] = y / length')
+    expect(source).toContain('const y = -dhdySouth')
+  })
+
+  it('leaves the sea floor flat, so the ocean is water and not a bathymetric chart', () => {
+    expect(read('terrain-normals.js')).toContain('Math.max(0, heights[index])')
   })
 })
 

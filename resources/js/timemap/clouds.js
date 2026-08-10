@@ -27,6 +27,8 @@
 
 import maplibregl from 'maplibre-gl'
 import { buildSphereMesh, buildProgram, EARTH_RADIUS_M, EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL } from './planet-mesh.js'
+import { CLOUD_ALTITUDE_M, CLOUD_FIELD_GLSL, CLOUD_FIELD_UNIFORMS, setCloudFieldUniforms } from './cloud-field.js'
+import { acquireEquirectTexture } from './equirect-texture.js'
 
 const LAYER_ID = 'tm-clouds'
 
@@ -76,9 +78,6 @@ const smoothstep = (edge0, edge1, x) => {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)
 }
-// Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
-// exaggerated until the shell parallaxes against the ground as the camera moves.
-const ALTITUDE_M = 90000
 
 // Value noise + fbm over the unit sphere. Cheap, and at cloud scale nobody can tell it from
 // gradient noise. `u_time` drifts the field along one axis: weather moving over the planet.
@@ -131,50 +130,16 @@ void main() {
 
 const fragmentSource = () => `precision highp float;
 varying vec3 v_sphere;
-uniform float u_time;
 uniform float u_opacity;
-uniform float u_drift;
 uniform vec3 u_sun;           // direction TO the sun
-uniform sampler2D u_field;    // real cloud cover, equirectangular
-uniform float u_fieldAmount;  // 0 = procedural weather, 1 = the real field
-uniform sampler2D u_wind;     // real wind field: R = eastward, G = southward, 0.5 = still
-uniform float u_windAmount;   // 0 = the field sits still, 1 = fully advected
-uniform float u_windScale;    // how far the flow carries per cycle, in UV
-uniform float u_windRate;     // cycles per second
 uniform float u_detailFreq;   // noise cycles per unit sphere; rises as the camera descends
 uniform float u_detailAmount; // how much of the structure the noise carries, vs the real field
 uniform float u_deckFade;     // 0 once the camera is below the deck and clouds stop making sense
 ${NOISE_GLSL}
 ${EQUIRECT_GLSL}
 ${TERMINATOR_GLSL}
-
-// ── Wind advection ────────────────────────────────────────────────────────────────────────────
-// Sliding the whole texture makes clouds drift like a painted backdrop; real weather TURNS. The
-// field here is a genuine GFS wind grid, so the rotation comes from actual circulation — the low
-// off Newfoundland spins because it was really spinning.
-//
-// The trick is the double sample. Offsetting UVs by flow*time smears without limit — after a few
-// seconds every cloud is a streak. So the flow is sampled at two clocks half a cycle apart and
-// cross-faded, and each one resets before it has time to smear. Standard flow-map practice.
-vec2 windAt(vec2 uv, float lat) {
-  vec2 wind = texture2D(u_wind, uv).rg * 2.0 - 1.0;
-  // Degrees of longitude per metre grow toward the poles; without this correction the flow slows
-  // to a crawl at high latitude and the polar cells stop turning.
-  wind.x /= max(cos(lat), 0.25);
-  return wind * u_windScale;
-}
-
-float advectedField(vec2 uv, float lat) {
-  if (u_windAmount <= 0.0) return texture2D(u_field, uv).r;
-  vec2 flow = windAt(uv, lat);
-  float cycle = u_time * u_windRate;
-  float phase1 = fract(cycle);
-  float phase2 = fract(cycle + 0.5);
-  float blend = abs(1.0 - 2.0 * phase1);       // triangle wave: 1 at the resets, 0 mid-cycle
-  float a = texture2D(u_field, uv - flow * phase1).r;
-  float b = texture2D(u_field, uv - flow * phase2).r;
-  return mix(mix(a, b, blend), texture2D(u_field, uv).r, 1.0 - u_windAmount);
-}
+// The field, the wind and the clock the ground's cloud shadows read from the same source.
+${CLOUD_FIELD_GLSL}
 
 void main() {
   vec3 p = normalize(v_sphere);
@@ -269,10 +234,9 @@ export const createCloudLayer = ({
   // mercator, and the variant flips mid-flight when the map crosses the globe/mercator threshold.
   const programs = new Map()
   let state = { opacity, animate, fieldUrl, driftRate, sun, windUrl, windAmount, windScale, windRate }
-  let fieldTexture = null
-  let fieldReady = false
-  let windTexture = null
-  let windReady = false
+  // Shared with daylight.js, which shades the ground with the shadow of these same clouds.
+  let field = null
+  let wind = null
 
   const programFor = (shaderData) => {
     const key = shaderData.variantName
@@ -288,16 +252,11 @@ export const createCloudLayer = ({
       uniforms: {
         elevationGlobe: gl.getUniformLocation(program, 'a_elevation_globe'),
         elevationMercator: gl.getUniformLocation(program, 'a_elevation_mercator'),
-        time: gl.getUniformLocation(program, 'u_time'),
         opacity: gl.getUniformLocation(program, 'u_opacity'),
-        drift: gl.getUniformLocation(program, 'u_drift'),
         sun: gl.getUniformLocation(program, 'u_sun'),
-        field: gl.getUniformLocation(program, 'u_field'),
-        fieldAmount: gl.getUniformLocation(program, 'u_fieldAmount'),
-        wind: gl.getUniformLocation(program, 'u_wind'),
-        windAmount: gl.getUniformLocation(program, 'u_windAmount'),
-        windScale: gl.getUniformLocation(program, 'u_windScale'),
-        windRate: gl.getUniformLocation(program, 'u_windRate'),
+        // time, drift, field, fieldAmount, wind, windAmount, windScale, windRate
+        ...Object.fromEntries(CLOUD_FIELD_UNIFORMS.map((name) =>
+          [name, gl.getUniformLocation(program, `u_${name}`)])),
         detailFreq: gl.getUniformLocation(program, 'u_detailFreq'),
         detailAmount: gl.getUniformLocation(program, 'u_detailAmount'),
         deckFade: gl.getUniformLocation(program, 'u_deckFade'),
@@ -322,31 +281,8 @@ export const createCloudLayer = ({
     if (u.fallbackMatrix) gl.uniformMatrix4fv(u.fallbackMatrix, false, data.fallbackMatrix)
   }
 
-  // The field wraps in longitude and clamps at the poles — REPEAT on T would fold the Arctic onto
-  // the Antarctic at the seam.
-  const loadEquirect = (url, onReady) => {
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => {
-      if (!gl) return
-      const texture = gl.createTexture()
-      gl.bindTexture(gl.TEXTURE_2D, texture)
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-      gl.generateMipmap(gl.TEXTURE_2D)
-      onReady(texture)
-      map?.triggerRepaint()
-    }
-    // Decorative: a failed load leaves the procedural weather in place rather than an empty sky.
-    image.src = url
-  }
-
-  const loadField = (url) => loadEquirect(url, (t) => { fieldTexture = t; fieldReady = true })
-  const loadWind = (url) => loadEquirect(url, (t) => { windTexture = t; windReady = true })
+  // Decorative: a failed load leaves the procedural weather in place rather than an empty sky.
+  const repaint = () => map?.triggerRepaint()
 
   return {
     id: LAYER_ID,
@@ -367,17 +303,18 @@ export const createCloudLayer = ({
         sphere: buffer(gl.ARRAY_BUFFER, mesh.spheres),
         index: buffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices),
       }
-      if (state.fieldUrl) loadField(state.fieldUrl)
-      if (state.windUrl) loadWind(state.windUrl)
+      if (state.fieldUrl) field = acquireEquirectTexture(gl, state.fieldUrl, repaint)
+      if (state.windUrl) wind = acquireEquirectTexture(gl, state.windUrl, repaint)
     },
 
-    // Without this every style reload leaks a program, a texture and three buffers.
+    // Without this every style reload leaks a program, a texture and three buffers. The fields are
+    // released rather than deleted — daylight.js may still be casting their shadows.
     onRemove() {
       if (!gl) return
       programs.forEach(({ program }) => gl.deleteProgram(program))
       programs.clear()
-      if (fieldTexture) { gl.deleteTexture(fieldTexture); fieldTexture = null; fieldReady = false }
-      if (windTexture) { gl.deleteTexture(windTexture); windTexture = null; windReady = false }
+      field?.release(); field = null
+      wind?.release(); wind = null
       if (buffers) {
         gl.deleteBuffer(buffers.pos)
         gl.deleteBuffer(buffers.sphere)
@@ -401,36 +338,20 @@ export const createCloudLayer = ({
       setProjectionUniforms(uniforms, projection)
 
       const lat = map.getCenter().lat
-      const seconds = performance.now() * 0.001
-      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, ALTITUDE_M)
+      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, CLOUD_ALTITUDE_M)
       if (uniforms.elevationMercator) {
-        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], ALTITUDE_M).z)
+        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], CLOUD_ALTITUDE_M).z)
       }
-      if (uniforms.time) gl.uniform1f(uniforms.time, state.animate ? seconds : 0)
       if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
       if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
-      if (uniforms.fieldAmount) gl.uniform1f(uniforms.fieldAmount, fieldReady ? 1 : 0)
-      // Real weather tracks west to east. Slow enough that a lesson never sees it move, fast enough
-      // that the planet is not visibly frozen across a long scene.
-      if (uniforms.drift) gl.uniform1f(uniforms.drift, state.animate ? seconds * state.driftRate : 0)
-      if (uniforms.windAmount) gl.uniform1f(uniforms.windAmount, windReady ? state.windAmount : 0)
-      if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
-      if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.animate ? state.windRate : 0)
+      // The clock, the drift and both textures — set the same way the ground sets them, so the
+      // shadows land under the clouds that cast them.
+      setCloudFieldUniforms(gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind }, 0, 1)
 
       const detail = deckDetailFor(map.getZoom(), map.getCenter().lat)
       if (uniforms.detailFreq) gl.uniform1f(uniforms.detailFreq, detail.frequency)
       if (uniforms.detailAmount) gl.uniform1f(uniforms.detailAmount, detail.amount)
       if (uniforms.deckFade) gl.uniform1f(uniforms.deckFade, detail.fade)
-      if (windReady && uniforms.wind) {
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, windTexture)
-        gl.uniform1i(uniforms.wind, 1)
-      }
-      if (fieldReady && uniforms.field) {
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
-        gl.uniform1i(uniforms.field, 0)
-      }
 
       gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos)
       gl.enableVertexAttribArray(attribs.pos)
@@ -456,15 +377,15 @@ export const createCloudLayer = ({
     setOptions(next = {}) {
       const previousUrl = state.fieldUrl
       state = { ...state, ...next }
-      if (next.fieldUrl !== undefined && next.fieldUrl !== previousUrl) {
-        fieldReady = false
-        if (next.fieldUrl) loadField(next.fieldUrl)
+      if (gl && next.fieldUrl !== undefined && next.fieldUrl !== previousUrl) {
+        field?.release()
+        field = next.fieldUrl ? acquireEquirectTexture(gl, next.fieldUrl, repaint) : null
       }
       if (map) map.triggerRepaint()
     },
     getOptions: () => ({ ...state }),
     /** True once a real cloud field is uploaded — the deck is procedural until then. */
-    get hasField () { return fieldReady },
+    get hasField () { return !!field?.ready },
   }
 }
 
