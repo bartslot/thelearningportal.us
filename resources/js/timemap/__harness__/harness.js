@@ -166,7 +166,20 @@ const boxAround = (frame, lng, lat, halfWidth) => {
   return indices
 }
 
+/**
+ * A measurement over zero samples is not zero, it is a broken instrument — so it throws.
+ *
+ * This rig once reported a full set of results with every figure at 0.000 and every sample count
+ * at 0, and looked entirely healthy doing it: the canvas had silently come up at a fallback size,
+ * so every point projected outside the frame and `boxAround` returned nothing. Dividing by
+ * `max(1, length)` turned "I measured nothing" into "I measured no effect", which is the most
+ * dangerous number this file could produce — it is indistinguishable from a working shader that
+ * does nothing, and every assertion downstream would have been comparing zeros.
+ */
 const differenceOver = (a, b, indices) => {
+  if (!indices.length) {
+    throw new Error('measured 0 pixels — the sample box fell outside the canvas, so nothing here is a result')
+  }
   let total = 0
   let worst = 0
   for (const i of indices) {
@@ -174,7 +187,7 @@ const differenceOver = (a, b, indices) => {
     total += delta
     if (delta > worst) worst = delta
   }
-  return { mean: total / Math.max(1, indices.length), max: worst, samples: indices.length }
+  return { mean: total / indices.length, max: worst, samples: indices.length }
 }
 
 /**
@@ -392,6 +405,27 @@ const round = (v, places = 2) => Math.round(v * 10 ** places) / 10 ** places
 
 const measurements = async () => {
   const report = {}
+
+  /**
+   * Before anything: does the canvas exist, and does a point on the map land inside it?
+   *
+   * MapLibre sizes its canvas once, from whatever the container measured at construction. If that
+   * was zero — a hidden pane reports innerWidth 0 — it falls back to a small canvas and never
+   * re-reads the container, so `map.project` returns coordinates in a space the framebuffer does
+   * not cover. Everything still runs. Every number comes back 0.
+   */
+  const canvas = map.getCanvas()
+  const probe = pixelAt(...HIMALAYA)
+  if (!(canvas.width > 0 && canvas.height > 0)) {
+    throw new Error(`the canvas is ${canvas.width}x${canvas.height} — nothing can be measured`)
+  }
+  if (!Number.isFinite(probe.x) || probe.x < 0 || probe.x >= canvas.width
+      || !Number.isFinite(probe.y) || probe.y < 0 || probe.y >= canvas.height) {
+    throw new Error(
+      `the map centre projects to (${probe.x}, ${probe.y}), outside a ${canvas.width}x${canvas.height} ` +
+      `framebuffer (css ${canvas.clientWidth}x${canvas.clientHeight}). The canvas and the container ` +
+      'disagree about their size, so every sample would fall outside the frame and read as zero.')
+  }
 
   // ── 1. Relief shows on terrain and nowhere else ────────────────────────────────────────────
   // The whole claim of the difference formulation: flat ground must be untouched. If the ocean
