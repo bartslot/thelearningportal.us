@@ -82,8 +82,26 @@ const emptyProfile = (errors) => ({
   probe: null,
   renderer: null,
   rendererIsAdvisory: true,
+  hidden: false,
+  measurable: true,
   errors,
 })
+
+/**
+ * Whether a timing measurement taken here would mean anything.
+ *
+ * A hidden page gets no animation frames at all and has its timers clamped to roughly one a second,
+ * and a zero-area viewport gives a canvas nothing to draw into. Neither errors. A probe run in that
+ * state returns a real-looking number produced by an environment that cannot produce one, and
+ * without this flag nothing downstream could tell it apart from a measurement of a real device.
+ *
+ * It says nothing about the *static* values — a driver's texture limit is a fact whether or not
+ * anything is on screen, and it is the load-bearing check.
+ */
+const canMeasure = (documentRef, viewport) => {
+  if (documentRef?.hidden === true) return false
+  return viewport.width > 0 && viewport.height > 0
+}
 
 /**
  * Read a capability profile.
@@ -94,12 +112,14 @@ const emptyProfile = (errors) => ({
  * @param {object} [opts.window]     injected for tests; defaults to the global
  * @returns {object} a plain, serialisable profile — pass it straight to `selectTier`
  */
-export const readCapabilities = ({ gl, navigator: nav, window: win } = {}) => {
+export const readCapabilities = ({ gl, navigator: nav, window: win, document: doc } = {}) => {
   if (gl && cache.has(gl)) return cache.get(gl)
 
   const errors = []
   const navigatorRef = nav ?? (typeof navigator !== 'undefined' ? navigator : {})
   const windowRef = win ?? (typeof window !== 'undefined' ? window : {})
+  const documentRef = doc ?? (typeof document !== 'undefined' ? document : null)
+  const viewport = { width: windowRef.innerWidth || 0, height: windowRef.innerHeight || 0 }
 
   const environment = {
     // `deviceMemory` stays undefined where the browser does not implement it (Safari). Coercing
@@ -107,7 +127,9 @@ export const readCapabilities = ({ gl, navigator: nav, window: win } = {}) => {
     deviceMemoryGb: typeof navigatorRef.deviceMemory === 'number' ? navigatorRef.deviceMemory : undefined,
     cpuThreads: typeof navigatorRef.hardwareConcurrency === 'number' ? navigatorRef.hardwareConcurrency : undefined,
     dpr: typeof windowRef.devicePixelRatio === 'number' ? windowRef.devicePixelRatio : 1,
-    viewport: { width: windowRef.innerWidth || 0, height: windowRef.innerHeight || 0 },
+    viewport,
+    hidden: documentRef?.hidden === true,
+    measurable: canMeasure(documentRef, viewport),
     reducedMotion: guarded(errors, 'matchMedia', () => !!windowRef.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches, false),
     saveData: !!navigatorRef.connection?.saveData,
     effectiveType: navigatorRef.connection?.effectiveType,

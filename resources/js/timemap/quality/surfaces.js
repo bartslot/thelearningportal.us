@@ -176,7 +176,7 @@ export const resolveQuality = ({ profile, surface, optIn = false, override = nul
   const budget = resolveSurface(surface)
   const decision = selectTier(profile, { override, preference })
   const base = planForTier(decision.tier, profile)
-  const withReasons = { ...base, reasons: decision.reasons, overridden: decision.overridden }
+  const withReasons = { ...base, reasons: decision.reasons, overridden: decision.overridden, measured: decision.measured }
 
   const available = optIn && budget.optInAssetBudgetBytes != null
     ? budget.optInAssetBudgetBytes

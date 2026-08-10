@@ -47,6 +47,34 @@ describe('the public interface', () => {
   })
 })
 
+describe('refusing to measure where a measurement would be meaningless', () => {
+  it('does not run the probe when the environment cannot be measured', async () => {
+    // No rAF, timers clamped, innerWidth 0. A probe there produces a real-looking number from an
+    // environment that cannot produce one, and nothing downstream would know.
+    const { createQualityController: create } = await import('../index.js')
+    const q = create({
+      profile: { ...DESKTOP_DISCRETE, measurable: false, probe: null },
+      surface: 'timemap',
+    })
+    expect(q.plan.measured).toBe(false)
+    expect(q.profile.probe).toBe(null)
+    q.dispose()
+  })
+
+  it('still enforces the texture ceiling there, because that is not a measurement', () => {
+    // Pinned to `high` so the 8192 sky has to meet the Chromebook's 4096 limit. Without the clamp
+    // this is the black sky that no reviewer on good hardware would ever see.
+    const q = controller({
+      profile: { ...SCHOOL_CHROMEBOOK, measurable: false, probe: null },
+      override: 'high',
+    })
+    expect(q.plan.layers.sky.requestedTextureSize).toBe(8192)
+    expect(q.plan.layers.sky.textureSize).toBe(4096)
+    expect(q.plan.layers.sky.clamped).toBe(true)
+    q.dispose()
+  })
+})
+
 describe('runtime step-down', () => {
   it('drops a tier when the device turns out slower than it looked', () => {
     const onPlanChange = vi.fn()

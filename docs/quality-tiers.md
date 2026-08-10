@@ -110,6 +110,41 @@ cannot render at all" rule, at a threshold that survives the constant being wron
 magnitude. An unverified number quietly moving every device down a tier would be a worse failure
 than not probing. There is a test for exactly this.
 
+## A profile is allowed to say it learned nothing
+
+The browser pane runs pages hidden: no animation frames at all, timers clamped to roughly one a
+second, `innerWidth` of 0. None of it errors, which is what makes it dangerous for a module whose
+whole job is reading what a device can do.
+
+Nothing here was measured in the pane — tier selection runs against synthetic profiles and the GL
+modules against a fake context that counts what it hands out. But the exposure was worth closing
+properly, because the bad outcome is not a crash. Read under pane conditions, an earlier version of
+this module returned tier `high` with `reasons: []`: perfectly reasonable-looking output meaning
+"this device is excellent", when the truth was "we learned nothing."
+
+So a profile now says which it is:
+
+- `profile.measurable` is false when the document is hidden or the viewport has zero area.
+- The controller **skips the probe entirely** in that state rather than running it and quietly
+  believing the result.
+- `plan.measured` says whether any measurement backed the tier. A tier from static signals alone is
+  a reasonable guess; reporting it identically to a measured one is how a reading taken somewhere
+  meaningless gets quoted later as a tested device.
+
+**The static values are still read and still enforced.** A driver's texture limit is a fact whether
+or not anything is on screen, and it is the load-bearing check — discarding it because timing is
+unavailable would throw away the part that matters most. There is a test that a plan built in an
+unmeasurable environment still clamps an 8192 sky to a 4096 Chromebook.
+
+For anyone who does need to render in the pane: the fix is a MessageChannel shim carrying the frame
+callbacks, and it must be an **inline classic script before the module tag** — ES module imports are
+hoisted, so a shim at the top of a module body installs after MapLibre has already captured the
+original `requestAnimationFrame` and does nothing at all. Working version in
+`resources/js/timemap/tiles/__harness__/index.html` on branch `tiled-lod`. Resize the pane too, or
+`innerWidth` stays 0.
+
+`MAX_TEXTURE_SIZE` in that pane reads 16384. It says nothing whatever about a Chromebook.
+
 ## Runtime step-down
 
 Startup detection is a guess about the next ten minutes. `createFrameMonitor` watches what actually
@@ -172,7 +207,7 @@ The gate is a number, so:
 
 | | minified | gzipped | when it loads |
 |---|---:|---:|---|
-| core (`index.js` and everything data-shaped) | 17,354 B | **6,397 B** | with the host |
+| core (`index.js` and everything data-shaped) | 17,602 B | **6,497 B** | with the host |
 | `video-fallback.js` | 1,669 B | **896 B** | video tier only |
 | `video-unpack.js` | 2,702 B | **1,383 B** | packed-alpha path only |
 
@@ -182,15 +217,15 @@ unpacking shader are behind dynamic imports and are not in the core chunk — as
 
 **Delta to the app bundle today: 0 bytes.** `npm run build` produces 8,210,379 bytes of JS and CSS
 with this module present and 8,210,379 with the directory deleted — nothing imports it yet, because
-integration is deferred. The 6,397 B figure above is what it will cost when something does.
+integration is deferred. The 6,497 B figure above is what it will cost when something does.
 
 ### Tests
 
-`npx vitest run resources/js/timemap/quality` — 111 tests, 8 files.
+`npx vitest run resources/js/timemap/quality` — 118 tests, 8 files.
 
 | | statements | branches | functions | lines |
 |---|---:|---:|---:|---:|
-| module | 92.3% | 81.4% | 88.0% | 94.7% |
+| module | 92.4% | 81.8% | 88.2% | 94.7% |
 
 Tier selection is tested against **synthetic capability profiles** (`__fixtures__/profiles.js`), not
 against whatever machine the suite runs on. A test asserting "this laptop gets `high`" passes on the

@@ -91,6 +91,51 @@ describe('readCapabilities', () => {
   })
 })
 
+describe('an environment where a measurement would mean nothing', () => {
+  // The browser pane runs pages hidden: no rAF at all, timers clamped to about one a second, and
+  // innerWidth of 0. None of it errors. A profile read there is not a device profile, and the
+  // dangerous outcome is not a crash — it is a confident number nobody questions.
+  const paneWindow = (over = {}) => ({
+    devicePixelRatio: 2,
+    innerWidth: 0,
+    innerHeight: 0,
+    matchMedia: () => ({ matches: false }),
+    ...over,
+  })
+
+  it('marks a profile read from a zero-area viewport as unmeasurable', () => {
+    const gl = fakeGl({ params: { [GL_PARAMS.MAX_TEXTURE_SIZE]: 16384 } })
+    const profile = readCapabilities({ gl, ...fakeEnv({ window: paneWindow() }) })
+    expect(profile.measurable).toBe(false)
+  })
+
+  it('marks a profile read from a hidden document as unmeasurable', () => {
+    const gl = fakeGl({ params: { [GL_PARAMS.MAX_TEXTURE_SIZE]: 16384 } })
+    const profile = readCapabilities({
+      gl,
+      ...fakeEnv({ window: paneWindow({ innerWidth: 1440, innerHeight: 900 }) }),
+      document: { hidden: true },
+    })
+    expect(profile.hidden).toBe(true)
+    expect(profile.measurable).toBe(false)
+  })
+
+  it('calls an ordinary visible page measurable', () => {
+    const gl = fakeGl({ params: { [GL_PARAMS.MAX_TEXTURE_SIZE]: 16384 } })
+    const profile = readCapabilities({ gl, ...fakeEnv(), document: { hidden: false } })
+    expect(profile.measurable).toBe(true)
+  })
+
+  it('still trusts the static values, because a driver limit is not a measurement', () => {
+    // MAX_TEXTURE_SIZE is a fact about the driver whether or not anything is on screen. Throwing it
+    // away because timing is unavailable would discard the one check that matters most.
+    const gl = fakeGl({ params: { [GL_PARAMS.MAX_TEXTURE_SIZE]: 4096 } })
+    const profile = readCapabilities({ gl, ...fakeEnv({ window: paneWindow() }) })
+    expect(profile.maxTextureSize).toBe(4096)
+    expect(profile.webglVersion).toBe(2)
+  })
+})
+
 describe('fitTexture', () => {
   it('clamps to the device ceiling and says so', () => {
     expect(fitTexture(8192, { maxTextureSize: 4096 })).toEqual({ size: 4096, clamped: true, requested: 8192 })

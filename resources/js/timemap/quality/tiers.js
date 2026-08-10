@@ -171,8 +171,13 @@ const RULES = [
  * @returns {{ tier: string, reasons: Array, overridden: boolean, preference: string|null }}
  */
 export const selectTier = (profile, { override = null, preference = null } = {}) => {
+  // Whether a measurement backed this at all. A tier chosen from static signals alone is a
+  // reasonable guess; reporting it identically to a measured one is how a profile read somewhere
+  // meaningless gets quoted later as though a device had been tested.
+  const measured = !!profile.probe
+
   if (override) {
-    return { tier: assertTier(override, 'tier override'), reasons: [], overridden: true, preference: null }
+    return { tier: assertTier(override, 'tier override'), reasons: [], overridden: true, preference: null, measured }
   }
 
   let tier = 'high'
@@ -193,7 +198,7 @@ export const selectTier = (profile, { override = null, preference = null } = {})
     tier = next
   }
 
-  return { tier, reasons, overridden: false, preference: preference && preference !== 'auto' ? preference : null }
+  return { tier, reasons, overridden: false, preference: preference && preference !== 'auto' ? preference : null, measured }
 }
 
 /**

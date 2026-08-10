@@ -113,7 +113,12 @@ export const createQualityController = ({
 } = {}) => {
   const profile = givenProfile ?? (() => {
     const read = readCapabilities({ gl })
-    if (!probe || !gl) return read
+    // `measurable` is false where a timing reading would be produced by an environment that cannot
+    // produce one — a hidden page gets no animation frames and has its timers clamped, and a
+    // zero-area viewport gives a canvas nothing to draw into. Neither errors, which is exactly why
+    // the probe has to be skipped rather than run and quietly believed. The static values are still
+    // read and still enforced: a driver's texture limit is a fact regardless of what is on screen.
+    if (!probe || !gl || read.measurable === false) return read
     const measured = estimateFrameMs(runRenderProbe({ gl }), read)
     return measured ? { ...read, probe: measured } : read
   })()

@@ -91,6 +91,16 @@ describe('estimateFrameMs', () => {
   })
 })
 
+describe('a plan says whether anything was actually measured', () => {
+  it('reports measured: false when no probe backed the decision', () => {
+    // A tier chosen from static signals alone is a reasonable guess. Reporting it identically to
+    // one backed by a measurement is how a profile read somewhere meaningless — a hidden pane, a
+    // zero-area viewport — gets quoted later as though a device had been tested.
+    expect(selectTier(makeProfile({ probe: null })).measured).toBe(false)
+    expect(selectTier(DESKTOP_DISCRETE).measured).toBe(true)
+  })
+})
+
 describe('an uncalibrated probe is not allowed to quietly downgrade a device', () => {
   it('ignores a modest uncalibrated reading entirely', () => {
     // The constant that turns probe milliseconds into frame milliseconds has never been measured on
