@@ -22,12 +22,26 @@
 /**
  * Satellite base imagery. Attribution is carried on the source so MapLibre credits it.
  *
- * `ShadedRelief`, NOT `ShadedRelief_Bathymetry`. The bathymetry variant paints the sea FLOOR —
- * mid-ocean ridges, abyssal plains, the continental shelf — and from orbit that reads as a
- * bathymetric chart rather than water: measured over open Atlantic it carries twice the pixel
- * variance of the plain variant, and every bit of that is terrain nobody can actually see through
- * three kilometres of water. Land keeps its relief shading; the sea becomes near-uniform dark, and
- * ocean-water.js lights it instead.
+ * `ShadedRelief`, NOT `ShadedRelief_Bathymetry`. TWO reasons, and each one alone looks like it
+ * might be covered by the other, which is exactly why both are written here.
+ *
+ * MEASURED: the bathymetry variant paints the sea FLOOR — mid-ocean ridges, abyssal plains, the
+ * continental shelf — and from orbit that reads as a bathymetric chart rather than water. Over open
+ * Atlantic it carries twice the pixel variance of the plain variant, and every bit of that is
+ * terrain nobody can actually see through three kilometres of water. Land keeps its relief shading;
+ * the sea becomes near-uniform dark, and the water shader lights it instead.
+ *
+ * INSTRUCTED: Bart, looking at rendered sea-floor structure — "why is there a normal map for the
+ * sea bed. i don't want that. it's not realistic if you look from space to the real earth." This is
+ * a product decision, not an inference, and it does not expire when someone improves the renderer.
+ *
+ * The trap this is guarding: a Google Earth screenshot WITH visible bathymetry was once held up as
+ * the target for this map, and that was read as wanting bathymetry. It was not — a reference image
+ * is an endorsement of the whole, not of every element in it. If you find yourself about to switch
+ * to `_Bathymetry` because a reference picture has sea-floor detail, this paragraph is why not.
+ *
+ * Depth still drives the WATER'S COLOUR — shallow turquoise through to deep blue. What is excluded
+ * is any shading, normal or slope term derived from the sea floor. Values, not relief.
  */
 export const SATELLITE_SOURCE = {
   type: 'raster',
