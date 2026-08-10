@@ -142,6 +142,25 @@ export const TERMINATOR_GLSL = /* glsl */`
 `
 
 /**
+ * Where a ray meets a sphere of radius `radius` about the origin — the one piece of geometry every
+ * overlay here needs. Returns the two distances along the ray; `x > y` means it misses entirely.
+ *
+ * The haze band measures how much air a ray crosses with it, the cloud deck finds the slab it has
+ * to march, and the sun uses it to decide whether the planet is in the way. All three want exactly
+ * the same six lines, and three copies is how they end up disagreeing about where the ground is.
+ */
+export const SPHERE_SPAN_GLSL = /* glsl */`
+  vec2 sphereSpan(vec3 origin, vec3 dir, float radius) {
+    float b = dot(origin, dir);
+    float c = dot(origin, origin) - radius * radius;
+    float disc = b * b - c;
+    if (disc < 0.0) return vec2(1.0, -1.0);
+    float sq = sqrt(disc);
+    return vec2(-b - sq, -b + sq);
+  }
+`
+
+/**
  * Is a point on the unit sphere on the half facing the camera?
  *
  * For a unit sphere the horizon is exactly the plane dot(p, camera) = 1, so this is the whole test

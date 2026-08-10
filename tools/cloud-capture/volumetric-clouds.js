@@ -17,7 +17,7 @@
  *  - IT NEVER ASKS FOR A FRAME. No triggerRepaint; the capture harness drives rendering.
  */
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, cameraInPlanetSpace, buildProgram, EQUIRECT_GLSL } from '../../resources/js/timemap/planet-mesh.js'
+import { buildSphereMesh, cameraInPlanetSpace, buildProgram, EQUIRECT_GLSL, SPHERE_SPAN_GLSL } from '../../resources/js/timemap/planet-mesh.js'
 
 const LAYER_ID = 'tm-clouds-volumetric'
 // Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
@@ -153,15 +153,7 @@ float density(vec3 pos) {
   return clamp((cover * profile - 0.22 * detail - 0.10 * fine) * 3.0, 0.0, 1.0);
 }
 
-// Distances along a ray where it meets a sphere of radius R about the origin. x > y means it misses.
-vec2 sphereSpan(vec3 origin, vec3 dir, float radius) {
-  float b = dot(origin, dir);
-  float c = dot(origin, origin) - radius * radius;
-  float disc = b * b - c;
-  if (disc < 0.0) return vec2(1.0, -1.0);
-  float sq = sqrt(disc);
-  return vec2(-b - sq, -b + sq);
-}
+${SPHERE_SPAN_GLSL}
 
 void main() {
   vec3 shell = normalize(v_sphere) * u_outer;

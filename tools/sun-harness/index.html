@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sun harness</title>
+<link rel="stylesheet" href="/vendor/maplibre-gl.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #05070f; }
+  #map { position: absolute; top: 0; left: 0; width: 1280px; height: 720px; }
+  .maplibregl-ctrl-attrib { display: none; }
+</style>
+<script>
+  /**
+   * A CLOCK FOR A HIDDEN PAGE. Must run before MapLibre is imported.
+   *
+   * The agent browser pane holds this document at `visibilityState: "hidden"`, and Chrome does not
+   * fire requestAnimationFrame in a hidden document. MapLibre puts everything on rAF — the deferred
+   * style load, every repaint, every custom layer's render — so the map never starts at all. No
+   * exception, no console message, no failed request: `isStyleLoaded()` simply stays false forever
+   * and the canvas stays empty, which reads exactly like a layer that draws nothing.
+   *
+   * So while the page is hidden, rAF is driven by something else. WebGL itself is perfectly happy
+   * to draw into a hidden page's canvas — only the compositing is skipped — which is why
+   * `gl.readPixels` taken inside a render pass still returns the real frame.
+   *
+   * NOT setTimeout. Chrome clamps timers in a hidden page to roughly one a second, so a substitute
+   * built on setTimeout turns every frame into a whole second and a twenty-pose measurement run
+   * into several minutes of apparently-hung page. MessageChannel is not throttled, so it stays at
+   * full speed.
+   */
+  (function () {
+    var nativeRequest = window.requestAnimationFrame.bind(window)
+    var nativeCancel = window.cancelAnimationFrame.bind(window)
+    var queued = new Map()
+    var nextId = 1 << 20        // far above any handle the real rAF will hand out
+    var channel = new MessageChannel()
+    channel.port1.onmessage = function (event) {
+      var callback = queued.get(event.data)
+      if (!callback) return
+      queued.delete(event.data)
+      callback(performance.now())
+    }
+    window.requestAnimationFrame = function (callback) {
+      if (!document.hidden) return nativeRequest(callback)
+      var id = nextId++
+      queued.set(id, callback)
+      channel.port2.postMessage(id)
+      return id
+    }
+    window.cancelAnimationFrame = function (id) {
+      if (!queued.delete(id)) nativeCancel(id)
+    }
+  })()
+</script>
+<div id="map"></div>
+<script type="module" src="/harness.js"></script>

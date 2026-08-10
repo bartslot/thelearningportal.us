@@ -62,5 +62,9 @@ NUL
 # Playwright artifacts
 tests/playwright/results/
 tests/playwright/report/
+
+# Globe-layer harness output: an esbuild bundle and whatever PNGs the last run wrote
+/tools/sun-harness/.build/
+/tools/sun-harness/shots/
 .env.*
 .env.bak*

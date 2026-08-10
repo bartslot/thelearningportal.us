@@ -6,6 +6,7 @@ import { createDaylightLayer, DAYLIGHT_LAYER_ID } from '../daylight.js'
 import { createStarfieldLayer, STARFIELD_LAYER_ID } from '../starfield.js'
 import { createMoonLayer, MOON_LAYER_ID } from '../moon.js'
 import { createCloudLayer, CLOUD_LAYER_ID } from '../clouds.js'
+import { createSunLayer, SUN_LAYER_ID } from '../sun-disc.js'
 
 /**
  * The contract every globe overlay has to keep.
@@ -83,6 +84,7 @@ const LAYERS = [
   { name: 'starfield', id: STARFIELD_LAYER_ID, make: (o) => createStarfieldLayer(o), off: { brightness: 0 }, buffers: 3 },
   { name: 'moon', id: MOON_LAYER_ID, make: (o) => createMoonLayer(o), off: { brightness: 0 }, buffers: 2 },
   { name: 'clouds', id: CLOUD_LAYER_ID, make: (o) => createCloudLayer(o), off: { opacity: 0 }, buffers: 3 },
+  { name: 'sun', id: SUN_LAYER_ID, make: (o) => createSunLayer(o), off: { brightness: 0 }, buffers: 2 },
 ]
 
 describe.each(LAYERS)('$name layer', ({ id, make, off, buffers }) => {
