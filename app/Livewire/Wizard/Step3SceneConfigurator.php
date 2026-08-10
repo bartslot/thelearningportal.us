@@ -25,10 +25,12 @@ use App\Support\NarrationBudget;
 use App\Support\PolityCapitals;
 use App\Support\PortraitFocus;
 use App\Support\SafeOutboundUrl;
+use App\Support\UploadLimit;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
@@ -3017,6 +3019,114 @@ class Step3SceneConfigurator extends Component
      *  editable image layer on top (the "Image" header button). Routed in applyPaintingChoice(). */
     public string $paintingPickerMode = 'background';
 
+    /**
+     * A picture dragged straight onto the canvas from the desktop.
+     *
+     * Deliberately NOT routed through $uploadImage/$paintingPickerMode like the Add-image modal is.
+     * That mode is sticky — it keeps whatever the last opened picker set — so a teacher who had last
+     * added a gallery image and then dropped a file on the canvas would have silently got another
+     * gallery image. A drop carries its own intent and nothing else's.
+     */
+    public $droppedImage;
+
+    /** A picture dropped on the background slot in the inspector, which means the background, always. */
+    public $droppedBackground;
+
+    /** What we are willing to take for a dropped picture, before PHP gets a say (UploadLimit takes the smaller). */
+    private const DROPPED_IMAGE_CEILING_BYTES = 8 * 1024 * 1024;
+
+    /**
+     * Dropped on the canvas. Where it lands depends on what the scene already has.
+     *
+     * A scene with a backdrop gets the picture as a LAYER on top; a scene with none gets it as the
+     * background. `hasBackdrop()` is the right question rather than `image_path` alone, because a
+     * map or voyage scene draws its own backdrop and has no image_path — dropping a picture on one
+     * of those must add a layer, not replace the map with a still and turn the scene into a
+     * slideshow. Bart: "not convert the scene".
+     */
+    public function updatedDroppedImage(): void
+    {
+        $path = $this->storeDroppedImage('droppedImage', $name);
+        if ($path === null) {
+            return;
+        }
+
+        $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
+
+        if ($this->showsAPicture($scene)) {
+            // A local /storage URL: libraryImagePath() reuses the file in place rather than
+            // re-fetching it, so this costs nothing beyond the upload we already did.
+            $this->addLibraryImageLayer('/storage/'.$path, $name);
+
+            return;
+        }
+
+        $this->applyUploadedBackground($path);
+    }
+
+    /**
+     * Does this scene already show the teacher a backdrop they would not want silently replaced?
+     *
+     * NOT `hasBackdrop()`, which asks "can a layer sit on this" and answers yes to a background
+     * COLOUR too. Selecting a scene gives it `background_color` '#000000', so a brand-new scene —
+     * the one whose own inspector reads "no background selected" — claimed to have a backdrop, and
+     * every drop became a layer instead of a background. What matters here is what is actually on
+     * screen: a picture, or a map/voyage/panorama that draws itself.
+     */
+    private function showsAPicture(Scene $scene): bool
+    {
+        return filled($scene->image_path) || $scene->drawsOwnBackdrop();
+    }
+
+    /** Dropped on the background slot. The teacher pointed at the background, so it is the background. */
+    public function updatedDroppedBackground(): void
+    {
+        $path = $this->storeDroppedImage('droppedBackground');
+        if ($path === null) {
+            return;
+        }
+
+        $this->applyUploadedBackground($path);
+    }
+
+    /**
+     * Validate and store a dropped picture, or say why not.
+     *
+     * Returns the stored path, or null when nothing should happen — and in that case it has already
+     * told the teacher why. A drop has no modal and no field to hang an error message under, so a
+     * failure that only lands in the error bag is a drop that appears to do nothing at all.
+     */
+    private function storeDroppedImage(string $property, ?string &$name = null): ?string
+    {
+        if (! $this->selectedSceneId) {
+            $this->reset($property);
+            $this->dispatch('toast', message: __('Select a scene first, then drop the picture on it.'), type: 'warning');
+
+            return null;
+        }
+
+        try {
+            $this->validate([
+                $property => 'image|mimes:jpg,jpeg,png,webp,gif|max:'.UploadLimit::kilobytes(self::DROPPED_IMAGE_CEILING_BYTES),
+            ]);
+        } catch (ValidationException $e) {
+            $this->reset($property);
+            $this->dispatch('toast', message: $e->validator->errors()->first($property), type: 'error');
+
+            return null;
+        }
+
+        // The name the teacher's file had on their desktop, captured before the reset. Laravel's
+        // stored filename is a random hash, and a layer titled with one is unreadable in the
+        // object list.
+        $name = pathinfo((string) $this->{$property}->getClientOriginalName(), PATHINFO_FILENAME) ?: null;
+
+        $path = $this->{$property}->store("lessons/{$this->lesson->id}/uploads", 'public');
+        $this->reset($property);
+
+        return $path ?: null;
+    }
+
     public function openPaintingPicker(): void   // "Browse paintings" → set as the background
     {
         $this->paintingPickerMode = 'background';
@@ -3812,7 +3922,7 @@ class Step3SceneConfigurator extends Component
      * Drop one of our own pictures on the slide as an editable image layer. Mirrors
      * applyPaintingAsLayer(), minus the download and the attribution — this picture is ours.
      */
-    private function addLibraryImageLayer(string $url): void
+    private function addLibraryImageLayer(string $url, ?string $title = null): void
     {
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
         if (! $scene->hasBackdrop()) {
@@ -3832,7 +3942,10 @@ class Step3SceneConfigurator extends Component
         // the picture in one. The URL is the dedupe key, hashed to fit the source_ref column.
         $asset = $this->upsertPictureAsset('library', md5($url), [
             'source_url' => $url,
-            'title' => pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME) ?: __('Image'),
+            // A dropped file passes its own name. Without it the title falls back to the URL's
+            // filename, which for an upload is Laravel's random hash — the object list would list
+            // the teacher's picture as "lAgWKTCXn8FpkeFGMVJ".
+            'title' => $title ?: (pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME) ?: __('Image')),
             'license' => 'own',
             'attribution' => null,
             'svg_path' => $path,

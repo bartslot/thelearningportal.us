@@ -134,7 +134,22 @@
 
           {{-- Image — where the background image comes from: AI, a painting, or a drawing --}}
           <div x-show="bgType === 'image'" x-cloak class="space-y-2">
-            <div class="flex items-center gap-2.5 rounded-lg border border-slate-700/70 bg-slate-900/40 p-1.5">
+            {{-- Also a drop target: drag a picture from the desktop onto this card and it becomes the
+                 background, whatever the scene already has. A drop on the CANVAS is ambiguous (a
+                 scene with a backdrop gets the picture as a layer instead), but pointing at the
+                 background slot is not — see updatedDroppedBackground().
+
+                 The counter, rather than a boolean: dragleave fires every time the pointer crosses
+                 into a child, so a plain flag flickers off while the file is still over the card.
+                 No "drop here" caption — the highlight is the affordance, and the editor carries
+                 controls and labels, not instructions. --}}
+            <div x-data="{ depth: 0, files: (e) => Array.from(e.dataTransfer?.types ?? []).includes('Files') }"
+                 x-on:dragenter.prevent="if (files($event)) depth++"
+                 x-on:dragover.prevent="if (files($event)) $event.dataTransfer.dropEffect = 'copy'"
+                 x-on:dragleave="depth = Math.max(0, depth - 1)"
+                 x-on:drop.prevent="depth = 0; const f = $event.dataTransfer.files[0]; if (f) $wire.upload('droppedBackground', f)"
+                 :class="depth > 0 ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700/70 bg-slate-900/40'"
+                 class="flex items-center gap-2.5 rounded-lg border p-1.5 transition-colors">
                 @if ($backgroundImageUrl)
                     <img src="{{ $backgroundImageUrl }}"
                          class="h-14 w-24 shrink-0 rounded object-cover ring-1 ring-slate-700"

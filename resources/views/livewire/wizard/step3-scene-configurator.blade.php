@@ -452,12 +452,33 @@
             })
         }
 
+        // A picture dragged in from the desktop, as opposed to an icon from the panel. The two never
+        // collide because each guards on its own payload type: an icon carries ICON_DND_TYPE, a file
+        // carries 'Files'.
+        const carriesFile = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('Files')
+
         const onIconDragOver = (e) => {
-            if (!carriesIcon(e)) return
+            if (!carriesIcon(e) && !carriesFile(e)) return
             e.preventDefault()                     // without this the browser refuses the drop
             e.dataTransfer.dropEffect = 'copy'
         }
         const onIconDrop = (e) => {
+            if (carriesFile(e)) {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                // Livewire's JS upload API, not a wire:model input: this whole region is wire:ignore,
+                // so there is no bound field here to put the file into. Where it lands — a layer on
+                // top, or the background — is the server's decision, because only it knows whether
+                // the scene already has a backdrop.
+                // Reach the component through the DOM rather than a captured id: this script runs
+                // inside wire:ignore, and the element it is bound to is always inside the component's
+                // own root, so `closest` finds the right one on a page that has several.
+                const root = e.currentTarget.closest('[wire\\:id]') || document.getElementById('lesson-canvas-root')?.closest('[wire\\:id]')
+                const cmp = root ? window.Livewire.find(root.getAttribute('wire:id')) : null
+                if (file && cmp) cmp.upload('droppedImage', file)
+
+                return
+            }
             if (!carriesIcon(e)) return
             e.preventDefault()
             window.__placeIcon(Number(e.dataTransfer.getData(ICON_DND_TYPE)), e.clientX, e.clientY)
@@ -467,6 +488,16 @@
             el.__iconDropBound = true
             el.addEventListener('dragover', onIconDragOver)
             el.addEventListener('drop', onIconDrop)
+        }
+
+        // Everywhere else in the editor, a dropped file must do NOTHING. The browser's default is to
+        // NAVIGATE to the file it was given, which throws the teacher out of the lesson they were
+        // editing and loses whatever was on screen — a near-miss on the canvas was enough to do it.
+        if (!document.__fileDropGuard) {
+            document.__fileDropGuard = true
+            for (const type of ['dragover', 'drop']) {
+                document.addEventListener(type, (e) => { if (carriesFile(e)) e.preventDefault() })
+            }
         }
 
         window.Livewire.on('scene:load', (e) => {
