@@ -175,7 +175,24 @@ float coastDistanceKm(vec3 unitPos) {
  */
 float waterDepthMetres(vec3 unitPos, float coastKm) {
   float t = clamp(max(coastKm, 0.0) / u_shelfKm, 0.0, 1.0);
-  return u_shelfDepthM * t * t;
+  float depth = u_shelfDepthM * t * t;
+
+  // ABOVE THE MERCATOR LIMIT, SATURATE RATHER THAN SAMPLE.
+  //
+  // Mercator stops at 85.0511°, so a tiled source has nothing past it — every sample clamps to the
+  // same edge row. Under a colour ramp a smeared row does not read as blur, it reads as a band of
+  // sea changing shade along a latitude line, which is the one artefact this layer cannot afford.
+  //
+  // It costs nothing to refuse, because there is no shallow water up there to lose. Measured on the
+  // baked field: north of 85° is 100% water and EVERY texel sits at the field's saturated distance,
+  // with 0.0% inside the shelf band; south of 85° is 0% water, being Antarctica. The ramp is already
+  // constant at both poles, so forcing it constant changes nothing today and makes the swap to
+  // tiles safe. The sphere mesh reaches ±89.999°, so without this the smear would be drawn.
+  const float SIN_84 = 0.994522;      // where the fade starts
+  const float SIN_MERCATOR_EDGE = 0.996272;
+  const float BEYOND_THE_RAMP_M = 400.0;   // past the colour model's saturation at ~200 m
+  float polar = smoothstep(SIN_84, SIN_MERCATOR_EDGE, abs(unitPos.y));
+  return mix(depth, max(depth, BEYOND_THE_RAMP_M), polar);
 }
 
 /**

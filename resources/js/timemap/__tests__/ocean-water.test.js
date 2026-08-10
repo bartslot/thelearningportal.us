@@ -444,6 +444,28 @@ describe('the ocean layer', () => {
     expect(shader).toContain('float waterDepthMetres(vec3 unitPos, float coastKm)')
   })
 
+  it('saturates the depth ramp above the mercator limit rather than sampling into a smear', () => {
+    /**
+     * `tiledSampleSphere` clamps past ±85.0511°, so every sample up there returns the same edge
+     * row. Under a colour ramp that reads as a band of sea changing shade along a latitude line —
+     * and the sphere mesh reaches ±89.999°, so it would be drawn.
+     *
+     * Refusing costs nothing, which is why this is the right answer rather than a compromise.
+     * Measured on the baked field: north of 85° is 100% water with every texel already at the
+     * field's saturated distance and 0.0% inside the shelf band; south of 85° is 0% water, being
+     * Antarctica. The ramp is constant at both poles already.
+     */
+    const shader = read('ocean-water.js')
+    const depth = shader.slice(shader.indexOf('float waterDepthMetres('), shader.indexOf('vec3 waterColumn('))
+    expect(depth).toContain('smoothstep(SIN_84, SIN_MERCATOR_EDGE, abs(unitPos.y))')
+    // The thresholds are sines of latitude, and a wrong one puts the seam somewhere visible.
+    expect(depth).toContain(`SIN_84 = ${Math.sin(84 * Math.PI / 180).toFixed(6)}`)
+    expect(depth).toContain(`SIN_MERCATOR_EDGE = ${Math.sin(85.0511287798066 * Math.PI / 180).toFixed(6)}`)
+    // Whatever it saturates to has to be past where the colour model stops responding.
+    expect(depth).toMatch(/BEYOND_THE_RAMP_M = (\d+)\.0/)
+    expect(Number(depth.match(/BEYOND_THE_RAMP_M = (\d+)\.0/)[1])).toBeGreaterThan(200)
+  })
+
   it('takes depth as a value, never as terrain to be shaded', () => {
     /**
      * The trap waiting on the other side of "bring bathymetry back": hillshade the sea floor and
