@@ -2,11 +2,16 @@
 
 It ships as **two tiers**, chosen at runtime:
 
-| tier | size | bytes | decode, M3 Pro | who gets it |
-|---|---|---|---|---|
-| high | 4096 x 2048 | 3.6 MB | 235 ms | anything that can bind it and is not signalling constraint |
-| standard | 2048 x 1024 | 746 KB | 51 ms | everything else, including data-saver and slow connections |
-| placeholder | 1024 x 512 | 44 KB | 5 ms | shown first, always; also the floor below 2048 |
+| tier | size | transfer | **resident** | decode, M3 Pro | who gets it |
+|---|---|---|---|---|---|
+| high | 4096 x 2048 | 3.6 MB | **32 MiB** | 235 ms | anything that can bind it and is not signalling constraint |
+| standard | 2048 x 1024 | 746 KB | **8 MiB** | 51 ms | everything else, including data-saver and slow connections |
+| placeholder | 1024 x 512 | 44 KB | **2 MiB** | 5 ms | shown first, always; also the floor below 2048 |
+
+Resident is the number to size a tier against. A texture uploaded from an `<img>` is RGBA8 whatever
+the file said, so the standard tier weighs eleven times more on the card than on the wire. Peak is
+34 MiB — the chosen tier plus the placeholder it has not released yet, which lasts one decode — and
+steady state is one panorama, never two.
 
 `sky-tiers.js` makes the choice and `sky-tiers.test.js` tests it against named devices. **There is no
 8192 tier, and that is a measurement, not a budget** — see below. This is the working, because the
@@ -121,6 +126,43 @@ Two properties, both specific to a sky, and worth checking for before reusing th
 An asset without those two properties — a relief map, a coastline, imagery — will land somewhere
 else entirely. The relief work found 8192 lossless for that class, and that finding stands; this is
 not an argument against it.
+
+## When the asset budget merges
+
+`asset-budget.json` and `scripts/check-asset-budget.mjs` live on
+`worktree-map-layers-clouds-and-water-shaders` and are not in this branch's history yet. Nothing
+here has been checked by them. Three things to do at the merge, in order:
+
+**1. Declare the three panoramas and drop the old one.** `public/img/map/milkyway.jpg` is declared in
+the budget and is now referenced by nothing — the sky moved to `public/img/map/sky/`. Replace that
+one line with these three:
+
+```json
+"public/img/map/sky/milkyway-4k.webp",
+"public/img/map/sky/milkyway-2k.webp",
+"public/img/map/sky/milkyway-1k.webp"
+```
+
+**2. Expect the checker to overstate the sky by a third, and decide what to do about it.** `vramOf`
+applies `mipmapOverhead: 1.3333` to everything. That is right for every other field on this map,
+which is wrapped on the ground and wants mipmaps. It is wrong for these three, which are acquired
+with `mipmap: false` because a mipmapped sky collapses to a few grey blocks when sampled from
+inside. The checker would score the high tier at 42.7 MiB rather than its true 32 MiB:
+
+| | true resident | checker says |
+|---|---|---|
+| 4096 x 2048 | 32.0 MiB | 42.7 MiB |
+| 2048 x 1024 | 8.0 MiB | 10.7 MiB |
+| 1024 x 512 | 2.0 MiB | 2.7 MiB |
+
+The cleanest fix is a per-asset `"mipmap": false` in the budget, honoured by `vramOf`. Until then
+the numbers are conservative rather than wrong, which is the safe direction to be misled in.
+
+**3. Note that the three tiers are alternatives, not a sum.** Only one is ever resident: the layer
+picks a tier per device and releases the placeholder as soon as it lands. A checker that adds all
+three declared files together charges the surface 42 MiB for a layer whose worst case is 34 MiB and
+whose usual case is 8. Something in the budget format needs to express "these are alternatives" —
+worth raising, because every tiered asset in the fleet will hit it.
 
 ## Reproducing this
 

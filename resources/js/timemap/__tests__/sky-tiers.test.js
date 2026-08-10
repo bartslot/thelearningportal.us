@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { chooseSkyTier, readDeviceFacts, SKY_TIERS, SKY_PLACEHOLDER } from '../sky-tiers.js'
 
 /**
@@ -92,6 +94,65 @@ describe('always says why', () => {
     const { reason } = chooseSkyTier(facts)
     expect(typeof reason).toBe('string')
     expect(reason.length).toBeGreaterThan(10)
+  })
+})
+
+describe('what these cost on the card', () => {
+  /**
+   * Video memory is the number that breaks things, and it is the one a file listing cannot show.
+   * A texture uploaded from an <img> is RGBA8 whatever the file said, so the 746 KB standard tier
+   * is 8 MiB resident — a factor of eleven — and a tier sized against transfer bytes is sized
+   * against the wrong quantity by about that much.
+   */
+  const MiB = 1048576
+
+  /** Pixel dimensions from the file header, so the declared numbers are checked against reality. */
+  const dimensionsOf = (buf) => {
+    if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WEBP') {
+      throw new Error('not a WebP — the sky ships WebP and this test assumes it')
+    }
+    const fourcc = buf.toString('ascii', 12, 16)
+    if (fourcc === 'VP8X') return { width: 1 + buf.readUIntLE(24, 3), height: 1 + buf.readUIntLE(27, 3) }
+    if (fourcc === 'VP8 ') return { width: buf.readUInt16LE(26) & 0x3fff, height: buf.readUInt16LE(28) & 0x3fff }
+    const bits = buf.readUInt32LE(21)
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 }
+  }
+
+  it.each([...SKY_TIERS, SKY_PLACEHOLDER])('$name is really $width wide on disk', (tier) => {
+    // A file quietly swapped for a different size would make every resident figure here a lie, and
+    // the budget that depends on them a wish.
+    const file = readFileSync(resolve(process.cwd(), 'public', tier.url.replace(/^\//, '')))
+    expect(dimensionsOf(file)).toEqual({ width: tier.width, height: tier.height })
+  })
+
+  it('states resident bytes as RGBA8 with no mipmap overhead', () => {
+    // Flat, because the sky is sampled from inside and mipmaps would collapse it. The fleet's
+    // budget checker assumes a third again for mips; for these textures that overstates by 33%.
+    for (const tier of [...SKY_TIERS, SKY_PLACEHOLDER]) {
+      expect(tier.resident).toBe(tier.width * tier.height * 4)
+    }
+    expect(SKY_TIERS[0].resident).toBe(32 * MiB)
+    expect(SKY_TIERS[1].resident).toBe(8 * MiB)
+    expect(SKY_PLACEHOLDER.resident).toBe(2 * MiB)
+  })
+
+  it('keeps the worst case inside a third of the surface budget', () => {
+    // The timemap surface allows 96 MiB resident across every texture on it, shared with the cloud
+    // field, the wind field and the moon. The sky's peak is the high tier plus the placeholder it
+    // has not let go of yet, and that lasts one decode.
+    const peak = SKY_TIERS[0].resident + SKY_PLACEHOLDER.resident
+    expect(peak).toBe(34 * MiB)
+    expect(peak).toBeLessThan(96 * MiB / 2)
+    // Steady state, once the placeholder is released.
+    expect(SKY_TIERS[0].resident).toBe(32 * MiB)
+  })
+
+  it('costs the machines that need it least the most', () => {
+    // Sanity on the direction of the ladder: dropping a tier must actually save something, and
+    // save more than it saves on the wire, because that is the point.
+    const [high, standard] = SKY_TIERS
+    expect(standard.resident * 4).toBe(high.resident)
+    expect(high.resident / high.bytes).toBeGreaterThan(8)
   })
 })
 

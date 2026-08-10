@@ -37,23 +37,50 @@
  */
 
 /**
+ * Resident cost of one of these panoramas, in bytes.
+ *
+ * TRANSFER BYTES ARE THE MISLEADING NUMBER. A texture uploaded from an `<img>` is RGBA8 whatever
+ * the file said, so the 746 KB standard tier is 8 MiB on the card — a factor of eleven — and the
+ * 3.6 MB high tier is 32 MiB. On the machines the low tier exists for, video memory is the binding
+ * limit and bandwidth is not, so this is the number a tier should be sized against.
+ *
+ * NO MIPMAP OVERHEAD, and that is not an oversight. A mipmapped texture costs a third again, and
+ * the fleet's budget checker assumes it — reasonably, since every other field on this map is
+ * wrapped on the ground and wants them. A sky must not have them: the camera is inside it, so the
+ * UV derivative per pixel is enormous and the sampler would pick a 2x2 level over most of the
+ * frame. `starfield.js` acquires with `mipmap: false`, so these are flat and this arithmetic is
+ * the whole story.
+ */
+const residentBytes = (width, height) => width * height * 4
+
+/**
  * The ladder, largest first. Every entry is the same image; only the sampling grid changes.
  *
- * `bytes` is what it actually weighs, and `decodeMs` is what it cost on an M3 Pro — several times
- * that on the hardware the low tier exists for. They are here so the next person tuning this has
- * the numbers in front of them rather than in a commit message.
+ * `bytes` is what it weighs on the wire, `resident` what it costs on the card, and `decodeMs` what
+ * it cost on an M3 Pro — several times that on the hardware the low tier exists for. They are here
+ * so the next person tuning this has the numbers in front of them rather than in a commit message.
  */
 export const SKY_TIERS = [
-  { name: 'high', width: 4096, url: '/img/map/sky/milkyway-4k.webp', bytes: 3_680_220, decodeMs: 235 },
-  { name: 'standard', width: 2048, url: '/img/map/sky/milkyway-2k.webp', bytes: 764_012, decodeMs: 51 },
+  {
+    name: 'high', width: 4096, height: 2048, url: '/img/map/sky/milkyway-4k.webp',
+    bytes: 3_680_220, resident: residentBytes(4096, 2048), decodeMs: 235,
+  },
+  {
+    name: 'standard', width: 2048, height: 1024, url: '/img/map/sky/milkyway-2k.webp',
+    bytes: 764_012, resident: residentBytes(2048, 1024), decodeMs: 51,
+  },
 ]
 
 /**
  * The one shown immediately, while the chosen tier is still coming down the wire. It is also the
  * floor: a device that cannot manage 2048 gets this and still has a sky.
+ *
+ * It is released the moment the chosen tier lands, so the two are resident together only for the
+ * span of one decode — the layer's steady-state cost is one panorama, never two.
  */
 export const SKY_PLACEHOLDER = {
-  name: 'placeholder', width: 1024, url: '/img/map/sky/milkyway-1k.webp', bytes: 45_160, decodeMs: 5,
+  name: 'placeholder', width: 1024, height: 512, url: '/img/map/sky/milkyway-1k.webp',
+  bytes: 45_160, resident: residentBytes(1024, 512), decodeMs: 5,
 }
 
 /** Below this, a machine is told it is not getting the big one. Gigabytes, as the browser reports. */

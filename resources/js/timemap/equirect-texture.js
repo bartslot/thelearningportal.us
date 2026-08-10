@@ -1,6 +1,12 @@
 /**
  * equirect-texture.js — one equirectangular field, shared by every layer that needs it.
  *
+ * COPIED, NOT FORKED. This is 9a4ccbe from `realistic-earth` verbatim, plus one change: mipmapping
+ * is an option and part of the cache key, because a field the camera is INSIDE must not have
+ * mipmaps and a field on the ground must. When that branch merges this file will conflict, and the
+ * resolution is to keep both — their file plus that one change. It is deliberately a small diff so
+ * that stays a five-line decision rather than a rewrite.
+ *
  * The cloud field used to belong to the cloud deck. Then the ground started shading itself with
  * the shadow of those same clouds, and a second copy would have been not just wasteful but wrong:
  * two Image loads land on different frames, so there is a window where the shadows are cast by a
