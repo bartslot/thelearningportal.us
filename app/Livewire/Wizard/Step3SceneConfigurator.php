@@ -1171,13 +1171,17 @@ class Step3SceneConfigurator extends Component
     }
 
     /**
-     * Lesson-wide map palette (soft-atlas / antique / pen-ink / night / satellite) — one setting for
-     * every map block in the lesson, mirroring the front-end Time-Map's five styles. Clears any
-     * per-block override on the selected scene so the lesson choice is what shows.
+     * Lesson-wide map palette — one setting for every map block in the lesson. Clears any per-block
+     * override on the selected scene so the lesson choice is what shows.
+     *
+     * `earth` is the photographic ground with the globe render on top (see MAP_STYLES in
+     * lesson-map.js). Only `earth` and `night` are offered to teachers; the rest stay allowed
+     * because lessons already carry them, and dropping one here would silently repaint a finished
+     * lesson as Soft Atlas — this list is a fallback, not a validator that reports anything.
      */
     public function setLessonMapStyle(string $name): void
     {
-        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night', 'satellite'];
+        $allowed = ['soft-atlas', 'antique', 'pen-ink', 'night', 'satellite', 'earth'];
         $this->lesson->update(['map_style' => in_array($name, $allowed, true) ? $name : 'soft-atlas']);
 
         if ($this->selectedScene && ($this->selectedScene['config']['map_style'] ?? null) !== null) {

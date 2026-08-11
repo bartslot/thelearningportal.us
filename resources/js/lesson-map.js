@@ -49,6 +49,11 @@ const MAP_STYLES = {
   // to bright desert, that pairing is the one that stays readable everywhere (and it survives a
   // lesson's own dark label colour, which would vanish into a dark halo).
   'satellite': { imagery: true, land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false },
+  // Earth — Satellite v2. The same photographed ground, with the globe render on top of it: the
+  // sea lit as water, the terminator, the haze band at the limb, the cloud deck, and the sky
+  // bodies behind the planet. `globe` is what pulls map-globe-layers.js in, and it is the only
+  // style that does, so a lesson on any other one never downloads a shader it will not draw.
+  'earth': { imagery: true, globe: true, land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false },
 }
 const DEFAULT_STYLE = 'soft-atlas'
 
@@ -612,6 +617,62 @@ export function renderLessonMap (el, opts = {}) {
     }
     // Letterbox bars (map narrower than the stage) match the sea.
     try { el.style.backgroundColor = s.water } catch (_) {}
+    applyGlobe(!!s.globe)
+  }
+
+  /**
+   * The Earth style's globe layers, loaded on demand.
+   *
+   * Lazy for the same reason the voyage ship is: the layers carry shaders and texture fields, and a
+   * lesson on Soft Atlas or Night must not download a chunk it never draws. Nothing happens on any
+   * style but Earth.
+   *
+   * The date decides where the sun is, and therefore which half of the planet is in daylight — so a
+   * lesson set in 1600 is lit for 1600. Year alone is enough for the terminator to be somewhere
+   * defensible; it is not a claim about the hour of day, which no scene carries.
+   */
+  let globe = null
+  let globeLoading = false
+  let globeWaiting = false
+
+  /** Midsummer noon UTC of the scene's year — a defensible sun for a lesson that carries no hour. */
+  const globeDate = () => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12))
+  function applyGlobe (on) {
+    if (!on) { globe?.remove(); globe = null; return }
+    if (globe || globeLoading) return
+    // addLayer throws "Style is not done loading" outright rather than queueing, and applyStyle is
+    // called from several places that run before the style settles (the initial paint, and again as
+    // the async terrain and city layers arrive).
+    //
+    // A one-shot `once('idle')` was not enough: two identical runs disagreed about whether the
+    // layers arrived at all, because whether that single event lands after the style settles is a
+    // race with the async layers. So subscribe until it works. Both guards above make this
+    // idempotent, so an idle tick once the globe exists costs a comparison.
+    if (!map.isStyleLoaded()) {
+      if (!globeWaiting) {
+        globeWaiting = true
+        map.on('idle', () => { if (MAP_STYLES[activeStyle]?.globe) applyGlobe(true) })
+      }
+      return
+    }
+    globeLoading = true
+    import('./map-globe-layers.js')
+      .then(({ addGlobeLayers }) => {
+        globeLoading = false
+        // The teacher may have clicked another style while the chunk was in flight — adding the
+        // layers now would leave a globe render over a drawn atlas with nothing to switch it off.
+        if (!MAP_STYLES[activeStyle]?.globe) return
+        globe = addGlobeLayers(map, {
+          date: globeDate(),
+          reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true,
+        })
+      })
+      .catch((e) => {
+        globeLoading = false
+        // Loudly: a silent failure here is a lesson that quietly renders as plain satellite, which
+        // is exactly what this style exists to stop being the only option.
+        console.error('[lesson-map] Earth layers failed to load — falling back to plain imagery', e)
+      })
   }
 
   /**

@@ -5,13 +5,28 @@
      Clicking a swatch repaints the live preview instantly (lessonmap:style) and persists via
      setLessonMapStyle. Shared by the map and voyage inspectors — one picker, same behaviour. --}}
 @php
+    // What a teacher may CHOOSE. Earth and Night, and nothing else.
+    //
+    // Soft Atlas, Antique and Tolkien read as the same drawn map at lesson size — three swatches
+    // for one look. Earth is Satellite v2 and replaces it as the photographic ground.
+    //
+    // The others are hidden, NOT removed: lessons already carry them, and deleting a style would
+    // silently repaint someone's finished lesson. lesson-map.js still renders all five, and the
+    // block below keeps whichever one a lesson is already on visible so its own choice never
+    // disappears from under it. Converting existing lessons to Earth is a separate, deliberate job.
     $styleOptions = [
+        'earth' => 'Earth',
+        'night' => 'Night',
+    ];
+    $retired = [
         'soft-atlas' => 'Soft Atlas',
         'antique' => 'Antique',
         'pen-ink' => 'Tolkien',
-        'night' => 'Night',
         'satellite' => 'Satellite',
     ];
+    if (isset($retired[$effectiveStyle])) {
+        $styleOptions[$effectiveStyle] = $retired[$effectiveStyle];
+    }
 @endphp
 <div class="form-control">
     <span class="text-xs uppercase tracking-wider text-slate-400">Map style</span>
@@ -22,7 +37,10 @@
                     wire:click="setLessonMapStyle('{{ $value }}')"
                     onclick="window.dispatchEvent(new CustomEvent('lessonmap:style',{detail:{name:'{{ $value }}'}}))"
                     class="group overflow-hidden rounded-lg border-2 text-left transition {{ $effectiveStyle === $value ? 'border-amber-500' : 'border-slate-700/60 hover:border-slate-500' }}">
-                <img src="{{ asset('img/map-styles/'.$value.'.webp') }}" alt="{{ $label }} map style"
+                {{-- Earth has no swatch of its own yet; it is the satellite ground, so that photo is
+                     the honest stand-in until one is captured from the real render. --}}
+                <img src="{{ asset('img/map-styles/'.($value === 'earth' ? 'satellite' : $value).'.webp') }}"
+                     alt="{{ $label }} map style"
                      class="h-14 w-full object-cover" loading="lazy" />
                 <span class="flex items-center justify-between px-2 py-1 text-[11px] font-medium {{ $effectiveStyle === $value ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-900 text-slate-300' }}">
                     {{ $label }}
