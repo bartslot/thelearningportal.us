@@ -263,14 +263,69 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (Number.isFinite(saved)) colorStrength = Math.min(1, Math.max(0, saved));
   } catch (e) { /* private mode */ }
   const strengthOpacity = (base) => Math.min(0.92, Math.max(0.06, base * (0.45 + 1.1 * colorStrength)));
+  /**
+   * A territory is in one of three states — resting, under the pointer, or opened by a click — and
+   * each has a colour and an opacity. Both are single expressions with a `case` per state, so there
+   * is no way to set one state's value by writing a plain number: that would flatten all three.
+   *
+   * Which is exactly what the settings panel used to do. It called setPaintProperty directly, and
+   * then applyBoundaryOpacity (every year tick) and applyMapStyle (every style switch) rewrote the
+   * same two properties from the style. The controls appeared to work and were wiped a moment later
+   * by an unrelated action — which is worse than not working, because nothing tells you it happened.
+   *
+   * So the panel owns values here, and the expression is BUILT from them. null means "whatever the
+   * active map style says", which is the default and keeps every style looking as designed.
+   */
+  const fillOverride = {
+    normal: { opacity: null },
+    hover: { colour: null, opacity: null },
+    active: { colour: null, opacity: null },
+  };
+  let usePalette = true;
+
+  /**
+   * The same problem for everything else applyMapStyle repaints: border colour, width, softness, the
+   * label ink. A style switch used to reset all of them, so a tuned value survived only until the
+   * next style change. Keyed `layer.property`; a value here wins over the style's.
+   */
+  const styleOverride = {};
+  const ownedPaint = (layer, prop, styleValue) => {
+    const v = styleOverride[`${layer}.${prop}`];
+    if (map.getLayer(layer)) {
+      try { map.setPaintProperty(layer, prop, v !== undefined ? v : styleValue); } catch (e) { /* parsing */ }
+    }
+  };
+
+  /** The fill colour for all three states, from the active style unless the panel overrode it. */
+  const territoryFillExpr = () => {
+    const s = MAP_STYLES[currentStyleName] || {};
+    const pal = s.palette || ATLAS_PALETTE;
+    const palette = ['match', ['coalesce', ['get', 'Wikidata'], 'Q0'],
+      ...NATIONAL_PAIRS,
+      ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
+        ...pal.flatMap((c, i) => [i, c]), pal[0]]];
+    return ['case',
+      ['boolean', ['feature-state', 'selected'], false], fillOverride.active.colour ?? s.selected ?? theme.selected,
+      ['boolean', ['feature-state', 'hover'], false], fillOverride.hover.colour ?? s.hover ?? theme.hover,
+      usePalette ? palette : fillColour];
+  };
+
   // Recompute the fill-opacity case (selected/hover boosted) from the active style + slider.
   const refreshFillOpacity = () => {
     const s = MAP_STYLES[currentStyleName] || {};
     const base = strengthOpacity(s.fillOpacity != null ? s.fillOpacity : theme.fillOpacity.normal);
     fillOpacityCase = ['case',
-      ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, base),
-      ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, base + 0.18),
-      base];
+      ['boolean', ['feature-state', 'selected'], false], fillOverride.active.opacity ?? Math.max(0.85, base),
+      ['boolean', ['feature-state', 'hover'], false], fillOverride.hover.opacity ?? Math.max(0.6, base + 0.18),
+      fillOverride.normal.opacity ?? base];
+  };
+
+  /** The one way to repaint the territories. Everything that changes a fill value ends up here. */
+  const applyTerritoryFill = () => {
+    if (!map.getLayer('boundaries-fill')) return;
+    try { map.setPaintProperty('boundaries-fill', 'fill-color', territoryFillExpr()); } catch (e) { /* parsing */ }
+    refreshFillOpacity();
+    applyBoundaryOpacity(state.year);
   };
   // Called by the colour slider (Blade, bottom right).
   window.__tmSetColorStrength = (v) => {
@@ -431,7 +486,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const EMPTY_FC = { type: 'FeatureCollection', features: [] };
   let smoothSamples = 0;
   let smoothPending = null;
-  let flatFill = false;
   let fillColour = '#5b7fa8';
 
   const rebuildSmoothBorders = () => {
@@ -658,8 +712,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, value); } catch (e) { /* style still parsing */ } }
     };
     // The border colour has to survive the highlight case, or clicking a territory stops showing it.
-    const borderColour = (colour) => paint('boundaries-line', 'line-color',
-      ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour]);
+    const borderColour = (colour) => {
+      const expr = ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour];
+      styleOverride['boundaries-line.line-color'] = expr;
+      ownedPaint('boundaries-line', 'line-color', expr);
+    };
 
     const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
 
@@ -686,29 +743,51 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     };
 
     tuneOff = [
-      window.__tune.register('Territories', [
-        { key: 'lineColor', label: 'Border', type: 'color', value: '#8a99b8', apply: borderColour },
-        { key: 'lineWidth', label: 'Border width', min: 0, max: 6, step: 0.1, value: 1,
-          apply: (v) => paint('boundaries-line', 'line-width', v) },
-        { key: 'lineOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
-          apply: (v) => paint('boundaries-line', 'line-opacity', v) },
-        { key: 'lineBlur', label: 'Border softness', min: 0, max: 4, step: 0.1, value: 0,
-          apply: (v) => paint('boundaries-line', 'line-blur', v) },
-        { key: 'fillOpacity', label: 'Fill opacity', min: 0, max: 1, step: 0.02, value: 0.35,
-          apply: (v) => paint('boundaries-fill', 'fill-opacity', v) },
-        { key: 'labelColor', label: 'Label', type: 'color', value: '#e6ecf7',
-          apply: (v) => paint('boundaries-label', 'text-color', v) },
-        { key: 'labelHalo', label: 'Label halo', type: 'color', value: '#10151f',
-          apply: (v) => paint('boundaries-label', 'text-halo-color', v) },
-        // One colour for every territory instead of the per-QID palette. A colour cannot be blended
-        // with a `match` expression, so this replaces it outright — untick to get the palette back.
-        { key: 'flatFill', label: 'One fill colour', type: 'boolean', value: false,
-          apply: (on) => { flatFill = on; paint('boundaries-fill', 'fill-color', on ? fillColour : FILL_COLOR); } },
-        { key: 'fillColour', label: 'Fill colour', type: 'color', value: '#5b7fa8',
-          apply: (v) => { fillColour = v; if (flatFill) paint('boundaries-fill', 'fill-color', v); } },
+      // A territory is resting, hovered, or opened by a click. Each state gets its own colour and
+      // opacity, and each writes into the expression rather than over it — see fillOverride.
+      // "From style" leaves that state exactly as the map style designed it.
+      window.__tune.register('Territory · resting', [
+        { key: 'usePalette', label: 'Per-country colours', type: 'boolean', value: true,
+          apply: (on) => { usePalette = on; applyTerritoryFill(); } },
+        { key: 'restColour', label: 'Colour', type: 'color', value: '#5b7fa8',
+          apply: (v) => { fillColour = v; applyTerritoryFill(); } },
+        { key: 'restOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          // 0 hands the state back to the style, which is the default and is NOT "invisible" — the
+          // styles set their own base between 0.3 and 0.7. Anything above is an explicit override.
+          apply: (v) => { fillOverride.normal.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
       ], { tab: 'Map' }),
 
-      window.__tune.register('Territory hover', [
+      window.__tune.register('Territory · hover', [
+        { key: 'hoverColour', label: 'Colour', type: 'color', value: theme.hover,
+          apply: (v) => { fillOverride.hover.colour = v; applyTerritoryFill(); } },
+        { key: 'hoverOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          apply: (v) => { fillOverride.hover.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      // The state that had no controls at all: what a territory looks like once it is clicked open.
+      window.__tune.register('Territory · active', [
+        { key: 'activeColour', label: 'Colour', type: 'color', value: theme.selected,
+          apply: (v) => { fillOverride.active.colour = v; applyTerritoryFill(); } },
+        { key: 'activeOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          apply: (v) => { fillOverride.active.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory borders', [
+        { key: 'lineColor', label: 'Border', type: 'color', value: '#8a99b8', apply: borderColour },
+        { key: 'lineWidth', label: 'Border width', min: 0, max: 6, step: 0.1, value: 1,
+          apply: (v) => { styleOverride['boundaries-line.line-width'] = v; ownedPaint('boundaries-line', 'line-width', v); } },
+        { key: 'lineOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
+          // Owned, not painted: applyBoundaryOpacity rewrites line-opacity on every year tick.
+          apply: (v) => { styleOverride['boundaries-line.line-opacity'] = v; lineOpacityValue = v; applyBoundaryOpacity(state.year); } },
+        { key: 'lineBlur', label: 'Border softness', min: 0, max: 4, step: 0.1, value: 0,
+          apply: (v) => { styleOverride['boundaries-line.line-blur'] = v; ownedPaint('boundaries-line', 'line-blur', v); } },
+        { key: 'labelColor', label: 'Label', type: 'color', value: '#e6ecf7',
+          apply: (v) => { styleOverride['boundaries-label.text-color'] = v; ownedPaint('boundaries-label', 'text-color', v); } },
+        { key: 'labelHalo', label: 'Label halo', type: 'color', value: '#10151f',
+          apply: (v) => { styleOverride['boundaries-label.text-halo-color'] = v; ownedPaint('boundaries-label', 'text-halo-color', v); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Hover glow', [
         { key: 'glowColour', label: 'Glow', type: 'color', value: GLOW_COLOR,
           apply: (v) => { glow.colour = v; applyGlow(); } },
         { key: 'glowStrength', label: 'Strength', min: 0, max: 1, step: 0.05, value: 0.55,
@@ -836,15 +915,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const s = MAP_STYLES[key];
     currentStyleName = key;
     try { localStorage.setItem('tm-style', key); } catch (e) { /* private mode */ }
-    const pal = s.palette;
-    const fill = ['case',
-      ['boolean', ['feature-state', 'selected'], false], s.selected,
-      ['boolean', ['feature-state', 'hover'], false], s.hover,
-      // National colour when curated, else the per-style hash palette.
-      ['match', ['coalesce', ['get', 'Wikidata'], 'Q0'],
-        ...NATIONAL_PAIRS,
-        ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
-          ...pal.flatMap((c, i) => [i, c]), pal[0]]]];
+    // National colour when curated, else the per-style hash palette — and whatever the settings
+    // panel has overridden, which is why this is built in one place rather than inline here.
     // Satellite: the photographed ground replaces the drawn one, so every layer that paints a
     // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
     const photo = !!s.imagery;
@@ -931,13 +1003,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Famous volcanoes — shown with the mountains (ink/atlas styles).
     setVolcanoVisibility(map, !!s.mountains);
     if (map.getLayer('boundaries-fill')) {
-      map.setPaintProperty('boundaries-fill', 'fill-color', fill);
-      refreshFillOpacity();
-      lineOpacityValue = (s.line && s.line.opacity != null) ? s.line.opacity : 1;
-      applyBoundaryOpacity(state.year);
-      map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
-      map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
-      map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
+      // Rebuilds colour AND opacity for all three states, honouring any panel override, so a style
+      // switch restyles the map without silently discarding what has been tuned.
+      lineOpacityValue = styleOverride['boundaries-line.line-opacity']
+        ?? ((s.line && s.line.opacity != null) ? s.line.opacity : 1);
+      applyTerritoryFill();
+      ownedPaint('boundaries-line', 'line-color', s.line.color);
+      ownedPaint('boundaries-line', 'line-width', s.line.width);
+      ownedPaint('boundaries-line', 'line-blur', s.line.blur);
       map.setLayoutProperty('boundaries-line', 'line-join', 'round');
       // When a style supplies wobbled ink borders, hide the smooth vector line and draw from those.
       //
@@ -947,14 +1020,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       // actually happened was a style change. Whoever wants it hidden wins.
       const roundedBordersOn = smoothSamples >= 1;
       map.setLayoutProperty('boundaries-line', 'visibility', (s.borderSource || roundedBordersOn) ? 'none' : 'visible');
-      map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
-      map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
+      ownedPaint('boundaries-label', 'text-color', s.text.color);
+      ownedPaint('boundaries-label', 'text-halo-color', s.text.halo);
       // The hover name is a label too. Without this it kept the atlas ink on Night and Satellite,
       // where it would be the one piece of text on the map not matching its neighbours.
-      if (map.getLayer('boundaries-glow-label')) {
-        map.setPaintProperty('boundaries-glow-label', 'text-color', s.text.color);
-        map.setPaintProperty('boundaries-glow-label', 'text-halo-color', s.text.halo);
-      }
+      ownedPaint('boundaries-glow-label', 'text-color', s.text.color);
+      ownedPaint('boundaries-glow-label', 'text-halo-color', s.text.halo);
     }
     if (map.getLayer('markers-label')) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);

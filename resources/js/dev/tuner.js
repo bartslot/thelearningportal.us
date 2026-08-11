@@ -59,6 +59,24 @@ export const register = (group, controls, opts = {}) => {
   }
 }
 
+/**
+ * Set one control from code, exactly as dragging it would: runs the same apply and leaves the panel
+ * showing the new value. Returns false if there is no such control, so a caller can tell the
+ * difference between "set it" and "that control does not exist" — a silent no-op here would be the
+ * same failure this panel was built to end.
+ *
+ * This is how a test drives a slider, and how a preset can be replayed.
+ */
+export const set = (group, key, value) => {
+  const entry = groups.get(group)
+  const control = entry && entry.controls.find((c) => c.key === key)
+  if (!control) return false
+  control.current = value
+  try { control.apply?.(value) } catch (e) { console.warn(`[tune] ${group}.${key} threw`, e) }
+  redraw()
+  return true
+}
+
 /** Everything currently set, as plain data — what Copy writes out. */
 export const values = () => {
   const out = {}
@@ -360,7 +378,7 @@ const CSS = `
 // the group, the screen shows nothing, and nothing errors. First to load owns the window.
 if (!window.__tune) {
   window.addEventListener('dev:tune', () => toggle())
-  window.__tune = { register, values, toggle }
+  window.__tune = { register, values, toggle, set }
 
   /**
    * A scratch stylesheet, always available.

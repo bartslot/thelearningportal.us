@@ -186,7 +186,7 @@ test('the load handler runs to the end — globe layers, ship and settings group
   // the handler completed. Only the two global groups survive a throw.
   const groups: string[] = await page.evaluate(() => Object.keys((window as any).__tune?.values?.() ?? {}));
   expect(groups, `registered groups: ${groups.join(', ')}`).toEqual(
-    expect.arrayContaining(['Ocean', 'Clouds', 'Territories']),
+    expect.arrayContaining(['Ocean', 'Clouds', 'Territory · resting']),
   );
 });
 
@@ -253,4 +253,53 @@ test('rounding survives a map style switch', async ({ page }) => {
   const after = await page.evaluate(() =>
     (window as any).__tmMap.getLayoutProperty('boundaries-line', 'visibility'));
   expect(after, 'style switch put the raw sharp border back over the rounded one').toBe('none');
+});
+
+/**
+ * The settings panel used to call setPaintProperty directly, while applyBoundaryOpacity (every year
+ * tick) and applyMapStyle (every style switch) rewrote the same properties from the style. So a
+ * control worked for a moment and was then wiped by an unrelated action, with nothing to say it had
+ * happened — which reads as "this slider does nothing".
+ *
+ * The three fill states are one expression with a case per state, so this checks the tuned values
+ * are still IN that expression after both of the things that used to erase them.
+ */
+test('a tuned territory colour survives a year scrub and a style switch', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-fill'), { timeout: 25_000 });
+
+  const ACTIVE = '#ff00aa';
+  const HOVER = '#00ffcc';
+  const set = await page.evaluate(([active, hover]) => {
+    const t = (window as any).__tune;
+    return [
+      t.set('Territory · active', 'activeColour', active),
+      t.set('Territory · active', 'activeOpacity', 0.9),
+      t.set('Territory · hover', 'hoverColour', hover),
+    ];
+  }, [ACTIVE, HOVER]);
+  expect(set, 'a control the test names does not exist').toEqual([true, true, true]);
+
+  const stillThere = async (tag: string) => {
+    const paint = await page.evaluate(() => {
+      const m = (window as any).__tmMap;
+      return {
+        color: JSON.stringify(m.getPaintProperty('boundaries-fill', 'fill-color')),
+        opacity: JSON.stringify(m.getPaintProperty('boundaries-fill', 'fill-opacity')),
+      };
+    });
+    expect(paint.color, `active colour gone after ${tag}`).toContain(ACTIVE);
+    expect(paint.color, `hover colour gone after ${tag}`).toContain(HOVER);
+    expect(paint.opacity, `active opacity gone after ${tag}`).toContain('0.9');
+  };
+
+  await stillThere('being set');
+
+  // The two things that used to wipe it.
+  await page.evaluate(() => (window as any).__setTimemapYear(1750));
+  await page.waitForTimeout(1_200);
+  await stillThere('a year scrub');
+
+  await page.evaluate(() => (window as any).__applyMapStyle('night'));
+  await page.waitForTimeout(1_200);
+  await stillThere('a style switch');
 });
