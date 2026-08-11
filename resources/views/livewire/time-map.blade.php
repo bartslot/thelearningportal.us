@@ -167,7 +167,12 @@
     </aside>
 
     {{-- Time slider (oldmapsonline-style) --}}
+    {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
+         actually be seen in, and centres the earth in what is left. Without it the globe sits
+         half the deck's height too low, because MapLibre centres on the container and the deck
+         covers the bottom of it. --}}
     <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-176 max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+         data-timemap-deck
          x-ref="sliderbox"
          x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>

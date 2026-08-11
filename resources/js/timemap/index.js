@@ -129,10 +129,48 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // through as space.
   el.style.background = 'radial-gradient(ellipse 90% 90% at 50% 48%, #14224a 0%, #070c1e 55%, #02030a 100%)';
 
+  /**
+   * Centre the earth in the part of the map you can actually SEE.
+   *
+   * MapLibre centres on the container, and the time deck is drawn over the bottom of it, so the
+   * globe sat half the deck's height too low with a band of empty sky above it. Padding is
+   * MapLibre's own answer to "the visible map is smaller than its element" — it moves the centre
+   * for flyTo and fitBounds as well, so a polity fitted to the frame is not half behind the deck
+   * either.
+   *
+   * Measured rather than hard-coded: the deck is `w-176 max-w-[92vw]`, so its height changes with
+   * the viewport as the controls wrap.
+   */
+  const centreForChrome = () => {
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) return;
+    const box = el.getBoundingClientRect();
+    const bar = deck.getBoundingClientRect();
+    // How much of the container's bottom the deck covers. Clamped to a third: a deck taller than
+    // that means a viewport so short the padding would leave nowhere to draw.
+    const covered = Math.max(0, box.bottom - bar.top);
+    map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.min(covered, box.height / 3) });
+  };
+
   // The container settles to its final height after Alpine/Livewire mount; without this the
   // map can initialise against a transient height and render short until the next resize.
-  const resizeObserver = new ResizeObserver(() => map.resize());
+  const resizeObserver = new ResizeObserver(() => { map.resize(); centreForChrome(); });
   resizeObserver.observe(el);
+
+  // The deck mounts on Alpine's $nextTick, which is after this module runs AND after the map's
+  // first idle — both were tried, and both measured an element that was not in the DOM yet, which
+  // fails silently as "no padding". So wait for it, then watch IT: `w-176 max-w-[92vw]` means its
+  // height changes with the viewport as its controls wrap.
+  const watchDeck = (attempt = 0) => {
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) {
+      if (attempt < 30) setTimeout(() => watchDeck(attempt + 1), 100);
+      return;
+    }
+    centreForChrome();
+    new ResizeObserver(centreForChrome).observe(deck);
+  };
+  watchDeck();
 
   // Atlas styling comes from theme.json — edit colours/lines there, no JS changes needed.
   const ATLAS_PALETTE = theme.palette;
