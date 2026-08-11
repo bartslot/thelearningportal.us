@@ -22,6 +22,7 @@
         "daisyui": "^5.5.19",
         "jsdom": "^29.1.1",
         "laravel-vite-plugin": "^2.0.0",
+        "mapshaper": "^0.7.51",
         "pbf": "^5.1.0",
         "tailwindcss": "^4.1.18",
         "vite": "^7.0.7",
