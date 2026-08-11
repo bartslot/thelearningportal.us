@@ -30,6 +30,12 @@ import { registerLayerControls, readStoredLayers, applyLayerState } from './time
 const CLOUD_FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_FIELD_URL = '/img/map/wind-field.png'
 
+/** '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples; the picker gives hex. */
+const hexToRgb = (hex) => {
+  const n = parseInt(String(hex).replace('#', ''), 16)
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]
+}
+
 /**
  * Draw order, back to front.
  *
@@ -50,12 +56,6 @@ const WIND_FIELD_URL = '/img/map/wind-field.png'
  * The rest of the order is still reasoned from each layer's own notes rather than inherited —
  * nothing had ever composited these seven together — so it stays the first thing to suspect.
  */
-/** '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples; the picker gives hex. */
-const hexToRgb = (hex) => {
-  const n = parseInt(String(hex).replace('#', ''), 16)
-  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]
-}
-
 const STACK = [
   ['starfield', STARFIELD_LAYER_ID, (o) => createStarfieldLayer(o)],
   ['sun', SUN_LAYER_ID, (o) => createSunLayer(o)],
@@ -84,10 +84,11 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
 
   // Shared by the clouds and the shadows they cast. daylight.js is explicit that both layers must be
   // given the SAME field, or the shadows drift away from the clouds casting them.
-  // windAmount 0.35, not the module's 1: full advection drags the field into visible spirals once
+  // windAmount 0.2, not the module's 1: full advection drags the field into visible spirals once
   // you are close enough to see individual cells, which reads as a swirl filter rather than as
-  // weather. Enough to carry the deck along real circulation, not enough to draw with it.
-  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, windAmount: 0.35, animate }
+  // weather. Enough to carry the deck along real circulation, not enough to draw with it. The 0.2
+  // is off the tuner — I had guessed 0.35 and it was still too busy.
+  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, windAmount: 0.2, animate }
 
   const options = {
     starfield: { date, animate },
@@ -104,11 +105,17 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
      *
      * Set here rather than in ocean-water.js because this is the house look, not a correction to
      * its physics — another consumer may want a glassier sea, and the module still offers one.
+     *
+     * These numbers came off the tuner rather than out of a guess: Bart dragged them and sent the
+     * values back (roughness 0.95, glint 0.48, patchiness 0.6, shore 19.5 km). The shore falloff in
+     * particular is far softer than the 2.45 km floor the data can justify — that floor stops the
+     * SDF's texels showing as a staircase, and this is a deliberate look on top of it.
      */
-    ocean: { sun, roughness: 0.9, strength: 0.45, windPatch: 0.6 },
+    ocean: { sun, roughness: 0.95, strength: 0.48, windPatch: 0.6, shoreSoftnessKm: 19.5 },
     clouds: { ...field, sun },
     daylight: { ...field, sun, date },
-    atmosphere: { sun },
+    // Haze at 1.25 rather than the module's 1 — off the tuner, same session as the sea values.
+    atmosphere: { sun, strength: 1.25 },
   }
 
   const layers = {}
@@ -137,11 +144,11 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
   const set = (layer, patch) => layers[layer]?.setOptions?.(patch)
   const untune = [
     window.__tune?.register('Ocean', [
-      { key: 'shoreSoftnessKm', label: 'Shore falloff', min: 0, max: 25, step: 0.25, value: 2.45,
+      { key: 'shoreSoftnessKm', label: 'Shore falloff', min: 0, max: 25, step: 0.25, value: 19.5,
         apply: (v) => set('ocean', { shoreSoftnessKm: v }) },
-      { key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.01, value: 0.9,
+      { key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.01, value: 0.95,
         apply: (v) => set('ocean', { roughness: v }) },
-      { key: 'strength', label: 'Sun glint', min: 0, max: 1, step: 0.01, value: 0.45,
+      { key: 'strength', label: 'Sun glint', min: 0, max: 1, step: 0.01, value: 0.48,
         apply: (v) => set('ocean', { strength: v }) },
       { key: 'windPatch', label: 'Patchiness', min: 0, max: 1, step: 0.01, value: 0.6,
         apply: (v) => set('ocean', { windPatch: v }) },
@@ -159,7 +166,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
     window.__tune?.register('Clouds', [
       { key: 'opacity', label: 'Density', min: 0, max: 1, step: 0.01, value: 1,
         apply: (v) => set('clouds', { opacity: v }) },
-      { key: 'windAmount', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.35,
+      { key: 'windAmount', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.2,
         apply: (v) => set('clouds', { windAmount: v }) },
       { key: 'windScale', label: 'Wind scale', min: 0.01, max: 0.5, step: 0.01, value: 0.06,
         apply: (v) => set('clouds', { windScale: v }) },
@@ -174,7 +181,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('daylight', { nightDarkness: v }) },
       { key: 'twilightColour', label: 'Twilight', type: 'color', value: '#d95a1f',
         apply: (v) => set('daylight', { twilightColour: hexToRgb(v) }) },
-      { key: 'atmosphere', label: 'Haze', min: 0, max: 2, step: 0.05, value: 1,
+      { key: 'atmosphere', label: 'Haze', min: 0, max: 2, step: 0.05, value: 1.25,
         apply: (v) => set('atmosphere', { strength: v }) },
       { key: 'starfield', label: 'Stars', min: 0, max: 1, step: 0.05, value: 0.5,
         apply: (v) => set('starfield', { brightness: v }) },
