@@ -79,6 +79,33 @@ if [[ ! -d "$STAGE/public/build/assets" ]]; then
   exit 1
 fi
 
+# The directory being present is not the same as it being CURRENT, and the difference broke the live
+# player on 2026-08-11. public/build is only partially tracked, so a rebuild stages the deletion of
+# the old hashed bundles and the manifest that names the new ones — both tracked — while the new
+# bundles stay ignored. HEAD then holds a manifest pointing at files nobody committed, the deploy
+# ships it happily, and every page importing one 404s. The homepage does not, which is why the
+# verifier at the end of this script still went green. So check the manifest against the tree.
+MISSING="$(cd "$STAGE/public/build" && python3 -c "
+import json, os, sys
+try:
+    manifest = json.load(open('manifest.json'))
+except OSError:
+    sys.exit(0)   # no manifest at all is a different problem; the directory check above owns it
+wanted = set()
+for entry in manifest.values():
+    if 'file' in entry:
+        wanted.add(entry['file'])
+    wanted.update(entry.get('css', []))
+print('\n'.join(sorted(f for f in wanted if not os.path.exists(f))))
+")"
+if [[ -n "$MISSING" ]]; then
+  echo "✗ HEAD's manifest names assets that were never committed:" >&2
+  printf '    %s\n' $MISSING >&2
+  echo "  public/build is gitignored — a rebuild has to be force-added:" >&2
+  echo "  Run: npm run build && git add -f public/build && git commit" >&2
+  exit 1
+fi
+
 echo "▸ rsync $DRY"
 rsync -az --delete $DRY --stats \
   --exclude='.env' --exclude='.env.*' \
