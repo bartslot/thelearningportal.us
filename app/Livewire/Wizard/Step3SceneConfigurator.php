@@ -3925,12 +3925,17 @@ class Step3SceneConfigurator extends Component
     private function addLibraryImageLayer(string $url, ?string $title = null): void
     {
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
-        if (! $scene->hasBackdrop()) {
-            $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
 
-            return;
-        }
-
+        // No backdrop requirement. A layer used to be refused unless the scene already had one,
+        // which was wrong in three ways at once: icons reach attachArtwork() directly and were
+        // never checked, so the same product refused a painting and accepted a camel; a slideshow
+        // scene shows pictures without carrying an image_path, so a teacher looking straight at
+        // artwork was told to "generate a scene background first"; and building a scene by placing
+        // the figure before the backdrop is a perfectly ordinary way to work. Bart: "Should add
+        // icons as layers regardless if there's a background image."
+        //
+        // A scene with nothing behind it still has background_color, so a layer always has
+        // something to sit on.
         $path = $this->libraryImagePath($url);
         if (! $path) {
             $this->dispatch('toast', message: __('We could not use that image. Try another one.'), type: 'error');
@@ -4188,15 +4193,9 @@ class Step3SceneConfigurator extends Component
         }
 
         $scene = $this->lesson->scenes()->findOrFail($this->selectedSceneId);
-        // A map, voyage or panorama scene has a backdrop without carrying an image_path, and a
-        // picture is just as valid on top of a map as on top of a generated background. Checked
-        // here as well as in attachArtwork so the teacher hears about it before the download, not
-        // after — the two must agree, hence one shared rule on the model.
-        if (! $scene->hasBackdrop()) {
-            $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
-
-            return;
-        }
+        // No backdrop requirement here either — see addLibraryImageLayer(). This check and the one
+        // there were meant to "agree with attachArtwork", and never did: attachArtwork has no such
+        // guard, so icons were always allowed and only pictures were refused.
 
         try {
             $response = \Illuminate\Support\Facades\Http::withHeaders([

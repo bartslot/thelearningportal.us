@@ -103,19 +103,24 @@ trait EditsSceneArtwork
             // shot carrying ONLY the asset layer (no cover). Editor and player both render these
             // over the map; serializeShots keeps layer-only shots.
             if (! $scene->image_path) {
-                if ($scene->drawsOwnBackdrop()) {
-                    $shots = [[
-                        'order' => 0,
-                        'layers' => [$newLayer],
-                    ]];
-                    $scene->update(['shots' => $shots]);
-                    $this->selectSceneInternal($scene->id);
-                    $this->svgLibraryOpen = false;
-
-                    return;
-                }
-
-                $this->dispatch('toast', message: __('Generate a scene background first, then add an image on top of it.'), type: 'warning');
+                // A layer-only shot: no cover, just the asset. This used to be reserved for scenes
+                // that draw their own backdrop (map, voyage, panorama) and everything else was
+                // refused with "generate a scene background first".
+                //
+                // That refusal was wrong. Bart: "Should add icons as layers regardless if there's a
+                // background image." A scene with nothing behind it still has background_color, so
+                // there is always something for a layer to sit on — and placing the figure before
+                // the backdrop is an ordinary way to build a scene. It also read as nonsense on a
+                // slideshow scene, which shows its pictures through `shots` without carrying an
+                // image_path: the teacher was looking straight at artwork and being told to make a
+                // background first.
+                $shots = [[
+                    'order' => 0,
+                    'layers' => [$newLayer],
+                ]];
+                $scene->update(['shots' => $shots]);
+                $this->selectSceneInternal($scene->id);
+                $this->svgLibraryOpen = false;
 
                 return;
             }

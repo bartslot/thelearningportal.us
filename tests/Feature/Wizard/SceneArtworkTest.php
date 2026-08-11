@@ -164,8 +164,13 @@ class SceneArtworkTest extends TestCase
         $this->assertSame(1.3, $layers[1]['depth']);
     }
 
-    public function test_attach_on_scene_with_no_shots_and_no_image_path_does_not_create_shots(): void
+    public function test_attach_on_scene_with_no_shots_and_no_image_path_creates_a_layer_only_shot(): void
     {
+        // INVERTED DELIBERATELY. This used to assert that nothing happened, which encoded a rule
+        // Bart has since removed: "Should add icons as layers regardless if there's a background
+        // image." A layer-only shot was already what a map scene got; every other scene was refused
+        // for no reason a teacher could see, and a scene with nothing behind it still has
+        // background_color for the layer to sit on.
         $this->scene->update(['image_path' => null]);
 
         Livewire::actingAs($this->teacher)
@@ -173,8 +178,10 @@ class SceneArtworkTest extends TestCase
             ->call('selectScene', $this->scene->id)
             ->call('attachArtwork', $this->asset1->id);
 
-        $this->scene->refresh();
-        $this->assertNull($this->scene->shots);
+        $shots = $this->scene->refresh()->shots;
+        $this->assertCount(1, $shots);
+        $this->assertCount(1, $shots[0]['layers']);
+        $this->assertArrayNotHasKey('image_path', $shots[0], 'layer-only: there is no cover to carry');
     }
 
     public function test_attach_on_imageless_voyage_scene_creates_a_layer_only_shot(): void
@@ -222,17 +229,20 @@ class SceneArtworkTest extends TestCase
     }
 
     /** A narration scene with nothing behind it still has to be told to make a background first. */
-    public function test_attach_on_a_truly_empty_scene_is_still_refused(): void
+    public function test_attach_on_a_truly_empty_scene_is_accepted(): void
     {
+        // Also inverted. The old name said "still refused" and the refusal was the bug: icons reach
+        // attachArtwork() by a path that never checked, so the product accepted a camel on this
+        // exact scene and refused a painting on it. Same action, to a teacher.
         $this->scene->update(['kind' => 'narration', 'image_path' => null]);
 
         Livewire::actingAs($this->teacher)
             ->test(Step3SceneConfigurator::class, ['lesson' => $this->lesson])
             ->call('selectScene', $this->scene->id)
             ->call('attachArtwork', $this->asset1->id)
-            ->assertDispatched('toast');
+            ->assertNotDispatched('toast');
 
-        $this->assertNull($this->scene->refresh()->shots);
+        $this->assertNotEmpty($this->scene->refresh()->shots[0]['layers'] ?? []);
     }
 
     /** The same rule has to hold for the Image tool, which downloads before it attaches. */
