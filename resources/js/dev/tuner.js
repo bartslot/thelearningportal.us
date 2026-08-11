@@ -23,7 +23,7 @@
  *     ], { tab: 'Map' })
  *     off()   // when the thing goes away
  *
- * Types: `range` (default), `color`, `number`, `text`, `textarea`, `button`.
+ * Types: `range` (default), `color`, `boolean`, `number`, `text`, `textarea`, `button`.
  */
 
 /** group name → { tab, order, controls } */
@@ -107,6 +107,12 @@ const rowFor = (group, control) => {
     const area = el('textarea', { className: 'lp-tune-area', value: String(control.current ?? ''), rows: 5, spellcheck: false })
     area.oninput = () => applyValue(group, control, area.value)
     return el('div', { className: 'lp-tune-stack' }, [label, area])
+  }
+
+  if (control.type === 'boolean') {
+    const box = el('input', { className: 'lp-tune-check', type: 'checkbox', checked: !!control.current })
+    box.onchange = () => applyValue(group, control, box.checked)
+    return el('label', { className: 'lp-tune-row' }, [label, box, el('span')])
   }
 
   if (control.type === 'text' || control.type === 'number') {
@@ -259,6 +265,7 @@ const CSS = `
 .lp-tune-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .lp-tune-range{width:100%;accent-color:#c026d3}
 .lp-tune-color{width:100%;height:1.4rem;padding:0;border:1px solid #334155;border-radius:.25rem;background:none}
+.lp-tune-check{width:1rem;height:1rem;accent-color:#c026d3;justify-self:start}
 .lp-tune-input{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;
   color:#e2e8f0;font:inherit;padding:.15rem .35rem}
 .lp-tune-area{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;

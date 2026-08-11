@@ -9,7 +9,7 @@ import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
 import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
-import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
+import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle, smooth } from './voyages.js';
 import nationalColors from './national-colors.json';
 import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers } from '../map-imagery.js';
 import { CLOUD_LAYER_ID } from './clouds.js';
@@ -79,6 +79,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
         // Explorer voyage routes (curated GeoJSON, baked at import time from voyages.json).
+        // Rounded borders: filled in from what is on screen, empty until the control asks for it.
+        'boundaries-smooth': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         ...voyageStyleSources(),
       },
       layers: [
@@ -242,6 +244,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // The hover glow tracks the same era as the border it sits under, or scrubbing the timeline
     // leaves it lighting up territories that no longer exist.
     if (map.getLayer('boundaries-glow')) map.setFilter('boundaries-glow', polityFilter(year));
+    scheduleSmoothBorders();   // different era, different outlines to round
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
@@ -336,6 +339,60 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let hoveredId = null;
   /** The amber light currently running around a clicked territory, so a new click replaces it. */
   let borderSweep = null;
+
+  /**
+   * ROUNDED CORNERS — a second border, drawn from the same polygons run through a spline.
+   *
+   * Cliopatria's outlines are generalised political shapes: straight runs meeting at hard vertices,
+   * which is why the map reads as a digital thing rather than a drawn one. No line-join setting
+   * fixes that, because the angles are in the GEOMETRY, not in how the line is capped.
+   *
+   * So the polygon keeps the job it is good at — telling us what you clicked — and a smoothed copy
+   * of its outline becomes the visible border. Exactly the split Bart described.
+   *
+   * The curve is `smooth` from voyages.js: the centripetal Catmull-Rom that already rounds every
+   * sailing route on this map. A route and a frontier are the same problem, so they get the same
+   * spline rather than a second one written to look similar.
+   *
+   * Rebuilt from what is ON SCREEN (queryRenderedFeatures), so the cost tracks the view rather than
+   * the dataset — at 0 it does nothing at all and the plain border comes back.
+   */
+  const SMOOTH_SRC = 'boundaries-smooth';
+  const EMPTY_FC = { type: 'FeatureCollection', features: [] };
+  let smoothSamples = 0;
+  let smoothPending = null;
+  let flatFill = false;
+  let fillColour = '#5b7fa8';
+
+  const rebuildSmoothBorders = () => {
+    const src = map.getSource(SMOOTH_SRC);
+    if (!src) return;
+    if (smoothSamples < 1) { src.setData(EMPTY_FC); return; }
+
+    const features = [];
+    const seen = new Set();
+    for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
+      // queryRenderedFeatures returns a polity once per tile it touches; the rings are already
+      // clipped per tile, so each piece is smoothed on its own and the seams stay where they were.
+      const key = `${f.id}|${f.geometry?.coordinates?.[0]?.[0]?.[0] ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const ring of outlineOf(f.geometry)) {
+        if (ring.length < 4) continue;
+        features.push({
+          type: 'Feature', properties: {},
+          geometry: { type: 'LineString', coordinates: smooth(ring, smoothSamples) },
+        });
+      }
+    }
+    src.setData({ type: 'FeatureCollection', features });
+  };
+
+  /** Coalesce the rebuild: a pan fires moveend once, but a year scrub fires applyYear per tick. */
+  const scheduleSmoothBorders = () => {
+    if (smoothPending) clearTimeout(smoothPending);
+    smoothPending = setTimeout(() => { smoothPending = null; rebuildSmoothBorders(); }, 120);
+  };
   let selectedId = null;
   let voyageShips = null; // set once the lazy three.js ships chunk loads
   const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
@@ -477,6 +534,32 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => paint('boundaries-label', 'text-color', v) },
         { key: 'labelHalo', label: 'Label halo', type: 'color', value: '#10151f',
           apply: (v) => paint('boundaries-label', 'text-halo-color', v) },
+        // One colour for every territory instead of the per-QID palette. A colour cannot be blended
+        // with a `match` expression, so this replaces it outright — untick to get the palette back.
+        { key: 'flatFill', label: 'One fill colour', type: 'boolean', value: false,
+          apply: (on) => { flatFill = on; paint('boundaries-fill', 'fill-color', on ? fillColour : FILL_COLOR); } },
+        { key: 'fillColour', label: 'Fill colour', type: 'color', value: '#5b7fa8',
+          apply: (v) => { fillColour = v; if (flatFill) paint('boundaries-fill', 'fill-color', v); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Rounded corners', [
+        // Samples per segment through the spline. 0 leaves the raw polygon border; anything above
+        // swaps in the smoothed copy, so the two are never both drawn.
+        { key: 'smoothing', label: 'Rounding', min: 0, max: 8, step: 1, value: 0,
+          apply: (v) => {
+            smoothSamples = Math.round(v);
+            const on = smoothSamples >= 1;
+            for (const [layer, vis] of [['boundaries-line', !on], ['boundaries-smooth', on]]) {
+              if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', vis ? 'visible' : 'none'); } catch (e) { /* parsing */ } }
+            }
+            rebuildSmoothBorders();
+          } },
+        { key: 'smoothWidth', label: 'Width', min: 0, max: 6, step: 0.1, value: theme.line.width,
+          apply: (v) => paint('boundaries-smooth', 'line-width', v) },
+        { key: 'smoothOpacity', label: 'Opacity', min: 0, max: 1, step: 0.05, value: theme.line.opacity ?? 1,
+          apply: (v) => paint('boundaries-smooth', 'line-opacity', v) },
+        { key: 'smoothColour', label: 'Colour', type: 'color', value: theme.line.color,
+          apply: (v) => paint('boundaries-smooth', 'line-color', v) },
       ], { tab: 'Map' }),
 
       window.__tune.register('Ground', [
@@ -485,6 +568,25 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { key: 'exaggeration', label: 'Heightmap', min: 0, max: 12, step: 0.25, value: 0,
           apply: (v) => { try { map.setTerrain(v > 0 ? { source: 'dem', exaggeration: v } : null); } catch (e) { /* style still parsing */ } } },
       ], { tab: 'Map' }),
+
+      window.__tune.register('Framing', [
+        /**
+         * How much room to leave at the bottom, so the globe sits in what you can SEE.
+         *
+         * The time deck covers the bottom of the map, and MapLibre centres on the CONTAINER — so the
+         * earth sat low with empty sky above it and the southern hemisphere behind the deck.
+         *
+         * This shrinks the container rather than padding the transform. Padding was tried first and
+         * it broke the planet: the custom layers cut the far hemisphere using transform.cameraPosition,
+         * which padding does not move, so the sea's horizon and the drawn globe disagreed and the
+         * ocean showed as a bowl below the earth. Resizing the box moves nothing the shaders read.
+         */
+        { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
+          apply: (v) => {
+            el.style.bottom = `${Math.max(0, Number(v) || 0)}px`;
+            map.resize();
+          } },
+      ], { tab: 'Camera' }),
 
       window.__tune.register('Zoom limits', [
         { key: 'minZoom', label: 'Min zoom', type: 'number', min: 0, max: 22, step: 0.1, value: map.getMinZoom(),
@@ -744,6 +846,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
     });
     map.addLayer({
+      id: 'boundaries-smooth', type: 'line', source: SMOOTH_SRC,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
+    });
+    map.addLayer({
       id: 'boundaries-glow', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       // The SAME era filter as the border it sits under. Without it this layer draws every polity of
       // every year at once — which, with the opacity below also failing, put four thousand years of
@@ -876,6 +983,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
 
     map.on('moveend', scheduleSettle);
+    map.on('moveend', scheduleSmoothBorders);
     // Border tiles load asynchronously; re-settle once they're in so labels + prefetch see them.
     map.on('sourcedata', (e) => { if (e.sourceId === 'cliopatria' && e.isSourceLoaded) scheduleSettle(); });
 
