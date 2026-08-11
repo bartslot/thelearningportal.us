@@ -240,8 +240,28 @@ export const cameraAltitudeMetres = (map, maplibregl) => {
   return ((distancePx / worldSizePx) * metresPerMercatorUnit) * Math.cos(map.getPitch() * Math.PI / 180)
 }
 
-/** The camera as a planet-space point — the form every overlay's shader wants it in. */
+/**
+ * The camera as a planet-space point — the form every overlay's shader wants it in.
+ *
+ * `transform.cameraPosition` FIRST. MapLibre's globe space lists the same three axes in a different
+ * order — its x is our z and its z is our x — so the swap is a relabelling, not a rotation, and it
+ * is safe for a position but must never be used to carry an orientation.
+ *
+ * Rebuilding the camera from getCameraLngLat() + altitude instead is correct at pitch 0 and badly
+ * wrong with pitch: at pitch 60 it puts the camera 43° of arc from where MapLibre has it. That is
+ * kept below only for a MapLibre that stops exposing the vector.
+ *
+ * This function used to do the rebuild and nothing else, while sky-camera.js kept a private, correct
+ * copy alongside the note explaining why. Every other overlay imported the broken one — which is how
+ * the ocean drew a hard straight edge across the globe with sea on the wrong side of it. The failure
+ * mode is that it never looks like a bug: a wrong camera makes the analytic horizon the wrong size,
+ * and a too-large horizon reads as a deliberate shadow.
+ */
 export const cameraInPlanetSpace = (map, maplibregl) => {
+  const raw = map?.transform?.cameraPosition
+  if (raw && Number.isFinite(raw[0]) && Number.isFinite(raw[1]) && Number.isFinite(raw[2])) {
+    return [raw[2], raw[1], raw[0]]
+  }
   const transform = map?.transform
   const lngLat = typeof transform?.getCameraLngLat === 'function' ? transform.getCameraLngLat() : map.getCenter()
   return planetSpacePosition(lngLat.lng, lngLat.lat, cameraAltitudeMetres(map, maplibregl))

@@ -26,7 +26,7 @@
  * on the wrong part of the sky and nothing else would say so.
  */
 
-import { cameraAltitudeMetres, planetSpacePosition } from './planet-mesh.js'
+import { cameraAltitudeMetres, planetSpacePosition, cameraInPlanetSpace } from './planet-mesh.js'
 
 const DEG = Math.PI / 180
 
@@ -67,33 +67,11 @@ const compassAt = (lng, lat) => {
   }
 }
 
-/**
- * Where the camera is, in planet space.
- *
- * Taken from MapLibre's own `transform.cameraPosition` rather than worked out from the camera's
- * longitude, latitude and altitude. Those were tried first and they are WRONG UNDER PITCH: at pitch
- * 60 the reconstruction put the camera 43° of arc from where MapLibre had it, which drew an earth
- * shadow far larger than the earth and blanked most of the sky behind a curved edge that looked
- * quite deliberate. `getCameraAltitude()` returns null without an elevation source, and the pixel
- * fallback behind it does not survive a tilted camera.
- *
- * MapLibre's globe space lists the same three axes in a different order — its x is our z and its z
- * is our x, a swap and therefore a mirror, which is why this is a relabelling and not a rotation.
- * Verified against five camera arrangements: at pitch 0 the swapped vector sits exactly over the
- * map centre, and at pitch 60 it sits 45.07° behind it, which is what the geometry says to a
- * hundredth of a degree.
- */
-const cameraInPlanetSpace = (map, maplibregl) => {
-  const raw = map?.transform?.cameraPosition
-  if (raw && Number.isFinite(raw[0]) && Number.isFinite(raw[1]) && Number.isFinite(raw[2])) {
-    return [raw[2], raw[1], raw[0]]
-  }
-  // Only reachable if MapLibre stops exposing that vector. Correct without pitch, and better than
-  // nothing with it.
-  const transform = map?.transform
-  const lngLat = typeof transform?.getCameraLngLat === 'function' ? transform.getCameraLngLat() : map.getCenter()
-  return planetSpacePosition(lngLat.lng, lngLat.lat, cameraAltitudeMetres(map, maplibregl))
-}
+// `cameraInPlanetSpace` lived here, correctly, while planet-mesh.js exported a broken shared copy
+// that did the lngLat rebuild only — so every overlay importing the shared one got a camera 43°
+// adrift under pitch, which is what drew the ocean's hard straight edge across the globe. A correct
+// private copy sitting beside a broken shared one is how that survived unnoticed. There is one now,
+// in planet-mesh.js, and the reasoning went with it.
 
 /**
  * The camera's frame in planet space, with the screen axes already scaled by the field of view, so
