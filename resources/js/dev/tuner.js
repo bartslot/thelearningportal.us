@@ -1,43 +1,57 @@
 /**
- * tuner.js — sliders for the numbers that are currently hard-coded.
+ * tuner.js — live controls for the numbers that are still guesses.
  *
  * Every constant in this codebase was once someone guessing, then rebuilding, then squinting. The
- * shore falloff took four rebuilds tonight and the sun's roughness took three. This turns that loop
- * into one drag: whatever is on screen registers the knobs it owns, you slide until it looks right,
- * and the panel tells you the number to write down.
+ * shore falloff took four rebuilds in one evening and the sea's roughness took three. This turns
+ * that loop into one drag: whatever is on screen registers the knobs it owns, you move them until
+ * it looks right, and the panel tells you the numbers.
  *
- * IT IS A DEV TOOL AND CHANGES NOTHING PERMANENTLY. Nothing is persisted and nothing is written back
- * to source — the value you land on is a number for a human to put in the code, deliberately, with
- * a comment saying why. A slider that silently became the default would be a constant nobody chose.
+ * IT CHANGES NOTHING PERMANENTLY, deliberately. Nothing is persisted and nothing is written back to
+ * source — the value you land on is one for a human to put in the code, with a comment saying why.
+ * A slider that silently became the default would be a constant nobody chose, which is exactly the
+ * situation this exists to get out of.
  *
  * CONTEXT, not a global list. A group registers when its thing mounts and unregisters when it goes,
- * so the panel shows the map's knobs on the map and a lesson's knobs in a lesson. Anything can join:
+ * so the map's knobs appear on a map and a lesson's in a lesson. The tuner knows nothing about maps
+ * or shaders — only a value and a callback:
  *
  *     const off = window.__tune?.register('Ocean', [
  *       { key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.01, value: 0.9,
  *         apply: (v) => layer.setOptions({ roughness: v }) },
- *     ])
- *     // later, when the thing goes away:
- *     off?.()
+ *       { key: 'tint', type: 'color', value: '#1b3a5c', apply: (v) => layer.setOptions({ tint: v }) },
+ *       { key: 'replay', type: 'button', label: 'Play entrance', apply: () => intro() },
+ *     ], { tab: 'Map' })
+ *     off()   // when the thing goes away
+ *
+ * Types: `range` (default), `color`, `number`, `text`, `textarea`, `button`.
  */
 
-/** group name → { controls, order } */
+/** group name → { tab, order, controls } */
 const groups = new Map()
 let seq = 0
 let root = null
-let listEl = null
+let bodyEl = null
+let tabsEl = null
+let activeTab = null
 
+const DEFAULT_TAB = 'General'
 const isOpen = () => !!root && root.style.display !== 'none'
+const tabsInUse = () => [...new Set([...groups.values()].map((g) => g.tab))]
 
 /**
- * Register a group of knobs. Returns an unregister function.
+ * Register a group of controls. Returns an unregister function.
  *
- * @param {string} group     what owns them, e.g. 'Ocean' — re-registering the same name replaces it
- * @param {Array<{key:string,label:string,min:number,max:number,step:number,value:number,apply:Function}>} controls
+ * @param {string} group                  what owns them, e.g. 'Ocean' — same name replaces
+ * @param {Array<object>} controls        see the types above
+ * @param {{tab?: string}} [opts]         which tab it belongs under
  */
-export const register = (group, controls) => {
+export const register = (group, controls, opts = {}) => {
   if (!group || !Array.isArray(controls) || !controls.length) return () => {}
-  groups.set(group, { order: seq++, controls: controls.map((c) => ({ ...c, current: c.value })) })
+  groups.set(group, {
+    tab: opts.tab || DEFAULT_TAB,
+    order: seq++,
+    controls: controls.map((c) => ({ ...c, current: c.value })),
+  })
   redraw()
   return () => {
     groups.delete(group)
@@ -45,20 +59,14 @@ export const register = (group, controls) => {
   }
 }
 
-/**
- * Repaint if the panel has been built, open or not.
- *
- * This used to be gated on isOpen(), which meant a group registering while the panel was closed
- * never made it into the DOM — and since the panel is opened by hand and the map registers on
- * load, closed-at-registration-time is the normal case, not the edge one.
- */
-const redraw = () => { if (listEl) draw() }
-
-/** Everything currently set, as plain data — what the Copy button writes out. */
+/** Everything currently set, as plain data — what Copy writes out. */
 export const values = () => {
   const out = {}
   for (const [name, { controls }] of groups) {
-    out[name] = Object.fromEntries(controls.map((c) => [c.key, c.current]))
+    const vals = Object.fromEntries(
+      controls.filter((c) => c.type !== 'button').map((c) => [c.key, c.current]),
+    )
+    if (Object.keys(vals).length) out[name] = vals
   }
   return out
 }
@@ -69,24 +77,140 @@ const el = (tag, props = {}, children = []) => {
   return node
 }
 
-const build = () => {
-  listEl = el('div', { className: 'lp-tune-list' })
+const fmt = (v) => {
+  if (typeof v !== 'number') return String(v)
+  return Math.abs(v) >= 100 || Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+}
 
-  const copy = el('button', { className: 'lp-tune-copy', textContent: 'Copy values', type: 'button' })
+/** Run a control's apply, loudly. A knob that silently does nothing is worse than no knob. */
+const applyValue = (group, control, value) => {
+  control.current = value
+  try {
+    control.apply?.(value)
+  } catch (e) {
+    console.error('[tune] apply failed', group, control.key, e)
+  }
+}
+
+// ── Control rendering ────────────────────────────────────────────────────────────────────────
+
+const rowFor = (group, control) => {
+  const label = el('span', { className: 'lp-tune-label', textContent: control.label ?? control.key })
+
+  if (control.type === 'button') {
+    const button = el('button', { className: 'lp-tune-btn', type: 'button', textContent: control.label ?? control.key })
+    button.onclick = () => applyValue(group, control, control.current)
+    return el('div', { className: 'lp-tune-row lp-tune-row-wide' }, [button])
+  }
+
+  if (control.type === 'textarea') {
+    const area = el('textarea', { className: 'lp-tune-area', value: String(control.current ?? ''), rows: 5, spellcheck: false })
+    area.oninput = () => applyValue(group, control, area.value)
+    return el('div', { className: 'lp-tune-stack' }, [label, area])
+  }
+
+  if (control.type === 'text' || control.type === 'number') {
+    const input = el('input', {
+      className: 'lp-tune-input',
+      type: control.type,
+      value: String(control.current ?? ''),
+      ...(control.type === 'number' ? { min: control.min ?? '', max: control.max ?? '', step: control.step ?? 1 } : {}),
+    })
+    input.oninput = () => applyValue(group, control, control.type === 'number' ? Number(input.value) : input.value)
+    return el('label', { className: 'lp-tune-row' }, [label, input, el('span')])
+  }
+
+  if (control.type === 'color') {
+    const swatch = el('input', { className: 'lp-tune-color', type: 'color', value: String(control.current) })
+    const hex = el('span', { className: 'lp-tune-value', textContent: String(control.current) })
+    swatch.oninput = () => {
+      hex.textContent = swatch.value
+      applyValue(group, control, swatch.value)
+    }
+    return el('label', { className: 'lp-tune-row' }, [label, swatch, hex])
+  }
+
+  // range (default)
+  const readout = el('span', { className: 'lp-tune-value', textContent: fmt(control.current) })
+  const slider = el('input', {
+    type: 'range',
+    className: 'lp-tune-range',
+    min: String(control.min ?? 0),
+    max: String(control.max ?? 1),
+    step: String(control.step ?? 0.01),
+    value: String(control.current),
+  })
+  slider.oninput = () => {
+    readout.textContent = fmt(Number(slider.value))
+    applyValue(group, control, Number(slider.value))
+  }
+  // Double-click the label to put it back to what the code actually has, so a session of dragging
+  // is always one click from the committed value.
+  label.title = `Default ${fmt(control.value)} — double-click to reset`
+  label.ondblclick = () => {
+    slider.value = String(control.value)
+    readout.textContent = fmt(control.value)
+    applyValue(group, control, control.value)
+  }
+  return el('label', { className: 'lp-tune-row' }, [label, slider, readout])
+}
+
+const draw = () => {
+  const tabs = tabsInUse()
+  if (!tabs.includes(activeTab)) activeTab = tabs[0] ?? null
+
+  // Tabs only exist once there is more than one — a single tab is a label pretending to be a choice.
+  tabsEl.replaceChildren()
+  if (tabs.length > 1) {
+    for (const name of tabs) {
+      const tab = el('button', {
+        className: `lp-tune-tab${name === activeTab ? ' is-on' : ''}`,
+        type: 'button',
+        textContent: name,
+      })
+      tab.onclick = () => { activeTab = name; draw() }
+      tabsEl.append(tab)
+    }
+  }
+
+  bodyEl.replaceChildren()
+  const shown = [...groups].filter(([, g]) => g.tab === activeTab).sort((a, b) => a[1].order - b[1].order)
+
+  if (!shown.length) {
+    bodyEl.append(el('p', {
+      className: 'lp-tune-empty',
+      textContent: 'Nothing on this screen has registered any settings yet.',
+    }))
+    return
+  }
+
+  for (const [name, { controls }] of shown) {
+    bodyEl.append(el('div', { className: 'lp-tune-group', textContent: name }))
+    for (const control of controls) bodyEl.append(rowFor(name, control))
+  }
+}
+
+/** Repaint if the panel has been built, open or not — things register long before it is opened. */
+const redraw = () => { if (bodyEl) draw() }
+
+const build = () => {
+  tabsEl = el('div', { className: 'lp-tune-tabs' })
+  bodyEl = el('div', { className: 'lp-tune-list' })
+
+  const copy = el('button', { className: 'lp-tune-copy', type: 'button', textContent: 'Copy values' })
   copy.onclick = async () => {
     const text = JSON.stringify(values(), null, 2)
     try {
       await navigator.clipboard.writeText(text)
       copy.textContent = 'Copied'
     } catch {
-      // Clipboard is blocked without a secure context or permission; the console always works.
-      console.log('[tune]\n' + text)
+      console.log('[tune]\n' + text)   // clipboard needs a secure context; the console always works
       copy.textContent = 'Logged to console'
     }
     setTimeout(() => { copy.textContent = 'Copy values' }, 1600)
   }
 
-  const close = el('button', { className: 'lp-tune-x', textContent: '✕', type: 'button' })
+  const close = el('button', { className: 'lp-tune-x', type: 'button', textContent: '✕' })
   close.onclick = () => toggle(false)
 
   root = el('div', { className: 'lp-tune' }, [
@@ -95,7 +219,8 @@ const build = () => {
       el('span', { className: 'lp-tune-hint', textContent: 'live · not saved' }),
       close,
     ]),
-    listEl,
+    tabsEl,
+    bodyEl,
     el('div', { className: 'lp-tune-foot' }, [copy]),
   ])
 
@@ -106,54 +231,6 @@ const build = () => {
   document.head.append(el('style', { textContent: CSS }))
 }
 
-const draw = () => {
-  listEl.replaceChildren()
-
-  if (!groups.size) {
-    listEl.append(el('p', {
-      className: 'lp-tune-empty',
-      textContent: 'Nothing on this screen has registered any settings yet.',
-    }))
-    return
-  }
-
-  for (const [name, { controls }] of [...groups].sort((a, b) => a[1].order - b[1].order)) {
-    listEl.append(el('div', { className: 'lp-tune-group', textContent: name }))
-
-    for (const control of controls) {
-      const readout = el('span', { className: 'lp-tune-value', textContent: fmt(control.current) })
-      const slider = el('input', {
-        type: 'range',
-        className: 'lp-tune-range',
-        min: String(control.min ?? 0),
-        max: String(control.max ?? 1),
-        step: String(control.step ?? 0.01),
-        value: String(control.current),
-      })
-      slider.oninput = () => {
-        control.current = Number(slider.value)
-        readout.textContent = fmt(control.current)
-        // Applying is the caller's business — this file knows nothing about maps or shaders.
-        try { control.apply?.(control.current) } catch (e) { console.error('[tune] apply failed', name, control.key, e) }
-      }
-      // Double-click a row's label to put it back where the code has it, so a session of dragging
-      // is always one click from the value that is actually committed.
-      const label = el('span', { className: 'lp-tune-label', textContent: control.label ?? control.key })
-      label.title = `Default ${fmt(control.value)} — double-click to reset`
-      label.ondblclick = () => {
-        control.current = control.value
-        slider.value = String(control.value)
-        readout.textContent = fmt(control.value)
-        try { control.apply?.(control.value) } catch { /* same as above */ }
-      }
-
-      listEl.append(el('label', { className: 'lp-tune-row' }, [label, slider, readout]))
-    }
-  }
-}
-
-const fmt = (v) => (Math.abs(v) >= 100 || Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''))
-
 export const toggle = (next) => {
   if (!root) build()
   const show = next ?? !isOpen()
@@ -163,19 +240,33 @@ export const toggle = (next) => {
 
 const CSS = `
 .lp-tune{position:fixed;right:1rem;bottom:8.5rem;z-index:101;display:none;flex-direction:column;
-  width:19rem;max-height:60vh;border:1px solid rgba(192,38,211,.5);border-radius:.75rem;
+  width:21rem;max-height:70vh;border:1px solid rgba(192,38,211,.5);border-radius:.75rem;
   background:#0f172a;box-shadow:0 20px 50px rgba(0,0,0,.6);font:12px system-ui,sans-serif;color:#cbd5e1}
 .lp-tune-head{display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;border-bottom:1px solid #1e293b}
 .lp-tune-title{font-weight:600;color:#e9d5ff}
 .lp-tune-hint{margin-left:auto;font-size:10px;color:#64748b}
-.lp-tune-x{background:none;border:0;color:#64748b;cursor:pointer;font-size:12px;padding:0 .25rem}
+.lp-tune-x{background:none;border:0;color:#64748b;cursor:pointer;padding:0 .25rem}
 .lp-tune-x:hover{color:#e2e8f0}
+.lp-tune-tabs{display:flex;flex-wrap:wrap;gap:.25rem;padding:.4rem .6rem 0}
+.lp-tune-tab{border:1px solid #334155;border-radius:.4rem;background:none;color:#94a3b8;
+  cursor:pointer;font:inherit;padding:.15rem .5rem}
+.lp-tune-tab.is-on{border-color:#a855f7;background:#3b0764;color:#f5d0fe}
 .lp-tune-list{overflow-y:auto;padding:.5rem .75rem}
 .lp-tune-group{margin:.6rem 0 .3rem;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#a855f7}
-.lp-tune-row{display:grid;grid-template-columns:5.5rem 1fr 2.75rem;align-items:center;gap:.5rem;padding:.15rem 0}
+.lp-tune-row{display:grid;grid-template-columns:6rem 1fr 3.25rem;align-items:center;gap:.5rem;padding:.15rem 0}
+.lp-tune-row-wide{grid-template-columns:1fr}
+.lp-tune-stack{display:flex;flex-direction:column;gap:.25rem;padding:.25rem 0}
 .lp-tune-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .lp-tune-range{width:100%;accent-color:#c026d3}
-.lp-tune-value{text-align:right;font-family:ui-monospace,monospace;color:#f0abfc}
+.lp-tune-color{width:100%;height:1.4rem;padding:0;border:1px solid #334155;border-radius:.25rem;background:none}
+.lp-tune-input{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;
+  color:#e2e8f0;font:inherit;padding:.15rem .35rem}
+.lp-tune-area{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;
+  color:#e2e8f0;font:11px ui-monospace,monospace;padding:.35rem;resize:vertical}
+.lp-tune-btn{width:100%;border:1px solid #6b21a8;border-radius:.4rem;background:#3b0764;
+  color:#f5d0fe;cursor:pointer;font:inherit;padding:.3rem}
+.lp-tune-btn:hover{background:#581c87}
+.lp-tune-value{text-align:right;font-family:ui-monospace,monospace;color:#f0abfc;font-size:11px}
 .lp-tune-empty{color:#64748b;padding:.75rem 0}
 .lp-tune-foot{padding:.6rem .75rem;border-top:1px solid #1e293b}
 .lp-tune-copy{width:100%;padding:.4rem;border:1px solid #6b21a8;border-radius:.5rem;background:#3b0764;
@@ -183,15 +274,34 @@ const CSS = `
 .lp-tune-copy:hover{background:#581c87}
 `
 
-// One path in, like the icon work insisted on: the dev panel's button dispatches this and nothing
-// else pokes at the internals.
-//
 // SINGLETON, on purpose. If this module is ever evaluated twice — two entry graphs, a stale chunk
-// alongside a fresh one — each copy gets its own `groups` and its own panel, and then registrations
-// land in one instance while the panel you can see belongs to the other. That is invisible: the
-// registry reports the group, the screen shows nothing, and there is no error anywhere. First one
-// to load owns the window.
+// beside a fresh one — each copy gets its own registry and its own panel, and registrations land in
+// one while the panel you can see belongs to the other. That failure is silent: the registry reports
+// the group, the screen shows nothing, and nothing errors. First to load owns the window.
 if (!window.__tune) {
   window.addEventListener('dev:tune', () => toggle())
   window.__tune = { register, values, toggle }
+
+  /**
+   * A scratch stylesheet, always available.
+   *
+   * Registered here rather than by a screen because it belongs to no screen — it is for trying a
+   * change to the UI chrome without a rebuild.
+   *
+   * WORTH KNOWING: the map is a WebGL canvas, so CSS cannot reach anything drawn ON it — borders,
+   * fills, labels and the sea are pixels, not elements. Those live under Map and Earth. This styles
+   * the HTML around the map: panels, the time deck, buttons, the header.
+   */
+  const sheet = document.createElement('style')
+  sheet.dataset.tuneScratch = ''
+  document.head.append(sheet)
+  register('Scratch CSS', [
+    {
+      key: 'css',
+      type: 'textarea',
+      label: 'Applies to HTML only — the map is a canvas',
+      value: '',
+      apply: (v) => { sheet.textContent = v },
+    },
+  ], { tab: 'UI' })
 }

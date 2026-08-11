@@ -42,6 +42,12 @@ const WIND_FIELD_URL = '/img/map/wind-field.png'
  * is reasoned from each layer's own notes rather than copied from something known good. It is the
  * first thing to suspect if the render looks wrong.
  */
+/** '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples; the picker gives hex. */
+const hexToRgb = (hex) => {
+  const n = parseInt(String(hex).replace('#', ''), 16)
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]
+}
+
 const STACK = [
   ['starfield', STARFIELD_LAYER_ID, (o) => createStarfieldLayer(o)],
   ['sun', SUN_LAYER_ID, (o) => createSunLayer(o)],
@@ -116,28 +122,60 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
    * The knobs that are NOT on the Globe layers panel.
    *
    * That panel is a teacher-facing control for whether a layer shows and how strongly. These are
-   * the constants underneath it — the ones that were tuned by rebuilding and squinting, which is
-   * exactly the loop the dev tuner exists to end. Registered only while these layers are mounted,
-   * so the panel shows them on a map and nothing on a screen without one.
+   * the constants underneath it — the ones tuned by rebuilding and squinting, which is exactly the
+   * loop the tuner exists to end. Registered only while these layers are mounted, so they appear on
+   * a map and nowhere else. Option names are the layers' own; nothing is invented here.
    */
-  const untune = window.__tune?.register('Earth', [
-    { key: 'shoreSoftnessKm', label: 'Shore falloff', min: 0, max: 25, step: 0.25, value: 2.45,
-      apply: (v) => layers.ocean?.setOptions({ shoreSoftnessKm: v }) },
-    { key: 'roughness', label: 'Sea roughness', min: 0, max: 1, step: 0.01, value: 0.9,
-      apply: (v) => layers.ocean?.setOptions({ roughness: v }) },
-    { key: 'strength', label: 'Sun glint', min: 0, max: 1, step: 0.01, value: 0.45,
-      apply: (v) => layers.ocean?.setOptions({ strength: v }) },
-    { key: 'windPatch', label: 'Sea patchiness', min: 0, max: 1, step: 0.01, value: 0.6,
-      apply: (v) => layers.ocean?.setOptions({ windPatch: v }) },
-    { key: 'windAmount', label: 'Cloud drift', min: 0, max: 1, step: 0.05, value: 0.35,
-      apply: (v) => layers.clouds?.setOptions({ windAmount: v }) },
-    { key: 'nightDarkness', label: 'Night darkness', min: 0, max: 1, step: 0.005, value: 0.965,
-      apply: (v) => layers.daylight?.setOptions({ nightDarkness: v }) },
-    { key: 'cloudShadow', label: 'Cloud shadows', min: 0, max: 1, step: 0.05, value: 0.5,
-      apply: (v) => layers.daylight?.setOptions({ cloudShadow: v }) },
-    { key: 'atmosphere', label: 'Haze strength', min: 0, max: 2, step: 0.05, value: 1,
-      apply: (v) => layers.atmosphere?.setOptions({ strength: v }) },
-  ])
+  const set = (layer, patch) => layers[layer]?.setOptions?.(patch)
+  const untune = [
+    window.__tune?.register('Ocean', [
+      { key: 'shoreSoftnessKm', label: 'Shore falloff', min: 0, max: 25, step: 0.25, value: 2.45,
+        apply: (v) => set('ocean', { shoreSoftnessKm: v }) },
+      { key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.01, value: 0.9,
+        apply: (v) => set('ocean', { roughness: v }) },
+      { key: 'strength', label: 'Sun glint', min: 0, max: 1, step: 0.01, value: 0.45,
+        apply: (v) => set('ocean', { strength: v }) },
+      { key: 'windPatch', label: 'Patchiness', min: 0, max: 1, step: 0.01, value: 0.6,
+        apply: (v) => set('ocean', { windPatch: v }) },
+      // Cells of weather per unit sphere — the size of the wave-slope patches the glitter rides on.
+      { key: 'windScale', label: 'Wave scale', min: 1, max: 60, step: 1, value: 14,
+        apply: (v) => set('ocean', { windScale: v }) },
+      { key: 'water', label: 'Tint depth', min: 0, max: 2, step: 0.05, value: 1,
+        apply: (v) => set('ocean', { water: v }) },
+      { key: 'scatter', label: 'Tint colour', type: 'color', value: '#1d5c8f',
+        apply: (v) => set('ocean', { scatter: hexToRgb(v) }) },
+      { key: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.01, value: 1,
+        apply: (v) => set('ocean', { opacity: v }) },
+    ], { tab: 'Earth' }),
+
+    window.__tune?.register('Clouds', [
+      { key: 'opacity', label: 'Density', min: 0, max: 1, step: 0.01, value: 1,
+        apply: (v) => set('clouds', { opacity: v }) },
+      { key: 'windAmount', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.35,
+        apply: (v) => set('clouds', { windAmount: v }) },
+      { key: 'windScale', label: 'Wind scale', min: 0.01, max: 0.5, step: 0.01, value: 0.06,
+        apply: (v) => set('clouds', { windScale: v }) },
+      { key: 'windRate', label: 'Wind speed', min: 0, max: 0.3, step: 0.005, value: 0.05,
+        apply: (v) => set('clouds', { windRate: v }) },
+      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.05, value: 0.5,
+        apply: (v) => set('daylight', { cloudShadow: v }) },
+    ], { tab: 'Earth' }),
+
+    window.__tune?.register('Sky and light', [
+      { key: 'nightDarkness', label: 'Night', min: 0, max: 1, step: 0.005, value: 0.965,
+        apply: (v) => set('daylight', { nightDarkness: v }) },
+      { key: 'twilightColour', label: 'Twilight', type: 'color', value: '#d95a1f',
+        apply: (v) => set('daylight', { twilightColour: hexToRgb(v) }) },
+      { key: 'atmosphere', label: 'Haze', min: 0, max: 2, step: 0.05, value: 1,
+        apply: (v) => set('atmosphere', { strength: v }) },
+      { key: 'starfield', label: 'Stars', min: 0, max: 1, step: 0.05, value: 0.5,
+        apply: (v) => set('starfield', { brightness: v }) },
+      { key: 'sun', label: 'Sun', min: 0, max: 2, step: 0.05, value: 1,
+        apply: (v) => set('sun', { brightness: v }) },
+      { key: 'moon', label: 'Moon', min: 0, max: 2, step: 0.05, value: 1,
+        apply: (v) => set('moon', { brightness: v }) },
+    ], { tab: 'Earth' }),
+  ]
 
   return {
     layers,
@@ -160,7 +198,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       teardown?.()
       // Unregister the knobs with the layers: a slider still listed after its map has gone would
       // apply to a dead GL context, which is the same class of bug as a setter left behind.
-      untune?.()
+      for (const off of untune) off?.()
       for (const [, id] of STACK) if (map.getLayer(id)) map.removeLayer(id)
     },
   }

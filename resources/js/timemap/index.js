@@ -427,6 +427,77 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * which would put every era at midwinter midnight and light the wrong hemisphere.
    */
   const dateForYear = (year) => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12));
+
+  /**
+   * Dev-panel controls for the things this file decides: how territories are drawn, how far the map
+   * lets you zoom, and where the camera starts.
+   *
+   * The camera pair is the shape of an entrance move — set a start, set an end, press Play and watch
+   * it. The animation itself is not built; this is here so the numbers for it can be found by eye
+   * instead of guessed, which is the whole point of the panel.
+   */
+  const registerTuning = () => {
+    if (!window.__tune) return;
+
+    const paint = (layer, prop, value) => {
+      if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, value); } catch (e) { /* style still parsing */ } }
+    };
+    // The border colour has to survive the highlight case, or clicking a territory stops showing it.
+    const borderColour = (colour) => paint('boundaries-line', 'line-color',
+      ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour]);
+
+    const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
+
+    tuneOff = [
+      window.__tune.register('Territories', [
+        { key: 'lineColor', label: 'Border', type: 'color', value: '#8a99b8', apply: borderColour },
+        { key: 'lineWidth', label: 'Border width', min: 0, max: 6, step: 0.1, value: 1,
+          apply: (v) => paint('boundaries-line', 'line-width', v) },
+        { key: 'lineOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
+          apply: (v) => paint('boundaries-line', 'line-opacity', v) },
+        { key: 'lineBlur', label: 'Border softness', min: 0, max: 4, step: 0.1, value: 0,
+          apply: (v) => paint('boundaries-line', 'line-blur', v) },
+        { key: 'fillOpacity', label: 'Fill opacity', min: 0, max: 1, step: 0.02, value: 0.35,
+          apply: (v) => paint('boundaries-fill', 'fill-opacity', v) },
+        { key: 'labelColor', label: 'Label', type: 'color', value: '#e6ecf7',
+          apply: (v) => paint('boundaries-label', 'text-color', v) },
+        { key: 'labelHalo', label: 'Label halo', type: 'color', value: '#10151f',
+          apply: (v) => paint('boundaries-label', 'text-halo-color', v) },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Ground', [
+        // Real 3D relief. The Time-Map has the DEM source but has never switched terrain on, so this
+        // is the first place to see how far the earth can actually be pulled up.
+        { key: 'exaggeration', label: 'Heightmap', min: 0, max: 12, step: 0.25, value: 0,
+          apply: (v) => { try { map.setTerrain(v > 0 ? { source: 'dem', exaggeration: v } : null); } catch (e) { /* style still parsing */ } } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Zoom limits', [
+        { key: 'minZoom', label: 'Min zoom', type: 'number', min: 0, max: 22, step: 0.1, value: map.getMinZoom(),
+          apply: (v) => map.setMinZoom(Number(v)) },
+        { key: 'maxZoom', label: 'Max zoom', type: 'number', min: 0, max: 22, step: 0.1, value: map.getMaxZoom(),
+          apply: (v) => map.setMaxZoom(Number(v)) },
+      ], { tab: 'Camera' }),
+
+      window.__tune.register('Entrance', [
+        { key: 'startLng', label: 'Start lng', type: 'number', step: 0.1, value: camera.startLng, apply: (v) => { camera.startLng = Number(v); } },
+        { key: 'startLat', label: 'Start lat', type: 'number', step: 0.1, value: camera.startLat, apply: (v) => { camera.startLat = Number(v); } },
+        { key: 'startZoom', label: 'Start zoom', min: 0, max: 8, step: 0.05, value: camera.startZoom, apply: (v) => { camera.startZoom = v; } },
+        { key: 'endLng', label: 'End lng', type: 'number', step: 0.1, value: camera.endLng, apply: (v) => { camera.endLng = Number(v); } },
+        { key: 'endLat', label: 'End lat', type: 'number', step: 0.1, value: camera.endLat, apply: (v) => { camera.endLat = Number(v); } },
+        { key: 'endZoom', label: 'End zoom', min: 0, max: 10, step: 0.05, value: camera.endZoom, apply: (v) => { camera.endZoom = v; } },
+        { key: 'seconds', label: 'Seconds', min: 0.5, max: 12, step: 0.25, value: camera.seconds, apply: (v) => { camera.seconds = v; } },
+        { key: 'jumpStart', type: 'button', label: 'Go to start', apply: () => map.jumpTo({ center: [camera.startLng, camera.startLat], zoom: camera.startZoom }) },
+        { key: 'play', type: 'button', label: 'Play entrance', apply: () => {
+          map.jumpTo({ center: [camera.startLng, camera.startLat], zoom: camera.startZoom });
+          setTimeout(() => map.flyTo({
+            center: [camera.endLng, camera.endLat], zoom: camera.endZoom, duration: camera.seconds * 1000, essential: true,
+          }), 120);
+        } },
+      ], { tab: 'Camera' }),
+    ];
+  };
+  let tuneOff = [];
   // The cloud deck (custom layer) — held so its density can be changed live.
   let cloudLayer = null;
   /** Cloud density 0..1; 0 hides the deck (and stops its repaint loop). */
@@ -754,6 +825,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Honour the density this browser last chose, which predates the shared panel and is still what
     // __tmSetClouds writes.
     cloudLayer?.setOptions({ opacity: cloudOpacity });
+    registerTuning();
     // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
     // initial style; this lifts them above the boundary layers but keeps them BELOW the
