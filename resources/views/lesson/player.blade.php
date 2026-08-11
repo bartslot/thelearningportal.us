@@ -349,7 +349,7 @@
                              corner, so the two stacked into a confusing double control. "Edit scene"
                              below is the way into the editing view. --}}
                         <button type="button"
-                                @click="window.location.href = editSceneHref('{{ route('teacher.lessons.wizard', $lesson) }}')"
+                                @click="openEditor('{{ route('teacher.lessons.wizard', $lesson) }}')"
                                 class="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/70 py-1.5 pl-3 pr-4 text-sm font-medium text-slate-300 backdrop-blur transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/></svg>
                             {{ __('Edit scene') }}

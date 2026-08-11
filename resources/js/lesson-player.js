@@ -1136,11 +1136,36 @@ Alpine.data('lessonGame', (lesson) => ({
       // Prefer the live play queue; before playback starts it's empty, so fall back to the lesson's
       // scene list (always present from window.LESSON) — both are the same ordered scenes.
       const scenes = (_sceneQueue && _sceneQueue.length) ? _sceneQueue : (this.lesson?.scenes || [])
-      const scene = scenes[this._sceneIndex]
+      // _sceneIndex only becomes the embedded start scene once _playIntro runs. Reload a parked
+      // Preview tab, where autoplay deliberately does not fire without a gesture, and the pill would
+      // otherwise offer to edit scene 1 while the teacher is looking at the scene they selected.
+      const index = this._sceneIndex || this._startSceneIndex || 0
+      const scene = scenes[index]
       const params = new URLSearchParams({ step: '4' })
       if (scene?.id != null) params.set('scene', String(scene.id))
       params.set('modal', window.__voyageGalleryOpen ? '1' : '0')
       return `${base}?${params.toString()}`
+    },
+
+    /**
+     * Follow "Edit scene" out of the player and into the editor.
+     *
+     * The wizard's Play step shows this player inside an iframe, and this pill is the teacher's only
+     * way back to editing from there. `window.location` inside a frame is the FRAME, so assigning it
+     * loaded the whole wizard into the player's own box and left the address bar on step=5 — after
+     * which the router never moved again, because every step lived in the frame.
+     */
+    openEditor (base) {
+      const href = this.editSceneHref(base)
+      try {
+        if (window.top && window.top !== window.self) {
+          window.top.location.href = href
+          return
+        }
+      } catch {
+        // A cross-origin host forbids reaching its top document. Nothing to do but navigate here.
+      }
+      window.location.href = href
     },
 
     // Jump to a chapter from the bar / list.
