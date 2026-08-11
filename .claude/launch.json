@@ -20,6 +20,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
       "port": 5199
+    },
+    {
+      "//": "Standalone globe-layer harness: esbuild bundle plus the baked ocean fields, no Laravel involved. Exists because the ocean layer cannot be judged from a screenshot — it is measured with gl.readPixels from inside a render pass. Port 5183 keeps it clear of the two Vite harnesses above.",
+      "name": "ocean-harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["harness/ocean/serve.mjs"],
+      "port": 5183
     }
   ]
 }

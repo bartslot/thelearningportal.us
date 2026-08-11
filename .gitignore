@@ -64,3 +64,10 @@ tests/playwright/results/
 tests/playwright/report/
 .env.*
 .env.bak*
+
+# harness build output
+harness/*/.build/
+
+# python bytecode from the bake scripts
+scripts/__pycache__/
+harness/**/__pycache__/

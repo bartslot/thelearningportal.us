@@ -142,6 +142,46 @@ export const TERMINATOR_GLSL = /* glsl */`
 `
 
 /**
+ * Value noise and fbm over the unit sphere — shared by the cloud deck and the sea.
+ *
+ * Sampled in SPHERE space, not in mercator, which is what keeps a cell the same size at Iceland as
+ * at the equator and makes the field wrap seamlessly across ±180°. Cheap value noise rather than
+ * gradient noise: at the scales these layers use it, nothing can tell them apart.
+ */
+export const NOISE_GLSL = /* glsl */`
+  float hash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float n000 = hash(i);
+    float n100 = hash(i + vec3(1.0, 0.0, 0.0));
+    float n010 = hash(i + vec3(0.0, 1.0, 0.0));
+    float n110 = hash(i + vec3(1.0, 1.0, 0.0));
+    float n001 = hash(i + vec3(0.0, 0.0, 1.0));
+    float n101 = hash(i + vec3(1.0, 0.0, 1.0));
+    float n011 = hash(i + vec3(0.0, 1.0, 1.0));
+    float n111 = hash(i + vec3(1.0, 1.0, 1.0));
+    return mix(
+      mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+      mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+      f.z);
+  }
+  float fbm(vec3 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 5; i++) {
+      value += amplitude * noise(p);
+      p *= 2.0;
+      amplitude *= 0.5;
+    }
+    return value;
+  }
+`
+
+/**
  * Is a point on the unit sphere on the half facing the camera?
  *
  * For a unit sphere the horizon is exactly the plane dot(p, camera) = 1, so this is the whole test
@@ -188,8 +228,55 @@ export const cameraInPlanetSpace = (map, maplibregl) => {
   return planetSpacePosition(lngLat.lng, lngLat.lat, cameraAltitudeMetres(map, maplibregl))
 }
 
-/** Compile and link a program, throwing with the driver's own message rather than a blank screen. */
-export const buildProgram = (gl, vertexSource, fragmentSource, label = 'layer') => {
+/** WebGL2 or not. `texStorage2D` exists only on the 2 context and is cheaper than instanceof. */
+export const isWebGL2 = (gl) => typeof gl.texStorage2D === 'function'
+
+/**
+ * Compile a GLSL ES 1.00 source as GLSL ES 3.00, without a second copy of the source.
+ *
+ * The tiled LOD pyramid's shader paste is ES 3.00 — `in`/`out`, `texture()`, a declared colour
+ * output — so any layer sampling it has to be compiled in ES 3.00 mode throughout. But MapLibre
+ * still falls back to a WebGL1 context where that mode does not exist (`getContext('webgl2') ||
+ * getContext('webgl')`, verified in its source), and an ES 3.00-only layer there does not degrade,
+ * it fails to compile and draws nothing at all.
+ *
+ * So the shader body is written ONCE, in the older dialect, and these adapt it upward. This is
+ * three.js's approach verbatim and it is load-bearing there on every browser; the alternative is
+ * two hand-maintained copies of every shader, which drift the first time either is tuned.
+ *
+ * MapLibre's own projection prelude passes through untouched — checked: it declares only functions
+ * and uniforms, with no `attribute`, `varying` or `texture2D` anywhere in either variant.
+ */
+export const ES300_VERTEX_PREAMBLE = `#version 300 es
+#define attribute in
+#define varying out
+#define texture2D texture
+`
+
+export const ES300_FRAGMENT_PREAMBLE = `#version 300 es
+#define varying in
+#define texture2D texture
+out highp vec4 tm_fragColour;
+#define gl_FragColor tm_fragColour
+`
+
+/**
+ * Compile and link a program, throwing with the driver's own message rather than a blank screen.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.es300]  compile as GLSL ES 3.00 where the context allows it. Required for
+ *   any layer that pastes in the tile pyramid's GLSL; a no-op on a WebGL1 context, which is exactly
+ *   where `pyramid.supported` is false and the layer is on its global-texture fallback anyway.
+ */
+export const buildProgram = (gl, vertexSource, fragmentSource, label = 'layer', { es300 = false } = {}) => {
+  if (es300 && isWebGL2(gl)) {
+    vertexSource = ES300_VERTEX_PREAMBLE + vertexSource
+    fragmentSource = ES300_FRAGMENT_PREAMBLE + fragmentSource
+  }
+  return linkProgram(gl, vertexSource, fragmentSource, label)
+}
+
+const linkProgram = (gl, vertexSource, fragmentSource, label) => {
   const compile = (type, source) => {
     const shader = gl.createShader(type)
     gl.shaderSource(shader, source)
