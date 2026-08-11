@@ -189,3 +189,68 @@ test('the load handler runs to the end — globe layers, ship and settings group
     expect.arrayContaining(['Ocean', 'Clouds', 'Territories']),
   );
 });
+
+/**
+ * Hovering a territory adds a second name layer on top of the resting one. They draw the same words
+ * in the same place, from different sources, so a territory that already had a label showed it
+ * TWICE, half a line apart. The first attempt at this aligned the two so the duplicate at least sat
+ * straight — which is not a fix, it is a tidier bug.
+ */
+test('hovering a named territory does not print its name twice', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
+  await page.waitForTimeout(4_000);
+
+  const name: string | null = await page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    const f = m.queryRenderedFeatures({ layers: ['boundaries-label'] })[0];
+    return f?.properties?.name ?? null;
+  });
+  expect(name, 'needed at least one labelled territory to hover').toBeTruthy();
+
+  // Drive showGlow the way a hover does.
+  await page.evaluate((territory) => {
+    const m = (window as any).__tmMap;
+    const geom = m.queryRenderedFeatures({ layers: ['boundaries-fill'] })
+      .find((f: any) => f.properties?.Name === territory)?.geometry;
+    (window as any).__tmShowGlow(geom ?? null, territory, null);
+  }, name);
+  // The filter needs a render pass before queryRenderedFeatures reflects it.
+  await page.waitForTimeout(1_500);
+
+  // The hover layer is showing this name, so the resting layer must not be.
+  const resting = await page.evaluate((territory) =>
+    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
+      .filter((f: any) => f.properties?.name === territory).length, name);
+  expect(resting, `"${name}" still drawn by boundaries-label while hovered`).toBe(0);
+
+  // And it comes back when the pointer leaves, or hovering would permanently erase names.
+  await page.evaluate(() => (window as any).__tmShowGlow(null));
+  await page.waitForTimeout(1_500);
+  const restored = await page.evaluate((territory) =>
+    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
+      .filter((f: any) => f.properties?.name === territory).length, name);
+  expect(restored, `"${name}" never came back after the hover ended`).toBeGreaterThan(0);
+});
+
+/**
+ * Rounding hides the raw polygon border and draws the smoothed copy instead. applyMapStyle used to
+ * set that raw border back to visible on every style switch, so picking a different map put the
+ * sharp corners back and the slider looked like it had stopped working.
+ */
+test('rounding survives a map style switch', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-smooth'), { timeout: 25_000 });
+
+  // The same function the Rounding slider calls, so this exercises the real path.
+  await page.evaluate(() => (window as any).__tmSetRounding(4));
+
+  const before = await page.evaluate(() =>
+    (window as any).__tmMap.getLayoutProperty('boundaries-line', 'visibility'));
+  expect(before, 'rounding did not hide the raw border in the first place').toBe('none');
+
+  await page.evaluate(() => (window as any).__applyMapStyle('night'));
+  await page.waitForTimeout(1_500);
+
+  const after = await page.evaluate(() =>
+    (window as any).__tmMap.getLayoutProperty('boundaries-line', 'visibility'));
+  expect(after, 'style switch put the raw sharp border back over the rounded one').toBe('none');
+});

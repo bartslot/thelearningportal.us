@@ -458,6 +458,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     src.setData({ type: 'FeatureCollection', features });
   };
 
+  /**
+   * Samples per segment through the spline. 0 leaves the raw polygon border; anything above swaps in
+   * the smoothed copy, so the two are never both drawn — which is the whole point, since drawing
+   * both puts the sharp corners straight back over the rounded ones. applyMapStyle has to honour
+   * this too; see the visibility line there.
+   */
+  const applyRounding = (v) => {
+    smoothSamples = Math.round(v);
+    const on = smoothSamples >= 1;
+    for (const [layer, vis] of [['boundaries-line', !on], ['boundaries-smooth', on]]) {
+      if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', vis ? 'visible' : 'none'); } catch (e) { /* parsing */ } }
+    }
+    rebuildSmoothBorders();
+  };
+
   /** Coalesce the rebuild: a pan fires moveend once, but a year scrub fires applyYear per tick. */
   const scheduleSmoothBorders = () => {
     if (smoothPending) clearTimeout(smoothPending);
@@ -496,6 +511,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
 
     src.setData({ type: 'FeatureCollection', features });
+
+    // Both layers write the same words in the same place, so hovering a territory that already had
+    // a resting label drew its name TWICE, half a line apart. Aligning them (above) was treating the
+    // symptom — the resting one has to go while this one is up. Named, not id'd, because the two
+    // layers come from different sources and the name is the only thing they share.
+    if (map.getLayer('boundaries-label')) {
+      map.setFilter('boundaries-label', name ? ['!=', ['get', 'name'], name] : null);
+    }
   };
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
@@ -699,15 +722,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       window.__tune.register('Rounded corners', [
         // Samples per segment through the spline. 0 leaves the raw polygon border; anything above
         // swaps in the smoothed copy, so the two are never both drawn.
-        { key: 'smoothing', label: 'Rounding', min: 0, max: 8, step: 1, value: 0,
-          apply: (v) => {
-            smoothSamples = Math.round(v);
-            const on = smoothSamples >= 1;
-            for (const [layer, vis] of [['boundaries-line', !on], ['boundaries-smooth', on]]) {
-              if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', vis ? 'visible' : 'none'); } catch (e) { /* parsing */ } }
-            }
-            rebuildSmoothBorders();
-          } },
+        { key: 'smoothing', label: 'Rounding', min: 0, max: 8, step: 1, value: 0, apply: applyRounding },
         { key: 'smoothWidth', label: 'Width', min: 0, max: 6, step: 0.1, value: theme.line.width,
           apply: (v) => paint('boundaries-smooth', 'line-width', v) },
         { key: 'smoothOpacity', label: 'Opacity', min: 0, max: 1, step: 0.05, value: theme.line.opacity ?? 1,
@@ -925,7 +940,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
       map.setLayoutProperty('boundaries-line', 'line-join', 'round');
       // When a style supplies wobbled ink borders, hide the smooth vector line and draw from those.
-      map.setLayoutProperty('boundaries-line', 'visibility', s.borderSource ? 'none' : 'visible');
+      //
+      // Rounding owns this layer as well, and it asked first. This line used to reset it to visible
+      // on EVERY style switch, so the raw polygon border came back and drew straight over the
+      // rounded copy — corners looked sharp again and the slider looked broken, when what had
+      // actually happened was a style change. Whoever wants it hidden wins.
+      const roundedBordersOn = smoothSamples >= 1;
+      map.setLayoutProperty('boundaries-line', 'visibility', (s.borderSource || roundedBordersOn) ? 'none' : 'visible');
       map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
       map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
       // The hover name is a label too. Without this it kept the atlas ink on Night and Satellite,
@@ -967,6 +988,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     applyOverlays(s);
   };
   window.__applyMapStyle = applyMapStyle;
+  // Dev tooling + Playwright: the two behaviours that only exist as a hover or a slider drag, and so
+  // cannot otherwise be driven from a test.
+  window.__tmShowGlow = showGlow;
+  window.__tmSetRounding = applyRounding;
 
   // Read-aloud (ElevenLabs): gated by the Settings sound toggle (persisted). The panel calls
   // __timemapSpeak when a territory's summary is shown; audio is cached server-side per polity.
