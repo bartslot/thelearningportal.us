@@ -347,6 +347,24 @@ export const shoreSoftnessKmFor = (zoom, lat, minimumKm = 0.8) => {
   return Math.max(minimumKm, metresPerPixel * 1.5 / 1000)
 }
 
+/** Earth's circumference, for turning a field width into the ground one texel covers. */
+const EQUATOR_KM = 40075
+
+/**
+ * The narrowest honest shoreline for a field of this width.
+ *
+ * A transition thinner than one texel of the data defining it does not draw a sharper coast — it
+ * draws the TEXELS, as a staircase. The 8192 field is one texel per 4.9 km, and the floor here was
+ * 0.8 km, so from about z6 inward the edge was asked to be six times finer than anything it knew,
+ * and the answer was the jagged coastline.
+ *
+ * Half a texel, because the transition is a half-width either side of the line: the feather then
+ * spans exactly the cell that the coast is known to lie somewhere within, which is the most precise
+ * claim the field supports and no more.
+ */
+export const shoreFloorKmFor = (fieldWidth) =>
+  Number.isFinite(fieldWidth) && fieldWidth > 0 ? (EQUATOR_KM / fieldWidth) / 2 : 0.8
+
 /**
  * The widest bake this GPU will accept, or null if even the smallest is too big.
  *
@@ -397,6 +415,8 @@ export const createOceanWaterLayer = ({
   const mesh = buildSphereMesh()
   let map = null
   let gl = null
+  /** Width of the SDF that actually loaded — sets how fine a shoreline it can honestly draw. */
+  let fieldWidth = null
   let buffers = null
   let fieldTexture = null
   let fieldReady = false
@@ -534,6 +554,9 @@ export const createOceanWaterLayer = ({
     const source = pickSdfSource(gl.getParameter(gl.MAX_TEXTURE_SIZE), state.sources)
     if (!source) return
     const wanted = source.url
+    // Which field actually loaded decides how fine an edge it can honestly draw — a device that
+    // fell back to 4096 has half the resolution and needs twice the feather.
+    fieldWidth = source.width
 
     fetch(wanted, { credentials: 'omit' })
       .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(response.status))))
@@ -628,7 +651,12 @@ export const createOceanWaterLayer = ({
       }
       if (uniforms.rangeKm) gl.uniform1f(uniforms.rangeKm, OCEAN_SDF_RANGE_KM)
       if (uniforms.shoreKm) {
-        gl.uniform1f(uniforms.shoreKm, shoreSoftnessKmFor(map.getZoom(), centre.lat, state.shoreSoftnessKm))
+        // The floor is whichever is coarser: the caller's setting, or one texel of the field that
+        // actually loaded. Asking for an edge finer than the data draws the texels, not the coast.
+        gl.uniform1f(uniforms.shoreKm, shoreSoftnessKmFor(
+          map.getZoom(), centre.lat,
+          Math.max(state.shoreSoftnessKm, shoreFloorKmFor(fieldWidth)),
+        ))
       }
       if (uniforms.shelfKm) gl.uniform1f(uniforms.shelfKm, state.shelfKm)
       if (uniforms.strength) gl.uniform1f(uniforms.strength, state.strength)
