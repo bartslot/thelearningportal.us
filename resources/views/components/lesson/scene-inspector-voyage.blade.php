@@ -491,12 +491,38 @@
              everywhere in the editor. Only scenes ON the route appear: the overview is the screen
              that shows them all, not a place the voyage calls at. --}}
         @if (count($stops) > 1)
-            <section x-data="voyageItinerary()" x-init="initSortable()">
+            <section>
                 <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-slate-400">
                     <x-lesson.icon-voyage-overview class="h-4 w-auto" />
                     {{ __('Itinerary') }}
                 </div>
-                <div x-ref="stops" class="mt-2 space-y-0.5">
+                {{-- Sortable is set up inline, exactly as the quiz answers list does it, because this
+                     inspector usually arrives by Livewire morph rather than in the page Blade renders:
+                     a teacher clicks a voyage scene in the rail. Markup a morph brings in is inert, so
+                     anything reached through a page-global declared in a neighbouring <script> is not
+                     there yet, and `x-data` calling it threw twice on every scene switch. --}}
+                <div data-stop-list class="mt-2 space-y-0.5"
+                     x-data
+                     x-init="if (window.Sortable && !$el._stopSortable) {
+                         $el._stopSortable = true
+                         window.Sortable.create($el, {
+                             animation: 150,
+                             draggable: '[data-stop-leg]',
+                             // Pointer dragging, like the object list: reliable inside this fixed panel.
+                             forceFallback: true,
+                             fallbackTolerance: 4,
+                             onStart: (evt) => { evt.item._stopNext = evt.item.nextSibling },
+                             onEnd: (evt) => {
+                                 const order = [...evt.to.querySelectorAll('[data-stop-leg]')]
+                                     .map((el) => Number(el.dataset.stopLeg))
+                                 // Put the DOM back the way Blade rendered it and let the server's
+                                 // re-render be the single source of truth (the Alpine+Sortable
+                                 // double-move trap the object list already learned about).
+                                 evt.from.insertBefore(evt.item, evt.item._stopNext || null)
+                                 if (order.length) window.Livewire.dispatch('reorderVoyageStops', { order })
+                             },
+                         })
+                     }">
                     @foreach ($stops as $stop)
                         <div @class([
                                 'group flex w-full select-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-800',
@@ -538,34 +564,6 @@
                     @endforeach
                 </div>
             </section>
-            <script>
-                // Registered once per page, not per render: the inspector is re-rendered by the 3s
-                // poll and re-declaring an Alpine data function on every pass throws.
-                window.voyageItinerary ??= () => ({
-                    initSortable() {
-                        const list = this.$refs.stops;
-                        if (!list || !window.Sortable || list._stopSortable) return;
-                        list._stopSortable = true;
-                        window.Sortable.create(list, {
-                            animation: 150,
-                            draggable: '[data-stop-leg]',
-                            // Pointer dragging, like the object list: reliable inside this fixed panel.
-                            forceFallback: true,
-                            fallbackTolerance: 4,
-                            onStart: (evt) => { evt.item._stopNext = evt.item.nextSibling; },
-                            onEnd: (evt) => {
-                                const order = [...evt.to.querySelectorAll('[data-stop-leg]')]
-                                    .map((el) => Number(el.dataset.stopLeg));
-                                // Put the DOM back the way Blade rendered it and let the server's
-                                // re-render be the single source of truth (the Alpine+Sortable
-                                // double-move trap the object list already learned about).
-                                evt.from.insertBefore(evt.item, evt.item._stopNext || null);
-                                if (order.length) window.Livewire.dispatch('reorderVoyageStops', { order });
-                            },
-                        });
-                    },
-                });
-            </script>
         @endif
 
         {{-- FLEET — compact chips (editing ships is coming). Reads the lesson's voyage copy. --}}
