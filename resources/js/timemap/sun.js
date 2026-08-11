@@ -67,6 +67,20 @@ export const solarPosition = (date = new Date()) => {
 }
 
 /**
+ * Earth's distance from the sun, in metres.
+ *
+ * The orbit is an ellipse, so this runs from 1.471e11 at perihelion in early January to 1.521e11 at
+ * aphelion in early July — a 3.4% swing in the sun's apparent SIZE. That is invisible in lighting
+ * and decisive in an eclipse: it is one of the two terms that settles whether the moon covers the
+ * disc completely or leaves a ring of sun around it. See eclipse.js.
+ */
+export const solarDistance = (date = new Date()) => {
+  const meanAnomaly = ((357.528 + 0.9856003 * daysSinceEpoch(date)) % 360) * DEG
+  const astronomicalUnits = 1.00014 - 0.01671 * Math.cos(meanAnomaly) - 0.00014 * Math.cos(2 * meanAnomaly)
+  return astronomicalUnits * 1.495978707e11
+}
+
+/**
  * The point on earth with the sun straight overhead.
  *
  * @returns {{lng: number, lat: number}} degrees

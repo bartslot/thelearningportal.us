@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createCloudLayer, deckDetailFor, CLOUD_LAYER_ID } from '../clouds.js'
+import { CLOUD_ALTITUDE_M } from '../cloud-field.js'
 import { buildSphereMesh, latFromMercatorY, planetSpacePosition } from '../planet-mesh.js'
 
 /**
@@ -162,7 +163,8 @@ describe('deckDetailFor', () => {
    * long before that it has stopped being weather and become a grey wash over sharp ground.
    * Nothing errors — it just looks worse the closer you get, which is why it went unnoticed.
    */
-  const at = (zoom, lat = 0) => deckDetailFor(zoom, lat)
+  // Altitude defaults to orbit, so the frequency and amount cases below read as before.
+  const at = (zoom, lat = 0, altitudeM = 1e7) => deckDetailFor(zoom, lat, altitudeM)
 
   it('leaves the globe view exactly as it was tuned', () => {
     // The floor matters: this is the look that was measured and approved at globe zoom, and a
@@ -192,10 +194,51 @@ describe('deckDetailFor', () => {
     expect(at(14).amount).toBeLessThan(0.6)
   })
 
-  it('retires the deck once the camera is below it', () => {
-    expect(at(6).fade).toBe(1)          // voyages are read at this range: leave it alone
-    expect(at(10).fade).toBeLessThan(1)
-    expect(at(12).fade).toBe(0)         // a cloud shell over a street is a fog filter, not weather
+  it('retires the deck BEFORE the camera reaches it, not while passing through', () => {
+    /**
+     * The bug this replaced: the fade was specified in ZOOM while the thing to avoid is the camera
+     * reaching a shell at a fixed ALTITUDE. Measured, the camera crossed the 90 km deck at z10.01
+     * with the deck still 50% opaque — so you flew through a half-solid shell that filled the view
+     * and clipped against the near plane. Reported as "the clouds are glitchy when flying through
+     * them", which is exactly what it was.
+     *
+     * Zoom and altitude are only loosely coupled — the mercator scale carries cos(lat) — so the
+     * crossing moved a whole level with latitude: z10.03 at the equator, z9.03 at 60°, where the
+     * deck was 92% opaque. No zoom pair can be right at every latitude.
+     */
+    const deck = CLOUD_ALTITUDE_M
+
+    // Gone before arrival, with room to spare. This is the property that matters.
+    expect(at(6, 0, deck * 1.2).fade).toBe(0)
+    expect(at(6, 0, deck).fade).toBe(0)
+    expect(at(6, 0, deck * 0.5).fade).toBe(0)
+    expect(at(6, 0, 0).fade).toBe(0)
+
+    // Untouched where the deck is the whole point.
+    expect(at(6, 0, deck * 40).fade).toBe(1)   // globe view
+    expect(at(6, 0, deck * 4).fade).toBe(1)    // voyages are read at this range: leave it alone
+
+    // And a ramp in between rather than a switch.
+    const middle = at(6, 0, deck * 2).fade
+    expect(middle).toBeGreaterThan(0)
+    expect(middle).toBeLessThan(1)
+  })
+
+  it('hides the deck rather than guess when the altitude is missing', () => {
+    // Of the two ways to be wrong here, "no clouds" is loud and safe and "clouds always drawn" is
+    // silent and is the bug this replaced. A NaN would otherwise reach a uniform.
+    expect(deckDetailFor(6, 0, undefined).fade).toBe(0)
+    expect(deckDetailFor(6, 0, NaN).fade).toBe(0)
+  })
+
+  it('fades on altitude alone, so it is right at every latitude', () => {
+    // The old fade was a zoom pair, and the same zoom is a different altitude at Oslo than at the
+    // equator. Anything driven by altitude cannot drift that way.
+    const deck = CLOUD_ALTITUDE_M
+    for (const altitude of [deck * 0.5, deck * 2, deck * 10]) {
+      expect(at(6, 60, altitude).fade).toBe(at(6, 0, altitude).fade)
+      expect(at(11, 60, altitude).fade).toBe(at(6, 0, altitude).fade)
+    }
   })
 
   it('accounts for latitude, where a zoom level covers less ground', () => {

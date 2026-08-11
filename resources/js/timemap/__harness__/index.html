@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Realistic earth — measurement harness</title>
+  <link href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" rel="stylesheet">
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #cbd5e1;
+                 font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #map { position: absolute; inset: 0; }
+    #readout { position: absolute; right: 0; top: 0; bottom: 0; width: 380px; overflow: auto;
+               padding: 12px; background: rgba(2, 6, 23, .88); white-space: pre-wrap; z-index: 2; }
+    #readout.hidden { display: none; }
+  </style>
+  <script>
+    /**
+     * Make a HIDDEN document able to render at all.
+     *
+     * A hidden page fires no requestAnimationFrame — measured at zero callbacks in 300 ms — and
+     * clamps setTimeout to roughly one a second. MapLibre will not even parse its style without a
+     * frame tick, so the map never loads, nothing errors, and every asset sits there at 200. That
+     * is the whole of the "waiting for the relief map and the cloud field" hang.
+     *
+     * A MessageChannel is not throttled, so it can carry the frame callbacks instead.
+     *
+     * THIS HAS TO BE INLINE, CLASSIC, AND AHEAD OF THE MODULE SCRIPT. ES module imports are hoisted
+     * and run before any module body, so a shim installed inside harness.js is installed AFTER
+     * MapLibre has already captured the original requestAnimationFrame — it looks right and does
+     * nothing. (Shim and diagnosis both from the tiled-LOD harness, which hit this first.)
+     */
+    if (document.hidden) {
+      const channel = new MessageChannel()
+      let queue = []
+      channel.port1.onmessage = () => {
+        const due = queue
+        queue = []
+        const stamp = performance.now()
+        due.forEach((callback) => { try { callback(stamp) } catch (error) { console.error(error) } })
+      }
+      let nextId = 1
+      window.requestAnimationFrame = (callback) => {
+        queue.push(callback)
+        channel.port2.postMessage(0)
+        return nextId++
+      }
+      window.cancelAnimationFrame = () => {}
+
+      /**
+       * A hidden pane also reports innerWidth 0, so a container sized from the viewport gives the
+       * canvas no pixels and readPixels reads nothing.
+       *
+       * The size has to be in place BEFORE the map is constructed, which means a stylesheet here
+       * and not a DOMContentLoaded handler: module scripts are deferred but still run ahead of
+       * DOMContentLoaded, so a handler resizes the container after MapLibre has already sized its
+       * canvas to a 400x300 fallback and will not re-read it. That version looked like it worked —
+       * the container measured 1200x800 — while every sample projected outside a canvas that had
+       * quietly stayed small.
+       */
+      if (window.innerWidth === 0) {
+        document.write('<style>#map{position:absolute;inset:auto;width:1200px;height:800px}</style>')
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="map"></div>
+  <pre id="readout">loading…</pre>
+  <script type="module" src="./harness.js"></script>
+</body>
+</html>

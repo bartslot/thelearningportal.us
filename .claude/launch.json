@@ -8,6 +8,13 @@
       "port": 8000
     },
     {
+      "//": "The globe lighting measurement harness (resources/js/timemap/__harness__). Standalone Vite, nothing to do with the Laravel app — it serves one page plus public/, where the relief map and cloud fields live. On 5198 rather than 5199: the tile-pyramid harness below claimed 5199 first, and two harnesses on one port is a race that presents as a blank page.",
+      "name": "globe-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.harness.config.js"],
+      "port": 5198
+    },
+    {
       "//": "Development only, for measuring the tile pyramid — see resources/js/timemap/tiles/__harness__. A bare Vite dev server on its own port, so it never races the app's :5173 that other sessions are using.",
       "name": "tiled-lod-harness",
       "runtimeExecutable": "npx",

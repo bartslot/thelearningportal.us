@@ -29,24 +29,22 @@ const LAYER_ID = 'tm-moon'
 const EARTH_RADIUS_M = 6371008.8
 const MOON_RADIUS_M = 1737400
 const DEG = Math.PI / 180
-/**
- * Schlyter's elements are epoch "2000 January 0.0", which is 1999-12-31 00:00 UTC — NOT J2000
- * (2000-01-01 12:00). The two differ by a day and a half, and using the wrong one is silent: the
- * series still run, the output still looks like a sky. The moon moves 13.18 deg/day, so it lands
- * about 20 degrees from where it belongs, and the sun about 1.5. It put the August 2026 eclipse on
- * the 14th.
- */
-const EPOCH = Date.UTC(1999, 11, 31, 0)
-/**
- * And a SECOND epoch, in the same function, because this file mixes two conventions.
- *
- * The sidereal-time formula below is the standard one and counts from J2000, while the orbital
- * elements count from Schlyter's epoch above. They must each get their own day count. Driving both
- * from one constant is what makes this trap so effective: fixing the elements silently rotates the
- * earth under the moon by half a turn, and the moon still moves at the right rate while sitting in
- * the wrong place.
- */
 const J2000 = Date.UTC(2000, 0, 1, 12)
+
+/**
+ * "2000 January 0.0" — 1999-12-31 00:00 UT, a day and a half BEFORE J2000, and the epoch the
+ * classical orbital elements below are actually counted from.
+ *
+ * This used to be J2000, which put the moon roughly twenty degrees wrong: it covers 19.6° in a day
+ * and a half. Nothing in `__tests__/moon.test.js` saw it, because every assertion there is
+ * invariant under a shift in time — the distance range, the latitude bound, the westward drift
+ * rate and the phase geometry are all still perfectly self-consistent for a moon that is simply in
+ * the wrong place. It took an absolute position checked against JPL Horizons.
+ *
+ * The obliquity and sidereal-time series further down are genuinely referred to J2000 and must
+ * keep using `d`.
+ */
+const ELEMENT_EPOCH = Date.UTC(1999, 11, 31, 0)
 
 const sind = (deg) => Math.sin(deg * DEG)
 const cosd = (deg) => Math.cos(deg * DEG)
@@ -62,15 +60,16 @@ const cosd = (deg) => Math.cos(deg * DEG)
  * @returns {{lng: number, lat: number, distance: number}} sub-lunar point in degrees, distance in metres
  */
 export const moonPosition = (date = new Date()) => {
-  const d = (date.getTime() - EPOCH) / 86400000
+  const d = (date.getTime() - J2000) / 86400000
+  const t = (date.getTime() - ELEMENT_EPOCH) / 86400000   // the elements' own epoch, see above
 
   // Orbital elements at date.
-  const N = 125.1228 - 0.0529538083 * d        // longitude of the ascending node
+  const N = 125.1228 - 0.0529538083 * t        // longitude of the ascending node
   const i = 5.1454                             // inclination to the ecliptic
-  const w = 318.0634 + 0.1643573223 * d        // argument of perigee
+  const w = 318.0634 + 0.1643573223 * t        // argument of perigee
   const a = 60.2666                            // semi-major axis, in earth radii
   const e = 0.054900
-  const M = 115.3654 + 13.0649929509 * d       // mean anomaly
+  const M = 115.3654 + 13.0649929509 * t       // mean anomaly
 
   // Kepler, iterated. Three passes is ample at this eccentricity.
   let E = M + (e * 180 / Math.PI) * sind(M) * (1 + e * cosd(M))
@@ -89,8 +88,8 @@ export const moonPosition = (date = new Date()) => {
   let zec = r * (sind(v + w) * sind(i))
 
   // The sun's pull on the moon's orbit. Ms/Ls are the sun's mean anomaly and longitude.
-  const Ms = 356.0470 + 0.9856002585 * d
-  const Ls = 282.9404 + 0.0000470935 * d + Ms
+  const Ms = 356.0470 + 0.9856002585 * t
+  const Ls = 282.9404 + 0.0000470935 * t + Ms
   const Lm = N + w + M
   const D = Lm - Ls                 // mean elongation from the sun
   const F = Lm - N                  // argument of latitude
@@ -112,8 +111,7 @@ export const moonPosition = (date = new Date()) => {
   const declination = Math.atan2(ze, Math.hypot(xe, ye)) / DEG
 
   // Equatorial to a point on the turning earth: subtract the sidereal rotation to get longitude.
-  const dJ2000 = (date.getTime() - J2000) / 86400000
-  const gmst = (18.697374558 + 24.06570982441908 * dJ2000) % 24
+  const gmst = (18.697374558 + 24.06570982441908 * d) % 24
   let lng = rightAscension - gmst * 15
   lng = ((lng % 360) + 540) % 360 - 180
 
