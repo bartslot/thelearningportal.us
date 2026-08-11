@@ -239,6 +239,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
+    // The hover glow tracks the same era as the border it sits under, or scrubbing the timeline
+    // leaves it lighting up territories that no longer exist.
+    if (map.getLayer('boundaries-glow')) map.setFilter('boundaries-glow', polityFilter(year));
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
@@ -742,14 +745,20 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     });
     map.addLayer({
       id: 'boundaries-glow', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
+      // The SAME era filter as the border it sits under. Without it this layer draws every polity of
+      // every year at once — which, with the opacity below also failing, put four thousand years of
+      // borders on screen at the same time.
+      filter: polityFilter(state.year),
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': GLOW_COLOR,
         'line-width': GLOW_WIDTH,
         'line-blur': 6,
+        // No -transition here. MapLibre transitions only NON data-driven properties, and this is a
+        // feature-state expression: pairing the two made it drop the expression and fall back to
+        // the default opacity of 1, so a layer meant to be invisible until hovered was fully drawn.
+        // A hard on/off at the pointer is the price; it is cheaper than a lie.
         'line-opacity': GLOW_OPACITY,
-        // Fades rather than snapping — a hard on/off at the pointer reads as a bug, not a highlight.
-        'line-opacity-transition': { duration: 160 },
       },
     });
     map.addLayer({
