@@ -24,7 +24,7 @@
  */
 
 import maplibregl from 'maplibre-gl'
-import { buildSphereMesh, cameraInPlanetSpace, buildProgram, SHELL_PROJECT_GLSL } from './planet-mesh.js'
+import { buildSphereMesh, cameraInPlanetSpace, buildProgram, SHELL_PROJECT_GLSL, SPHERE_SPAN_GLSL } from './planet-mesh.js'
 
 const LAYER_ID = 'tm-atmosphere'
 const EARTH_RADIUS_M = 6371008.8
@@ -60,15 +60,7 @@ uniform vec3 u_duskColour;
 
 const int SAMPLES = 6;
 
-// Distances along a ray where it meets a sphere of radius R about the origin. x > y means it misses.
-vec2 sphereSpan(vec3 origin, vec3 dir, float radius) {
-  float b = dot(origin, dir);
-  float c = dot(origin, origin) - radius * radius;
-  float disc = b * b - c;
-  if (disc < 0.0) return vec2(1.0, -1.0);
-  float sq = sqrt(disc);
-  return vec2(-b - sq, -b + sq);
-}
+${SPHERE_SPAN_GLSL}
 
 void main() {
   vec3 shell = normalize(v_sphere) * u_top;

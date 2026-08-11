@@ -36,6 +36,11 @@ const DEG = Math.PI / 180
  */
 const EPOCH = Date.UTC(2000, 0, 1, 12)
 
+/** Mean earth–sun distance. */
+export const ASTRONOMICAL_UNIT_M = 1.495978707e11
+/** The photosphere, which is what "the sun" means to anything that draws it. */
+export const SUN_RADIUS_M = 6.957e8
+
 /** Days since the epoch above, fractional. */
 const daysSinceEpoch = (date) => (date.getTime() - EPOCH) / 86400000
 
@@ -43,7 +48,7 @@ const daysSinceEpoch = (date) => (date.getTime() - EPOCH) / 86400000
  * The sun's declination and the equation of time, from the low-precision series in the
  * Astronomical Almanac — good to ~0.01° over 1950–2050.
  *
- * @returns {{declination: number, equationOfTime: number}} degrees, and minutes
+ * @returns {{declination: number, equationOfTime: number, distance: number}} degrees, minutes, metres
  */
 export const solarPosition = (date = new Date()) => {
   const n = daysSinceEpoch(date)
@@ -63,8 +68,26 @@ export const solarPosition = (date = new Date()) => {
   if (equationOfTime < -180) equationOfTime += 360
   equationOfTime *= 4    // degrees of earth rotation -> minutes of time
 
-  return { declination, equationOfTime }
+  // The same ellipse the equation of time comes from, read as a radius instead of an angle: the
+  // earth is 3% nearer the sun in early January than in early July. That is NOT the seasons — the
+  // tilt is — but it is why the sun's disc is measurably wider in northern winter.
+  const distance = (1.00014 - 0.01671 * Math.cos(meanAnomaly) - 0.00014 * Math.cos(2 * meanAnomaly))
+    * ASTRONOMICAL_UNIT_M
+
+  return { declination, equationOfTime, distance }
 }
+
+/** Earth to sun, in metres, for a given moment. */
+export const sunDistance = (date = new Date()) => solarPosition(date).distance
+
+/**
+ * How big the sun looks: the angular RADIUS of the disc, in radians.
+ *
+ * A quarter of a degree, so the disc is half a degree across — the same as the moon, which is the
+ * coincidence that makes total eclipses possible. It varies by 3% over the year because the orbit
+ * is an ellipse, and by nothing else.
+ */
+export const sunAngularRadius = (date = new Date()) => Math.atan(SUN_RADIUS_M / sunDistance(date))
 
 /**
  * Earth's distance from the sun, in metres.
