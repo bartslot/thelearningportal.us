@@ -99,6 +99,21 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
 
   return {
     layers,
+
+    /**
+     * Move the light. The Time-Map's slider runs across centuries, so the sun has to follow it or
+     * the terminator sits where it was when the page loaded and quietly contradicts the date on
+     * screen. Every layer merges what it is given and repaints, so this is one pass over the stack.
+     */
+    setDate(next) {
+      const at = next instanceof Date ? next : new Date(next)
+      if (Number.isNaN(at.getTime())) return
+      const lit = sunDirection(at)
+      for (const key of Object.keys(layers)) {
+        layers[key]?.setOptions?.({ date: at, sun: lit })
+      }
+    },
+
     remove() {
       teardown?.()
       for (const [, id] of STACK) if (map.getLayer(id)) map.removeLayer(id)

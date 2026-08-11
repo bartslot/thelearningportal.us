@@ -559,6 +559,9 @@ export function renderLessonMap (el, opts = {}) {
 
   function setYear (y) {
     year = Math.round(Number(y))
+    // Re-light Earth: the sun belongs to the year, so changing the year has to move it or the
+    // terminator stays where the map first loaded and quietly contradicts the date on screen.
+    globe?.setDate(globeDate())
     if (!map.getLayer('boundaries-line')) return
     map.setFilter('boundaries-line', polityFilter(year))
     if (map.getLayer('boundaries-fill')) map.setFilter('boundaries-fill', polityFilter(year))

@@ -12,7 +12,11 @@ import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 import nationalColors from './national-colors.json';
 import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers } from '../map-imagery.js';
-import { createCloudLayer, CLOUD_LAYER_ID } from './clouds.js';
+import { CLOUD_LAYER_ID } from './clouds.js';
+// The whole globe stack, assembled in one place and shared with the lesson map's Earth style. The
+// Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
+// layers ended up merged, tested and never loaded by any page.
+import { addGlobeLayers } from '../map-globe-layers.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -219,6 +223,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['>', ['coalesce', ['to-number', ['get', 'end_decdate']], 1e6], year],
   ];
   const applyYear = (year) => {
+    // Before the early return: the sun is not a map layer, so it must not be gated on the borders
+    // having loaded. Scrubbing the slider during the first tile load would otherwise leave the
+    // planet lit for whatever year the page opened on.
+    globe?.setDate(dateForYear(year));
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
@@ -408,6 +416,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const startWaves = (coast) => { coastCfg = coast; if (!reduceMotion && !waveRAF) waveRAF = requestAnimationFrame(waveTick); };
   const stopWaves = () => { coastCfg = null; if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; } };
 
+  // The globe stack (sea, terminator, haze, sky, sun, moon, clouds) — held so the slider can move
+  // the light and __tmSetLayer can dim any of them.
+  let globe = null;
+  /**
+   * A year on the slider, as a moment the sun can be computed for.
+   *
+   * Midsummer noon UTC: a year alone does not say which day or hour, and any choice shows in the
+   * terminator, so it is stated here once rather than being an accident of `new Date(year, 0)` —
+   * which would put every era at midwinter midnight and light the wrong hemisphere.
+   */
+  const dateForYear = (year) => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12));
   // The cloud deck (custom layer) — held so its density can be changed live.
   let cloudLayer = null;
   /** Cloud density 0..1; 0 hides the deck (and stops its repaint loop). */
@@ -720,13 +739,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // public/img/map/ unused: without a fieldUrl the layer silently runs on noise, which is banded
     // by latitude to imitate weather but has no actual weather in it. With them you get the real
     // ITCZ, real frontal bands and real cyclones, carried along a real GFS wind field.
-    cloudLayer = createCloudLayer({
-      opacity: cloudOpacity,
-      animate: !reduceMotion,
-      fieldUrl: '/img/map/clouds-field.webp',
-      windUrl: '/img/map/wind-field.png',
+    // The whole stack, not just the deck: the sea, the terminator, the haze band, the star sky, the
+    // sun and the moon come on with it. Same insertion point the cloud layer alone used, so the
+    // voyages and the ship below still anchor to CLOUD_LAYER_ID exactly as before.
+    //
+    // The date is the year on the slider, so the lit half of the planet belongs to the era being
+    // looked at rather than to whenever the page happened to load. applyYear moves it.
+    globe = addGlobeLayers(map, {
+      date: dateForYear(state.year),
+      reduceMotion,
+      beforeId: 'boundaries-label',
     });
-    map.addLayer(cloudLayer, 'boundaries-label');
+    cloudLayer = globe.layers.clouds;
+    // Honour the density this browser last chose, which predates the shared panel and is still what
+    // __tmSetClouds writes.
+    cloudLayer?.setOptions({ opacity: cloudOpacity });
     // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
     // initial style; this lifts them above the boundary layers but keeps them BELOW the
