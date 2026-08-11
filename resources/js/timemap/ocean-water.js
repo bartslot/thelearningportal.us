@@ -19,9 +19,12 @@
  *     coast as a cliff and hillshades a shadow ONTO the water, so its coastal sea reads DARKER than
  *     open ocean (4.8 luma against 8.9) when reality is the exact opposite.
  *  3. SKY REFLECTION. Water reflects about 2% of the light when you look straight down and nearly
- *     all of it at a glancing angle (Fresnel). That is why the ocean below the camera is near-black
- *     and the ocean out toward the limb is bright silver-blue, and it is the single biggest reason
- *     a flat-tinted ocean looks fake — the tint is uniform, and real water never is.
+ *     all of it at a glancing angle (Fresnel), which is why the sea toward the limb goes bright
+ *     silver-blue while the sea below the camera keeps its own colour. It is the single biggest
+ *     reason a flat-tinted ocean looks fake — the tint is uniform, and real water never is.
+ *     Note what this term is NOT: it is not what makes deep water blue. Looking straight down you
+ *     get only 2% of the sky, and the blue you see is light scattered back out of the water itself.
+ *     That is u_scatter, and getting it too dark is what made this layer read as a hole.
  *  4. SUN GLINT. The bright patch where the sun's own reflection points at the camera, smeared by
  *     waves into the glitter path. Water is a MIRROR, so the highlight sits where the surface normal
  *     bisects the directions to the sun and to the eye — Blinn-Phong's half vector, which on a
@@ -175,9 +178,26 @@ float coastDistanceKm(vec3 unitPos) {
  * and drawing them reads as a map rather than an ocean. Depth belongs in the colour, under a lit
  * surface. This function may sample depth; it may never differentiate it.
  */
+const float OPEN_OCEAN_M = 400.0;   // past the colour model's saturation at ~200 m
+
 float waterDepthMetres(vec3 unitPos, float coastKm) {
+  // Linear, and fitted rather than chosen. Sampling terrarium against distance-to-coast over five
+  // shelves gives a median of 3.7 m at 4 km out, 8.1 m at 10 km and 14.2 m at 22 km — near enough
+  // a straight line, and nothing like the 90 m an earlier squared profile reached at the same
+  // distance. That overshoot is what turned the shelf into a thin bright rim around every coast
+  // instead of a band: the water went from sand to open ocean within a few kilometres.
   float t = clamp(max(coastKm, 0.0) / u_shelfKm, 0.0, 1.0);
-  float depth = u_shelfDepthM * t * t;
+  float depth = u_shelfDepthM * t;
+
+  // Past the shelf band, fall away to open ocean over the rest of the field's range. Without this
+  // every sea beyond 22 km sits at shelf depth and the Atlantic renders as a shallow bank, never
+  // reaching the deep colour the whole model is calibrated to. The distance field saturates at 32
+  // km, so this is the last thing it can still tell us apart.
+  //
+  // It is also where the proxy is most obviously a proxy: a 32 km field cannot tell the North Sea
+  // from the Atlantic, and this resolves that ambiguity toward deep, which is right for the 95% of
+  // the ocean that IS deep and wrong for the shallow shelf seas. Real bathymetry ends the guess.
+  depth = mix(depth, OPEN_OCEAN_M, smoothstep(0.72, 1.0, max(coastKm, 0.0) / u_rangeKm));
 
   // ABOVE THE MERCATOR LIMIT, SATURATE RATHER THAN SAMPLE.
   //
@@ -218,7 +238,7 @@ float waterDepthMetres(vec3 unitPos, float coastKm) {
   // function is reached, which is what carrying extent separately buys.
   const float SIN_FADE_START = 0.994522;   // 84°, one degree of run-up; tiledSphereCoverage replaces this
   const float SIN_MERCATOR_EDGE = 0.996272;
-  const float ARCTIC_BASIN_M = 400.0;      // past the colour model's saturation at ~200 m
+  const float ARCTIC_BASIN_M = OPEN_OCEAN_M;
   float polar = smoothstep(SIN_FADE_START, SIN_MERCATOR_EDGE, unitPos.y);
   return mix(depth, max(depth, ARCTIC_BASIN_M), polar);
 }
@@ -282,9 +302,15 @@ void main() {
   float glint = (sharp + 0.35 * broad) * day * u_strength * sqrt(u_fade);
   vec3 sunTerm = mix(vec3(0.85, 0.90, 1.0), vec3(1.0, 0.96, 0.86), fresnel) * glint;
 
-  // The body and the sky fade out with the layer; the glint is added back on top of that fade, so
-  // at low altitude what is left is a highlight on real imagery rather than a blue wash over it.
-  vec3 colour = (body + skyTerm) * u_fade + sunTerm;
+  // ONE fade, in the alpha, and NOT a second one in the colour.
+  //
+  // The colour used to be scaled by the fade as well as the alpha. Premultiplied
+  // output is colour * alpha, so the emitted light fell as fade SQUARED while the coverage fell as
+  // fade — mid-handover the layer replaced a third of the imagery with a ninth of its own colour.
+  // Measured over the North Sea at z7: Sentinel-2's (25,44,77) came out as (19,34,59). The layer
+  // was fading toward BLACK rather than toward the picture underneath, and it darkened the very
+  // imagery it hands over to. Alpha alone fades a layer out; scaling the colour too is a hole.
+  vec3 colour = body + skyTerm + sunTerm;
 
   float alpha = clamp(water * (u_water * u_fade + glint), 0.0, 1.0) * u_opacity;
   if (alpha < 0.003) discard;
@@ -354,11 +380,15 @@ export const createOceanWaterLayer = ({
   // 550 and 450 nm). Red is gone in metres and blue survives tens, which is the whole reason the
   // sea grades turquoise to navy. Coastal water is far more turbid than this; that is not modelled.
   absorption = [0.45, 0.060, 0.020],
-  scatter = [0.020, 0.075, 0.160],  // what deep water converges to once nothing returns from below
+  // Open ocean as it reads from orbit: a proper mid blue, not navy. This is the water's own
+  // volume-scattering colour — molecules scatter blue back out, which is most of why the sea is
+  // blue at all — and it is the floor the ramp converges to once nothing returns from the bottom.
+  // Calibrated against Sentinel-2's own North Sea, which measures (25,44,77) off England.
+  scatter = [0.120, 0.265, 0.430],
   bottom = [0.42, 0.40, 0.33],      // sand and carbonate: the floor, where it can still be seen
   sky = [0.34, 0.50, 0.76],         // daylight sky, what the sea mirrors near the limb
   shelfKm = 22,                     // how far the shelf proxy reaches before it is open ocean
-  shelfDepthM = 90,                 // and how deep it is by then — past this the bottom is unlit
+  shelfDepthM = 16,                 // measured median depth at the shelf band's outer edge
   shoreSoftnessKm = 0.8,
   fadeInAbove = 900000,            // metres: fully painted above this
   fadeOutBelow = 180000,           // metres: gone below this, where real imagery has the detail

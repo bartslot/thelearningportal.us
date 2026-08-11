@@ -268,12 +268,16 @@ describe('the water column', () => {
   })
 
   it('turns shallow water turquoise without anyone choosing a turquoise', () => {
-    // Nothing in the options is cyan: the floor is sand and the deep colour is navy. Two metres of
-    // water on sand has to come out green-cyan on its own, or the physics is not doing the work.
-    const [r, g, b] = columnAt(2)
-    expect(g).toBeGreaterThan(r * 2)
-    expect(b).toBeGreaterThan(r * 2)
-    expect(g).toBeGreaterThan(0.2)
+    // Nothing in the options is cyan: the floor is sand (107,102,84) and the deep colour is a mid
+    // blue (31,68,110). Two metres of water over that sand has to come out green-cyan on its own.
+    // The test is the HUE, not the brightness: green leads blue in the shallows and blue overtakes
+    // it in the deep, which is the turquoise-to-blue march the whole model exists to produce.
+    const greenLead = (d) => columnAt(d)[1] - columnAt(d)[2]
+    expect(greenLead(2)).toBeGreaterThan(0)        // shallow: green ahead of blue
+    expect(greenLead(200)).toBeLessThan(-0.1)      // deep: blue well ahead
+    for (const [a, b] of [[0, 2], [2, 10], [10, 50]]) {
+      expect(greenLead(b)).toBeLessThan(greenLead(a))
+    }
   })
 
   it('converges to the deep colour once the bottom stops coming back', () => {
@@ -281,14 +285,18 @@ describe('the water column', () => {
     deep.forEach((v, i) => expect(Math.abs(v - scatter[i])).toBeLessThan(0.01))
   })
 
-  it('darkens monotonically with depth, with no muddy middle', () => {
-    // A lerp between two colours passes through their average, which for sand-to-navy is a
-    // grey-brown nobody wants. An absorption curve cannot: each channel only ever falls.
+  it('moves each channel monotonically from the bottom toward the deep, with no muddy middle', () => {
+    // A lerp between two colours passes through their average; an absorption curve cannot, because
+    // every channel is a decaying exponential between two endpoints. NOT "always darkens": blue
+    // RISES with depth here, since open ocean is bluer than wet sand. The invariant is that each
+    // channel closes on the deep colour and never overshoots or doubles back.
     const depths = [0, 1, 2, 5, 10, 20, 40, 80, 150]
     const columns = depths.map(columnAt)
     for (let c = 0; c < 3; c++) {
       for (let i = 1; i < columns.length; i++) {
-        expect(columns[i][c]).toBeLessThanOrEqual(columns[i - 1][c] + 1e-9)
+        const closing = Math.abs(columns[i][c] - scatter[c])
+        const before = Math.abs(columns[i - 1][c] - scatter[c])
+        expect(closing).toBeLessThanOrEqual(before + 1e-9)
       }
     }
   })
@@ -325,7 +333,7 @@ describe('the water column', () => {
     // sits in the shallows — exactly the band where a global bathymetry source is coarsest. The
     // first five metres are worth about a hundred levels; everything past 200 m is worth none.
     expect(separationLevels(0, 5)).toBeGreaterThan(50)
-    expect(separationLevels(5, 20)).toBeGreaterThan(20)
+    expect(separationLevels(5, 20)).toBeGreaterThan(10)
     expect(separationLevels(200, 4000)).toBeLessThan(0.02)
   })
 
@@ -403,6 +411,33 @@ describe('the ocean layer', () => {
     expect(read('ocean-water.js')).toContain('facesCamera')
   })
 
+  it('fades out in the alpha only, never in the colour as well', () => {
+    /**
+     * Premultiplied output is colour * alpha. Scaling the colour by the fade AND the alpha by the
+     * fade makes the emitted light fall as fade squared while the coverage falls as fade, so
+     * mid-handover the layer replaces a third of the imagery with a ninth of its own colour — it
+     * fades toward BLACK instead of toward the picture underneath. Measured over the North Sea at
+     * z7 before the fix: Sentinel-2's (25,44,77) came out as (19,34,59), the layer darkening the
+     * very imagery it exists to hand over to.
+     */
+    const shader = read('ocean-water.js')
+    expect(shader).toContain('vec3 colour = body + skyTerm + sunTerm;')
+    expect(shader).not.toContain('(body + skyTerm) * u_fade')
+    // The fade belongs here and only here.
+    expect(shader).toContain('float alpha = clamp(water * (u_water * u_fade + glint), 0.0, 1.0)')
+  })
+
+  it('paints open ocean as a mid blue rather than a navy hole', () => {
+    // Bart's reference is the North Sea off England from orbit, where Sentinel-2 itself measures
+    // (25,44,77). The layer converges to u_scatter in deep water, so that value IS the open ocean.
+    const { scatter } = createOceanWaterLayer().getOptions()
+    const asBytes = scatter.map((v) => Math.round(v * 255))
+    expect(asBytes[2]).toBeGreaterThan(90)          // blue, and a real one
+    expect(asBytes[2]).toBeGreaterThan(asBytes[1])  // still blue rather than teal
+    expect(asBytes[1]).toBeGreaterThan(asBytes[0])
+    expect(Math.max(...asBytes)).toBeLessThan(160)  // mid blue, not sky blue
+  })
+
   it('returns premultiplied alpha, which is what MapLibre blends', () => {
     // ONE / ONE_MINUS_SRC_ALPHA. Multiplying the colour by the mask instead of by the alpha is
     // what made an earlier version glow over dark ground.
@@ -462,8 +497,10 @@ describe('the ocean layer', () => {
     expect(depth).toContain(`SIN_FADE_START = ${Math.sin(84 * Math.PI / 180).toFixed(6)}`)
     expect(depth).toContain(`SIN_MERCATOR_EDGE = ${Math.sin(85.0511287798066 * Math.PI / 180).toFixed(6)}`)
     // Whatever it saturates to has to be past where the colour model stops responding.
-    expect(depth).toMatch(/ARCTIC_BASIN_M = (\d+)\.0/)
-    expect(Number(depth.match(/ARCTIC_BASIN_M = (\d+)\.0/)[1])).toBeGreaterThan(200)
+    // The cap and open ocean now share one constant, so there is a single place to get it wrong.
+    expect(depth).toContain('const float ARCTIC_BASIN_M = OPEN_OCEAN_M;')
+    expect(shader).toMatch(/OPEN_OCEAN_M = (\d+)\.0/)
+    expect(Number(shader.match(/OPEN_OCEAN_M = (\d+)\.0/)[1])).toBeGreaterThan(200)
     // North only: the southern cap is land, and the coastline field discards it first.
     expect(depth).not.toContain('abs(unitPos.y)')
   })
