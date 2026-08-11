@@ -18,6 +18,8 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 // layers ended up merged, tested and never loaded by any page.
 import { addGlobeLayers } from '../map-globe-layers.js';
 import { sweepBorder, outlineOf } from '../map/border-sweep.js';
+import { planetSpacePosition } from './planet-mesh.js';
+import { sunDirection } from './sun.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -500,6 +502,26 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const dateForYear = (year) => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12));
 
   /**
+   * How lit the place you are looking at is — 1 in full sun, 0 in full night.
+   *
+   * Uses planetSpacePosition and sunDirection rather than building a vector by hand: the axis order
+   * on this globe is a known trap (MapLibre lists our axes z, y, x) and it cost 43° of arc earlier
+   * tonight. Two functions that already agree with each other are safer than a third opinion.
+   */
+  const daylightAtCentre = () => {
+    try {
+      const { lng, lat } = map.getCenter();
+      const n = planetSpacePosition(lng, lat, 0);
+      const s = sunDirection(dateForYear(state.year));
+      const dot = n[0] * s[0] + n[1] * s[1] + n[2] * s[2];
+      // Smooth across the terminator rather than snapping at the exact line.
+      return Math.max(0, Math.min(1, dot * 0.5 + 0.5));
+    } catch (e) {
+      return 1;
+    }
+  };
+
+  /**
    * Dev-panel controls for the things this file decides: how territories are drawn, how far the map
    * lets you zoom, and where the camera starts.
    *
@@ -518,6 +540,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour]);
 
     const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
+
+    // The fleet arrives in a lazy chunk after this runs, so a control touched too early — or on a
+    // map whose ships failed to load — would silently do nothing. Say so instead.
+    const fleet = () => {
+      if (!voyageShips) console.warn('[tune] no fleet on this map yet');
+      return voyageShips;
+    };
 
     tuneOff = [
       window.__tune.register('Territories', [
@@ -568,6 +597,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { key: 'exaggeration', label: 'Heightmap', min: 0, max: 12, step: 0.25, value: 0,
           apply: (v) => { try { map.setTerrain(v > 0 ? { source: 'dem', exaggeration: v } : null); } catch (e) { /* style still parsing */ } } },
       ], { tab: 'Map' }),
+
+      window.__tune.register('Ships', [
+        // 45s a lap reads as a speedboat crossing an ocean. A voyage took months; it should feel
+        // like something you notice rather than something you watch.
+        { key: 'lapSeconds', label: 'Seconds per lap', min: 20, max: 900, step: 5, value: 45,
+          apply: (v) => fleet()?.setLapSeconds(v) },
+        { key: 'shipScale', label: 'Size', min: 0.2, max: 3, step: 0.05, value: 1,
+          apply: (v) => fleet()?.setShipScale(v) },
+        { key: 'anchored', label: 'Scale with zoom', type: 'boolean', value: true,
+          apply: (on) => fleet()?.setShipScale(undefined, on) },
+        // Dims the fleet on the night side. Scene-wide, not per ship — see setNightDim.
+        { key: 'nightDim', label: 'Night dimming', min: 0, max: 1, step: 0.05, value: 0,
+          apply: (v) => fleet()?.setNightDim(v, daylightAtCentre()) },
+        { key: 'motion', label: 'Idle rock', min: 0, max: 1, step: 0.05, value: 1,
+          apply: (v) => fleet()?.setMotion(v) },
+      ], { tab: 'Camera' }),
 
       window.__tune.register('Framing', [
         /**

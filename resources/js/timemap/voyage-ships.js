@@ -19,7 +19,9 @@ import transportCatalog from './transports.json';
 const SHIP_MODEL_URL = '/timemap/assets/ship.fbx';
 
 const SHIP_PX = 46;                 // approximate on-screen length of the flagship
-const LAP_SECONDS = 45;             // ambient loop: one full route traversal
+// Ambient loop: how long one full route traversal takes. Live-adjustable via setLapSeconds — the
+// fleet reads `lapSeconds` per frame, so a change takes effect without a re-mount.
+const LAP_SECONDS = 45;
 const EARTH_CIRCUMFERENCE = 40_075_000;
 const FORMATION_GAP = 0.012;        // escort trail distance as a fraction of route length
 
@@ -236,10 +238,16 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
     });
 
   let year = null;
+  let lapSeconds = LAP_SECONDS;
+  /** 0 = ships lit the same day or night; 1 = full darkening on the night side. */
+  let nightDim = 0;
+  const AMBIENT_BASE = 2.2;
+  const SUN_BASE = 2.4;
   const camera = new THREE.Camera();
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 2.2));
-  const sun = new THREE.DirectionalLight(0xfff3d6, 2.4);
+  const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_BASE);
+  scene.add(ambientLight);
+  const sun = new THREE.DirectionalLight(0xfff3d6, SUN_BASE);
   sun.position.set(0.6, -0.4, 1);
   scene.add(sun);
   let renderer = null;
@@ -535,7 +543,7 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
       for (const v of active) {
         const baseT = v.tourT !== undefined
           ? v.tourT
-          : (reducedMotion ? 0.35 : ((now / LAP_SECONDS) * (v.track.total > 200 ? 0.6 : 1) + v.phase) % 1);
+          : (reducedMotion ? 0.35 : ((now / lapSeconds) * (v.track.total > 200 ? 0.6 : 1) + v.phase) % 1);
 
         // Overland stretch: one traveller on a mount replaces the fleet. While the model is still
         // downloading ensureMount() returns null and the ship keeps drawing, so the marker never
@@ -704,6 +712,32 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
     setShipScale(scale, anchored) {
       if (Number(scale) > 0) sScale = Number(scale);
       if (anchored !== undefined) sAnchored = !!anchored;
+      map.triggerRepaint();
+    },
+    /**
+     * How long one lap of a route takes, in seconds. Bigger is slower.
+     *
+     * 45s was chosen to keep a ship visibly moving on a static map; against the real globe it reads
+     * as a speedboat crossing an ocean, which is the opposite of what a voyage should feel like.
+     */
+    setLapSeconds(s) {
+      const v = Number(s);
+      if (Number.isFinite(v) && v > 0) lapSeconds = v;
+      map.triggerRepaint();
+    },
+    /**
+     * Darken the fleet on the night side.
+     *
+     * SCENE-WIDE, not per ship: three.js lights the whole scene, and the ships share materials, so
+     * dimming one would dim them all anyway. The caller passes the daylight fraction where the
+     * viewer is looking — good enough while a fleet is on screen together, and wrong if two fleets
+     * on opposite sides of the terminator are visible at once. Say so rather than pretend.
+     */
+    setNightDim(amount, daylight = 1) {
+      nightDim = Math.max(0, Math.min(1, Number(amount) || 0));
+      const lit = 1 - nightDim * (1 - Math.max(0, Math.min(1, daylight)));
+      ambientLight.intensity = AMBIENT_BASE * lit;
+      sun.intensity = SUN_BASE * lit;
       map.triggerRepaint();
     },
     /** Live-update how far the idle rock swings (0 = still, 1 = full). */
