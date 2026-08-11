@@ -8,6 +8,20 @@
       "port": 8000
     },
     {
+      "//": "This worktree's own app server. NOT :8000 above — that belongs to whichever session is running `composer dev` in the shared checkout, and attaching there renders THAT tree's code while looking exactly like success. 8021 rather than 8010 because 8010 was already answering when this was set up; with eight sessions running, assume every obvious port is taken and check. Set APP_URL to match. Needs `serve-vite` below for assets.",
+      "name": "serve-worktree",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "serve", "--port=8021"],
+      "port": 8021
+    },
+    {
+      "//": "Vite for the worktree app server above, on a port clear of the shared checkout's :5173 and of the other sessions' harnesses. NB: it caches transforms hard — after editing a module that app.js imports, a reload can still serve the old one, and the symptom is a global that is `undefined` while the source plainly defines it. Restart it with --force rather than hunting the bug.",
+      "name": "serve-vite",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5185", "--strictPort"],
+      "port": 5185
+    },
+    {
       "//": "The globe lighting measurement harness (resources/js/timemap/__harness__). Standalone Vite, nothing to do with the Laravel app — it serves one page plus public/, where the relief map and cloud fields live. On 5198 rather than 5199: the tile-pyramid harness below claimed 5199 first, and two harnesses on one port is a race that presents as a blank page.",
       "name": "globe-harness",
       "runtimeExecutable": "npx",

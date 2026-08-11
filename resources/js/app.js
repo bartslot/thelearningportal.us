@@ -5,8 +5,19 @@ import { createTour } from './onboarding/tour.js';
 import { initTooltips } from './tooltip.js';
 import { watchCarousels } from './carousel.js';
 import { easingPreview } from './easing-preview.js';
+import { clampToViewport, restorePosition, savePosition, defaultPosition, isViewportUsable } from './ui/floating-window.js';
 
 window.Sortable = Sortable;
+
+// Geometry for <x-ui.floating-window>, exposed as globals for the same reason as the factories
+// below: the component's x-data has to call them without depending on alpine:init ordering. The
+// maths lives in resources/js/ui/floating-window.js because a window that drifts off-screen has no
+// error and no empty state — it is simply gone — so floating-window.test.js holds it.
+window.__uiClampWindow = clampToViewport;
+window.__uiRestoreWindow = restorePosition;
+window.__uiSaveWindow = savePosition;
+window.__uiDefaultWindowPos = defaultPosition;
+window.__uiViewportUsable = isViewportUsable;
 
 // Hover hints for icon-only controls, app-wide. Opt in per element with data-tooltip
 // (+ data-tooltip-key for the shortcut); see resources/js/tooltip.js.

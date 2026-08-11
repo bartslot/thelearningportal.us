@@ -1853,24 +1853,29 @@
         $globeReferenceRow = ['key' => 'reference', 'label' => __('NASA reference'), 'default' => 0, 'max' => 1];
     @endphp
 
-    {{-- Globe layers — a third dock beside Script and Internal notes, same chrome, same behaviour.
+    {{-- Globe layers — a floating tool window, draggable over the scene.
 
-         The reference row is the point of the panel, not a garnish: it fades the NASA photograph in
-         over the render so the two can be compared directly. "The night side is too bright" is an
-         argument; a cross-fade to the frame it is being measured against is not.
+         A DOCK WOULD DEFEAT THE PANEL. Its job is comparing the render against the NASA photograph,
+         and the globe is in the middle of the canvas; a panel pinned to an edge cannot be moved off
+         the thing you are trying to look at. Hence <x-ui.floating-window>, which clamps so it can
+         never be lost — the failure that got the old floating Format inspector removed from this
+         screen. See the note above that panel, and floating-window.test.js.
 
-         Room is deliberately left below for the animation-track panel, which is Bart's own work —
-         it docks as a fourth sibling and nothing here assumes it is absent.
+         The reference row is the point of it, not a garnish: it fades the photograph in over the
+         render so the two can be compared directly. "The night side is too bright" is an argument;
+         a cross-fade to the frame it is being measured against is not.
+
+         Room is deliberately left for the animation-track UI, which is Bart's own work — it can be
+         a second floating window and nothing here assumes it is absent.
 
          The slider idiom is the one already working in time-map.blade.php (tm-color-strength):
          x-model.number on a DaisyUI range, restored in init() rather than x-init because Alpine
          compiles an attribute as the right-hand side of an assignment, so a `try` statement there
          is a syntax error and the whole expression is silently dropped. The try/catch stays
          regardless — localStorage throws outright in a browser that blocks storage. --}}
-    <div x-show="$store.view.layers" x-cloak
-         class="fixed bottom-0 z-40 w-72 overflow-hidden border-l border-t border-slate-700 bg-base-300"
-         style="right: var(--work-right, 16rem);"
-         x-data="{
+    <x-ui.floating-window name="layers" :title="__('Globe layers')"
+                          show="$store.view.layers" on-close="$store.view.hide('layers')">
+    <div x-data="{
              rows: @js($globeLayerRows),
              reference: @js($globeReferenceRow),
              state: {},
@@ -1906,12 +1911,6 @@
              },
              pushAll() { for (const key of Object.keys(this.state)) this.push(key); },
          }">
-        <div class="flex items-center justify-between border-b border-slate-700/60 bg-base-200/60 px-3 py-2">
-            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{{ __('Globe layers') }}</span>
-            <button type="button" @click="$store.view.hide('layers')"
-                    class="text-slate-500 hover:text-slate-200" aria-label="{{ __('Close') }}">&times;</button>
-        </div>
-
         <div class="max-h-72 overflow-y-auto px-3 py-2">
             <template x-for="row in rows" :key="row.key">
                 <div class="flex items-center gap-2 py-1.5">
@@ -1944,6 +1943,7 @@
             </div>
         </div>
     </div>
+    </x-ui.floating-window>
 
     {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />
