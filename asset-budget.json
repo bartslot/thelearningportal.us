@@ -38,7 +38,11 @@
 
   "optional": {
     "//": "Reachable but not loaded by default, so outside the surface totals. Listed so the dimension rule still applies and so nothing is silently untracked.",
-    "assets": ["public/img/map/city-lights.png"]
+    "//relief": "earth-normal-8192.webp arrived with `realistic-earth` and is OPTIONAL for a measured reason, not because nobody got round to declaring it. At 8192x4096 it is 128 MiB resident before mipmaps and 171 MiB with them, against a 96 MiB surface ceiling — so it cannot be a default-on layer at this size, whatever the 3.6 MiB file size suggests. It is exactly the case the vram ceiling above exists to catch. Today only the measurement harness loads it (`daylight.js` defaults reliefUrl to null and nothing in the app sets it), and the layers panel ships its relief toggle OFF for the same reason. Moving it into `timemap` needs a smaller bake or a quality tier that picks one, not an edit to this list.",
+    "assets": [
+      "public/img/map/city-lights.png",
+      "public/img/map/earth-normal-8192.webp"
+    ]
   },
 
   "scan": {
