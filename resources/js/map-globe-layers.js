@@ -35,12 +35,20 @@ const WIND_FIELD_URL = '/img/map/wind-field.png'
  *
  * The sky bodies go down first so the planet's own opaque pixels occlude them — moon.js relies on
  * exactly that ("a moon behind the planet projects behind the planet's own opaque pixels"). Then
- * the sea, which is ground; then the clouds above it; then the terminator, which has to darken
- * everything already drawn; and the haze last, because it is the limb seen through all of it.
+ * the sea, which is ground. Then DAYLIGHT, which shades the ground — including the shadows the
+ * clouds throw down onto it. Then the CLOUDS, whose tops are lit and belong above their own
+ * shadows. Then the haze, last, because it is the limb seen through everything else.
  *
- * NOT INHERITED FROM A WORKING SETUP — nothing ever composited these seven together, so this order
- * is reasoned from each layer's own notes rather than copied from something known good. It is the
- * first thing to suspect if the render looks wrong.
+ * CLOUDS AFTER DAYLIGHT, and that pair is load-bearing. It was the other way round first, so the
+ * daylight shell — a darkening pass — was painted over the deck, and turning cloud shadows up
+ * dimmed the clouds themselves instead of the ground beneath them. Reported as "it shouldn't darken
+ * the clouds, just what's underneath — if the top deck is lit up it should be white", which is both
+ * correct and exactly what the wrong order does. The shader was never at fault: it walks from a
+ * patch of ground toward the sun and samples the deck above it, so it is a GROUND term, and a
+ * ground term drawn on top of the sky is a contradiction.
+ *
+ * The rest of the order is still reasoned from each layer's own notes rather than inherited —
+ * nothing had ever composited these seven together — so it stays the first thing to suspect.
  */
 /** '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples; the picker gives hex. */
 const hexToRgb = (hex) => {
@@ -53,8 +61,8 @@ const STACK = [
   ['sun', SUN_LAYER_ID, (o) => createSunLayer(o)],
   ['moon', MOON_LAYER_ID, (o) => createMoonLayer(o)],
   ['ocean', OCEAN_LAYER_ID, (o) => createOceanWaterLayer(o)],
-  ['clouds', CLOUD_LAYER_ID, (o) => createCloudLayer(o)],
   ['daylight', DAYLIGHT_LAYER_ID, (o) => createDaylightLayer(o)],
+  ['clouds', CLOUD_LAYER_ID, (o) => createCloudLayer(o)],
   ['atmosphere', ATMOSPHERE_LAYER_ID, (o) => createAtmosphereLayer(o)],
 ]
 
