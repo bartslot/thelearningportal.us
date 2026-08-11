@@ -282,8 +282,29 @@
             const Cls = window.LessonScene?.ArtworkOverlay
             if (!h || !Cls) return null   // scene bundle still loading — a later scene:load retries
             artOverlay = new Cls(h, {
-                onChange: (assetId, t) =>
-                    window.Livewire.dispatch('artwork:move', { assetId, x: t.x, y: t.y, scale: t.scale }),
+                // Send the PLACE, not just the pixel. A layer on a map scene is anchored to a
+                // lng/lat (see attachArtwork), and x/y is only where the current camera happens to
+                // put it — so a move that reported x/y alone left the old coordinates untouched,
+                // and the very next render put the icon back where it started. The server states
+                // this explicitly: a caller that sends no `anchor` "leaves whatever the layer
+                // already had alone", and this caller never sent one.
+                //
+                // Same unproject the drop path uses (window.__placeIcon), so placing and moving an
+                // icon resolve its position by one route rather than two that can disagree. A
+                // projector that cannot resolve a point sends anchor:null, which leaves the
+                // existing pin alone rather than stranding the layer at nowhere.
+                onChange: (assetId, t) => {
+                    const host = voyageArtHost()
+                    const ll = (inst && host && typeof inst.textProjector === 'function')
+                        ? inst.textProjector(host).unproject(t.x, t.y)
+                        : null
+                    window.Livewire.dispatch('artwork:move', {
+                        assetId, x: t.x, y: t.y, scale: t.scale,
+                        anchor: ll ? 'map' : null,
+                        lng: ll ? ll.lng : null,
+                        lat: ll ? ll.lat : null,
+                    })
+                },
             })
             return artOverlay
         }
