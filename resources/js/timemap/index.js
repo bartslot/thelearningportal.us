@@ -83,6 +83,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // Explorer voyage routes (curated GeoJSON, baked at import time from voyages.json).
         // Rounded borders: filled in from what is on screen, empty until the control asks for it.
         'boundaries-smooth': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+        // The hover shine, as its own geometry rather than a feature-state on the raw polygons —
+        // that is what lets it follow the ROUNDED outline when rounding is on.
+        'boundaries-glow-src': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         ...voyageStyleSources(),
       },
       layers: [
@@ -218,7 +221,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   /** The hover shine: wide and blurred under the crisp border, invisible until pointed at. */
   const GLOW_COLOR = '#f59e0b';
-  const GLOW_OPACITY = ['case', ['boolean', ['feature-state', 'hover'], false], 0.55, 0];
   const GLOW_WIDTH = ['interpolate', ['linear'], ['zoom'], 0, 3, 4, 7, 8, 12];
 
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
@@ -454,7 +456,26 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   };
   let selectedId = null;
   let voyageShips = null; // set once the lazy three.js ships chunk loads
-  const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
+  /**
+   * Light the outline under the pointer.
+   *
+   * Drawn from the hovered feature's OWN geometry rather than as a feature-state on the raw
+   * polygons, so it picks up the rounding for free: the same spline the visible border uses, on the
+   * same shape. A feature-state glow could only ever trace the hard-cornered source, which is
+   * exactly what it did — rounded borders with a sharp-cornered halo behind them.
+   */
+  const showGlow = (geometry) => {
+    const src = map.getSource('boundaries-glow-src');
+    if (!src) return;
+    const rings = geometry ? outlineOf(geometry) : [];
+    src.setData({
+      type: 'FeatureCollection',
+      features: rings.filter((r) => r.length >= 4).map((ring) => ({
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: smoothSamples >= 1 ? smooth(ring, smoothSamples) : ring },
+      })),
+    });
+  };
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
   // ---- Map styles: switched live from the palette dropdown (window.__applyMapStyle). ----
@@ -605,6 +626,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       return voyageShips;
     };
 
+    /**
+     * The hover shine, which has no other way to be judged: it only exists under the pointer, so it
+     * cannot be seen on a static screen or checked from a screenshot.
+     *
+     * Plain numbers, because the glow now has its own source that is EMPTY when nothing is hovered
+     * — there is no off-state to express in the paint any more.
+     */
+    const glow = { colour: GLOW_COLOR, strength: 0.55, width: 1, blur: 6 };
+    const applyGlow = () => {
+      paint('boundaries-glow', 'line-color', glow.colour);
+      paint('boundaries-glow', 'line-opacity', glow.strength);
+      paint('boundaries-glow', 'line-width', ['*', GLOW_WIDTH, glow.width]);
+      paint('boundaries-glow', 'line-blur', glow.blur);
+    };
+
     tuneOff = [
       window.__tune.register('Territories', [
         { key: 'lineColor', label: 'Border', type: 'color', value: '#8a99b8', apply: borderColour },
@@ -626,6 +662,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (on) => { flatFill = on; paint('boundaries-fill', 'fill-color', on ? fillColour : FILL_COLOR); } },
         { key: 'fillColour', label: 'Fill colour', type: 'color', value: '#5b7fa8',
           apply: (v) => { fillColour = v; if (flatFill) paint('boundaries-fill', 'fill-color', v); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory hover', [
+        { key: 'glowColour', label: 'Glow', type: 'color', value: GLOW_COLOR,
+          apply: (v) => { glow.colour = v; applyGlow(); } },
+        { key: 'glowStrength', label: 'Strength', min: 0, max: 1, step: 0.05, value: 0.55,
+          apply: (v) => { glow.strength = v; applyGlow(); } },
+        { key: 'glowWidth', label: 'Width', min: 0.2, max: 4, step: 0.1, value: 1,
+          apply: (v) => { glow.width = v; applyGlow(); } },
+        { key: 'glowBlur', label: 'Softness', min: 0, max: 20, step: 0.5, value: 6,
+          apply: (v) => { glow.blur = v; applyGlow(); } },
       ], { tab: 'Map' }),
 
       window.__tune.register('Rounded corners', [
@@ -955,21 +1002,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
     });
     map.addLayer({
-      id: 'boundaries-glow', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
-      // The SAME era filter as the border it sits under. Without it this layer draws every polity of
-      // every year at once — which, with the opacity below also failing, put four thousand years of
-      // borders on screen at the same time.
-      filter: polityFilter(state.year),
+      id: 'boundaries-glow', type: 'line', source: 'boundaries-glow-src',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': GLOW_COLOR,
         'line-width': GLOW_WIDTH,
         'line-blur': 6,
-        // No -transition here. MapLibre transitions only NON data-driven properties, and this is a
-        // feature-state expression: pairing the two made it drop the expression and fall back to
-        // the default opacity of 1, so a layer meant to be invisible until hovered was fully drawn.
-        // A hard on/off at the pointer is the price; it is cheaper than a lie.
-        'line-opacity': GLOW_OPACITY,
+        // A plain number, not a feature-state case. The source is EMPTY when nothing is hovered, so
+        // there is nothing to make invisible — which also removes the trap that bit this layer
+        // first time round: MapLibre transitions only non data-driven properties, and pairing a
+        // transition with a feature-state expression made it drop the expression and fall back to
+        // fully opaque, drawing every border of every era at once.
+        'line-opacity': 0.55,
+        'line-opacity-transition': { duration: 140 },
       },
     });
     map.addLayer({
@@ -1100,14 +1145,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.on('mousemove', 'boundaries-fill', (e) => {
       map.getCanvas().style.cursor = 'pointer';
       if (!e.features.length) return;
-      if (hoveredId !== null) setHover(hoveredId, false);
+      if (e.features[0].id === hoveredId) return;   // same territory, nothing to redraw
       hoveredId = e.features[0].id;
-      setHover(hoveredId, true);
+      showGlow(e.features[0].geometry);
     });
     map.on('mouseleave', 'boundaries-fill', () => {
       map.getCanvas().style.cursor = '';
-      if (hoveredId !== null) setHover(hoveredId, false);
       hoveredId = null;
+      showGlow(null);
     });
 
     state.ready = true;
