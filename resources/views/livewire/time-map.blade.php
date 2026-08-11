@@ -16,6 +16,12 @@
     <div class="pointer-events-none absolute inset-0 z-5"
          style="mix-blend-mode:overlay;opacity:0.2;background-image:url('{{ asset('timemap/parchment.png') }}');background-repeat:repeat;background-size:360px 360px"></div>
 
+    {{-- Film grain, the same .lp-grain the player and the wizard canvas use. The map had the
+         parchment overlay but never this one, so the Settings panel's grain controls set variables
+         nothing on this page read — sliders that did nothing at all.
+         A SIBLING of the canvas, not a wrapper: the map is WebGL and CSS cannot reach inside it. --}}
+    <div class="lp-grain pointer-events-none absolute inset-0 z-6"></div>
+
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
 
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}

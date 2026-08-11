@@ -125,15 +125,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
      * hemisphere, which made the globe read as a map on a table rather than as a planet, and put the
      * southern hemisphere off the bottom of the frame entirely.
      *
-     * Pitch 0 because a tilt at globe distance is not a "table" look, it is the planet leaning away
-     * from you. Latitude 20 rather than 0: the content is northern-heavy and Europe should still be
-     * comfortably in frame, but 20 keeps Africa whole and the south visible, where 46.8 did not.
+     * Latitude 20 rather than 46.8: the content is northern-heavy and Europe should stay comfortably
+     * in frame, but 20 keeps Africa whole and the southern hemisphere visible, where 46.8 did not.
+     *
+     * PITCH IS NOT ZERO, and that was a wrong turn worth recording. Flat-on, the camera points at
+     * the centre of the earth and the horizon leaves the frame entirely — the globe reads as a disc
+     * with a map on it. The curvature only exists when you are looking ALONG the surface, so some
+     * tilt is what makes it a planet. 45 is enough to put a horizon in the picture without the far
+     * hemisphere folding away; the limits are on sliders because this is a taste call.
      *
      * Where it sits VERTICALLY is a separate problem with a separate fix — see centreForChrome.
      */
     center: [8.23, 20],
     zoom: 1.9,
-    pitch: 0,
+    pitch: 45,
+    // 70 up from the 60 MapLibre defaults to, and it can go further now: the far-hemisphere cut
+    // reads transform.cameraPosition, where the old lngLat reconstruction was 43° adrift at exactly
+    // this kind of angle and drew the sea as a bowl hanging under the earth. 70 keeps a horizon in
+    // shot without the globe folding to an edge; Camera → Tilt and turn raises it to 85 to try.
     maxPitch: 70,
     // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
@@ -749,6 +758,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
             el.style.bottom = `${Math.max(0, Number(v) || 0)}px`;
             map.resize();
           } },
+      ], { tab: 'Camera' }),
+
+      /**
+       * How far the camera may lean, which is how much curvature you get.
+       *
+       * Flat-on there is no horizon in the frame and the globe reads as a disc; leaning puts the
+       * limb in shot. Pitch moves it live so it can be judged, and the two limits decide how far a
+       * teacher can push it before the far hemisphere starts folding away.
+       */
+      window.__tune.register('Tilt and turn', [
+        { key: 'pitch', label: 'Pitch', min: 0, max: 85, step: 1, value: 45,
+          apply: (v) => map.easeTo({ pitch: Number(v), duration: 0 }) },
+        { key: 'bearing', label: 'Bearing', min: -180, max: 180, step: 1, value: 0,
+          apply: (v) => map.easeTo({ bearing: Number(v), duration: 0 }) },
+        { key: 'minPitch', label: 'Min pitch', type: 'number', min: 0, max: 85, step: 1, value: 0,
+          apply: (v) => map.setMinPitch(Number(v)) },
+        { key: 'maxPitch', label: 'Max pitch', type: 'number', min: 0, max: 85, step: 1, value: 70,
+          apply: (v) => map.setMaxPitch(Number(v)) },
       ], { tab: 'Camera' }),
 
       window.__tune.register('Zoom limits', [

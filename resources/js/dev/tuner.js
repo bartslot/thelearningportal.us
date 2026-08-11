@@ -385,11 +385,24 @@ if (!window.__tune) {
    * so anything other than a 1:1 tile stretches it into mottling rather than grain. 256 is one
    * texel per CSS pixel; drag it up to see exactly what was wrong before.
    */
+  /**
+   * Complain if this page has no grain to tune.
+   *
+   * These are global controls on two CSS variables, and a page without an .lp-grain element reads
+   * neither — so the sliders moved and nothing happened, silently, which is the exact failure this
+   * whole panel exists to stop. It happened on the Time-Map, where the overlay had simply never
+   * been added.
+   */
+  const grainOnPage = () => {
+    if (document.querySelector('.lp-grain, .lp-grain-poster, .lp-grain-heavy')) return true
+    console.warn('[tune] nothing on this page uses .lp-grain — these sliders have nothing to act on')
+    return false
+  }
   register('Film grain', [
     { key: 'opacity', label: 'Strength', min: 0, max: 0.3, step: 0.005, value: 0.04,
-      apply: (v) => document.documentElement.style.setProperty('--lp-grain-opacity', String(v)) },
+      apply: (v) => { grainOnPage(); document.documentElement.style.setProperty('--lp-grain-opacity', String(v)) } },
     { key: 'size', label: 'Tile size (px)', min: 64, max: 1024, step: 16, value: 256,
-      apply: (v) => document.documentElement.style.setProperty('--lp-grain-size', `${v}px`) },
+      apply: (v) => { grainOnPage(); document.documentElement.style.setProperty('--lp-grain-size', `${v}px`) } },
   ], { tab: 'UI' })
 
   register('Scratch CSS', [
