@@ -70,13 +70,28 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
 
   // Shared by the clouds and the shadows they cast. daylight.js is explicit that both layers must be
   // given the SAME field, or the shadows drift away from the clouds casting them.
-  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, animate }
+  // windAmount 0.35, not the module's 1: full advection drags the field into visible spirals once
+  // you are close enough to see individual cells, which reads as a swirl filter rather than as
+  // weather. Enough to carry the deck along real circulation, not enough to draw with it.
+  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, windAmount: 0.35, animate }
 
   const options = {
     starfield: { date, animate },
     sun: { date },
     moon: { date, sun },
-    ocean: { sun },
+    /**
+     * A ROUGH sea, not a polished one.
+     *
+     * The module's own defaults (roughness 0.55, strength 0.9) put a tight white highlight on the
+     * water — a single mirror rather than an ocean, which reads as glass or plastic. Real sun
+     * glitter spreads over several degrees, because the sea is millions of wave facets tilted
+     * every which way and only a scattered few point the sun at your eye at any moment. So the
+     * slope distribution goes wide and the peak comes down: the same light, spread out.
+     *
+     * Set here rather than in ocean-water.js because this is the house look, not a correction to
+     * its physics — another consumer may want a glassier sea, and the module still offers one.
+     */
+    ocean: { sun, roughness: 0.9, strength: 0.45, windPatch: 0.6 },
     clouds: { ...field, sun },
     daylight: { ...field, sun, date },
     atmosphere: { sun },

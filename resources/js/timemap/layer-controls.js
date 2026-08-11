@@ -28,7 +28,11 @@ export const LAYER_CONTROLS = [
   { key: 'starfield', option: 'brightness', label: 'Stars', default: 0.5, max: 1 },
   { key: 'sun', option: 'brightness', label: 'Sun', default: 1, max: 1 },
   { key: 'moon', option: 'brightness', label: 'Moon', default: 1, max: 1 },
-  { key: 'daylight', option: 'nightDarkness', label: 'Day and night', default: 0.85, max: 1 },
+  // 0.965 is daylight.js's OWN default, and this list used to say 0.85 — so every consumer driving
+  // layers through here quietly lit the night side brighter than the layer was built for, which
+  // also left the warm terminator band over-saturated against a night that was never dark enough.
+  // A control's default must not contradict the layer's.
+  { key: 'daylight', option: 'nightDarkness', label: 'Day and night', default: 0.965, max: 1 },
   { key: 'atmosphere', option: 'strength', label: 'Atmosphere', default: 1, max: 1 },
   { key: 'clouds', option: 'opacity', label: 'Clouds', default: 1, max: 1 },
   { key: 'ocean', option: 'opacity', label: 'Ocean', default: 1, max: 1 },
@@ -45,7 +49,15 @@ export const LAYER_CONTROLS = [
  */
 export const REFERENCE_CONTROL = { key: 'reference', label: 'NASA reference', default: 0, max: 1 }
 
-const STORAGE_KEY = 'tm-layers'
+/**
+ * Bumped when a DEFAULT changes meaning.
+ *
+ * The panel writes every value on first run, defaults included, so a browser that has ever opened
+ * the map has the old defaults saved — and a saved default is indistinguishable from a chosen one.
+ * Without a new key, changing `nightDarkness` from 0.85 to 0.965 would reach nobody who had already
+ * been here, which is everybody testing it.
+ */
+const STORAGE_KEY = 'tm-layers-v2'
 
 /** Every control that has a stored value, defaults filled in. Never throws — private mode blocks storage. */
 export const readStoredLayers = (storage = globalThis.localStorage) => {

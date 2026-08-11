@@ -85,7 +85,18 @@ export const deckDetailFor = (zoom, lat, altitudeM) => {
     // The floor is the globe-view value this layer was tuned at; the ceiling keeps the noise from
     // aliasing into static once the cells approach a pixel.
     frequency: Math.min(2600, Math.max(9, wanted)),
-    amount: 0.14 + (1 - fieldQuality) * 0.42,
+    /**
+     * Texture on top of the real field, NOT a replacement for it.
+     *
+     * This used to ramp to 0.56 as the field was magnified — so past about z5 more than half the
+     * deck was invented, and the wind advection curled the invention into swirls. Reported as
+     * "trippy and fake", and that is exactly what it was: procedural noise standing in for weather
+     * nobody has data for, at a scale where the eye can see it is not weather.
+     *
+     * The deck stays — voyages are sailed at this zoom and clouds belong there — but it stops
+     * pretending to a detail it does not have. Softer and honest beats busy and invented.
+     */
+    amount: 0.14 + (1 - fieldQuality) * 0.10,
     // Gone by 1.35 deck heights, full again by 2.75. Both ends are strictly ABOVE the deck, so the
     // shell has stopped being drawn before the camera can reach it — a deck at even 0.02 opacity
     // still writes and still clips, so "nearly gone" is not gone.
@@ -183,8 +194,11 @@ void main() {
   float sunAngle = dot(p, normalize(u_sun));
   float day = daylightFraction(sunAngle);
 
-  // The deck's own modelling: a lit face and a grey shaded face, like the real thing.
-  vec3 base = mix(vec3(0.62, 0.66, 0.72), vec3(1.0), 0.35 + 0.65 * max(sunAngle, 0.0));
+  // The deck's own modelling: a lit face and a shaded face, like the real thing — but cloud is
+  // WHITE, and its shaded face is white in shadow, not grey paint. The old pair (0.62,0.66,0.72
+  // lifted from 0.35) left everything away from the subsolar point reading as blue-grey smoke,
+  // which at high latitude is most of what is on screen. Bright, barely-tinted shadow instead.
+  vec3 base = mix(vec3(0.86, 0.88, 0.92), vec3(1.0), 0.55 + 0.45 * max(sunAngle, 0.0));
 
   // At the terminator the light reaching them has crossed the most air and lost its blue, so the
   // tops go orange while the ground below is already dark. It is the best thing clouds do.
