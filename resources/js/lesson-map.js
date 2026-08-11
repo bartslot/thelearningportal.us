@@ -16,7 +16,7 @@ import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
 import { mapTextProjector } from './map-text-projector.js'
-import { SATELLITE_SOURCE, DEM_SOURCE, MAX_RELIEF } from './map-imagery.js'
+import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, MAX_RELIEF, satelliteLayers } from './map-imagery.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -132,6 +132,7 @@ export function renderLessonMap (el, opts = {}) {
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         // Satellite style only — tiles are requested lazily, so the other styles pay nothing for it.
         satellite: SATELLITE_SOURCE,
+        'satellite-detail': SATELLITE_DETAIL_SOURCE,
         // Height map behind the 3D terrain (`relief`). Only fetched once terrain is switched on.
         dem: DEM_SOURCE,
         // Teacher-authored period place labels (voyages) — filled via setLabels()/the `labels` opt.
@@ -141,7 +142,7 @@ export function renderLessonMap (el, opts = {}) {
         { id: 'bg', type: 'background', paint: { 'background-color': PALETTE.water } },
         // Real satellite ground (Satellite style only — hidden otherwise, so no tiles are fetched).
         // Sits directly on the background: everything else in the atlas draws over it.
-        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        ...satelliteLayers({ visible: false }),
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time), beneath the coast/land.
         { id: 'graticule', type: 'line', source: 'graticule', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b9277', 'line-width': 0.55, 'line-opacity': 0.5 } },
         // Coast drop-shadow: thick coastline shifted DOWN, beneath the land fill — peeks out only on
@@ -577,7 +578,10 @@ export function renderLessonMap (el, opts = {}) {
     const vis = (layer, on) => { if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none') } catch (_) {} } }
     // Satellite: show the photographed ground and hide everything that draws a substitute for it.
     const photo = !!s.imagery
+    // Both halves of the satellite ground: the base, and the close-range detail that fades in
+    // over it. Toggling only the base leaves Sentinel-2 painting over a drawn atlas.
     vis('satellite', photo)
+    vis('satellite-detail', photo)
     for (const drawn of ['land', 'graticule', 'coast-shadow', 'lakes']) vis(drawn, !photo)
     // The ink shore would fence off a real coastline; keep it as a faint guide line instead.
     paint('coast-bold', 'line-opacity', photo ? 0.4 : 1)

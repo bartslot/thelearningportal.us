@@ -11,7 +11,8 @@ import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
 import nationalColors from './national-colors.json';
-import { SATELLITE_SOURCE, DEM_SOURCE } from '../map-imagery.js';
+import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers } from '../map-imagery.js';
+import { createCloudLayer, CLOUD_LAYER_ID } from './clouds.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -64,6 +65,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // Real satellite ground for the Satellite style (keyless NASA GIBS Blue Marble). Hidden in
         // every other style, so its tiles are never requested there.
         satellite: SATELLITE_SOURCE,
+        'satellite-detail': SATELLITE_DETAIL_SOURCE,
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -77,7 +79,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
         // Satellite ground — bottom of the stack, under the whole atlas. Satellite style only.
-        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        ...satelliteLayers({ visible: false }),
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time). Beneath the
         // coast/land. Recolored + toggled per style by applyMapStyle (atlas styles only).
         { id: 'graticule', type: 'line', source: 'graticule', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8a9aa0', 'line-width': 0.6, 'line-opacity': 0.5 } },
@@ -406,6 +408,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const startWaves = (coast) => { coastCfg = coast; if (!reduceMotion && !waveRAF) waveRAF = requestAnimationFrame(waveTick); };
   const stopWaves = () => { coastCfg = null; if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; } };
 
+  // The cloud deck (custom layer) — held so its density can be changed live.
+  let cloudLayer = null;
+  /** Cloud density 0..1; 0 hides the deck (and stops its repaint loop). */
+  window.__tmSetClouds = (v) => {
+    const opacity = Math.max(0, Math.min(1, Number(v)));
+    if (cloudLayer) cloudLayer.setOptions({ opacity });
+    try { localStorage.setItem('tm-clouds', String(opacity)); } catch (e) { /* private mode */ }
+  };
+
   let currentStyleName = 'soft-atlas';
   const applyMapStyle = (name) => {
     // Migrate the retired raster 'ink-art' style → the vector 'pen-ink' Tolkien style.
@@ -427,7 +438,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
     const photo = !!s.imagery;
     const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
+    // Both halves of the satellite ground: the base, and the close-range detail that fades in
+    // over it. Toggling only the base leaves Sentinel-2 painting over a drawn atlas.
     vis('satellite', photo);
+    vis('satellite-detail', photo);
     for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
     // The bold ink shore would fence off a real coastline; keep it as a faint guide line.
     if (map.getLayer('coast-bold')) map.setPaintProperty('coast-bold', 'line-opacity', photo ? 0.4 : 1);
@@ -588,175 +602,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
   };
 
-  const createCloudSphereLayer = () => {
-    const latBands = 16;
-    const lonBands = 32;
-    const altitude = 12000;
-    const positions = [];
-    const normals = [];
-    const indices = [];
-
-    for (let latIdx = 0; latIdx <= latBands; latIdx++) {
-      const theta = Math.PI * latIdx / latBands;
-      const sinTheta = Math.sin(theta);
-      const cosTheta = Math.cos(theta);
-      const lat = 90 - theta * 180 / Math.PI;
-
-      for (let lonIdx = 0; lonIdx <= lonBands; lonIdx++) {
-        const phi = 2 * Math.PI * lonIdx / lonBands;
-        const lon = phi * 180 / Math.PI - 180;
-        const x = sinTheta * Math.cos(phi);
-        const y = cosTheta;
-        const z = sinTheta * Math.sin(phi);
-        const coord = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], altitude);
-        positions.push(coord.x, coord.y, coord.z);
-        normals.push(x, y, z);
-      }
-    }
-
-    for (let latIdx = 0; latIdx < latBands; latIdx++) {
-      for (let lonIdx = 0; lonIdx < lonBands; lonIdx++) {
-        const first = latIdx * (lonBands + 1) + lonIdx;
-        const second = first + lonBands + 1;
-        indices.push(first, second, first + 1, second, second + 1, first + 1);
-      }
-    }
-
-    return {
-      id: 'tm-clouds',
-      type: 'custom',
-      renderingMode: '3d',
-      onAdd(map, gl) {
-        const vertexShader = `#version 100
-          attribute vec3 a_position;
-          attribute vec3 a_normal;
-          uniform mat4 u_matrix;
-          varying vec3 v_normal;
-          varying vec3 v_world;
-          void main() {
-            v_normal = normalize(a_normal);
-            v_world = a_position;
-            gl_Position = u_matrix * vec4(a_position, 1.0);
-          }
-        `;
-        const fragmentShader = `#version 100
-          precision highp float;
-          varying vec3 v_normal;
-          varying vec3 v_world;
-          uniform float u_time;
-
-          float hash(vec3 p) {
-            return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
-          }
-          float noise(vec3 p) {
-            vec3 i = floor(p);
-            vec3 f = fract(p);
-            f = f * f * (3.0 - 2.0 * f);
-            float n000 = hash(i + vec3(0.0, 0.0, 0.0));
-            float n100 = hash(i + vec3(1.0, 0.0, 0.0));
-            float n010 = hash(i + vec3(0.0, 1.0, 0.0));
-            float n110 = hash(i + vec3(1.0, 1.0, 0.0));
-            float n001 = hash(i + vec3(0.0, 0.0, 1.0));
-            float n101 = hash(i + vec3(1.0, 0.0, 1.0));
-            float n011 = hash(i + vec3(0.0, 1.0, 1.0));
-            float n111 = hash(i + vec3(1.0, 1.0, 1.0));
-            float nx00 = mix(n000, n100, f.x);
-            float nx10 = mix(n010, n110, f.x);
-            float nx01 = mix(n001, n101, f.x);
-            float nx11 = mix(n011, n111, f.x);
-            float nxy0 = mix(nx00, nx10, f.y);
-            float nxy1 = mix(nx01, nx11, f.y);
-            return mix(nxy0, nxy1, f.z);
-          }
-          float fbm(vec3 p) {
-            float value = 0.0;
-            float amplitude = 0.5;
-            for (int i = 0; i < 5; i++) {
-              value += amplitude * noise(p);
-              p *= 2.0;
-              amplitude *= 0.5;
-            }
-            return value;
-          }
-          void main() {
-            vec3 normal = normalize(v_normal);
-            float cloudTex = fbm(v_world * 0.00014 + vec3(u_time * 0.01));
-            float rim = pow(max(dot(normal, normalize(vec3(0.3, 0.6, 0.8))), 0.0), 2.0);
-            float coverage = smoothstep(0.35, 0.62, cloudTex + 0.2 * rim);
-            float alpha = coverage * 0.45;
-            vec3 base = mix(vec3(0.75, 0.78, 0.82), vec3(1.0), coverage);
-            gl_FragColor = vec4(base, alpha);
-          }
-        `;
-
-        const compileShader = (type, source) => {
-          const shader = gl.createShader(type);
-          gl.shaderSource(shader, source);
-          gl.compileShader(shader);
-          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            throw new Error(gl.getShaderInfoLog(shader));
-          }
-          return shader;
-        };
-        const program = gl.createProgram();
-        const vShader = compileShader(gl.VERTEX_SHADER, vertexShader);
-        const fShader = compileShader(gl.FRAGMENT_SHADER, fragmentShader);
-        gl.attachShader(program, vShader);
-        gl.attachShader(program, fShader);
-        gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error(gl.getProgramInfoLog(program));
-        }
-
-        this.program = program;
-        this.positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-        this.normalBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-
-        this.indexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
-
-        this.aPosition = gl.getAttribLocation(program, 'a_position');
-        this.aNormal = gl.getAttribLocation(program, 'a_normal');
-        this.uMatrix = gl.getUniformLocation(program, 'u_matrix');
-        this.uTime = gl.getUniformLocation(program, 'u_time');
-        this.indexCount = indices.length;
-      },
-      render(gl, matrix) {
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(gl.LEQUAL);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.depthMask(false);
-
-        gl.useProgram(this.program);
-        gl.uniformMatrix4fv(this.uMatrix, false, matrix);
-        gl.uniform1f(this.uTime, performance.now() * 0.001);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.enableVertexAttribArray(this.aPosition);
-        gl.vertexAttribPointer(this.aPosition, 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
-        gl.enableVertexAttribArray(this.aNormal);
-        gl.vertexAttribPointer(this.aNormal, 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
-
-        gl.depthMask(true);
-        gl.disable(gl.BLEND);
-
-        map.triggerRepaint();
-        return true;
-      },
-    };
-  };
 
   window.__timemapSpeak = (id, text) => {
     window.__timemapStopSpeak();
@@ -864,17 +709,34 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
-    map.addLayer(createCloudSphereLayer(), 'boundaries-label');
+    // Weather over the globe. Reduced-motion users get the deck without the drift — and without
+    // the per-frame repaint that drives it.
+    let cloudOpacity = 0.5;
+    try {
+      const saved = parseFloat(localStorage.getItem('tm-clouds'));
+      if (Number.isFinite(saved)) cloudOpacity = Math.min(1, Math.max(0, saved));
+    } catch (e) { /* private mode */ }
+    // The real cloud field, not the procedural fallback. These assets have been sitting in
+    // public/img/map/ unused: without a fieldUrl the layer silently runs on noise, which is banded
+    // by latitude to imitate weather but has no actual weather in it. With them you get the real
+    // ITCZ, real frontal bands and real cyclones, carried along a real GFS wind field.
+    cloudLayer = createCloudLayer({
+      opacity: cloudOpacity,
+      animate: !reduceMotion,
+      fieldUrl: '/img/map/clouds-field.webp',
+      windUrl: '/img/map/wind-field.png',
+    });
+    map.addLayer(cloudLayer, 'boundaries-label');
     // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
     // initial style; this lifts them above the boundary layers but keeps them BELOW the
     // tm-clouds 3D layer, whose globe-wide depth writes would otherwise cull them (see voyages.js).
-    initVoyages(map, { year: state.year, beforeId: 'tm-clouds' });
+    initVoyages(map, { year: state.year, beforeId: CLOUD_LAYER_ID });
     // The sailing tall ship (three.js custom layer) rides in its own lazy chunk — same
     // below-the-clouds placement, same era window as the routes.
     import('./voyage-ships.js')
       .then(({ addVoyageShips }) => {
-        voyageShips = addVoyageShips(map, { beforeId: 'tm-clouds' });
+        voyageShips = addVoyageShips(map, { beforeId: CLOUD_LAYER_ID });
         voyageShips.setYear(state.year);
         window.__tmShips = voyageShips; // dev tooling + Playwright
       })

@@ -1,0 +1,50 @@
+{
+  "//": "Texture budgets per surface. TWO ceilings, because they fail differently.",
+  "//transfer": "Bytes on the wire. Binds on school wifi. What a file size tells you.",
+  "//vram": "Bytes resident once decoded. Binds on a school Chromebook, and is the one that actually breaks things: an <img> upload is RGBA8 whatever the file said, so a 4 MB compressed asset can be 64 MB resident. A budget stated only in transfer bytes cannot see that.",
+  "//maxDimension": "Hard ceiling on any single texture edge. Above a device's MAX_TEXTURE_SIZE a texture does not degrade, it fails to bind — a black sky, not a softer one. Commonly 4096 on low-end Chromebooks, so 8192 is already optimistic and needs the runtime check plus a real fallback tier.",
+
+  "maxDimension": 8192,
+  "mipmapOverhead": 1.3333333,
+
+  "surfaces": {
+    "timemap": {
+      "description": "A teacher's research tool. The fleet's primary and only default surface.",
+      "transferBytes": 8388608,
+      "vramBytes": 100663296,
+      "maxSingleAssetTransferBytes": 4194304,
+      "assets": [
+        "public/img/map/clouds-field.webp",
+        "public/img/map/wind-field.png",
+        "public/img/map/milkyway.jpg",
+        "public/img/map/moon.jpg"
+      ]
+    },
+    "lesson-map": {
+      "description": "Zero by default. Opt-in per lesson via dynamic import, so a lesson that does not ask pays nothing. This surface had ~1 MB of glyph chunks and three tilesets removed for cold-load time; it does not get spent back.",
+      "transferBytes": 1572864,
+      "vramBytes": 33554432,
+      "maxSingleAssetTransferBytes": 1048576,
+      "assets": []
+    },
+    "landing-hero": {
+      "description": "First paint. Loaded after paint, never blocking.",
+      "transferBytes": 1048576,
+      "vramBytes": 16777216,
+      "maxSingleAssetTransferBytes": 1048576,
+      "assets": []
+    }
+  },
+
+  "optional": {
+    "//": "Reachable but not loaded by default, so outside the surface totals. Listed so the dimension rule still applies and so nothing is silently untracked.",
+    "assets": ["public/img/map/city-lights.png"]
+  },
+
+  "scan": {
+    "//": "A budget only sees what it is told about. Without this, a texture nobody declares passes silently — the same shape as every other bug this programme has produced: correct for the reader who added it, invisible to everyone downstream. So the directories are scanned and anything undeclared FAILS. Declaring an asset is then a deliberate act with a surface attached, rather than the default being untracked.",
+    "//later": "The honest version derives the asset list from the code that loads it. That waits until the tile pyramid stops the asset set moving; this is the cheap 80% that needs only a directory listing.",
+    "directories": ["public/img/map"],
+    "extensions": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".ktx2", ".basis"]
+  }
+}

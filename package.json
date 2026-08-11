@@ -3,10 +3,11 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && node scripts/check-asset-budget.mjs",
         "dev": "vite",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "check:assets": "node scripts/check-asset-budget.mjs"
     },
     "devDependencies": {
         "@gltf-transform/core": "^4.0.0",
