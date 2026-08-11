@@ -1,0 +1,18 @@
+{
+  "name": "whiteboard",
+  "private": true,
+  "type": "module",
+  "description": "A shared whiteboard, kept in its own package so the app's dependency tree stays clean.",
+  "scripts": {
+    "build": "esbuild app.jsx --bundle --format=esm --jsx=automatic --outfile=vendor/app.js --minify && cp node_modules/tldraw/tldraw.css vendor/tldraw.css",
+    "start": "node server.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "dependencies": {
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tldraw": "^5.3.0"
+  }
+}
