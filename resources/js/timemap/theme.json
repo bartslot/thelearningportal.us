@@ -1,5 +1,5 @@
 {
-  "_note": "Time-Map atlas styling. Edit these values then `npm run build`. Colours are CSS hex strings. `palette` = the muted territory-fill hues, assigned per polity by a stable hash of its osm_id (any length is fine). `selected`/`hover` = fill colours when a region is clicked / under the cursor. `fillOpacity` = territory fill opacity in each state. `line` = the territory boundary outline. `land`/`water` = the base map.",
+  "_note": "Time-Map atlas styling. Edit these values then `npm run build`. Colours are CSS hex strings. `palette` = the muted territory-fill hues, assigned per polity by a stable hash of its osm_id (any length is fine). `selected`/`hover` = fill colours when a region is clicked / under the cursor. `fillOpacity` = territory fill opacity in each state. `line` = the territory boundary outline. `text` = territory labels, ink and halo. `land`/`water` = the base map. These are the values the layers are BUILT with; applyMapStyle then recolours them per style, so anything index.js reads off `theme` must exist here or the load handler throws and abandons every layer after it.",
   "land": "#f3ead6",
   "water": "#d8e9f3",
   "palette": [
@@ -9,5 +9,6 @@
   "selected": "#f5c518",
   "hover": "#ecd9a0",
   "fillOpacity": { "normal": 0.7, "hover": 0.85, "selected": 0.95 },
-  "line": { "color": "#000", "width": 0.4, "opacity": 0.7 }
+  "line": { "color": "#000", "width": 0.4, "opacity": 0.7 },
+  "text": { "color": "#3b3326", "halo": "#f3ead6" }
 }

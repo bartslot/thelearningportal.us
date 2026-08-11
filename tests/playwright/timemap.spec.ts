@@ -152,3 +152,40 @@ test('the colour-strength slider restores the saved preference without a page er
   // is a real script error on the page.
   expect(errors.filter((message) => !/WebGL|uniformMatrix4fv/i.test(message))).toEqual([]);
 });
+
+/**
+ * The map builds its layers in one long `map.on('load')` block. A property read that throws does
+ * not fail one layer — it abandons every line after it, and MapLibre reports nothing but a
+ * TypeError from inside its own bundle. The map still draws, in flat base colours, which is what
+ * makes this class of break so easy to miss: it reads as a style choice, not a crash.
+ *
+ * That is exactly what a missing `theme.text` did. It took out the labels, the boundary lines, the
+ * seven custom globe layers (sea, terminator, cloud deck, haze, stars, sun, moon), the tall ship,
+ * and every group in the settings panel — while the globe still rendered as a pale flat disc.
+ *
+ * So this asserts the END of the handler is reached, not that some layer exists. Anything that
+ * throws anywhere in that block fails this test, whatever the cause.
+ */
+test('the load handler runs to the end — globe layers, ship and settings groups all arrive', async ({ page }) => {
+  const GLOBE_LAYERS = ['tm-starfield', 'tm-sun', 'tm-moon', 'tm-ocean', 'tm-daylight', 'tm-clouds', 'tm-atmosphere'];
+
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  await page.waitForFunction(
+    (ids) => ids.every((id: string) => !!(window as any).__tmMap?.getLayer(id)),
+    GLOBE_LAYERS,
+    { timeout: 20_000 },
+  );
+
+  // Layers added AFTER the throw site, so they prove the block got past it rather than merely
+  // starting. boundaries-fill/smooth/glow were all present while it was broken.
+  for (const id of ['boundaries-label', 'boundaries-line']) {
+    expect(await page.evaluate((l) => !!(window as any).__tmMap.getLayer(l), id), `layer ${id}`).toBe(true);
+  }
+
+  // The settings panel is registered last of all, so its map groups are the final word on whether
+  // the handler completed. Only the two global groups survive a throw.
+  const groups: string[] = await page.evaluate(() => Object.keys((window as any).__tune?.values?.() ?? {}));
+  expect(groups, `registered groups: ${groups.join(', ')}`).toEqual(
+    expect.arrayContaining(['Ocean', 'Clouds', 'Territories']),
+  );
+});
