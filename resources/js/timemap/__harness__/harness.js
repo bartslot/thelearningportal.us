@@ -24,6 +24,7 @@
 import maplibregl from 'maplibre-gl'
 import { createDaylightLayer } from '../daylight.js'
 import { createCloudLayer } from '../clouds.js'
+import { createAtmosphereLayer } from '../atmosphere.js'
 import { sunDirection } from '../sun.js'
 import { deepestEclipse } from '../eclipse.js'
 import { equirectMetresPerPixel, encodeNormals } from '../terrain-normals.js'
@@ -95,6 +96,12 @@ const clouds = createCloudLayer({
   windUrl: WIND_URL,
   animate: false,
 })
+
+/**
+ * The haze band, for the night-limb measurement. Its own sun, set per capture, so the limb under
+ * test can be put where the reading is taken rather than the camera flown to it.
+ */
+const atmosphere = createAtmosphereLayer({ sun: sunFor(0, 0), strength: 1 })
 
 // ── The probe ────────────────────────────────────────────────────────────────────────────────
 // Added last so it runs after everything it is measuring. It reads the whole canvas once per
@@ -824,6 +831,7 @@ map.on('load', async () => {
   started = true
   map.addLayer(daylight)
   map.addLayer(clouds)
+  map.addLayer(atmosphere)
   map.addLayer(probe)
   try {
     await ready()
@@ -841,7 +849,140 @@ map.on('load', async () => {
   }
 })
 
+/**
+ * How much light the haze band adds just outside the planet's edge, on the lit limb and on the
+ * unlit one, in a single frame.
+ *
+ * WHAT MAKES THIS AN ABSOLUTE READING rather than another relative one. The quantity is excess over
+ * the KNOWN background colour the harness paints, so "the night limb is black" is a statement about
+ * a number near zero and not about one side being darker than the other. A uniform brightening of
+ * the whole band — exactly the failure being fixed — moves this reading and would not move a
+ * day-versus-night ratio.
+ *
+ * The camera sits 90° from the subsolar point, so the two ends of the horizontal diameter are the
+ * subsolar limb and the antisolar limb: the brightest air on the planet and air in full shadow, in
+ * the same frame, at the same grazing angle, under the same everything else.
+ */
+const limbProfile = async () => {
+  const SUBSOLAR = 0
+  atmosphere.setOptions({ sun: sunFor(SUBSOLAR, 0), strength: 1 })
+  // ONLY the haze band draws. The night shell and the cloud deck reach the limb too, and a reading
+  // that includes them measures three layers while claiming to measure one — the first run of this
+  // rig scored 13.0 on the unlit limb with the band already correct, because it was reading the
+  // dark side of the planet a few pixels further in.
+  daylight.setOptions({ sun: sunFor(SUBSOLAR, 0), nightDarkness: 0, reliefPower: 0 })
+  clouds.setOptions({ sun: sunFor(SUBSOLAR, 0), opacity: 0 })
+  map.jumpTo({ center: [SUBSOLAR + 90, 0], zoom: 1.4, bearing: 0, pitch: 0 })
+  await capture()
+  const frame = await capture()
+
+  const { pixels, width, height } = frame
+  const row = Math.round(height / 2)
+  const lumaAt = (buffer, x) => luma(buffer, (row * width + x) * 4)
+
+  /**
+   * WHAT IS BEING MEASURED, precisely: the light the band adds to EMPTY SPACE beside the planet.
+   *
+   * Under a globe projection the style's background paints the sphere and nothing else, so the void
+   * around the disc is black and the band is the only thing that can put light there. Reading the
+   * difference between a frame with the band and one without it, restricted to pixels that are void
+   * in the frame without it, isolates the band completely — no planet surface, no night shell, no
+   * dependence on knowing where the silhouette falls.
+   *
+   * The first version of this rig scanned inward from the frame edge and reported 138 on both
+   * limbs. It had walked past the band and was reading the grey planet.
+   */
+  const withBand = pixels
+  atmosphere.setOptions({ strength: 0 })
+  await capture()
+  const withoutBand = (await capture()).pixels
+
+  /**
+   * THE READING HAS TO GO ALL THE WAY ROUND THE LIMB, and the first version of it did not.
+   *
+   * Scanning the equatorial row samples exactly two points — the subsolar limb and the antisolar
+   * one — and those are the two places the broken build and the fixed one AGREE. Straight behind
+   * the planet the old angular gate returned 0 too, so the row scored an identical 83.4 / 0.00 on
+   * both and looked like proof. The halo lives at the top and bottom of the disc, where the limb
+   * runs over the poles: air there sits 90° from the sun, which the old gate scored at 0.62.
+   *
+   * So the band is sampled by ANGLE around the disc, and what is reported is the profile. Bucket 0
+   * points at the sun; bucket 180 points directly away from it.
+   */
+  const lumaXY = (buffer, x, y) => luma(buffer, (y * width + x) * 4)
+  const isVoid = (x, y) => lumaXY(withoutBand, x, y) <= 1.5
+
+  // The disc, as the centroid and extent of everything that is not void.
+  let sumX = 0; let sumY = 0; let count = 0
+  let minX = width; let maxX = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (isVoid(x, y)) continue
+      sumX += x; sumY += y; count++
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+    }
+  }
+  const centre = { x: sumX / count, y: sumY / count }
+  const radius = (maxX - minX) / 2
+
+  // The sun is at bucket 0. The camera sits 90° east of the subsolar point, so the sun is off the
+  // LEFT edge of the frame — measured above: the lit limb peaked on the left at x=266.
+  const BUCKETS = 36
+  const profile = new Array(BUCKETS).fill(0)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isVoid(x, y)) continue
+      const dx = x - centre.x
+      const dy = y - centre.y
+      const r = Math.hypot(dx, dy)
+      if (r < radius || r > radius * 1.12) continue     // the shell's annulus only
+      const added = lumaXY(withBand, x, y) - lumaXY(withoutBand, x, y)
+      if (added <= 0) continue
+      // atan2 from the -x axis (toward the sun), so bucket 0 is the subsolar limb.
+      const angle = (Math.atan2(dy, -dx) * 180 / Math.PI + 360) % 360
+      const bucket = Math.min(BUCKETS - 1, Math.floor(angle / (360 / BUCKETS)))
+      if (added > profile[bucket]) profile[bucket] = added
+    }
+  }
+  const round = (v) => Math.round(v * 100) / 100
+  const byAngle = profile.map(round)
+
+  // Buckets whose centre is more than 90° from the sun: air the earth stands in front of.
+  const nightBuckets = byAngle.filter((_, i) => {
+    const centreAngle = (i + 0.5) * (360 / BUCKETS)
+    return centreAngle > 100 && centreAngle < 260
+  })
+
+  atmosphere.setOptions({ strength: 1 })
+  return {
+    litLimb: round(Math.max(...byAngle)),
+    unlitLimb: round(Math.max(...nightBuckets)),
+    ratio: Math.max(...byAngle) > 0
+      ? Math.round((Math.max(...nightBuckets) / Math.max(...byAngle)) * 1000) / 1000
+      : null,
+    byAngle,
+    disc: { centre: { x: Math.round(centre.x), y: Math.round(centre.y) }, radius: Math.round(radius) },
+    canvas: { width, height },
+  }
+}
+
+/** A coarse slice through the middle of the frame, so the scene's shape can be read rather than assumed. */
+const rowSlice = async () => {
+  const frame = await capture()
+  const { pixels, width, height } = frame
+  const row = Math.round(height / 2)
+  const out = []
+  for (let x = 0; x < width; x += 30) {
+    const i = (row * width + x) * 4
+    out.push([x, pixels[i], pixels[i + 1], pixels[i + 2]])
+  }
+  return { width, height, row, samples: out }
+}
+
 // Driven from the browser tools as well as by eye.
+window.__rowSlice = rowSlice
+window.__limbProfile = limbProfile
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds

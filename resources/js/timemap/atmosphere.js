@@ -62,6 +62,46 @@ const int SAMPLES = 6;
 
 ${SPHERE_SPAN_GLSL}
 
+/**
+ * Is this parcel of air in sunlight, or is the earth in the way?
+ *
+ * THE WHOLE POINT. Air only scatters light that reaches it, so the band must be gated on whether
+ * the air itself is lit, NOT on which way it faces. This used to be a smoothstep from -0.35 to
+ * 0.25 over dot(normalize(pos), u_sun), an ANGULAR test, and that is what ringed the planet: at
+ * the terminator it returns 0.62, and it keeps returning something twenty degrees past it, so the
+ * unlit limb was handed a fifth of full brightness and drew a rim all the way round. In the NASA
+ * photograph the night limb is black — not dim, absent — and the reason is geometric, not
+ * angular. Air behind the earth is in its shadow.
+ *
+ * NO BACKTICKS IN THIS COMMENT. It lives inside the fragment shader's template literal, so one
+ * would end the string and the file would fail to parse a long way from here.
+ *
+ * So the test is the shadow itself: is the earth between this air and the sun.
+ *
+ * THE TEST IS TAKEN AT THE GROUND BENEATH THE SAMPLE, NOT AT THE SAMPLE. That looks like a
+ * needless approximation and it is the entire difference between this working and not. The drawn
+ * shell is EXAGGERATED — 200 km, about 3% of the radius, because the real 100 km is a couple of
+ * pixels at globe zoom. Air at a made-up altitude clears the shadow cylinder at a made-up angle,
+ * so testing the sample's own position lets the band survive a long way onto the dark side. That
+ * was measured, not feared: the first version of this function tested the sample directly and made
+ * the 90-120° sector BRIGHTER than the angular gate it replaced, 50.6 to 83.4. It fixed nothing and
+ * would have shipped looking like a fix.
+ *
+ * Projecting to the unit sphere first asks the question the exaggeration cannot distort: is the
+ * ground under this column in daylight. That is the terminator in the photograph.
+ *
+ * The window is deliberately tight — a sliver of twilight rather than an arc, dying within about
+ * eight degrees of the terminator. A wider one is more physical and is exactly the halo being
+ * removed; Bart's reference is a night side with no glow on the dark limb AT ALL.
+ */
+float sunlitFraction(vec3 pos) {
+  vec3 ground = normalize(pos);                            // the surface below this parcel of air
+  float alongSun = dot(ground, u_sun);
+  if (alongSun > 0.0) return 1.0;                          // daylit hemisphere
+  float axisDistance = length(ground - u_sun * alongSun);  // 1.0 exactly at the terminator
+  return smoothstep(0.995, 1.0, axisDistance);
+}
+
 void main() {
   vec3 shell = normalize(v_sphere) * u_top;
   vec3 toCamera = u_camera - shell;
@@ -92,7 +132,7 @@ void main() {
     float height = (length(pos) - 1.0) / (u_top - 1.0);       // 0 at the ground, 1 at the top
     float d = exp(-max(height, 0.0) * 4.5) * stepLen;
     density += d;
-    lit += d * smoothstep(-0.35, 0.25, dot(normalize(pos), u_sun));
+    lit += d * sunlitFraction(pos);
   }
   if (density <= 0.0) discard;
   lit /= density;
