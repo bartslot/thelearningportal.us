@@ -4,6 +4,7 @@ import { EASE, EASING } from './easing.js';
 import { voyageRoutes, smooth, SAMPLES_PER_SEGMENT, arcTable, cutAtPoint } from './timemap/voyages.js';
 import { midpointAlong, nearestPointOnPolyline, splitByWaypoints } from './timemap/route-edit.js';
 import { addVoyageShips } from './timemap/voyage-ships.js';
+import { sweepBorder } from './map/border-sweep.js';
 import { addVoyageFog } from './timemap/voyage-fog.js';
 import { buffer as turfBuffer, lineString as turfLine, simplify as turfSimplify, destination as turfDestination, booleanPointInPolygon as turfPointInPolygon, polygon as turfPolygon, difference as turfDifference, featureCollection as turfFC } from '@turf/turf';
 import { mapTextProjector } from './map-text-projector.js';
@@ -996,42 +997,20 @@ export function renderVoyageTour(el, { voyage, def = null, view = 'flat', routeL
     // and can never overlay the pins / hotspot / place names. An amber front sweeps out from the
     // landing point along each arc, leaving the dark coast behind; ease-IN (slow build → speeds up),
     // and the tinier the island the longer the amber lingers.
-    const AMBER = '#f59e0b';
-    const CLEAR = 'rgba(0,0,0,0)';
+    // The sweep itself lives in map/border-sweep.js — the Time-Map runs the same light around a
+    // territory's border when you click it, and one gesture should have one implementation. What
+    // differs is only what is left behind: here the drawn coastline, there nothing.
     const DARK = (() => { try { return map.getPaintProperty('coast-bold', 'line-color'); } catch (_) { return '#211809'; } })() || '#211809';
     const SRC = 'voyage-coast-draw';
-    try { if (map.getLayer(SRC)) map.removeLayer(SRC); if (map.getSource(SRC)) map.removeSource(SRC); } catch (_) { /* noop */ }
-    const features = arcsPts.map((pts) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts.map((c) => [c[0], c[1]]) } }));
-    try {
-      map.addSource(SRC, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features } });
-      const before = ['voyage-trail', 'voyage-ships', 'lesson-labels'].find((l) => map.getLayer(l));
-      map.addLayer({
-        id: SRC, type: 'line', source: SRC,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-width': 2.6, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, CLEAR, 1, CLEAR] },
-      }, before);
-    } catch (_) { coastDrawOn = null; return; }
-
-    // Amber comet at the draw-front `p` (0..1 of each arc's length): dark behind, amber head, clear ahead.
-    const grad = (p) => {
-      const pc = Math.max(0.002, Math.min(0.998, p));
-      const back = Math.max(0.001, pc - 0.14);
-      return ['interpolate', ['linear'], ['line-progress'], 0, DARK, back, DARK, pc, AMBER, Math.min(0.999, pc + 0.003), CLEAR, 1, CLEAR];
+    coastDrawOn = {
+      srcId: SRC,
+      ...sweepBorder(map, {
+        id: SRC,
+        lines: arcsPts,
+        trail: DARK,
+        beforeId: ['voyage-trail', 'voyage-ships', 'lesson-labels'].find((l) => map.getLayer(l)),
+      }),
     };
-    const solid = ['interpolate', ['linear'], ['line-progress'], 0, DARK, 1, DARK];
-    // Duration inverse to arc size: a tiny island's amber front lingers; a big coast draws briskly.
-    let maxDeg = 0;
-    for (const pts of arcsPts) { let a = 0; for (let k = 1; k < pts.length; k++) a += segLen(pts[k - 1], pts[k]); if (a > maxDeg) maxDeg = a; }
-    const dur = Math.round(Math.max(1400, Math.min(4200, 4200 - Math.min(15, maxDeg) * 190)));
-    let raf = null; const t0 = performance.now();
-    const tick = (now) => {
-      const t = Math.min(1, (now - t0) / dur);
-      const p = EASING.easeInCubic(t);
-      try { map.setPaintProperty(SRC, 'line-gradient', t < 1 ? grad(p) : solid); } catch (_) {}
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    coastDrawOn = { srcId: SRC, cancel: () => { if (raf) cancelAnimationFrame(raf); } };
   };
 
   const showArrival = (token) => {

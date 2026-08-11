@@ -17,6 +17,7 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 // Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
 // layers ended up merged, tested and never loaded by any page.
 import { addGlobeLayers } from '../map-globe-layers.js';
+import { sweepBorder, outlineOf } from '../map/border-sweep.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -136,10 +137,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   // Atlas styling comes from theme.json — edit colours/lines there, no JS changes needed.
   const ATLAS_PALETTE = theme.palette;
+  // HOVER DOES NOT TOUCH THE FILL. Lighting up a whole territory's interior on hover floods the
+  // imagery underneath and turns a map into a chart of coloured blocks — the thing you are moving
+  // the mouse across stops being the earth. The border glows instead (see boundaries-glow below),
+  // which says the same thing about the same shape without covering anything up. Selection still
+  // takes the fill: that is a state you chose, not one the pointer wandered into.
   const FILL_COLOR = [
     'case',
     ['boolean', ['feature-state', 'selected'], false], theme.selected,
-    ['boolean', ['feature-state', 'hover'], false], theme.hover,
     // `match` returns colors directly; hash the numeric part of the Wikidata QID into the palette.
     ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], ATLAS_PALETTE.length],
       ...ATLAS_PALETTE.flatMap((c, i) => [i, c]), ATLAS_PALETTE[0]],
@@ -147,9 +152,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const FILL_OPACITY = [
     'case',
     ['boolean', ['feature-state', 'selected'], false], theme.fillOpacity.selected,
-    ['boolean', ['feature-state', 'hover'], false], theme.fillOpacity.hover,
     theme.fillOpacity.normal,
   ];
+
+  /** The hover shine: wide and blurred under the crisp border, invisible until pointed at. */
+  const GLOW_COLOR = '#f59e0b';
+  const GLOW_OPACITY = ['case', ['boolean', ['feature-state', 'hover'], false], 0.55, 0];
+  const GLOW_WIDTH = ['interpolate', ['linear'], ['zoom'], 0, 3, 4, 7, 8, 12];
 
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
   // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
@@ -322,6 +331,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const scheduleSettle = () => { clearTimeout(settleTimer); settleTimer = setTimeout(onSettle, 250); };
 
   let hoveredId = null;
+  /** The amber light currently running around a clicked territory, so a new click replaces it. */
+  let borderSweep = null;
   let selectedId = null;
   let voyageShips = null; // set once the lazy three.js ships chunk loads
   const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
@@ -730,6 +741,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
     });
     map.addLayer({
+      id: 'boundaries-glow', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': GLOW_COLOR,
+        'line-width': GLOW_WIDTH,
+        'line-blur': 6,
+        'line-opacity': GLOW_OPACITY,
+        // Fades rather than snapping — a hard on/off at the pointer reads as a bug, not a highlight.
+        'line-opacity-transition': { duration: 160 },
+      },
+    });
+    map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
     });
@@ -915,6 +938,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const qid = tileQid ? QID_FOR_NAME.get(`${tileQid}|${name}`) || tileQid : null;
     state.selectedRegion = qid;
     sync();
+
+    // Run the light around the border you just clicked — the voyage's landfall draw-on, borrowed.
+    // The OUTLINE only: a territory announcing itself by tracing its own edge says where it is
+    // without hiding what is inside it, which is the whole reason the fill no longer reacts.
+    borderSweep?.cancel();
+    borderSweep = hit
+      ? sweepBorder(map, {
+        id: 'polity-sweep',
+        lines: outlineOf(hit.geometry),
+        // No trail: this is a gesture, not a layer. It clears itself up when it finishes.
+        durationMs: 2000,
+        beforeId: map.getLayer('boundaries-label') ? 'boundaries-label' : undefined,
+      })
+      : null;
+
     // QID drives enrichment (Cliopatria carries it natively); pass it as both id and qid.
     window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: qid, name, qid } }));
   });
