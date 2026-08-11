@@ -115,9 +115,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ...voyageStyleLayers(['Cinzel']),
       ],
     },
-    center: [8.23, 46.8], // Switzerland
-    zoom: 4,
-    pitch: 28,   // gentle tilt for the "map on a table" look (symbols stay billboarded upright)
+    /**
+     * A CENTRED EARTH, seen straight on.
+     *
+     * It used to open on Switzerland at zoom 4 with 28° of pitch — a tilted close-up of the northern
+     * hemisphere, which made the globe read as a map on a table rather than as a planet, and put the
+     * southern hemisphere off the bottom of the frame entirely.
+     *
+     * Pitch 0 because a tilt at globe distance is not a "table" look, it is the planet leaning away
+     * from you. Latitude 20 rather than 0: the content is northern-heavy and Europe should still be
+     * comfortably in frame, but 20 keeps Africa whole and the south visible, where 46.8 did not.
+     *
+     * Where it sits VERTICALLY is a separate problem with a separate fix — see centreForChrome.
+     */
+    center: [8.23, 20],
+    zoom: 1.9,
+    pitch: 0,
     maxPitch: 70,
     // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
@@ -138,6 +151,50 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   // map can initialise against a transient height and render short until the next resize.
   const resizeObserver = new ResizeObserver(() => map.resize());
   resizeObserver.observe(el);
+
+  /**
+   * Put the globe in the middle of the part of the map you can SEE.
+   *
+   * The time deck is drawn over the bottom of the map and MapLibre centres on the CONTAINER, so the
+   * earth sat about 77px low with a band of empty sky above it and the southern hemisphere tucked
+   * behind the deck. Measured, not estimated: projected centre y=457 against a visible middle of 381.
+   *
+   * IT SHRINKS THE CONTAINER RATHER THAN PADDING THE TRANSFORM. Padding was the obvious answer and
+   * it broke the planet: the custom layers cut the far hemisphere using transform.cameraPosition,
+   * which padding does not move, so the sea's horizon and the drawn globe disagreed and the ocean
+   * rendered as a bowl hanging below the earth. Resizing the box changes nothing the shaders read.
+   *
+   * Measured from the deck rather than hard-coded — it is `w-176 max-w-[92vw]`, so its height
+   * changes with the viewport as its controls wrap. Overridden by Camera → Framing when tuning.
+   */
+  let chromeInsetLocked = false;
+  const centreForChrome = () => {
+    if (chromeInsetLocked) return;
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) return;
+    const box = el.getBoundingClientRect();
+    const bar = deck.getBoundingClientRect();
+    // Clamped to a third: a deck taller than that means a viewport so short there would be nowhere
+    // left to draw the map at all.
+    const covered = Math.max(0, Math.min(box.bottom - bar.top, box.height / 3));
+    if (Math.abs(parseFloat(el.style.bottom || '0') - covered) < 1) return;
+    el.style.bottom = `${covered}px`;
+    map.resize();
+  };
+
+  // The deck mounts on Alpine's $nextTick — after this module runs AND after the map's first idle,
+  // both of which were tried and both of which measured an element that was not there yet. That
+  // fails silently as "no inset", so wait for it, then watch it.
+  const watchDeck = (attempt = 0) => {
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) {
+      if (attempt < 30) setTimeout(() => watchDeck(attempt + 1), 100);
+      return;
+    }
+    centreForChrome();
+    new ResizeObserver(centreForChrome).observe(deck);
+  };
+  watchDeck();
 
   // Atlas styling comes from theme.json — edit colours/lines there, no JS changes needed.
   const ATLAS_PALETTE = theme.palette;
@@ -628,6 +685,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
          */
         { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
           apply: (v) => {
+            // Tuning wins over the automatic measurement, or the two would fight on every resize.
+            chromeInsetLocked = true;
             el.style.bottom = `${Math.max(0, Number(v) || 0)}px`;
             map.resize();
           } },

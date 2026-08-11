@@ -167,7 +167,11 @@
     </aside>
 
     {{-- Time slider (oldmapsonline-style) --}}
+    {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
+         be seen in, and shrinks itself so the globe centres in what is left. Without it the earth
+         sits half the deck's height too low and the southern hemisphere hides behind this card. --}}
     <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-176 max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+         data-timemap-deck
          x-ref="sliderbox"
          x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
     </div>
