@@ -28,7 +28,7 @@
 import maplibregl from 'maplibre-gl'
 import {
   buildSphereMesh, buildProgram, cameraAltitudeMetres, EARTH_RADIUS_M,
-  EQUIRECT_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL,
+  EQUIRECT_GLSL, NOISE_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL,
 } from './planet-mesh.js'
 import { CLOUD_ALTITUDE_M, CLOUD_FIELD_GLSL, CLOUD_FIELD_UNIFORMS, setCloudFieldUniforms } from './cloud-field.js'
 import { acquireEquirectTexture } from './equirect-texture.js'
@@ -101,41 +101,6 @@ const smoothstep = (edge0, edge1, x) => {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)
 }
-
-// Value noise + fbm over the unit sphere. Cheap, and at cloud scale nobody can tell it from
-// gradient noise. `u_time` drifts the field along one axis: weather moving over the planet.
-const NOISE_GLSL = /* glsl */`
-  float hash(vec3 p) {
-    return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
-  }
-  float noise(vec3 p) {
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float n000 = hash(i);
-    float n100 = hash(i + vec3(1.0, 0.0, 0.0));
-    float n010 = hash(i + vec3(0.0, 1.0, 0.0));
-    float n110 = hash(i + vec3(1.0, 1.0, 0.0));
-    float n001 = hash(i + vec3(0.0, 0.0, 1.0));
-    float n101 = hash(i + vec3(1.0, 0.0, 1.0));
-    float n011 = hash(i + vec3(0.0, 1.0, 1.0));
-    float n111 = hash(i + vec3(1.0, 1.0, 1.0));
-    return mix(
-      mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
-      mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
-      f.z);
-  }
-  float fbm(vec3 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    for (int i = 0; i < 5; i++) {
-      value += amplitude * noise(p);
-      p *= 2.0;
-      amplitude *= 0.5;
-    }
-    return value;
-  }
-`
 
 // GLSL ES 3.00 — required of every tile-pyramid consumer, and the deck shares CLOUD_FIELD_GLSL
 // with the ground, so the two convert together or neither does. See daylight.js for the details.

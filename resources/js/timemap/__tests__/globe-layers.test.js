@@ -652,3 +652,4 @@ describe('the relief conventions the bake and the shader share', () => {
   it('leaves the sea floor flat, so the ocean is water and not a bathymetric chart', () => {
     expect(read('terrain-normals.js')).toContain('Math.max(0, heights[index])')
   })
+})
