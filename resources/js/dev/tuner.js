@@ -302,6 +302,23 @@ if (!window.__tune) {
   const sheet = document.createElement('style')
   sheet.dataset.tuneScratch = ''
   document.head.append(sheet)
+  /**
+   * Film grain, on the two variables .lp-grain reads.
+   *
+   * Global rather than per-screen because the overlay is on the player, the wizard canvas, the
+   * about page and the argument map, and it should look the same in all of them.
+   *
+   * Size is the one that matters: the noise is an SVG with a viewBox and no intrinsic dimensions,
+   * so anything other than a 1:1 tile stretches it into mottling rather than grain. 256 is one
+   * texel per CSS pixel; drag it up to see exactly what was wrong before.
+   */
+  register('Film grain', [
+    { key: 'opacity', label: 'Strength', min: 0, max: 0.3, step: 0.005, value: 0.04,
+      apply: (v) => document.documentElement.style.setProperty('--lp-grain-opacity', String(v)) },
+    { key: 'size', label: 'Tile size (px)', min: 64, max: 1024, step: 16, value: 256,
+      apply: (v) => document.documentElement.style.setProperty('--lp-grain-size', `${v}px`) },
+  ], { tab: 'UI' })
+
   register('Scratch CSS', [
     {
       key: 'css',

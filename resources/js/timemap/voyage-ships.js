@@ -149,7 +149,12 @@ export const unitWorldSize = (basePx, scale, metresPerPixel, anchored = true) =>
   // whole range: ~32px from space, ~65px regional, reaching the cap around city zoom.
   const growth = Math.pow(REF_MPP / metresPerPixel, GROWTH_EXPONENT);
   const onScreen = basePx * scale * growth;
-  return Math.min(MAX_ON_SCREEN_PX, Math.max(MIN_ON_SCREEN_PX, onScreen)) * metresPerPixel;
+  // THE CLAMP SCALES TOO. The floor is there so a marker does not vanish from orbit, but applying
+  // it after the scale made it overrule the request: from space every scale below about 0.75 gave
+  // the identical 15px ship, so turning the size down did nothing and a vessel still spanned a
+  // thousand kilometres of ocean. A default-size ship is still held above the floor; someone who
+  // explicitly asks for smaller ships gets them.
+  return Math.min(MAX_ON_SCREEN_PX * scale, Math.max(MIN_ON_SCREEN_PX * scale, onScreen)) * metresPerPixel;
 };
 
 /**

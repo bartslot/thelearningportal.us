@@ -54,4 +54,26 @@ describe('unitWorldSize', () => {
     expect(onScreenPx(2, 46, 1, false)).toBeCloseTo(46, 6)
     expect(onScreenPx(12, 46, 1, false)).toBeCloseTo(46, 6)
   })
+
+  /**
+   * Asking for smaller ships has to make them smaller — everywhere.
+   *
+   * The floor exists so a marker does not vanish from orbit, and it was applied AFTER the scale, so
+   * it swallowed the request: from space, every scale below about 0.75 produced the identical 15px
+   * ship. Bart turned the size down, nothing happened, and the ship still spanned a thousand
+   * kilometres of ocean. A control that silently does nothing is the thing the whole settings panel
+   * exists to stop.
+   */
+  it('honours a smaller scale even at globe zoom, where the floor used to win', () => {
+    const full = onScreenPx(0, 46, 1)
+    for (const scale of [0.75, 0.5, 0.3]) {
+      expect(onScreenPx(0, 46, scale)).toBeLessThan(full)
+    }
+    // And still monotonic in scale, not merely different.
+    expect(onScreenPx(0, 46, 0.3)).toBeLessThan(onScreenPx(0, 46, 0.5))
+  })
+
+  it('still keeps a default-size ship visible from orbit', () => {
+    expect(onScreenPx(0)).toBeGreaterThan(10)
+  })
 })
