@@ -6,6 +6,13 @@
       "name": "serve",
       "url": "http://localhost:8000",
       "port": 8000
+    },
+    {
+      "//": "Development only, for measuring the tile pyramid — see resources/js/timemap/tiles/__harness__. A bare Vite dev server on its own port, so it never races the app's :5173 that other sessions are using.",
+      "name": "tiled-lod-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
+      "port": 5199
     }
   ]
 }
