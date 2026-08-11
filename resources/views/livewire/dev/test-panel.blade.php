@@ -99,6 +99,19 @@
             </p>
         </div>
 
+        {{-- Settings — sliders for whatever this screen has registered as tunable. Live, never
+             saved: the number you land on is one for a human to write into the code deliberately.
+             The panel builds itself in JS (resources/js/dev/tuner.js) because what it contains is
+             decided at runtime by whatever happens to be mounted. --}}
+        <div class="mt-3 border-t border-slate-800 pt-3">
+            <button type="button"
+                    x-on:click="window.dispatchEvent(new CustomEvent('dev:tune'))"
+                    class="btn btn-sm w-full justify-start border-fuchsia-700 bg-fuchsia-900/40 text-fuchsia-200 hover:bg-fuchsia-900/70">
+                Settings
+                <span class="ml-auto text-[0.65rem] font-normal text-fuchsia-400/80">sliders for this screen</span>
+            </button>
+        </div>
+
         <div class="mt-3 border-t border-slate-800 pt-3">
             <div class="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">Jump to</div>
             <div class="flex flex-wrap gap-1.5">

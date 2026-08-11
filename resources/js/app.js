@@ -6,6 +6,9 @@ import { initTooltips } from './tooltip.js';
 import { watchCarousels } from './carousel.js';
 import { easingPreview } from './easing-preview.js';
 import { clampToViewport, restorePosition, savePosition, defaultPosition, isViewportUsable } from './ui/floating-window.js';
+// Dev settings sliders. Imported unconditionally because it is a registry and nothing more until
+// something registers a knob — it builds no DOM and adds no listeners beyond one window event.
+import './dev/tuner.js';
 
 window.Sortable = Sortable;
 

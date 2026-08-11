@@ -112,6 +112,33 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
 
   const teardown = registerLayerControls(layers)
 
+  /**
+   * The knobs that are NOT on the Globe layers panel.
+   *
+   * That panel is a teacher-facing control for whether a layer shows and how strongly. These are
+   * the constants underneath it — the ones that were tuned by rebuilding and squinting, which is
+   * exactly the loop the dev tuner exists to end. Registered only while these layers are mounted,
+   * so the panel shows them on a map and nothing on a screen without one.
+   */
+  const untune = window.__tune?.register('Earth', [
+    { key: 'shoreSoftnessKm', label: 'Shore falloff', min: 0, max: 25, step: 0.25, value: 2.45,
+      apply: (v) => layers.ocean?.setOptions({ shoreSoftnessKm: v }) },
+    { key: 'roughness', label: 'Sea roughness', min: 0, max: 1, step: 0.01, value: 0.9,
+      apply: (v) => layers.ocean?.setOptions({ roughness: v }) },
+    { key: 'strength', label: 'Sun glint', min: 0, max: 1, step: 0.01, value: 0.45,
+      apply: (v) => layers.ocean?.setOptions({ strength: v }) },
+    { key: 'windPatch', label: 'Sea patchiness', min: 0, max: 1, step: 0.01, value: 0.6,
+      apply: (v) => layers.ocean?.setOptions({ windPatch: v }) },
+    { key: 'windAmount', label: 'Cloud drift', min: 0, max: 1, step: 0.05, value: 0.35,
+      apply: (v) => layers.clouds?.setOptions({ windAmount: v }) },
+    { key: 'nightDarkness', label: 'Night darkness', min: 0, max: 1, step: 0.005, value: 0.965,
+      apply: (v) => layers.daylight?.setOptions({ nightDarkness: v }) },
+    { key: 'cloudShadow', label: 'Cloud shadows', min: 0, max: 1, step: 0.05, value: 0.5,
+      apply: (v) => layers.daylight?.setOptions({ cloudShadow: v }) },
+    { key: 'atmosphere', label: 'Haze strength', min: 0, max: 2, step: 0.05, value: 1,
+      apply: (v) => layers.atmosphere?.setOptions({ strength: v }) },
+  ])
+
   return {
     layers,
 
@@ -131,6 +158,9 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
 
     remove() {
       teardown?.()
+      // Unregister the knobs with the layers: a slider still listed after its map has gone would
+      // apply to a dead GL context, which is the same class of bug as a setter left behind.
+      untune?.()
       for (const [, id] of STACK) if (map.getLayer(id)) map.removeLayer(id)
     },
   }
