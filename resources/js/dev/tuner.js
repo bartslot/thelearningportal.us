@@ -82,6 +82,29 @@ const fmt = (v) => {
   return Math.abs(v) >= 100 || Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+/**
+ * Any CSS colour this panel can produce, as components. `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`
+ * and `rgba()`. Returns `fallback` for anything else, so a half-typed hex does not snap to black.
+ */
+export const parseColour = (value, fallback = { rgb: [0, 0, 0], a: 1 }) => {
+  const s = String(value ?? '').trim()
+  const fn = s.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)$/i)
+  if (fn) {
+    return { rgb: [+fn[1], +fn[2], +fn[3]].map((n) => Math.max(0, Math.min(255, Math.round(n)))), a: fn[4] === undefined ? 1 : Math.max(0, Math.min(1, +fn[4])) }
+  }
+  const hex = s.match(/^#([0-9a-f]{3,8})$/i)?.[1]
+  if (!hex) return fallback
+  const wide = hex.length <= 4 ? [...hex].map((c) => c + c).join('') : hex
+  if (wide.length !== 6 && wide.length !== 8) return fallback
+  const n = parseInt(wide.slice(0, 6), 16)
+  return {
+    rgb: [n >> 16 & 255, n >> 8 & 255, n & 255],
+    a: wide.length === 8 ? parseInt(wide.slice(6, 8), 16) / 255 : 1,
+  }
+}
+
+const rgbToHex = ([r, g, b]) => `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`
+
 /** Run a control's apply, loudly. A knob that silently does nothing is worse than no knob. */
 const applyValue = (group, control, value) => {
   control.current = value
@@ -127,13 +150,57 @@ const rowFor = (group, control) => {
   }
 
   if (control.type === 'color') {
-    const swatch = el('input', { className: 'lp-tune-color', type: 'color', value: String(control.current) })
-    const hex = el('span', { className: 'lp-tune-value', textContent: String(control.current) })
-    swatch.oninput = () => {
-      hex.textContent = swatch.value
-      applyValue(group, control, swatch.value)
+    /**
+     * Swatch, typed hex, and alpha — because a native colour input can do none of those three.
+     *
+     * `<input type="color">` is RGB only and cannot be typed into, so a value you already have on
+     * paper had to be matched by eye in a gradient square, and anything needing transparency had to
+     * borrow a separate opacity slider from somewhere else on the panel. Both came up the first
+     * evening this panel was used.
+     *
+     * The value handed to `apply` is a CSS colour string: `#rrggbb` at full alpha, `rgba(r,g,b,a)`
+     * below it. Both are valid everywhere this is used — MapLibre paint properties, CSS variables
+     * — and consumers that need components parse it with cssToRgb.
+     */
+    const { rgb, a } = parseColour(control.current)
+    let alpha = a
+    let hex = rgbToHex(rgb)
+
+    const swatch = el('input', { className: 'lp-tune-color', type: 'color', value: hex })
+    const text = el('input', { className: 'lp-tune-hex', type: 'text', value: control.current, spellcheck: false })
+    const alphaSlider = el('input', {
+      className: 'lp-tune-range lp-tune-alpha', type: 'range', min: '0', max: '1', step: '0.01', value: String(alpha),
+    })
+    alphaSlider.title = 'Opacity'
+
+    const emit = () => {
+      const value = alpha >= 1 ? hex : `rgba(${rgb.join(', ')}, ${Number(alpha.toFixed(3))})`
+      if (document.activeElement !== text) text.value = value
+      applyValue(group, control, value)
     }
-    return el('label', { className: 'lp-tune-row' }, [label, swatch, hex])
+    swatch.oninput = () => {
+      hex = swatch.value
+      rgb.splice(0, 3, ...parseColour(hex).rgb)
+      emit()
+    }
+    alphaSlider.oninput = () => { alpha = Number(alphaSlider.value); emit() }
+    // Typed hex, so a value from a brand doc or another tool can just be pasted in. Anything
+    // unparseable is left alone rather than snapping the colour to black mid-keystroke.
+    text.oninput = () => {
+      const parsed = parseColour(text.value, null)
+      if (!parsed) return
+      rgb.splice(0, 3, ...parsed.rgb)
+      alpha = parsed.a
+      hex = rgbToHex(rgb)
+      swatch.value = hex
+      alphaSlider.value = String(alpha)
+      applyValue(group, control, text.value.trim())
+    }
+
+    return el('div', { className: 'lp-tune-colourrow' }, [
+      el('label', { className: 'lp-tune-row' }, [label, swatch, alphaSlider]),
+      text,
+    ])
   }
 
   // range (default)
@@ -262,10 +329,16 @@ const CSS = `
 .lp-tune-row{display:grid;grid-template-columns:6rem 1fr 3.25rem;align-items:center;gap:.5rem;padding:.15rem 0}
 .lp-tune-row-wide{grid-template-columns:1fr}
 .lp-tune-stack{display:flex;flex-direction:column;gap:.25rem;padding:.25rem 0}
-.lp-tune-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.lp-tune-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
+  -webkit-user-select:none;user-select:none}
 .lp-tune-range{width:100%;accent-color:#c026d3}
 .lp-tune-color{width:100%;height:1.4rem;padding:0;border:1px solid #334155;border-radius:.25rem;background:none}
 .lp-tune-check{width:1rem;height:1rem;accent-color:#c026d3;justify-self:start}
+.lp-tune-colourrow{display:flex;flex-direction:column;gap:.15rem;padding:.15rem 0}
+.lp-tune-colourrow .lp-tune-row{padding:0}
+.lp-tune-alpha{accent-color:#94a3b8}
+.lp-tune-hex{margin-left:6rem;border:1px solid #334155;border-radius:.3rem;background:#020617;
+  color:#f0abfc;font:11px ui-monospace,monospace;padding:.1rem .35rem}
 .lp-tune-input{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;
   color:#e2e8f0;font:inherit;padding:.15rem .35rem}
 .lp-tune-area{width:100%;border:1px solid #334155;border-radius:.3rem;background:#020617;

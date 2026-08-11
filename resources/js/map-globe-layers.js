@@ -24,17 +24,22 @@ import { createCloudLayer, CLOUD_LAYER_ID } from './timemap/clouds.js'
 import { createOceanWaterLayer, OCEAN_LAYER_ID } from './timemap/ocean-water.js'
 import { sunDirection } from './timemap/sun.js'
 import { registerLayerControls, readStoredLayers, applyLayerState } from './timemap/layer-controls.js'
+import { parseColour } from './dev/tuner.js'
 
 /** The cloud field and its wind, already sitting in public/img/map/. Without them the deck runs on
  *  noise banded by latitude — weather-shaped, with no actual weather in it. */
 const CLOUD_FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_FIELD_URL = '/img/map/wind-field.png'
 
-/** '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples; the picker gives hex. */
-const hexToRgb = (hex) => {
-  const n = parseInt(String(hex).replace('#', ''), 16)
-  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]
-}
+/**
+ * '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples.
+ *
+ * Goes through the tuner's parser rather than doing its own hex arithmetic, because the colour
+ * field emits `rgba(...)` once its alpha drops below 1 and a bare parseInt would read that as NaN
+ * — a silently black layer. Alpha is dropped here on purpose: these are vec3 uniforms, and each
+ * layer already has its own strength or opacity control that means something more specific.
+ */
+const hexToRgb = (value) => parseColour(value).rgb.map((c) => c / 255)
 
 /**
  * Draw order, back to front.
