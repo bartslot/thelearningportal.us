@@ -464,17 +464,29 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * same shape. A feature-state glow could only ever trace the hard-cornered source, which is
    * exactly what it did — rounded borders with a sharp-cornered halo behind them.
    */
-  const showGlow = (geometry) => {
+  const showGlow = (geometry, name = null, qid = null) => {
     const src = map.getSource('boundaries-glow-src');
     if (!src) return;
-    const rings = geometry ? outlineOf(geometry) : [];
-    src.setData({
-      type: 'FeatureCollection',
-      features: rings.filter((r) => r.length >= 4).map((ring) => ({
-        type: 'Feature', properties: {},
-        geometry: { type: 'LineString', coordinates: smoothSamples >= 1 ? smooth(ring, smoothSamples) : ring },
-      })),
-    });
+    const rings = (geometry ? outlineOf(geometry) : []).filter((r) => r.length >= 4);
+
+    const features = rings.map((ring) => ({
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: smoothSamples >= 1 ? smooth(ring, smoothSamples) : ring },
+    }));
+
+    // The name rides along on a Point, anchored the way the ordinary label is — largest ring's
+    // centroid, with the same hand-tuned LABEL_ANCHOR override — so when both happen to be drawn
+    // the hover name sits exactly where the real one does instead of jumping to a second spot.
+    if (name && rings.length) {
+      const biggest = rings.map(ringCentroid).reduce((a, b) => (b.area > a.area ? b : a));
+      features.push({
+        type: 'Feature',
+        properties: { name },
+        geometry: { type: 'Point', coordinates: (qid && LABEL_ANCHOR[qid]) || biggest.c },
+      });
+    }
+
+    src.setData({ type: 'FeatureCollection', features });
   };
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
@@ -889,6 +901,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setLayoutProperty('boundaries-line', 'visibility', s.borderSource ? 'none' : 'visible');
       map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
       map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
+      // The hover name is a label too. Without this it kept the atlas ink on Night and Satellite,
+      // where it would be the one piece of text on the map not matching its neighbours.
+      if (map.getLayer('boundaries-glow-label')) {
+        map.setPaintProperty('boundaries-glow-label', 'text-color', s.text.color);
+        map.setPaintProperty('boundaries-glow-label', 'text-halo-color', s.text.halo);
+      }
     }
     if (map.getLayer('markers-label')) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
@@ -1003,6 +1021,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     });
     map.addLayer({
       id: 'boundaries-glow', type: 'line', source: 'boundaries-glow-src',
+      // The source carries the outline AND a point for the name; each layer takes its own kind.
+      filter: ['==', ['geometry-type'], 'LineString'],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': GLOW_COLOR,
@@ -1015,6 +1035,34 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // fully opaque, drawing every border of every era at once.
         'line-opacity': 0.55,
         'line-opacity-transition': { duration: 140 },
+      },
+    });
+    map.addLayer({
+      /**
+       * The hovered territory's name, ALWAYS drawn.
+       *
+       * The ordinary label layer yields to collision, so in a crowded era the thing under the
+       * pointer often had no name on it — you could light up a shape and still not be told what it
+       * was, which is most of the value of hovering it.
+       *
+       * Above the glow line so the name is never crossed by its own halo, and after it in the
+       * layer order for the same reason.
+       */
+      id: 'boundaries-glow-label', type: 'symbol', source: 'boundaries-glow-src',
+      filter: ['==', ['geometry-type'], 'Point'],
+      layout: {
+        'text-field': ['get', 'name'],
+        // The same face and rhythm as every other territory name, so the hovered one does not read
+        // as a different kind of thing.
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
+        'text-size': 12,
+        // THE POINT OF THIS LAYER: it never yields. There is only ever one of these on screen, and
+        // it is the answer to "what am I pointing at".
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5,
       },
     });
     map.addLayer({
@@ -1147,7 +1195,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       if (!e.features.length) return;
       if (e.features[0].id === hoveredId) return;   // same territory, nothing to redraw
       hoveredId = e.features[0].id;
-      showGlow(e.features[0].geometry);
+      const p = e.features[0].properties;
+      // Same QID resolution the click path uses — Cliopatria reuses a QID across different polities,
+      // so the name is part of the key.
+      const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
+      showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
     });
     map.on('mouseleave', 'boundaries-fill', () => {
       map.getCanvas().style.cursor = '';
