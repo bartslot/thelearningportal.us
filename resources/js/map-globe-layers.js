@@ -179,8 +179,15 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
     window.__tune?.register('Sky and light', [
       { key: 'nightDarkness', label: 'Night', min: 0, max: 1, step: 0.005, value: 0.965,
         apply: (v) => set('daylight', { nightDarkness: v }) },
-      { key: 'twilightColour', label: 'Twilight', type: 'color', value: '#d95a1f',
+      // Twilight is two colours on opposite sides of the terminator — warm sunward, blue nightward
+      // (the blue hour). Both are here because judging one without the other is what produced the
+      // orange stripe: a warm edge with no cool margin beside it reads as a decal.
+      { key: 'twilightColour', label: 'Twilight warm', type: 'color', value: '#9e5229',
         apply: (v) => set('daylight', { twilightColour: hexToRgb(v) }) },
+      { key: 'twilightCool', label: 'Twilight blue', type: 'color', value: '#1a2647',
+        apply: (v) => set('daylight', { twilightCool: hexToRgb(v) }) },
+      { key: 'twilightStrength', label: 'Twilight strength', min: 0, max: 1, step: 0.05, value: 0.55,
+        apply: (v) => set('daylight', { twilightStrength: v }) },
       { key: 'atmosphere', label: 'Haze', min: 0, max: 2, step: 0.05, value: 1.25,
         apply: (v) => set('atmosphere', { strength: v }) },
       { key: 'starfield', label: 'Stars', min: 0, max: 1, step: 0.05, value: 0.5,

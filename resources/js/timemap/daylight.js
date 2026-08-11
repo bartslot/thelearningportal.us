@@ -94,7 +94,9 @@ uniform vec3 u_camera;         // camera in planet space, earth = unit sphere
 uniform float u_globeness;     // 1 on the globe, 0 on the flat map
 uniform float u_nightDarkness; // how black the unlit side goes
 uniform vec3 u_nightColour;
-uniform vec3 u_twilightColour;
+uniform vec3 u_twilightColour;  // the warm edge, sunward of the line
+uniform vec3 u_twilightCool;    // the blue hour, nightward of it
+uniform float u_twilightStrength;
 uniform sampler2D u_lights;    // NASA Black Marble, equirectangular
 uniform float u_lightsAmount;  // 0 when the texture has not loaded
 uniform sampler2D u_relief;    // baked terrain normals, equirectangular; see terrain-normals.js
@@ -182,12 +184,24 @@ void main() {
 
   if (night < 0.004 && lit < 0.004) discard;   // full daylight, flat ground: leave the imagery alone
 
-  // The warm band peaks in the middle of the transition and vanishes at both ends — and it follows
-  // the SUN's angle, so a cloud shadow at noon is grey rather than a private sunset.
-  float twilight = 1.0 - abs(sunlight * 2.0 - 1.0);
-  twilight *= twilight;
+  // TWILIGHT IS TWO COLOURS ON OPPOSITE SIDES OF THE TERMINATOR, NOT ONE.
+  //
+  // Sunward of the line, the light still reaching the ground has crossed the most air and lost its
+  // blue — that is the warm edge, and it is THIN. Nightward, the ground is already dark but the air
+  // ABOVE it is still lit, and what comes back down has been Rayleigh-scattered, so it is BLUE.
+  // That is the blue hour, and it is the half everyone forgets.
+  //
+  // Mixing the whole band to one saturated orange is what made it read as a stripe painted pole to
+  // pole rather than as a sunset seen from orbit: there is no single orange anywhere in the real
+  // thing, and the cool outer edge is what stops the warm one looking like a decal.
+  //
+  // It still follows the SUN's angle, so a cloud shadow at noon is grey rather than a private sunset.
+  float band = 1.0 - abs(sunlight * 2.0 - 1.0);
+  band = band * band * band;                          // narrower than the old square
+  float warmSide = smoothstep(0.30, 0.70, sunlight);  // 1 sunward of the line, 0 nightward
+  vec3 twilightTint = mix(u_twilightCool, u_twilightColour, warmSide);
 
-  vec3 shade = mix(u_nightColour, u_twilightColour, twilight * 0.85);
+  vec3 shade = mix(u_nightColour, twilightTint, band * u_twilightStrength);
   float alpha = night * u_nightDarkness;
 
   // City lights, but only where it is genuinely dark — they have no business showing at dusk, and
@@ -235,7 +249,11 @@ export const createDaylightLayer = ({
   lightsUrl = null,
   lightsAmount = 0,
   nightColour = [0.02, 0.035, 0.07],
-  twilightColour = [0.85, 0.35, 0.12],
+  // Desaturated from [0.85, 0.35, 0.12] — the old one is a traffic cone, and there is no single
+  // orange anywhere in real twilight.
+  twilightColour = [0.62, 0.32, 0.16],
+  twilightCool = [0.10, 0.15, 0.28],
+  twilightStrength = 0.55,
   reliefUrl = null,
   reliefWidth = 8192,
   reliefPower = 1.5,
@@ -257,7 +275,7 @@ export const createDaylightLayer = ({
   let wind = null
   const programs = new Map()
   let state = {
-    sun, nightDarkness, lightsUrl, lightsAmount, nightColour, twilightColour,
+    sun, nightDarkness, lightsUrl, lightsAmount, nightColour, twilightColour, twilightCool, twilightStrength,
     reliefUrl, reliefWidth, reliefPower, cloudShadow, eclipse, date,
     fieldUrl, windUrl, windAmount, windScale, windRate, driftRate, animate,
   }
@@ -281,6 +299,8 @@ export const createDaylightLayer = ({
         nightDarkness: gl.getUniformLocation(program, 'u_nightDarkness'),
         nightColour: gl.getUniformLocation(program, 'u_nightColour'),
         twilightColour: gl.getUniformLocation(program, 'u_twilightColour'),
+        twilightCool: gl.getUniformLocation(program, 'u_twilightCool'),
+        twilightStrength: gl.getUniformLocation(program, 'u_twilightStrength'),
         lights: gl.getUniformLocation(program, 'u_lights'),
         lightsAmount: gl.getUniformLocation(program, 'u_lightsAmount'),
         relief: gl.getUniformLocation(program, 'u_relief'),
@@ -387,6 +407,8 @@ export const createDaylightLayer = ({
       if (uniforms.nightDarkness) gl.uniform1f(uniforms.nightDarkness, state.nightDarkness)
       if (uniforms.nightColour) gl.uniform3f(uniforms.nightColour, ...state.nightColour)
       if (uniforms.twilightColour) gl.uniform3f(uniforms.twilightColour, ...state.twilightColour)
+      if (uniforms.twilightCool) gl.uniform3f(uniforms.twilightCool, ...state.twilightCool)
+      if (uniforms.twilightStrength) gl.uniform1f(uniforms.twilightStrength, state.twilightStrength)
       if (uniforms.lightsAmount) gl.uniform1f(uniforms.lightsAmount, lights?.ready ? state.lightsAmount : 0)
 
       // The relief retires as the camera descends — see reliefDetailFor. Without a map, or below
