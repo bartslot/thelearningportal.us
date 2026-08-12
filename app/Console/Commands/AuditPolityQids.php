@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Services\CliopatriaQidOverrides;
+use App\Services\HandTerritories;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -26,6 +27,12 @@ use Illuminate\Support\Facades\Http;
  * The 60 hand-written entries in cliopatria-qid-overrides.json are the control: this should
  * rediscover them. If it does not, the check is too lax, and anything it finds beyond them is a
  * candidate nobody has looked at yet.
+ *
+ * It audits the HAND-AUTHORED layer too (database/data/hand-territories.json), and that half needs
+ * it more, not less: those QIDs were looked up and typed by a person, which is exactly the mistake
+ * Cliopatria made with the Roman Republic. Nothing about the check changes for them — a mechanical
+ * era comparison has to treat every polity identically or it stops being mechanical — only where
+ * the fix goes when it finds something.
  */
 final class AuditPolityQids extends Command
 {
@@ -34,7 +41,7 @@ final class AuditPolityQids extends Command
         {--slack=75 : Years of tolerance before an era gap counts as a mismatch}
         {--json= : Write the findings to this path}';
 
-    protected $description = 'Flag Cliopatria polities whose Wikidata item belongs to a different era';
+    protected $description = 'Flag polities — imported or hand-authored — whose Wikidata item belongs to a different era';
 
     /** Wikidata takes 50 ids per request; more than that is rejected. */
     private const BATCH = 50;
@@ -48,18 +55,38 @@ final class AuditPolityQids extends Command
     /** A single moment, which bounds both ends. */
     private const POINT_PROPS = ['P585'];
 
-    public function handle(CliopatriaQidOverrides $overrides): int
+    public function handle(CliopatriaQidOverrides $overrides, HandTerritories $hand): int
     {
         $source = storage_path('app/cliopatria/cliopatria_polities_only.geojson');
-        if (! File::exists($source)) {
-            $this->error("No source at {$source}. Run timemap:build-cliopatria-tiles first.");
+        $polities = [];
+
+        // The Cliopatria source is a 165 MB download that is deliberately not committed, so it is
+        // absent in a fresh clone and in every worktree. That used to abort the whole command —
+        // which meant "run the audit after any data change" was impossible to obey while working on
+        // the hand-authored layer, the one part of the data a person actually edits by hand.
+        //
+        // So a missing source now skips Cliopatria and audits what IS present, loudly.
+        if (File::exists($source)) {
+            $this->info('Reading polity eras…');
+            $polities = $this->politiesFrom($source);
+            $this->line('  '.count($polities).' distinct (qid, name) polities');
+        } else {
+            $this->warn("No Cliopatria source at {$source} — auditing the hand-authored layer only.");
+            $this->line('  Run timemap:build-cliopatria-tiles to include the imported borders.');
+        }
+
+        // The hand-authored supplement gets the same mechanical check, and needs it more: these
+        // shapes are typed by a person against a QID they looked up, which is exactly how the
+        // Roman Republic came to be tagged with Napoleon's sister republic of 1798.
+        $handPolities = $this->handPolities($hand);
+        $this->line('  '.count($handPolities).' hand-authored territories');
+        $polities = [...$polities, ...$handPolities];
+
+        if ($polities === []) {
+            $this->error('Nothing to audit.');
 
             return self::FAILURE;
         }
-
-        $this->info('Reading polity eras…');
-        $polities = $this->politiesFrom($source);
-        $this->line('  '.count($polities).' distinct (qid, name) polities');
 
         $limit = (int) $this->option('limit');
         if ($limit > 0) {
@@ -88,10 +115,20 @@ final class AuditPolityQids extends Command
                 continue;
             }
 
-            $already = $overrides->resolve($polity['qid'], $polity['name']) !== $polity['qid'];
+            $hand = $polity['hand'] ?? false;
+            // A Cliopatria override CANNOT cover a hand-authored territory. The override table
+            // rewrites which item a Cliopatria TILE resolves to; our own JSON is read straight and
+            // never passes through it. Asking it anyway is not merely useless — it silences us:
+            // point a hand-authored territory at Q175881 and the audit reported the mismatch as
+            // "already fixed by an override", because Cliopatria happens to have that same QID
+            // corrected. The one finding that is genuinely ours to fix was the one hidden.
+            $already = ! $hand && $overrides->resolve($polity['qid'], $polity['name']) !== $polity['qid'];
             $findings[] = [
                 'qid' => $polity['qid'],
                 'name' => $polity['name'],
+                // A hand-authored mismatch is OURS to fix in database/data/hand-territories.json,
+                // not with a Cliopatria override — so the report has to say which it is.
+                'hand' => $hand,
                 'polygon' => [$polity['from'], $polity['to']],
                 'item' => [$era['from'], $era['to']],
                 'item_open' => $era['from'] === null || $era['to'] === null,
@@ -110,6 +147,31 @@ final class AuditPolityQids extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The hand-authored territories, in the same shape as a Cliopatria one so they audit identically.
+     *
+     * `hand` on the record is only for the report line — the check itself does not care where a
+     * polity came from, and it must not: the point of a mechanical era check is that it treats
+     * everything the same way regardless of how plausible its label looks.
+     *
+     * @return array<string, array{qid: string, name: string, from: int, to: int, hand: bool}>
+     */
+    private function handPolities(HandTerritories $hand): array
+    {
+        $out = [];
+        foreach ($hand->all() as $territory) {
+            $out['hand:'.$territory['id']] = [
+                'qid' => $territory['qid'],
+                'name' => $territory['name'],
+                'from' => (int) $territory['from'],
+                'to' => (int) $territory['to'],
+                'hand' => true,
+            ];
+        }
+
+        return $out;
     }
 
     /** (qid, name) → widest polygon era in the source. One line per feature, so this streams. */
@@ -219,9 +281,19 @@ final class AuditPolityQids extends Command
             return;
         }
 
+        // A hand-authored mismatch is fixed in a different file, by us, so it is called out rather
+        // than left to be mistaken for one more thing Cliopatria got wrong.
+        $ours = array_values(array_filter($fresh, fn ($f) => $f['hand'] ?? false));
+        if ($ours !== []) {
+            $this->error('  '.count($ours).' of these are OURS — fix them in database/data/hand-territories.json, not with a QID override:');
+            foreach ($ours as $f) {
+                $this->line("    {$f['name']} ({$f['qid']}) — we date it {$f['polygon'][0]}…{$f['polygon'][1]}, the item is “{$f['item_label']}”");
+            }
+        }
+
         $this->newLine();
         $this->table(
-            ['polity', 'qid', 'polygon era', 'wikidata item', 'item era', 'gap'],
+            ['polity', 'qid', 'polygon era', 'wikidata item', 'item era', 'gap', 'ours?'],
             array_map(fn ($f) => [
                 mb_strimwidth($f['name'], 0, 30, '…'),
                 $f['qid'],
@@ -229,6 +301,7 @@ final class AuditPolityQids extends Command
                 mb_strimwidth($f['item_label'], 0, 30, '…'),
                 ($f['item'][0] ?? '?').' … '.($f['item'][1] ?? '?'),
                 $f['gap_years'].'y',
+                ($f['hand'] ?? false) ? 'hand' : '',
             ], array_slice($fresh, 0, 40)),
         );
 

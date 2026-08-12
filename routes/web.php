@@ -184,6 +184,11 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
         return response()->json(['url' => "/{$rel}"]);
     })->name('timemap.speak');
 
+    // "Something not right? Report" on the territory card. A teacher who spots a wrong border is
+    // the cheapest reviewer this dataset has; read what has come in with `timemap:territory-reports`.
+    Route::post('/timemap/report', [\App\Http\Controllers\TerritoryReportController::class, 'store'])
+        ->name('timemap.report');
+
     Route::get('/timemap/polity/{osmId}', function (\Illuminate\Http\Request $request, string $osmId) {
         $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');
         $p = $corpus->table('public.polities')->where('osm_id', $osmId)->first();
