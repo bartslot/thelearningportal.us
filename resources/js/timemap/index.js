@@ -181,13 +181,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * Measured from the deck rather than hard-coded — it is `w-176 max-w-[92vw]`, so its height
    * changes with the viewport as its controls wrap.
    *
-   * OFF BY DEFAULT, and that is a reversal. Doing this automatically cost 10-20% of the viewport:
-   * the map stopped being full height, and a map that does not fill the window is a worse trade
-   * than a globe sitting slightly low behind a deck that is a HUD anyway. The two wants genuinely
-   * conflict, so this is now a control (Camera → Framing → Bottom inset) rather than a decision
-   * made on Bart's behalf. Set the inset above 0 and the automatic measurement takes over again.
+   * IT GROWS THE BOX UPWARDS, it does not shrink it. Shrinking from the bottom centred the globe
+   * and cost 10-20% of the viewport, so the map stopped filling the window. Extending the top by the
+   * same amount moves the container's centre up by exactly as much while the canvas still covers
+   * every visible pixel — the extra height hides behind the header. Full height AND a centred globe;
+   * they were never actually in conflict, I just used the wrong edge.
    */
-  let chromeInsetEnabled = false;
+  let chromeInsetEnabled = true;
   let chromeInsetLocked = false;
   const centreForChrome = () => {
     if (!chromeInsetEnabled || chromeInsetLocked) return;
@@ -198,8 +198,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Clamped to a third: a deck taller than that means a viewport so short there would be nowhere
     // left to draw the map at all.
     const covered = Math.max(0, Math.min(box.bottom - bar.top, box.height / 3));
-    if (Math.abs(parseFloat(el.style.bottom || '0') - covered) < 1) return;
-    el.style.bottom = `${covered}px`;
+    if (Math.abs(parseFloat(el.style.top || '0') + covered) < 1) return;
+    // BOTH, or the box slides instead of growing. MapLibre puts its own height on the container, so
+    // moving the top alone translated the whole map upward and left a gap at the bottom of the
+    // window — the opposite of the problem being solved.
+    el.style.top = `-${covered}px`;
+    el.style.height = `calc(100% + ${covered}px)`;
     map.resize();
   };
 
@@ -1112,17 +1116,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
           apply: (v) => {
             const inset = Math.max(0, Number(v) || 0);
-            // 0 means full height, which is the default. Anything above it is an explicit choice,
-            // and it wins over the automatic measurement or the two fight on every resize.
+            // Overriding the measurement. Above the top, like the automatic one — never off the
+            // bottom, which is what cost the viewport its height.
             chromeInsetLocked = inset > 0;
-            el.style.bottom = `${inset}px`;
+            el.style.top = `-${inset}px`;
+            el.style.height = `calc(100% + ${inset}px)`;
             map.resize();
           } },
-        { key: 'autoInset', label: 'Auto-centre above the deck', type: 'boolean', value: false,
+        { key: 'autoInset', label: 'Auto-centre above the deck', type: 'boolean', value: true,
           apply: (on) => {
             chromeInsetEnabled = on;
             chromeInsetLocked = false;
-            if (!on) { el.style.bottom = '0px'; map.resize(); } else centreForChrome();
+            if (!on) { el.style.top = '0px'; el.style.height = ''; map.resize(); } else centreForChrome();
           } },
       ], { tab: 'Camera' }),
 
