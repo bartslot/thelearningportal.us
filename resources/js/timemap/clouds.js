@@ -27,11 +27,12 @@
 
 import maplibregl from 'maplibre-gl'
 import {
-  buildSphereMesh, buildProgram, cameraAltitudeMetres, EARTH_RADIUS_M,
+  buildSphereMesh, buildProgram, cameraAltitudeMetres, cameraInPlanetSpace, EARTH_RADIUS_M,
   EQUIRECT_GLSL, NOISE_GLSL, SHELL_PROJECT_GLSL, TERMINATOR_GLSL,
 } from './planet-mesh.js'
 import { CLOUD_ALTITUDE_M, CLOUD_FIELD_GLSL, CLOUD_FIELD_UNIFORMS, setCloudFieldUniforms } from './cloud-field.js'
 import { acquireEquirectTexture } from './equirect-texture.js'
+import { RELIEF_GLSL, TANGENT_FRAME_GLSL } from './terrain-normals.js'
 
 const LAYER_ID = 'tm-clouds'
 
@@ -154,9 +155,21 @@ uniform vec3 u_sun;           // direction TO the sun
 uniform float u_detailFreq;   // noise cycles per unit sphere; rises as the camera descends
 uniform float u_detailAmount; // how much of the structure the noise carries, vs the real field
 uniform float u_deckFade;     // 0 once the camera is below the deck and clouds stop making sense
+uniform vec3 u_camera;        // camera in planet space, earth = unit sphere
+// The four lighting terms, each zero-is-off so the deck returns exactly to its old look and each
+// can be measured on its own. See the lighting block below for what every one of them buys.
+uniform float u_cloudRelief;    // how tall fully covered sky stands, in km; 0 disables the normal
+uniform float u_cloudDepth;     // optical depth of fully covered sky, for Beer-Powder
+uniform float u_powder;         // how much thin edges darken beyond the plain exponential
+uniform float u_forward;        // the silver lining: one Henyey-Greenstein lobe
+uniform float u_forwardG;       // that lobe's asymmetry, 0 isotropic, ->1 sharply forward
+uniform float u_selfShadow;     // one extra mask read offset toward the sun
+uniform float u_selfShadowStep; // how far that read walks, in sphere radii
 ${NOISE_GLSL}
 ${EQUIRECT_GLSL}
 ${TERMINATOR_GLSL}
+${TANGENT_FRAME_GLSL}
+${RELIEF_GLSL}
 // The field, the wind and the clock the ground's cloud shadows read from the same source.
 ${CLOUD_FIELD_GLSL}
 
@@ -206,8 +219,90 @@ void main() {
   // A cloud emits nothing. It is only ever as bright as what is falling on it, so on the night
   // side it has to go dark along with the ground — a white deck glowing over a black planet is the
   // tell of clouds pasted on as decoration rather than lit as part of the scene.
-  float sunAngle = dot(p, normalize(u_sun));
+  vec3 sunDir = normalize(u_sun);
+  float sunAngle = dot(p, sunDir);
   float day = daylightFraction(sunAngle);
+
+  // ── 1. Shape, from the mask's own gradient ────────────────────────────────────────────────
+  //
+  // CLOUD COVERAGE IS A HEIGHTFIELD — thicker cloud is taller cloud — so the deck can have a real
+  // normal, and cyclone tops catch the light while their far sides fall into shade. It is the
+  // single biggest thing separating cloud from a grey wash, and it is the relief pipeline the
+  // ground already uses with a different input: the same tangent frame, the same difference
+  // formulation, so a flat deck is left exactly as it was and the effect is naturally strongest at
+  // the terminator.
+  //
+  // THE GRADIENT IS FREE. Three more samples of the field would be twenty-seven more texture reads
+  // per pixel, on a layer that already costs nine. Screen-space derivatives cost nothing and are
+  // better evidence besides: they are the derivative of the coverage ACTUALLY DRAWN, noise and
+  // advection included, rather than of an approximation to it. dp/dx and dp/dy span the surface at
+  // this pixel, so two scalar derivatives fix the surface gradient exactly.
+  vec3 dpdx = dFdx(v_sphere);
+  vec3 dpdy = dFdy(v_sphere);
+  float dcdx = dFdx(coverage);
+  float dcdy = dFdy(coverage);
+
+  mat3 frame = equirectTangentFrame(p);
+  vec2 stepX = vec2(dot(dpdx, frame[0]), dot(dpdx, frame[1]));
+  vec2 stepY = vec2(dot(dpdy, frame[0]), dot(dpdy, frame[1]));
+  float det = stepX.x * stepY.y - stepX.y * stepY.x;
+
+  vec3 cloudNormal = frame[2];
+  // A degenerate quad — the limb, a silhouette edge — has no surface to take a gradient across, and
+  // solving anyway puts an arbitrary normal exactly where the deck is most visible.
+  if (abs(det) > 1.0e-12) {
+    vec2 slope = vec2(dcdx * stepY.y - dcdy * stepX.y, dcdy * stepX.x - dcdx * stepY.x) / det;
+    // u_cloudRelief is a HEIGHT IN KILOMETRES — how tall fully covered sky stands — so the slope
+    // here is the real one and the control means something a person can picture. A cumulus tops out
+    // around 8 km, which is where the default sits; the gradient is per sphere radius, so the
+    // conversion is the earth's own.
+    // Clamped, because the solve is unbounded as the quad degenerates and one runaway normal reads
+    // as a bright speck rather than as a slope.
+    slope = clamp(slope * (u_cloudRelief / 6371.0), vec2(-40.0), vec2(40.0));
+    cloudNormal = normalize(frame * normalize(vec3(-slope, 1.0)));
+  }
+
+  // Exactly reliefLightFactor, at power 1: the normal is already scaled above, and the strength
+  // belongs there rather than here so that u_cloudRelief == 0 leaves the normal AS the sphere's and
+  // this whole term collapses to 1.
+  float shape = reliefLightFactor(frame[2], cloudNormal, sunDir, 1.0);
+
+  // ── 2. Beer-Powder, NOT Lambert ───────────────────────────────────────────────────────────
+  //
+  // The counter-intuitive part, and where naive cloud lighting always fails. Cloud is dominated by
+  // MULTIPLE scattering: light bounces its way back out, so thick cloud is BRIGHTER than thin —
+  // the opposite of a solid, where thickness is irrelevant and only the angle matters. Lambert on
+  // the normal above would give grey rock with weather-shaped bumps.
+  //
+  // Two exponentials. The first is the saturating rise of multiple scattering. The second is the
+  // powder term, which takes MORE away from the thin edges than the first alone does, because at
+  // low optical depth the in-scattering has not had the depth to build up. Without it a cloud's
+  // rim fades out linearly and reads as painted-on fog.
+  float depth = 1.0;
+  if (u_cloudDepth > 0.0) {
+    float tau = u_cloudDepth * coverage;
+    depth = (1.0 - exp(-tau)) * mix(1.0, 1.0 - exp(-2.0 * tau), u_powder);
+    // Against a fully covered pixel, so the term changes the RELATIONSHIP between thickness and
+    // brightness rather than acting as a second density dial — turning the depth up must not simply
+    // brighten the whole deck.
+    float full = (1.0 - exp(-u_cloudDepth)) * mix(1.0, 1.0 - exp(-2.0 * u_cloudDepth), u_powder);
+    depth /= max(full, 1.0e-3);
+  }
+
+  // ── 4. Self-shadowing ─────────────────────────────────────────────────────────────────────
+  //
+  // One extra read of the mask, offset toward the sun: whatever cloud is over there is what stands
+  // between this cloud and the light, and that is what gives the underside real depth rather than
+  // an evenly lit blanket. Gated on the uniform because it is the only term here that costs
+  // another nine texture reads, so it is the first thing a slower machine should drop.
+  float shadow = 1.0;
+  if (u_selfShadow > 0.0) {
+    vec3 toward = normalize(p + sunDir * u_selfShadowStep);
+    float over = advectedField(equirectUV(toward, u_drift), asin(clamp(toward.y, -1.0, 1.0)));
+    // Fades out as the sun drops: at grazing light the offset walks most of the way round the
+    // planet and what it finds has nothing to do with this pixel.
+    shadow = 1.0 - u_selfShadow * smoothstep(0.16, 0.62, over) * smoothstep(0.0, 0.35, sunAngle);
+  }
 
   // The deck's own modelling: a lit face and a shaded face, like the real thing — but cloud is
   // WHITE, and its shaded face is white in shadow, not grey paint. The old pair (0.62,0.66,0.72
@@ -215,10 +310,45 @@ void main() {
   // which at high latitude is most of what is on screen. Bright, barely-tinted shadow instead.
   vec3 base = mix(vec3(0.86, 0.88, 0.92), vec3(1.0), 0.55 + 0.45 * max(sunAngle, 0.0));
 
+  // Shape and depth multiply the light the top returns; the shadow takes some of it away. All three
+  // are 1 at their off settings, so the deck is bit-for-bit its old self with the strengths at zero.
+  base *= clamp(shape * depth * shadow, 0.0, 4.0);
+
   // At the terminator the light reaching them has crossed the most air and lost its blue, so the
   // tops go orange while the ground below is already dark. It is the best thing clouds do.
   float twilight = 1.0 - abs(day * 2.0 - 1.0);
   base = mix(base, base * vec3(1.30, 0.74, 0.44), twilight * twilight * 0.85);
+
+  // ── 3. Forward scattering — the silver lining ─────────────────────────────────────────────
+  //
+  // Cloud droplets are far larger than the wavelength, so they throw light overwhelmingly FORWARD:
+  // a cloud between you and the sun is brighter at its rim than anywhere on its lit face. One
+  // Henyey-Greenstein lobe and a single dot product buys it, which is the best payoff per
+  // instruction anywhere in this shader.
+  //
+  // It lands hardest at the terminator, because that is where the sun sits behind the cloud from
+  // the camera's point of view — the same geometry that already makes this globe's best picture.
+  //
+  // ADDED, not multiplied. Forward scattering is light arriving by a path the diffuse term does not
+  // model at all, so folding it into a multiplier would make a rim brighter only where the cloud
+  // was already bright, which is precisely backwards.
+  if (u_forward > 0.0) {
+    vec3 toEye = normalize(u_camera - p);
+    // Angle between where the photon was going and where it is going now. dot(toEye, -sunDir) is 1
+    // when it carries straight on toward the camera, which is the forward peak.
+    float phase = -dot(toEye, sunDir);
+    float g = clamp(u_forwardG, 0.0, 0.95);
+    float gg = g * g;
+    float lobe = (1.0 - gg) / pow(max(1.0 + gg - 2.0 * g * phase, 1.0e-4), 1.5);
+    // Normalised by its own peak, (1+g)/(1-g)^2, so u_forward is a strength in 0..1 rather than a
+    // number whose meaning changes every time the asymmetry is dragged.
+    float peak = (1.0 + g) / max((1.0 - g) * (1.0 - g), 1.0e-4);
+    // Through the cloud. NOT gated on daylight here: the night floor below already crushes anything
+    // on the dark side, and gating twice killed the effect exactly where it belongs. The deck sits
+    // 90 km up and stays lit about ten degrees past the ground's terminator, which is the band this
+    // term is for — a cloud edge glowing over ground that has already gone dark.
+    base += vec3(1.0, 0.98, 0.94) * (u_forward * (lobe / peak) * coverage);
+  }
 
   // Not quite zero at night: a deck at pure black reads as a hole punched in the planet rather
   // than as cloud. This is roughly what starlight and airglow leave on a real night-side deck.
@@ -250,6 +380,30 @@ export const createCloudLayer = ({
   // Wind advection: a real GFS field carrying the clouds along actual circulation. Off without a
   // texture, so a missing asset costs nothing but motion.
   windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
+  /**
+   * Lighting. Every one of these is zero-is-off, and with all four at zero the deck renders exactly
+   * as it did before it was lit — which is what makes each of them separately measurable.
+   *
+   * They are listed in the order they have to be built, because each one alone looks wrong: the
+   * normal by itself is grey terrain, the normal with Beer-Powder is cloud, and the forward lobe on
+   * top is what makes it look photographed.
+   */
+  cloudRelief = 8,        // km of cloud height; a real cumulus tops out about here
+  cloudDepth = 4,         // optical depth of fully covered sky
+  powder = 1,
+  forward = 0.5,
+  forwardG = 0.7,         // droplets are strongly forward-scattering; 0.7 is the usual figure
+  /**
+   * Self-shadowing: 0.18 over a 10 km step, and both numbers are measurements rather than taste.
+   *
+   * At 0.35 over 25 km it took 33 luma off the deck's mean — a quarter of its brightness, applied
+   * almost evenly. That is not a shadow, it is a dimmer. 25 km is far enough that the cloud found
+   * over there has nothing to do with the cloud here, so nearly every pixel found something and the
+   * term stopped varying. A shadow has to come from cloud CLOSE BY and slightly sunward, which is
+   * what makes one side of a cumulus dark while the other stays lit.
+   */
+  selfShadow = 0.18,
+  selfShadowStep = 0.0015, // sphere radii, so about 10 km toward the sun
 } = {}) => {
   const mesh = buildSphereMesh()
   let map = null
@@ -260,6 +414,7 @@ export const createCloudLayer = ({
   const programs = new Map()
   let state = {
     opacity, animate, fieldUrl, patchUrl, driftRate, sun, windUrl, windAmount, windScale, windRate,
+    cloudRelief, cloudDepth, powder, forward, forwardG, selfShadow, selfShadowStep,
   }
   // Shared with daylight.js, which shades the ground with the shadow of these same clouds.
   let field = null
@@ -288,6 +443,14 @@ export const createCloudLayer = ({
         detailFreq: gl.getUniformLocation(program, 'u_detailFreq'),
         detailAmount: gl.getUniformLocation(program, 'u_detailAmount'),
         deckFade: gl.getUniformLocation(program, 'u_deckFade'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        cloudRelief: gl.getUniformLocation(program, 'u_cloudRelief'),
+        cloudDepth: gl.getUniformLocation(program, 'u_cloudDepth'),
+        powder: gl.getUniformLocation(program, 'u_powder'),
+        forward: gl.getUniformLocation(program, 'u_forward'),
+        forwardG: gl.getUniformLocation(program, 'u_forwardG'),
+        selfShadow: gl.getUniformLocation(program, 'u_selfShadow'),
+        selfShadowStep: gl.getUniformLocation(program, 'u_selfShadowStep'),
         // Projection uniforms the prelude declares. Only the globe variant has the last four, so
         // every one of these is allowed to come back null.
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
@@ -384,6 +547,17 @@ export const createCloudLayer = ({
       if (uniforms.detailFreq) gl.uniform1f(uniforms.detailFreq, detail.frequency)
       if (uniforms.detailAmount) gl.uniform1f(uniforms.detailAmount, detail.amount)
       if (uniforms.deckFade) gl.uniform1f(uniforms.deckFade, detail.fade)
+
+      // The forward-scattering lobe needs to know where the eye is; nothing else here does.
+      if (uniforms.camera) gl.uniform3f(uniforms.camera, ...cameraInPlanetSpace(map, maplibregl))
+      const light = (name) => { if (uniforms[name]) gl.uniform1f(uniforms[name], state[name]) }
+      light('cloudRelief')
+      light('cloudDepth')
+      light('powder')
+      light('forward')
+      light('forwardG')
+      light('selfShadow')
+      light('selfShadowStep')
 
       gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos)
       gl.enableVertexAttribArray(attribs.pos)

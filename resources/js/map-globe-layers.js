@@ -216,6 +216,38 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         } },
     ], { tab: 'Earth' }),
 
+    /**
+     * The four lighting terms, in the order they have to be built — each one alone looks wrong.
+     * The normal by itself is grey terrain; the normal with Beer-Powder is cloud; the forward lobe
+     * on top of that is what makes it look photographed.
+     *
+     * All four are zero-is-off, so any of them can be taken out on the panel and the deck returns
+     * to exactly the flat white shell it was before. That is what makes an A/B here worth anything.
+     */
+    window.__tune?.register('Cloud light', [
+      // Cloud coverage is a heightfield, and this is how tall the fully covered sky stands. A real
+      // cumulus tops out around 8 km, which is where it sits.
+      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 40, step: 0.5, value: 8,
+        apply: (v) => set('clouds', { cloudRelief: v }) },
+      { key: 'cloudDepth', label: 'Optical depth', min: 0, max: 12, step: 0.25, value: 4,
+        apply: (v) => set('clouds', { cloudDepth: v }) },
+      // Thin edges darker than the plain exponential says. Take it to 0 and the rims fade out
+      // linearly, which is what makes a cloud read as painted-on fog.
+      { key: 'powder', label: 'Powder', min: 0, max: 1, step: 0.05, value: 1,
+        apply: (v) => set('clouds', { powder: v }) },
+      { key: 'forward', label: 'Silver lining', min: 0, max: 2, step: 0.05, value: 0.5,
+        apply: (v) => set('clouds', { forward: v }) },
+      { key: 'forwardG', label: 'Lobe sharpness', min: 0, max: 0.95, step: 0.05, value: 0.7,
+        apply: (v) => set('clouds', { forwardG: v }) },
+      { key: 'selfShadow', label: 'Self shadow', min: 0, max: 1, step: 0.02, value: 0.18,
+        apply: (v) => set('clouds', { selfShadow: v }) },
+      // How far the shadow read walks sunward. Too far and it stops being a shadow and becomes an
+      // even dimmer — measured at 25 km, where it took a quarter of the deck's brightness flat.
+      { key: 'selfShadowStep', label: 'Shadow reach', min: 0.0002, max: 0.006, step: 0.0002,
+        value: 0.0015,
+        apply: (v) => set('clouds', { selfShadowStep: v }) },
+    ], { tab: 'Earth' }),
+
     window.__tune?.register('Sky and light', [
       { key: 'nightDarkness', label: 'Night', min: 0, max: 1, step: 0.005, value: 0.965,
         apply: (v) => set('daylight', { nightDarkness: v }) },

@@ -1101,6 +1101,157 @@ const cloudRepeat = async ({ lng = -20, lat = 53, zoom = 3, half = 150 } = {}) =
   return report
 }
 
+/**
+ * What each of the deck's four lighting terms actually does, separately.
+ *
+ * All four are zero-is-off, so every one of them can be turned on alone against a common baseline
+ * and its effect read directly. That is the whole reason they are built that way: "the clouds look
+ * better" is not a result, and a lighting model assembled all at once cannot be taken apart again.
+ *
+ * TWO OF THESE ARE PHYSICS CLAIMS rather than "does something happen", and they are the ones worth
+ * measuring:
+ *
+ *  - Beer-Powder says thick cloud is BRIGHTER than thin, because cloud is dominated by multiple
+ *    scattering. That is the opposite of a solid, and it is exactly what a Lambert term on the same
+ *    normal would fail: under Lambert, brightness depends on the angle and not at all on the
+ *    thickness. So the test is the RATIO of lit to unlit binned by thickness — flat under Lambert,
+ *    rising under Beer-Powder.
+ *  - Forward scattering says the rim of a backlit cloud is brighter than its lit face. So the light
+ *    it adds must be larger on the side of the frame the sun is behind, and nearly absent opposite.
+ *    A term that brightened everything equally would be a fog pass wearing its name.
+ */
+const cloudLighting = async ({ lng = -20, lat = 20, zoom = 3, half = 130 } = {}) => {
+  /**
+   * The shipped strengths, read BEFORE anything here touches the layer.
+   *
+   * getOptions returns current state, not defaults, and every frame below sets the terms to zero to
+   * get its baseline — so reading it further down returns the zeros this function itself just wrote,
+   * and every measurement comes back 0.000 looking like a lighting model that does nothing. It did
+   * exactly that once. The numbers have to be captured while they are still the layer's own.
+   */
+  const shipped = clouds.getOptions()
+
+  // The sun off to the WEST and low, so one side of the frame is backlit and the other is not —
+  // which is what makes the forward-scattering asymmetry readable in a single frame.
+  const sun = sunFor(lng - 78, 5)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const OFF = {
+    cloudRelief: 0, cloudDepth: 0, powder: 0, forward: 0, selfShadow: 0, windAmount: 0, sun,
+  }
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+
+  const noDeck = await frameWith({ daylight: ground, clouds: { ...OFF, opacity: 0 } })
+  const flat = await frameWith({ daylight: ground, clouds: { ...OFF, opacity: 1 } })
+
+  const term = async (overrides) =>
+    frameWith({ daylight: ground, clouds: { ...OFF, opacity: 1, ...overrides } })
+
+  // THE SHIPPED VALUES, read off the layer rather than repeated here. A measurement of numbers that
+  // only exist in the harness tells you about the harness.
+  const shaped = await term({ cloudRelief: shipped.cloudRelief })
+  const beer = await term({ cloudDepth: shipped.cloudDepth, powder: shipped.powder })
+  const silver = await term({ forward: shipped.forward, forwardG: shipped.forwardG })
+  const shadowed = await term({
+    selfShadow: shipped.selfShadow, selfShadowStep: shipped.selfShadowStep,
+  })
+
+  const box = boxAround(noDeck, lng, lat, half)
+
+  /** How much light the deck put here, with the lighting off. Stands in for thickness. */
+  const thicknessAt = (i) => luma(flat.pixels, i) - luma(noDeck.pixels, i)
+  const deckLight = (frame, i) => luma(frame.pixels, i) - luma(noDeck.pixels, i)
+
+  const withCloud = box.filter((i) => thicknessAt(i) > 4)
+  if (withCloud.length < 200) {
+    throw new Error(`only ${withCloud.length} pixels here carry cloud — nothing can be read from that`)
+  }
+
+  const mean = (values) => values.reduce((a, b) => a + b, 0) / Math.max(1, values.length)
+  const meanChange = (frame) => round(mean(withCloud.map((i) => deckLight(frame, i) - thicknessAt(i))), 3)
+  const spread = (frame) => {
+    const values = withCloud.map((i) => deckLight(frame, i))
+    const m = mean(values)
+    return round(Math.sqrt(mean(values.map((v) => (v - m) ** 2))), 3)
+  }
+
+  // Thin edges against thick centres, by the deck's own thickness proxy.
+  const sorted = [...withCloud].sort((a, b) => thicknessAt(a) - thicknessAt(b))
+  const thin = sorted.slice(0, Math.floor(sorted.length * 0.25))
+  const thick = sorted.slice(Math.floor(sorted.length * 0.75))
+  /** Lit over unlit. 1 means the term did nothing to this bin. */
+  const ratio = (frame, bin) =>
+    round(mean(bin.map((i) => deckLight(frame, i))) / Math.max(0.01, mean(bin.map(thicknessAt))), 4)
+
+  /**
+   * Forward scattering has to be tested by moving the SUN, not by looking at a different part of
+   * the frame — and the first version of this got that wrong and reported a 16% asymmetry that
+   * looked like a weak effect rather than a wrong measurement.
+   *
+   * The scattering angle is between the light's direction and the eye's. At globe distance the eye
+   * direction is nearly the same everywhere on the disc, so the angle barely varies across a frame:
+   * it is fixed by where the sun is relative to the CAMERA. Sun behind the camera and every pixel
+   * is front-lit; sun beyond the planet and every pixel is backlit. Splitting one frame in half
+   * therefore measures almost nothing, whatever the term is doing.
+   *
+   * So: the same box, the same deck, the sun walked from in front of the camera to behind the
+   * planet, and the light the term adds at each step. A sweep rather than two points, because where
+   * it PEAKS is the question — the geometry that scatters hardest forward is also the geometry that
+   * is in shadow, and only a curve shows where those two meet.
+   *
+   * THE SAME PIXELS AT EVERY SUN. Coverage does not depend on the sun, so the cloudy pixels are
+   * chosen once and reused. Selecting them per sun position instead is what made the first attempt
+   * return nothing at all for the backlit case: with the sun beyond the limb the deck is on the
+   * night side and too dim to pass a brightness threshold, so the measurement discarded exactly the
+   * geometry it was built to look at and reported null.
+   */
+  const forwardAt = async (sunLngOffset) => {
+    const movedSun = sunFor(lng + sunLngOffset, 5)
+    const base = await frameWith({
+      daylight: { ...ground, sun: movedSun },
+      clouds: { ...OFF, opacity: 1, sun: movedSun },
+    })
+    const lit = await frameWith({
+      daylight: { ...ground, sun: movedSun },
+      clouds: { ...OFF, opacity: 1, sun: movedSun, forward: shipped.forward, forwardG: shipped.forwardG },
+    })
+    return round(mean(withCloud.map((i) => luma(lit.pixels, i) - luma(base.pixels, i))), 3)
+  }
+
+  const sweepForward = async (degrees) => {
+    const out = {}
+    for (const deg of degrees) out[deg] = await forwardAt(deg)
+    return out
+  }
+
+  return {
+    samples: withCloud.length,
+    // 1. The normal. Shading by the difference from the sphere adds structure without moving the
+    //    mean much — the same signature the ground's relief has.
+    shape: { meanChange: meanChange(shaped), spread: spread(shaped), flatSpread: spread(flat) },
+    // 2. Beer-Powder. The discriminating number is thin vs thick: equal would be Lambert.
+    beerPowder: {
+      meanChange: meanChange(beer),
+      thinRatio: ratio(beer, thin),
+      thickRatio: ratio(beer, thick),
+      flatThinRatio: ratio(flat, thin),
+      flatThickRatio: ratio(flat, thick),
+    },
+    // 3. Forward scattering. The sun walked round the planet, in degrees from the camera.
+    forward: {
+      meanChange: meanChange(silver),
+      // Sequential, not Promise.all: every one of these drives the SAME two layers through
+      // setOptions and then captures, so running them together would interleave the settings and
+      // read frames belonging to whichever call happened to write last.
+      bySunAngle: await sweepForward([0, 30, 60, 90, 110, 130, 160]),
+    },
+    // 4. Self-shadow. One extra read; it can only take light away.
+    selfShadow: { meanChange: meanChange(shadowed) },
+    where: { lng, lat, zoom, sunLng: lng - 78 },
+  }
+}
+
 /** A coarse slice through the middle of the frame, so the scene's shape can be read rather than assumed. */
 const rowSlice = async () => {
   const frame = await capture()
@@ -1118,6 +1269,7 @@ const rowSlice = async () => {
 window.__rowSlice = rowSlice
 window.__limbProfile = limbProfile
 window.__cloudRepeat = cloudRepeat
+window.__cloudLighting = cloudLighting
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds
