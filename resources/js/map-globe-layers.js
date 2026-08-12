@@ -212,7 +212,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('clouds', { windScale: v }) },
       { key: 'windRate', label: 'Wind speed', min: 0, max: 0.3, step: 0.005, value: 0.05,
         apply: (v) => set('clouds', { windRate: v }) },
-      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.61,
+      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.55,
         apply: (v) => set('daylight', { cloudShadow: v }) },
       // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
       // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
@@ -224,6 +224,10 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       // being able to check by eye, hence a control rather than a constant alone.
       { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.4715,
         apply: (v) => { set('clouds', { patchMean: v }); set('daylight', { patchMean: v }) } },
+      // How much patch variation rides on the global distribution. At 0 the deck is the old 19.5 km
+      // field again — which is the A/B for whether the detail is worth having at all.
+      { key: 'patchDetail', label: 'Detail amount', min: 0, max: 1.5, step: 0.05, value: 0.75,
+        apply: (v) => { set('clouds', { patchDetail: v }); set('daylight', { patchDetail: v }) } },
       // Off returns the deck to the 19.5 km whole-planet field, which is the A/B this change exists
       // to win. Kept because "is the new source actually better" should be one click, not a rebuild.
       { key: 'patchUrl', label: 'Tiled source', type: 'boolean', value: true,
@@ -245,7 +249,10 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
     window.__tune?.register('Cloud light', [
       // Cloud coverage is a heightfield, and this is how tall the fully covered sky stands. A real
       // cumulus tops out around 8 km, which is where it sits.
-      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 40, step: 0.5, value: 8,
+      // Applied to the 19.5 km field rather than to the atlas, so it is a height on a SMOOTHED
+      // heightfield and runs larger than a real cloud. See clouds.js for why the atlas cannot be
+      // used here.
+      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 120, step: 2, value: 40,
         apply: (v) => set('clouds', { cloudRelief: v }) },
       { key: 'cloudDepth', label: 'Optical depth', min: 0, max: 12, step: 0.25, value: 4,
         apply: (v) => set('clouds', { cloudDepth: v }) },

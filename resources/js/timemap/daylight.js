@@ -153,7 +153,8 @@ void main() {
   // Walk from this patch of ground toward the sun until the deck, and see what is up there. The
   // offset is what makes a shadow fall AWAY from the light rather than sitting under the cloud
   // like a decal — and it is why an afternoon deck lays its shadows out to the east.
-  if (u_cloudShadow > 0.0 && u_fieldAmount > 0.0) {
+  // Either source: the ground casts the shadow of whatever sky the deck is actually drawing.
+  if (u_cloudShadow > 0.0 && (u_fieldAmount > 0.0 || u_patchAmount > 0.0)) {
     vec3 above = cloudShadowDirection(normal, sunDir, u_cloudAltitude);
     float cover = advectedField(equirectUV(above, u_drift), asin(clamp(above.y, -1.0, 1.0)));
     // The same threshold the deck opens its coverage with, so a shadow exists exactly where a
@@ -269,16 +270,18 @@ export const createDaylightLayer = ({
    *   - swapping to the first harvested atlas took the same 0.5 to 53.86, a third darker, so the
    *     dial came down to 0.38 and measured 41.15.
    *   - reselecting the patches on contrast dropped the mean coverage from 0.5177 to 0.4715, and
-   *     0.38 fell to 25.6 — nearly 40% too light, in the other direction.
+   *     0.38 fell to 25.6 — nearly 40% too light, in the other direction. 0.61 measured back at 41.0.
+   *   - putting the whole-planet field back in charge of WHERE cloud is moved it again, to 45.4.
    *
-   * 0.38 x 40.91 / 25.6 = 0.61, measured back at 41.4. Neither move was a change of mind about how
-   * dark a cloud shadow should be; both were the same target re-expressed against a different sky.
+   * 0.61 x 40.91 / 45.4 = 0.55, which is where it sits. None of the three moves was a change of mind
+   * about how dark a cloud shadow should be; all three were the same target re-expressed against a
+   * different sky.
    *
    * SO: rebuild the atlas and this has to be re-derived. The harness measures it at the shipped
    * setting (`cloudShadowAtShipped`) for exactly that reason — the target is 40.91 and the check is
    * one number, not an opinion.
    */
-  cloudShadow = 0.61,
+  cloudShadow = 0.55,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same

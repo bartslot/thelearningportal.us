@@ -209,12 +209,43 @@ void main() {
                      - vec3(0.0, u_time * 0.01, 0.0));
 
   float coverage;
-  if (u_fieldAmount > 0.0) {
+  /**
+   * The SHAPE of the cloud, without the texture on it — what the normal is taken from.
+   *
+   * Differentiation is a high-pass filter, so a normal computed from the drawn coverage is
+   * dominated by whatever varies fastest in it. Lit by a normal, that came out as fine directional
+   * hatching over the whole deck — brush strokes rather than cloud, unmissable over Ireland and
+   * invisible at globe zoom. Turning this one term off was what identified it.
+   *
+   * IT TOOK THREE GOES, and the two failures are the useful part. Bounding the slope did almost
+   * nothing: the trouble was never the size of the gradient. Removing the procedural noise from it
+   * did nothing either, which ruled out the obvious culprit. What is left is the atlas itself — at
+   * this range it is sampled at roughly one texel per pixel, and a screen-space derivative of a
+   * field varying at the pixel scale is not a measurement of anything. Mipmapping does not save it,
+   * because minification picks the level where one texel IS one pixel, so the estimate sits at
+   * Nyquist at every zoom the deck is drawn at.
+   *
+   * So the shape comes from the whole-planet field alone: 19.5 km per texel, hopeless as texture and
+   * ideal here, because it is smooth across a pixel at every zoom and there is nothing left to
+   * alias. It is also the honest division of labour — light the weather SYSTEMS, whose tops really
+   * do catch the sun, and leave the fine structure as what it is, which is texture.
+   */
+  float shapeCoverage;
+  // Either real source will do here — the question is only whether there is real weather to draw at
+  // all, or whether the deck falls back to latitude-banded noise. Asking about the global field
+  // alone would put procedural cloud on a build where the atlas had loaded and it had not.
+  if (u_fieldAmount > 0.0 || u_patchAmount > 0.0) {
     // Real weather. The texture decides WHERE cloud is; the noise decides what its edges look
     // like — and as the field runs out of resolution, u_detailAmount hands the noise more of the
     // job, until at close range it is carrying the structure on its own.
-    float field = advectedField(equirectUV(p, u_drift), asin(clamp(p.y, -1.0, 1.0)));
+    vec2 uv = equirectUV(p, u_drift);
+    float field = advectedField(uv, asin(clamp(p.y, -1.0, 1.0)));
     coverage = smoothstep(0.16, 0.62, field + u_detailAmount * (detail - 0.5));
+    // One extra tap, straight from the smooth global field. Where it is absent the atlas is all
+    // there is, and the hatching comes back — which is the honest trade, not a hidden one.
+    shapeCoverage = u_fieldAmount > 0.0
+      ? smoothstep(0.16, 0.62, texture(u_field, uv).r)
+      : smoothstep(0.16, 0.62, field);
   } else {
     float cover = fbm(p * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004)) + 0.35 * detail;
     // Earth's cloud is banded, not evenly scattered: a wet belt at the equator, the clear
@@ -226,6 +257,8 @@ void main() {
       - 0.40 * exp(-pow((abs(sinLat) - 0.50) / 0.16, 2.0))      // subtropical highs
       + 0.20 * exp(-pow((abs(sinLat) - 0.82) / 0.18, 2.0));     // storm tracks
     coverage = smoothstep(0.70, 1.02, cover * band);
+    // No real field to fall back on here, so the noise is all there is to take a shape from.
+    shapeCoverage = coverage;
   }
 
   // ── Lighting ──────────────────────────────────────────────────────────────────────────────
@@ -252,8 +285,8 @@ void main() {
   // this pixel, so two scalar derivatives fix the surface gradient exactly.
   vec3 dpdx = dFdx(v_sphere);
   vec3 dpdy = dFdy(v_sphere);
-  float dcdx = dFdx(coverage);
-  float dcdy = dFdy(coverage);
+  float dcdx = dFdx(shapeCoverage);
+  float dcdy = dFdy(shapeCoverage);
 
   mat3 frame = equirectTangentFrame(p);
   vec2 stepX = vec2(dot(dpdx, frame[0]), dot(dpdx, frame[1]));
@@ -269,9 +302,26 @@ void main() {
     // here is the real one and the control means something a person can picture. A cumulus tops out
     // around 8 km, which is where the default sits; the gradient is per sphere radius, so the
     // conversion is the earth's own.
-    // Clamped, because the solve is unbounded as the quad degenerates and one runaway normal reads
-    // as a bright speck rather than as a slope.
-    slope = clamp(slope * (u_cloudRelief / 6371.0), vec2(-40.0), vec2(40.0));
+    slope *= u_cloudRelief / 6371.0;
+
+    /**
+     * BOUNDED AT 1.5, which is 56 degrees, and the bound is doing real work rather than guarding an
+     * edge case.
+     *
+     * A screen-space derivative is a 2x2-quad estimate, and it is only honest where the field varies
+     * slowly across a quad. Once the source became genuinely sharp that stopped being true: at close
+     * range a cloud edge crosses a whole quad, the estimated normal alternates from quad to quad,
+     * and the deck came out covered in fine directional hatching — brush strokes rather than cloud.
+     * It is invisible at globe zoom and unmissable over Ireland, and turning this term off alone was
+     * what identified it.
+     *
+     * The bound is a statement about cloud rather than about floating point: a real cloud top does
+     * not stand steeper than about this, so anything past it was never a slope, it was the estimate
+     * falling apart. Magnitude only — the direction is left alone, since that is the part that is
+     * still right.
+     */
+    float steepness = length(slope);
+    if (steepness > 1.5) slope *= 1.5 / steepness;
     cloudNormal = normalize(frame * normalize(vec3(-slope, 1.0)));
   }
 
@@ -301,14 +351,25 @@ void main() {
     float full = (1.0 - exp(-u_cloudDepth)) * mix(1.0, 1.0 - exp(-2.0 * u_cloudDepth), u_powder);
     depth /= max(full, 1.0e-3);
 
-    // A FLOOR, because past a point the powder term stops being physics and starts being a hole.
-    // Thin cloud scatters skylight even where no sun reaches it, so it is never darker than the sea
-    // beneath — but the term alone drives it to zero, and a deck at zero brightness still writes
-    // alpha, so it subtracts from the ground and the wisps come out as a dark veil. Measured after
-    // the patches were reselected, the thinnest quarter of the deck went to -0.07 of the brightness
-    // it should have had: not dim, INVERTED. Thin stays dimmer than thick, which is the whole point
-    // of the term; it just stops going through the floor.
-    depth = mix(0.25, 1.0, depth);
+    /**
+     * A FLOOR, and 0.65 rather than something near zero — because the term was double-counting.
+     *
+     * Thin cloud is more TRANSPARENT, and alpha already says so: coverage drives it directly. Using
+     * the same thinness to make the cloud DARKER as well charges twice for one fact, and the second
+     * charge is the wrong one. A deck at low brightness still writes alpha, so it subtracts from the
+     * ground: wisps came out as a dark veil over the sea instead of white against it, and Map works
+     * read the whole deck as grey rather than white.
+     *
+     * Measured, the thinnest quarter went to -0.07 of the brightness it should have had, and then to
+     * -0.40 once the global distribution put more genuinely-thin cloud on screen. Not dim. INVERTED
+     * — darker than the surface beneath, which no cloud is.
+     *
+     * Real thin cloud is grey-white, never black, because it scatters skylight from every direction
+     * whether or not the sun reaches it. So the powder term keeps its job — thin edges read darker
+     * than thick centres, which is what stops a cloud looking like painted-on fog — over a range
+     * that stays above the sea rather than going through it.
+     */
+    depth = mix(0.65, 1.0, depth);
   }
 
   // ── 4. Self-shadowing ─────────────────────────────────────────────────────────────────────
@@ -410,7 +471,19 @@ export const createCloudLayer = ({
    * normal by itself is grey terrain, the normal with Beer-Powder is cloud, and the forward lobe on
    * top is what makes it look photographed.
    */
-  cloudRelief = 8,        // km of cloud height; a real cumulus tops out about here
+  /**
+   * 40 rather than a cumulus's real 8 km, because the heightfield it reads is not a cumulus.
+   *
+   * The conversion is still literally kilometres over the earth's radius — that has not changed.
+   * What changed is the input: the shape is taken from the 19.5 km whole-planet field, since the
+   * atlas aliases into hatching at close range (see the shader). A field at that resolution has
+   * gently sloped edges by construction, so the same nominal height yields about a fifth of the
+   * slope and the term all but vanished — measured, spread 27.8 against a flat deck's 27.5.
+   *
+   * So the number is a height applied to a SMOOTHED heightfield, and it has to be larger to recover
+   * the slope a real cloud edge has. The 1.5 bound in the shader is what keeps that honest.
+   */
+  cloudRelief = 40,
   cloudDepth = 4,         // optical depth of fully covered sky
   powder = 1,
   forward = 0.5,

@@ -29,6 +29,7 @@ type Axis = {
 type Repeat = {
   east: Axis; north: Axis; metresPerPixel: number;
   where: { lng: number; lat: number; zoom: number };
+  seams: { seamRatio: number; rawRatio: number; nullRatio: number };
 };
 
 /**
@@ -75,7 +76,10 @@ test.beforeAll(async ({ browser }) => {
   const harnessError = await page.evaluate(() => (window as any).__harnessError);
   expect(harnessError, 'the harness reported an error before any measurement ran').toBeFalsy();
 
-  report = await page.evaluate(() => (window as any).__cloudRepeat());
+  report = await page.evaluate(async () => ({
+    ...(await (window as any).__cloudRepeat()),
+    seams: await (window as any).__cloudSeams(),
+  }));
   expect(failures, `page errors: ${failures.join(', ')}`).toHaveLength(0);
   await page.close();
 });
@@ -99,6 +103,34 @@ test.describe('the cloud deck over the North Atlantic', () => {
         + 'a curve that comes back up is the tiling showing itself',
       ).toBeLessThan(RECURRENCE_LIMIT);
     }
+  });
+
+  /**
+   * NOT REPEATING IS NOT THE SAME AS NOT SHOWING, and this branch proved it the expensive way.
+   *
+   * A build measuring 0.028 here was photographed covered in hard-edged triangles across the whole
+   * mid-Atlantic. Both readings were true. Autocorrelation finds PERIOD, and a grid whose every cell
+   * draws a different window at a different angle genuinely has none — but two neighbouring cells
+   * landing on cloud of different density still meet along a straight line, and the eye finds a
+   * straight line instantly at any contrast.
+   *
+   * The cause was a transposition in the upper triangle's barycentric weights: the two halves of
+   * each lattice square handed the same vertex different weights along their shared diagonal, so the
+   * blend stepped across every one of them.
+   *
+   * The instrument reconstructs the lattice and compares edge energy against interior energy, with
+   * its own bias measured on a deck that has no lattice in it at all. It is deliberately a separate
+   * assertion from the one above, because they can fail independently and have.
+   */
+  test('does not show its cell boundaries', () => {
+    expect(
+      report.seams.nullRatio,
+      'the instrument reads a seam on a deck with no lattice in it, so it is measuring itself',
+    ).toBeLessThan(1.06);
+    expect(
+      report.seams.seamRatio,
+      `cell boundaries carry ${report.seams.seamRatio}x the energy of cell interiors`,
+    ).toBeLessThan(1.35);
   });
 
   test('is looking at a patch of ocean big enough to contain a repeat', () => {
