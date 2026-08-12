@@ -261,8 +261,8 @@ export const createDaylightLayer = ({
   /**
    * 0.5 — BART'S VALUE, kept, with the measurement recorded against it rather than argued with.
    *
-   * On the source that now ships, 0.5 measures a shadow strength of 37.18 over the Himalaya against
-   * the 40.91 that the same 0.5 produced on the field he tuned it against: about 9% lighter. 0.55
+   * On the source that now ships, 0.5 measures a shadow strength of 37.01 over the Himalaya against
+   * the 40.91 that the same 0.5 produced on the field he tuned it against: about 10% lighter. 0.55
    * would restore that figure exactly, and this file said 0.55 until his Standard preset landed.
    *
    * It stays at his number. 9% is inside taste, the dial is his, and he has not yet seen the deck it
@@ -281,6 +281,9 @@ export const createDaylightLayer = ({
    *   - reselecting the patches on contrast dropped the mean coverage from 0.5177 to 0.4715, and
    *     0.38 fell to 25.6 — nearly 40% too light, in the other direction. 0.61 measured back at 41.0.
    *   - putting the whole-planet field back in charge of WHERE cloud is moved it again, to 45.4.
+   *   - going to z8 patches barely moved it at all: 37.18 to 37.01 at his 0.5. Sixteen times the
+   *     texels over the same ground changes the DETAIL, not the amount of sky covered — which is
+   *     the first time this dial has survived a source change, and it is why.
    *
    * 0.61 x 40.91 / 45.4 = 0.55, which is where it stood until his preset arrived. None of the three
    * moves was a change of mind about how dark a cloud shadow should be; all three were the same

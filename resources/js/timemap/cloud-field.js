@@ -80,7 +80,7 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   // seam to show, and the patch is twice the size of a cell, so there is room to move it.
   const vec2 CLOUD_PATCH_GRID = vec2(3.0, 2.0);
   const float CLOUD_PATCH_COUNT = 6.0;
-  const float CLOUD_PATCH_TEXELS = 256.0;
+  const float CLOUD_PATCH_TEXELS = 1024.0;
   // Patch widths around the equator: 40075 km of circumference over 626 km of patch. It is what
   // makes the atlas display at its native 2446 m per texel whatever u_patchTiles is set to.
   const float CLOUD_PATCH_WIDTHS = 64.0;
@@ -367,16 +367,17 @@ export const CLOUD_PATCH_DETAIL = 0.75
 export const CLOUD_PATCH_TILES = 144
 
 /**
- * The atlas's own mean coverage, measured over all six patches: 0.4715.
+ * The atlas's own mean coverage, measured over all six patches: 0.4359.
  *
  * Not decoration — the variance-preserving blend centres on it, and an error here reappears as a
  * brightness modulation in the shape of the lattice, which is the one artefact the tiling exists to
  * prevent. It MUST be re-measured whenever the atlas is rebuilt: it moved from 0.5177 to 0.4715 the
- * moment the patches were reselected on contrast, which is a big enough step to show. So
+ * moment the patches were reselected on contrast, and again to 0.4359 at z8. Each step is big
+ * enough to show. So
  * build-cloud-atlas.mjs prints it and names this constant, rather than leaving the pair to be kept
  * in step by whoever remembers.
  */
-export const CLOUD_PATCH_MEAN = 0.4715
+export const CLOUD_PATCH_MEAN = 0.4359
 
 /**
  * Set every cloud-field uniform from one state object.
