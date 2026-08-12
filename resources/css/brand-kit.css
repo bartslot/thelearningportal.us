@@ -29,8 +29,17 @@
   /* ── Text ─────────────────────────────────────────────────────────────────────────────────── */
   --color-card-title: #ffffff;
   --color-card-body: #c7d5e3;        /* Figma variable `Menu` — the light blue-grey this UI reads in */
-  --color-card-muted: #7c8b9d;       /* inactive tabs, footnotes */
-  --color-card-accent: #f5c518;      /* dates, links — the same amber the map selects with */
+  --color-card-muted: #7c8b9d;       /* inactive tabs, footnotes, LINKS */
+
+  /* ONE accent, used ONCE per surface — on a card, that is the era and nothing else.
+   *
+   * The content layer here is a photographed planet: colourful, moving, and a different colour
+   * every year and every map style. Apple's guidance for exactly this case is a monochromatic
+   * chrome with one well-differentiated accent, because colourful controls over colourful content
+   * are what make labels hard to read. Links are muted, not amber. If two things on a screen are
+   * amber, one of them is wrong.
+   * https://developer.apple.com/design/human-interface-guidelines/color */
+  --color-card-accent: #f5c518;
 
   /* ── The small-caps label ─────────────────────────────────────────────────────────────────── */
   /* Figma: LABEL_SMALL_UI and LABEL_BIGGER. Inter SemiBold, 0.5 letter-spacing, uppercase. Used for
