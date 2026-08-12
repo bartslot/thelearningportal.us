@@ -22,7 +22,7 @@
  *
  *   node scripts/build-cloud-atlas.mjs
  */
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -170,5 +170,26 @@ writeFileSync(tmpPng, PNG.sync.write(atlas))
 execFileSync('cwebp', ['-q', '88', '-quiet', tmpPng, '-o', OUT_WEBP])
 
 const kb = (p) => (readFileSync(p).length / 1024).toFixed(0)
-console.log(`\n  ${OUT_WEBP.replace(ROOT + '/', '')} — ${kb(OUT_WEBP)} KB (png was ${kb(tmpPng)} KB)`)
+const webpKb = kb(OUT_WEBP)
+const pngKb = kb(tmpPng)
+
+// The intermediate PNG is cwebp's input, not an asset. Left behind it sits in public/img/map as a
+// second megabyte-sized copy of the atlas that nothing loads — and the build's own budget check
+// fails on it, correctly, as an undeclared texture. Which is how this was found.
+rmSync(tmpPng, { force: true })
+
+console.log(`\n  ${OUT_WEBP.replace(ROOT + '/', '')} — ${webpKb} KB (png was ${pngKb} KB)`)
 console.log(`  ${COLS * TILE}x${ROWS * TILE}, ${wanted} regions, 2446 m per texel`)
+
+/**
+ * The atlas's own mean coverage — a number the SHADER needs, not a statistic for the log.
+ *
+ * The stochastic tiling blends three taps in a variance-preserving way, and it centres that blend
+ * on this figure. Get it wrong and the lattice reappears as a faint brightness pattern, which is
+ * the one artefact the tiling exists to prevent. So it is printed here, next to the asset it
+ * describes, because the two have to be changed together: CLOUD_PATCH_MEAN in cloud-field.js.
+ */
+let total = 0
+for (let i = 0; i < atlas.data.length; i += 4) total += atlas.data[i]
+const mean = total / (atlas.data.length / 4) / 255
+console.log(`\n  mean coverage ${mean.toFixed(4)}  ->  CLOUD_PATCH_MEAN in resources/js/timemap/cloud-field.js\n`)

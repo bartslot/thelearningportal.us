@@ -300,6 +300,15 @@ void main() {
     // brighten the whole deck.
     float full = (1.0 - exp(-u_cloudDepth)) * mix(1.0, 1.0 - exp(-2.0 * u_cloudDepth), u_powder);
     depth /= max(full, 1.0e-3);
+
+    // A FLOOR, because past a point the powder term stops being physics and starts being a hole.
+    // Thin cloud scatters skylight even where no sun reaches it, so it is never darker than the sea
+    // beneath — but the term alone drives it to zero, and a deck at zero brightness still writes
+    // alpha, so it subtracts from the ground and the wisps come out as a dark veil. Measured after
+    // the patches were reselected, the thinnest quarter of the deck went to -0.07 of the brightness
+    // it should have had: not dim, INVERTED. Thin stays dimmer than thick, which is the whole point
+    // of the term; it just stops going through the floor.
+    depth = mix(0.25, 1.0, depth);
   }
 
   // ── 4. Self-shadowing ─────────────────────────────────────────────────────────────────────
