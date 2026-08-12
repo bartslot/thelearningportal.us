@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* The information-card design language, synced from Figma. See .claude/skills/history-portal-ui. */
+@import './brand-kit.css';
 @plugin "daisyui";
 
 [x-cloak] { display: none !important; }
