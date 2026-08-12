@@ -51,6 +51,7 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   uniform float u_patchAmount;  // 0 = no atlas, fall back to the whole-planet field
   uniform float u_patchTiles;   // lattice cells around the equator
   uniform float u_patchMean;    // the atlas's own mean coverage; see the blend below
+  uniform float u_patchDetail;  // how much patch variation rides on the global distribution
 
   vec2 windAt(vec2 uv, float lat) {
     vec2 wind = texture(u_wind, uv).rg * 2.0 - 1.0;
@@ -168,11 +169,40 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
       v2 = base + vec2(0.0, 1.0);
       v3 = base + vec2(1.0, 0.0);
     } else {
-      weights = vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y);
+      // 1-f.y ON v2 AND 1-f.x ON v3, and the pairing is the whole of it. Written the other way
+      // round — which is what shipped — the two triangles of a square hand the SAME vertex
+      // different weights along their shared diagonal: at f.x+f.y=1 the lower triangle gives
+      // (1,0) a weight of f.x while the upper gives it f.y. The blend then steps discontinuously
+      // across every diagonal in the lattice, and the deck comes out covered in hard-edged
+      // triangles.
+      //
+      // The non-repetition measurement cannot see this and was right not to. Autocorrelation finds
+      // PERIOD, and a grid whose every cell draws a different window at a different angle has none:
+      // it read 0.028 on the build that was visibly ruined. Repeating and seamless are different
+      // properties. Photographed by Map works, and now measured by cloudSeams in the harness.
+      weights = vec3(f.x + f.y - 1.0, 1.0 - f.y, 1.0 - f.x);
       v1 = base + vec2(1.0, 1.0);
       v2 = base + vec2(1.0, 0.0);
       v3 = base + vec2(0.0, 1.0);
     }
+
+    /**
+     * SMOOTHED WEIGHTS, and this is the second half of making the lattice invisible.
+     *
+     * Fixing the transposed weights above made the blend continuous in VALUE. It is still not
+     * continuous in SLOPE: crossing a diagonal swaps which exemplar is entering for which is
+     * leaving, so each one's contribution starts growing exactly where another's stopped, and the
+     * field gets a crease along every edge of the lattice. A crease is a straight line, and after
+     * the coverage smoothstep the eye finds it as readily as a step would — the seam ratio only fell
+     * from 1.21 to 1.06 on the value fix alone, and then rose again the moment the global
+     * distribution put the field back on the steep part of that curve.
+     *
+     * Smoothstepping each weight before normalising sends it to zero with zero derivative, so an
+     * exemplar fades in and out rather than switching on at an angle. The blend becomes C1 across
+     * the boundaries and there is no crease left to see.
+     */
+    weights = weights * weights * (3.0 - 2.0 * weights);
+    weights /= max(1.0e-5, weights.x + weights.y + weights.z);
 
     // Back out of the skew to get each vertex's own position, so "local" is measured in the same
     // undistorted cell units the window maths above expects.
@@ -202,10 +232,34 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
     return clamp(u_patchMean + dot(weights, centred) / spread, 0.0, 1.0);
   }
 
-  /** Cloud cover at an equirectangular UV: the tiled atlas if it is loaded, the old field if not. */
+  /**
+   * Cloud cover at an equirectangular UV — the two sources doing the two jobs neither can do alone.
+   *
+   * THE ATLAS ALONE MAKES THE WHOLE PLANET OVERCAST, and structurally rather than by a setting.
+   * Every patch was harvested over open ocean in cloudy latitudes, because that is where cloud
+   * separates on brightness — so tiled uniformly, the atlas's own cloud fraction becomes the
+   * planet's. Measured across the disc: 74.3% covered against the real distribution's 26.5%, nearly
+   * three times too much. The sea disappeared and the Sahara washed out.
+   *
+   * No amount of tiling can invent the missing thing, which is WHERE cloud is not. Earth is roughly
+   * two-thirds covered but distributed — subtropical highs, deserts, continental interiors are
+   * genuinely clear, and those clear regions are most of what makes a globe read as a globe.
+   *
+   * So each source does what it is actually good for. The whole-planet field is hopeless as texture
+   * at 19.5 km per texel, but it is the REAL global distribution and nothing else here is. The
+   * patches are hopeless as a distribution but carry real cloud shape at 2446 m. The field sets how
+   * much cloud belongs at a place; the patches say what it looks like when it is there.
+   *
+   * Centred on the atlas's own mean before it is added, so the patches contribute VARIATION and not
+   * a bias — otherwise the whole planet lifts by 0.47 and the overcast comes straight back.
+   */
   float cloudSourceAt(vec2 uv, float lat) {
-    if (u_patchAmount > 0.0) return tiledPatchField(uv, lat);
-    return texture(u_field, uv).r;
+    // Without the field there is no distribution to place cloud in, so the atlas centres on itself
+    // and behaves as it did before this: uniform, and honest about being uniform.
+    float global = u_fieldAmount > 0.0 ? texture(u_field, uv).r : u_patchMean;
+    if (u_patchAmount <= 0.0) return global;
+    float detail = tiledPatchField(uv, lat);
+    return clamp(global + (detail - u_patchMean) * u_patchDetail, 0.0, 1.0);
   }
 
   float advectedField(vec2 uv, float lat) {
@@ -224,8 +278,18 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
 /** The uniform names CLOUD_FIELD_GLSL declares, for `getUniformLocation` in either layer. */
 export const CLOUD_FIELD_UNIFORMS = [
   'time', 'drift', 'field', 'fieldAmount', 'wind', 'windAmount', 'windScale', 'windRate',
-  'patches', 'patchAmount', 'patchTiles', 'patchMean',
+  'patches', 'patchAmount', 'patchTiles', 'patchMean', 'patchDetail',
 ]
+
+/**
+ * How much of the patches' variation rides on the global distribution.
+ *
+ * 1 adds the atlas's full swing, which saturates the clamp over anywhere the field already calls
+ * cloudy and quietly costs the distribution back. 0.75 keeps the fine structure clearly visible
+ * while leaving the field in charge of where cloud belongs — measured on cloud fraction across the
+ * disc, which is the only number that can see the difference.
+ */
+export const CLOUD_PATCH_DETAIL = 0.75
 
 /**
  * Lattice cells around the equator.
@@ -271,13 +335,17 @@ export const setCloudFieldUniforms = (gl, uniforms, state, sources, fieldUnit, w
   // Real weather tracks west to east. Slow enough that a lesson never sees it move, fast enough
   // that the planet is not visibly frozen across a long scene.
   if (uniforms.drift) gl.uniform1f(uniforms.drift, seconds * state.driftRate)
-  // The deck runs on EITHER source, so it counts as having a field if either has arrived. Reading
-  // only the old one here is what would leave a fully-loaded atlas drawing procedural noise.
-  const hasSource = sources.field?.ready || sources.patches?.ready
-  if (uniforms.fieldAmount) gl.uniform1f(uniforms.fieldAmount, hasSource ? 1 : 0)
+  // Each flag means exactly ONE texture, and that precision is load-bearing now that the two do
+  // different jobs: fieldAmount is the global distribution, patchAmount is the detail laid into it.
+  // Overloading fieldAmount to mean "either source has arrived" left the combiner unable to ask the
+  // question it actually needs answered, which is whether there is a distribution to place cloud in.
+  if (uniforms.fieldAmount) gl.uniform1f(uniforms.fieldAmount, sources.field?.ready ? 1 : 0)
   if (uniforms.patchAmount) gl.uniform1f(uniforms.patchAmount, sources.patches?.ready ? 1 : 0)
   if (uniforms.patchTiles) gl.uniform1f(uniforms.patchTiles, state.patchTiles ?? CLOUD_PATCH_TILES)
   if (uniforms.patchMean) gl.uniform1f(uniforms.patchMean, state.patchMean ?? CLOUD_PATCH_MEAN)
+  if (uniforms.patchDetail) {
+    gl.uniform1f(uniforms.patchDetail, state.patchDetail ?? CLOUD_PATCH_DETAIL)
+  }
   if (uniforms.windAmount) gl.uniform1f(uniforms.windAmount, sources.wind?.ready ? state.windAmount : 0)
   if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
   if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.animate ? state.windRate : 0)

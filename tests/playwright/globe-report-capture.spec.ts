@@ -38,7 +38,14 @@ test('capture the harness report', async ({ browser }) => {
   const cloudRepeat = await page.evaluate(() => (window as any).__cloudRepeat());
   const cloudLighting = await page.evaluate(() => (window as any).__cloudLighting());
   const cloudWind = await page.evaluate(() => (window as any).__cloudWind());
-  writeFileSync(OUT!, JSON.stringify({ ...report, cloudRepeat, cloudLighting, cloudWind }, null, 2));
+  const cloudSeams = await page.evaluate(() => (window as any).__cloudSeams());
+  const cloudCover = await page.evaluate(() => (window as any).__cloudCover());
+  writeFileSync(
+    OUT!,
+    JSON.stringify(
+      { ...report, cloudRepeat, cloudLighting, cloudWind, cloudSeams, cloudCover }, null, 2,
+    ),
+  );
   if (failures.length) console.log('page errors:', failures.join('\n'));
   console.log(`report written to ${OUT}`);
 });

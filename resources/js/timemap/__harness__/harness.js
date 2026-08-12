@@ -1296,6 +1296,195 @@ const cloudLighting = async ({ lng = -20, lat = 20, zoom = 3, half = 130 } = {})
 }
 
 /**
+ * How much of the PLANET the deck covers, at globe zoom — the number behind "it looks overcast".
+ *
+ * Map works photographed a globe that had gone near-continuous grey-white from limb to limb, with
+ * the sea barely visible and the Sahara washed out. The cause is structural rather than a dial:
+ * every patch was harvested over open ocean in cloudy latitudes, so tiled uniformly the atlas's own
+ * cloud fraction BECOMES the planet's. Real Earth is roughly two-thirds covered but distributed —
+ * the subtropical highs, the deserts and the continental interiors are genuinely clear, and those
+ * clear regions are most of what makes a globe read as a globe.
+ *
+ * So the reading is taken across the whole visible disc, and the reference is the whole-planet field
+ * the deck used to draw: that field IS the real distribution, at a resolution too coarse to be
+ * texture but exactly right as a mask. Matching its cloud fraction is the target, not zero.
+ */
+const cloudCover = async ({ zoom = 1.6 } = {}) => {
+  const sun = sunFor(-20, 10)
+  map.jumpTo({ center: [-20, 15], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const bare = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+
+  /** Cloud fraction over the disc, for whichever sources are switched on. */
+  const fractionWith = async (clouds) => {
+    const frame = await frameWith({ daylight: ground, clouds: { opacity: 1, sun, ...clouds } })
+    let disc = 0
+    let covered = 0
+    for (let k = 0; k < bare.width * bare.height; k++) {
+      // The planet, not the void around it: the harness paints a known grey behind the globe and
+      // black outside it, so anything above a floor is surface.
+      if (luma(bare.pixels, k * 4) < 20) continue
+      disc++
+      if (luma(frame.pixels, k * 4) - luma(bare.pixels, k * 4) > 12) covered++
+    }
+    return { covered: round(covered / Math.max(1, disc), 4), disc }
+  }
+
+  // The old whole-planet field alone — the real distribution, and the target to match.
+  const field = await fractionWith({ patchUrl: null, windAmount: 0 })
+  // Whatever the deck actually ships with.
+  const shipped = await fractionWith({ patchUrl: PATCH_URL, windAmount: 0 })
+
+  return {
+    wholePlanetField: field.covered,
+    shipped: shipped.covered,
+    // Above 1 means the tiled source has put more cloud on the planet than the real distribution
+    // has. It is the number that says "overcast" without anyone having to look.
+    ratio: round(shipped.covered / Math.max(1e-4, field.covered), 3),
+    discPixels: field.disc,
+  }
+}
+
+/**
+ * Whether the tiling's cell boundaries are VISIBLE — which is a different question from whether it
+ * repeats, and the autocorrelation above cannot answer it.
+ *
+ * Map works photographed hard straight-edged triangles across the mid-Atlantic on a build whose
+ * recurrence measured 0.028. Both readings were true. Autocorrelation finds PERIOD, and a grid whose
+ * every cell draws a different window at a different angle genuinely has none — but two neighbouring
+ * cells landing on cloud of different density still meet along a straight line, and the eye finds a
+ * straight line instantly at any contrast. Non-repeating and seamless are separate properties and
+ * need separate instruments.
+ *
+ * So: the lattice is recomputed here in JS, exactly as the shader lays it out, every sampled pixel
+ * is classified as ON a triangle edge or INSIDE a cell, and the pixel-to-pixel energy of the two
+ * sets is compared. A continuous blend puts no more energy on the boundaries than anywhere else and
+ * reads about 1.0. A discontinuity is a step function along a line, and there is nowhere for it to
+ * hide in this ratio.
+ */
+const cloudSeams = async ({ lng = -25, lat = 40, zoom = 4, half = 130, tiles = 144 } = {}) => {
+  const sun = sunFor(lng - 40, 25)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const clear = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+  // Advection off and the clock frozen, so the lattice computed here is the lattice drawn there.
+  const deck = await frameWith({
+    daylight: ground, clouds: { opacity: 1, sun, windAmount: 0, animate: false },
+  })
+
+  // THE NULL. The same lattice classification against a deck drawn with no lattice in it at all —
+  // the whole-planet field alone. There is nothing there for the boundaries to cut, so an unbiased
+  // instrument must read 1.0, and whatever it reads instead is its own bias and has to be divided
+  // out. Without this the ratio cannot distinguish a seam from a property of where the bands fall.
+  const flat = await frameWith({
+    daylight: ground,
+    clouds: { opacity: 1, sun, windAmount: 0, animate: false, patchUrl: null },
+  })
+
+  const mask = differenceImage(clear, deck)
+  const flatMask = differenceImage(clear, flat)
+  const canvas = map.getCanvas()
+  const scaleX = canvas.width / canvas.clientWidth
+  const scaleY = canvas.height / canvas.clientHeight
+  const centre = pixelAt(lng, lat)
+
+  /** How close a point is to the nearest edge of its triangle, 0 on an edge. */
+  const edgeDistance = (lngDeg, latDeg) => {
+    // equirectUV, from planet-mesh.js. Drift is zero because the clock is frozen.
+    const u = lngDeg / 360 + 0.5
+    const v = 0.5 - latDeg / 180
+    const lattice = { x: u * tiles, y: v * tiles * 0.5 }
+    // The same skew the shader applies: x depends on x alone, which is what makes the antimeridian
+    // wrap survive.
+    const sx = lattice.x - 0.57735027 * lattice.y
+    const sy = 1.15470054 * lattice.y
+    const fx = sx - Math.floor(sx)
+    const fy = sy - Math.floor(sy)
+    const bary = fx + fy < 1
+      ? [1 - fx - fy, fy, fx]
+      : [fx + fy - 1, 1 - fy, 1 - fx]
+    const sorted = [...bary].sort((a, b) => a - b)
+    // The smallest says how close to an edge; the SECOND smallest says how far from a vertex.
+    return { toEdge: sorted[0], toVertex: sorted[1] }
+  }
+
+  /**
+   * NEAR AN EDGE IS NOT ENOUGH — it has to be near an edge and AWAY FROM A VERTEX.
+   *
+   * The first version of this classified purely on the smallest barycentric coordinate, and that set
+   * contains the triangle's corners as well as its edges. Those are opposite cases: at a corner ONE
+   * exemplar has almost all the weight and the field carries a single patch at full detail, while at
+   * the centroid three are mixed and the result is intrinsically smoother. So the ratio came out
+   * above 1 whether or not anything was wrong, and it moved when the coverage distribution changed
+   * for reasons that had nothing to do with seams. It read 1.06 after a real fix and 1.20 after an
+   * unrelated one, which is a measurement telling a story about itself.
+   *
+   * An edge MIDPOINT is where exactly two exemplars meet at comparable weight, and that is the only
+   * place a discontinuity between them can show. Requiring the second-smallest coordinate to be
+   * large keeps the corners out.
+   */
+  const ON_EDGE = 0.06
+  const AWAY_FROM_VERTEX = 0.28
+  const INSIDE = 0.22
+
+  const energyOf = (want, image = mask) => {
+    let total = 0
+    let count = 0
+    for (let py = centre.y - half; py <= centre.y + half; py++) {
+      for (let px = centre.x - half; px < centre.x + half; px++) {
+        if (px < 1 || py < 1 || px + 1 >= clear.width || py >= clear.height) continue
+        const point = map.unproject([px / scaleX, canvas.clientHeight - py / scaleY])
+        if (!Number.isFinite(point.lng) || !Number.isFinite(point.lat)) continue
+        const { toEdge, toVertex } = edgeDistance(point.lng, point.lat)
+        const onEdge = toEdge <= ON_EDGE && toVertex >= AWAY_FROM_VERTEX
+        const inside = toEdge >= INSIDE
+        if (want === 'edge' ? !onEdge : !inside) continue
+        const k = py * clear.width + px
+        // Both axes, because a lattice edge can run any direction and a one-axis difference is
+        // blind to a seam parallel to it.
+        total += Math.abs(image[k + 1] - image[k]) + Math.abs(image[k + clear.width] - image[k])
+        count++
+      }
+    }
+    return { energy: count ? total / count : 0, count }
+  }
+
+  const edge = energyOf('edge')
+  const inside = energyOf('inside')
+  if (edge.count < 300 || inside.count < 300) {
+    throw new Error(
+      `only ${edge.count} edge and ${inside.count} interior pixels — the lattice reconstruction is `
+      + 'not landing on the frame, so this ratio would be meaningless',
+    )
+  }
+
+  const nullEdge = energyOf('edge', flatMask)
+  const nullInside = energyOf('inside', flatMask)
+  const raw = edge.energy / Math.max(1e-6, inside.energy)
+  const bias = nullEdge.energy / Math.max(1e-6, nullInside.energy)
+
+  return {
+    // The reading that matters: the raw ratio with the instrument's own bias divided out. 1.0 means
+    // the boundaries carry no more energy than anywhere else, which is what a continuous blend looks
+    // like. Above that is a seam.
+    seamRatio: round(raw / Math.max(1e-6, bias), 4),
+    rawRatio: round(raw, 4),
+    // What the same bands read on a deck with no lattice in it. Any departure from 1.0 here is the
+    // measurement, not the render.
+    nullRatio: round(bias, 4),
+    onEdge: round(edge.energy, 3),
+    inside: round(inside.energy, 3),
+    edgePixels: edge.count,
+    insidePixels: inside.count,
+    where: { lng, lat, zoom, tiles },
+  }
+}
+
+/**
  * What the wind advection costs the deck in sharpness, per setting.
  *
  * windAmount and windScale DEFORM the field; the drift rotates it. They are separate knobs and the
@@ -1348,6 +1537,8 @@ window.__limbProfile = limbProfile
 window.__cloudRepeat = cloudRepeat
 window.__cloudLighting = cloudLighting
 window.__cloudWind = cloudWind
+window.__cloudSeams = cloudSeams
+window.__cloudCover = cloudCover
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds
