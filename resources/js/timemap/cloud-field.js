@@ -145,8 +145,22 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
     return textureGrad(u_patches, (grid + inPatch) / CLOUD_PATCH_GRID, ddx, ddy).r;
   }
 
-  /** The atlas, laid across the sphere with no repeat in it. */
-  float tiledPatchField(vec2 uv, float lat) {
+  /**
+   * The atlas, laid across the sphere with no repeat in it.
+   *
+   * The UV derivatives are handed IN rather than taken here, and that is not tidiness. This is
+   * called three times per sample — once at the plain coordinate and twice at coordinates displaced
+   * by the wind — and the displaced ones carry the flow's own variation in their derivatives. Where
+   * the flow changes quickly, which is exactly where meridians converge, that estimate explodes,
+   * the sampler drops to its coarsest level and the atlas smears along the meridians. It draws as a
+   * starburst of fine streaks spiralling out of the pole.
+   *
+   * It needed BOTH to appear: switching off advection removed it with the tiling still on, and
+   * switching off the tiling removed it with advection still on, which is what identified it. The
+   * displacement is a smooth offset, so the undisplaced coordinate's derivatives describe the
+   * footprint just as well and have nothing pathological in them.
+   */
+  float tiledPatchField(vec2 uv, float lat, vec2 duvdx, vec2 duvdy) {
     // The lattice lives in equirect UV, which is the space both readers of this field already work
     // in — so the ground's shadows keep sampling exactly what the deck draws, with no second
     // coordinate system to get out of step.
@@ -209,14 +223,14 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
     const mat2 UNSKEW = mat2(1.0, 0.0, 0.5, 0.86602540);
     vec2 aspect = vec2(max(cos(lat), 0.05), 1.0);
 
-    // The derivatives of the continuous coordinate, taken ONCE and before any of the per-vertex
-    // choices. Clamped because the lattice steps a whole revolution at the antimeridian, and one
-    // unbounded column of derivatives there would blur a line down the Pacific — the same artefact
-    // as the cell edges, arriving by a different route.
+    // The footprint, from the caller's undisplaced coordinate. Clamped because the lattice steps a
+    // whole revolution at the antimeridian, and one unbounded column of derivatives there would blur
+    // a line down the Pacific — the same artefact as the cell edges, arriving by a different route.
     float span = clamp(CLOUD_PATCH_WIDTHS / max(u_patchTiles, 1.0), 0.02, 0.7);
     vec2 scale = span / CLOUD_PATCH_GRID;
-    vec2 ddx = clamp(dFdx(lattice * aspect) * scale, vec2(-0.25), vec2(0.25));
-    vec2 ddy = clamp(dFdy(lattice * aspect) * scale, vec2(-0.25), vec2(0.25));
+    vec2 perCell = vec2(u_patchTiles, u_patchTiles * 0.5) * aspect * scale;
+    vec2 ddx = clamp(duvdx * perCell, vec2(-0.25), vec2(0.25));
+    vec2 ddy = clamp(duvdy * perCell, vec2(-0.25), vec2(0.25));
 
     float c1 = cloudPatchAt(v1, (lattice - UNSKEW * v1) * aspect, ddx, ddy);
     float c2 = cloudPatchAt(v2, (lattice - UNSKEW * v2) * aspect, ddx, ddy);
@@ -253,25 +267,76 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
    * Centred on the atlas's own mean before it is added, so the patches contribute VARIATION and not
    * a bias — otherwise the whole planet lifts by 0.47 and the overcast comes straight back.
    */
-  float cloudSourceAt(vec2 uv, float lat) {
-    // Without the field there is no distribution to place cloud in, so the atlas centres on itself
-    // and behaves as it did before this: uniform, and honest about being uniform.
-    float global = u_fieldAmount > 0.0 ? texture(u_field, uv).r : u_patchMean;
-    if (u_patchAmount <= 0.0) return global;
-    float detail = tiledPatchField(uv, lat);
-    return clamp(global + (detail - u_patchMean) * u_patchDetail, 0.0, 1.0);
+  float globalFieldAt(vec2 uv) {
+    return u_fieldAmount > 0.0 ? texture(u_field, uv).r : u_patchMean;
   }
 
+  float cloudSourceAt(vec2 uv, float lat, vec2 duvdx, vec2 duvdy, float global) {
+    if (u_patchAmount <= 0.0) return global;
+
+    /**
+     * THE TILING LETS GO AT THE POLES, and it has to.
+     *
+     * The lattice lives in equirect UV, where u spans the whole world however small the circle of
+     * latitude actually is. Approaching the pole, a few pixels of screen cover the entire u range:
+     * cells collapse to nothing, all three taps land on the same texel, and every sample smears
+     * along its meridian. It draws as a starburst of thin white streaks radiating from the pole —
+     * photographed on the globe camera, and the same family of singularity the mesh's cap rows and
+     * the sky layer's mirrored lookup already exist to handle.
+     *
+     * The whole-planet field has no such problem: it is one texture read at whatever UV, so it
+     * degrades to a smear of its own texels and nothing more. Fading into it costs one smoothstep.
+     *
+     * The last eight degrees only. This was briefly widened to start at 58, chasing streaks that
+     * were reported as a pole artefact and turned out — once the latitude was measured rather than
+     * estimated from a picture — to sit at 58.8 and be caused by advection warping the lattice.
+     * Fixing that where it lived made the wide fade unnecessary, and it was costing real cloud
+     * structure across Iceland and Scandinavia for nothing. This is the genuine singularity guard.
+     */
+    float polar = smoothstep(1.3614, 1.5010, abs(lat));   // 78 to 86 degrees
+    if (polar >= 1.0) return global;
+
+    float detail = tiledPatchField(uv, lat, duvdx, duvdy);
+    float tiled = clamp(global + (detail - u_patchMean) * u_patchDetail, 0.0, 1.0);
+    return mix(tiled, global, polar);
+  }
+
+  /**
+   * THE WIND CARRIES THE FIELD, NOT THE DETAIL — and that division is the fix for the streaks.
+   *
+   * Advection is a spatially varying warp. Applied to the smooth 19.5 km field it does what it is
+   * meant to: weather turns. Applied to the tiled atlas it stretches the lattice cells along the
+   * flow, and where the flow is strongest they draw as fine radiating streaks. Measured, the worst
+   * of it sits at 58.8 N and runs from about 50 to 70 — the storm track, where the wind field has
+   * its real circulation. NOT the pole, which is where it was first reported and where two rounds of
+   * fixes were aimed before the latitude was actually measured rather than estimated from a picture.
+   *
+   * It needed both terms to appear: switching off advection removed it with the tiling on, and
+   * switching off the tiling removed it with advection on. So advect the one that warps gracefully
+   * and leave the one that does not. The detail is texture, and texture does not need to be carried
+   * along a flow to be believable.
+   *
+   * It is also much cheaper. The tiled field is now sampled ONCE rather than three times: three
+   * texture reads a pixel instead of nine, on the layer whose frame cost cannot be measured here.
+   */
   float advectedField(vec2 uv, float lat) {
-    if (u_windAmount <= 0.0) return cloudSourceAt(uv, lat);
-    vec2 flow = windAt(uv, lat);
-    float cycle = u_time * u_windRate;
-    float phase1 = fract(cycle);
-    float phase2 = fract(cycle + 0.5);
-    float blend = abs(1.0 - 2.0 * phase1);       // triangle wave: 1 at the resets, 0 mid-cycle
-    float a = cloudSourceAt(uv - flow * phase1, lat);
-    float b = cloudSourceAt(uv - flow * phase2, lat);
-    return mix(mix(a, b, blend), cloudSourceAt(uv, lat), 1.0 - u_windAmount);
+    // One footprint for the whole sample, measured on the coordinate the caller asked about.
+    vec2 duvdx = dFdx(uv);
+    vec2 duvdy = dFdy(uv);
+
+    float global = globalFieldAt(uv);
+    if (u_windAmount > 0.0) {
+      vec2 flow = windAt(uv, lat);
+      float cycle = u_time * u_windRate;
+      float phase1 = fract(cycle);
+      float phase2 = fract(cycle + 0.5);
+      float blend = abs(1.0 - 2.0 * phase1);     // triangle wave: 1 at the resets, 0 mid-cycle
+      float a = globalFieldAt(uv - flow * phase1);
+      float b = globalFieldAt(uv - flow * phase2);
+      global = mix(mix(a, b, blend), global, 1.0 - u_windAmount);
+    }
+
+    return cloudSourceAt(uv, lat, duvdx, duvdy, global);
   }
 `
 

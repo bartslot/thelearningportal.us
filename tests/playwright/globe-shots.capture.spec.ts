@@ -18,6 +18,8 @@ const HARNESS = process.env.HARNESS_URL ?? 'http://localhost:5198/';
 const DIR = process.env.SHOT_DIR;
 /** Cloud-layer options to override, as JSON — for photographing one term at a time. */
 const OVERRIDE = process.env.SHOT_CLOUDS ? JSON.parse(process.env.SHOT_CLOUDS) : {};
+/** Daylight-layer options to override — chiefly cloudShadow, to tell deck from shadow. */
+const GROUND = process.env.SHOT_DAYLIGHT ? JSON.parse(process.env.SHOT_DAYLIGHT) : {};
 const SUFFIX = process.env.SHOT_SUFFIX ?? '';
 
 test.skip(!DIR, 'set SHOT_DIR to photograph');
@@ -39,14 +41,14 @@ test('photograph the globe', async ({ browser }) => {
   );
 
   for (const camera of CAMERAS) {
-    await page.evaluate(({ center, zoom, override }) => {
+    await page.evaluate(({ center, zoom, override, ground }) => {
       const w = window as any;
       // A fixed sun, so two runs differ only by what changed in the code. Low in the west puts the
       // terminator in shot on the globe frame, which is where the deck is worth looking at.
       w.__clouds.setOptions({ sun: w.__sunFor(center[0] - 55, 15), animate: false, ...override });
-      w.__daylight.setOptions({ sun: w.__sunFor(center[0] - 55, 15) });
+      w.__daylight.setOptions({ sun: w.__sunFor(center[0] - 55, 15), ...ground });
       w.__map.jumpTo({ center, zoom, bearing: 0, pitch: 0 });
-    }, { ...camera, override: OVERRIDE });
+    }, { ...camera, override: OVERRIDE, ground: GROUND });
     // The imagery is fetched per zoom; without this the ground is still the previous level.
     await page.waitForTimeout(6_000);
     await page.evaluate(() => (window as any).__map.triggerRepaint());
