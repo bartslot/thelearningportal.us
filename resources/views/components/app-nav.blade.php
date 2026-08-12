@@ -37,15 +37,23 @@
             'pattern' => 'teacher.dashboard',
         ];
         $items[] = [
-            'label' => 'Time-Map',
+            'label' => 'Explorer',
             'route' => 'teacher.timemap',
             'pattern' => 'teacher.timemap',
         ];
+        // Lessons owns everything that MAKES a lesson. "New Lesson" used to sit beside it as a sixth
+        // top-level item, which is a choice the teacher had to make before knowing what they wanted.
+        // Five top-level destinations, and the ways to start one live under the thing they produce.
         $items[] = [
             'label' => 'Lessons',
             'route' => 'teacher.lessons.index',
-            'pattern' => 'teacher.lessons.index',
+            'pattern' => ['teacher.lessons.index', 'teacher.lessons.create', 'teacher.lessons.chat', 'teacher.lessons.wizard', 'teacher.lessons.show', 'teacher.lessons.composer'],
             'tour' => 'nav-lessons',
+            'children' => [
+                ['label' => 'All lessons', 'route' => 'teacher.lessons.index'],
+                ['label' => 'New Lesson', 'route' => 'teacher.lessons.create'],
+                ['label' => 'Create with AI', 'route' => 'teacher.lessons.chat'],
+            ],
         ];
         $items[] = [
             'label' => 'Classes',
@@ -58,12 +66,6 @@
             'tour' => 'nav-results',
             // A lesson's report/answer-sheet are Results surfaces, though their route names live under lessons.*
             'pattern' => ['teacher.results.*', 'teacher.lessons.results', 'teacher.lessons.answer-sheet'],
-        ];
-        $items[] = [
-            'label' => 'New Lesson',
-            'route' => 'teacher.lessons.create',
-            // Only the wizard — not every lessons.* route (results pages belong to Results, above)
-            'pattern' => ['teacher.lessons.create', 'teacher.lessons.chat', 'teacher.lessons.wizard', 'teacher.lessons.show', 'teacher.lessons.composer'],
         ];
     }
 
@@ -78,7 +80,7 @@
     }
 @endphp
 
-<nav class="sticky top-0 z-50 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+<nav class="sticky top-0 z-50 border-none hover:border-b border-slate-800 hover:bg-slate-900/80 bg-slate-900/0 hover:backdrop-blur-sm transition-colors">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center justify-between">
             <a href="{{ route('home') }}" class="flex items-center gap-3">
@@ -89,22 +91,66 @@
                 @auth
                     {{-- Desktop: inline nav links. Collapses at lg, not sm — six labels plus the
                          help and account controls overflow well before 640px. --}}
-                    <div class="hidden items-center gap-6 lg:flex">
+                    {{-- One indicator follows the pointer across the links rather than each link
+                         lighting its own background. It reads as a single object being moved, which
+                         is quieter than six things switching on and off, and it costs one element.
+
+                         x-data is an INLINE OBJECT, not a named function: Livewire morphs this nav
+                         in, and a <script> arriving through a morph never executes — x-data would
+                         then reference a global that does not exist and Alpine would throw on every
+                         page. See the voyage-inspector fix for what that looks like in the wild.
+
+                         Monochrome on purpose. Amber says "you are here"; the pointer is not a
+                         place, so it gets white at 6%. --}}
+                    <div class="relative hidden items-center gap-6 lg:flex"
+                         x-data="{ x: 0, w: 0, on: false,
+                                   move(el) { this.x = el.offsetLeft - 12; this.w = el.offsetWidth + 24; this.on = true },
+                                   hide() { this.on = false } }"
+                         @mouseleave="hide()">
+                        <span aria-hidden="true"
+                              class="pointer-events-none absolute left-0 top-1/2 -z-10 h-9 rounded-lg bg-white/[0.06]"
+                              style="transition: transform 220ms cubic-bezier(0.645,0.045,0.355,1), width 220ms cubic-bezier(0.645,0.045,0.355,1), opacity 160ms linear"
+                              :style="`transform: translate(${x}px, -50%); width: ${w}px; opacity: ${on ? 1 : 0}`"></span>
+
                         @foreach ($items as $item)
                             @php $active = request()->routeIs(...(array) $item['pattern']); @endphp
-                            {{-- data-tour marks the elements the welcome tour spotlights. Only the
-                                 desktop links carry it: on a narrow screen these are hidden, the
-                                 tour finds no anchor, and the step falls back to a centred card. --}}
-                            <a href="{{ route($item['route']) }}"
-                               @isset($item['tour']) data-tour="{{ $item['tour'] }}" @endisset
-                               class="text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
-                                <span>{{ __($item['label']) }}</span>
-                                @if (!empty($item['badge']))
-                                    <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
-                                        {{ $item['badge'] }}
-                                    </span>
-                                @endif
-                            </a>
+                            @if (!empty($item['children']))
+                                {{-- DaisyUI dropdown, opened the same way the account menu is, so a
+                                     menu behaves identically wherever it appears. --}}
+                                <div class="dropdown" @mouseenter="move($el)">
+                                    <div tabindex="0" role="button"
+                                         @isset($item['tour']) data-tour="{{ $item['tour'] }}" @endisset
+                                         class="text-sm flex cursor-pointer items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
+                                        <span>{{ __($item['label']) }}</span>
+                                        <x-icons.chevron-down class="h-3.5 w-3.5 opacity-60" />
+                                    </div>
+                                    <ul tabindex="0" class="dropdown-content menu z-50 mt-3 w-52 rounded-box bg-slate-900/95 p-2 shadow-lg ring-1 ring-white/10 backdrop-blur-sm">
+                                        @foreach ($item['children'] as $child)
+                                            <li>
+                                                <a href="{{ route($child['route']) }}"
+                                                   class="text-sm {{ request()->routeIs($child['route']) ? 'text-amber-400' : 'text-slate-300' }}">
+                                                    {{ __($child['label']) }}
+                                                </a>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @else
+                                {{-- data-tour marks the elements the welcome tour spotlights. Only the
+                                     desktop links carry it: on a narrow screen these are hidden, the
+                                     tour finds no anchor, and the step falls back to a centred card. --}}
+                                <a href="{{ route($item['route']) }}"
+                                   @isset($item['tour']) data-tour="{{ $item['tour'] }}" @endisset
+                                   @mouseenter="move($el)"
+                                   class="text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors {{ $active ? 'text-amber-400' : 'text-slate-400 hover:text-white' }}">
+                                    <span>{{ __($item['label']) }}</span>
+                                    @if (!empty($item['badge']))
+                                        <span class="text-[0.55rem] bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded font-semibold">
+                                            {{ $item['badge'] }}
+                                        </span>
+                                    @endif
+                                </a>
+                            @endif
                         @endforeach
                     </div>
 

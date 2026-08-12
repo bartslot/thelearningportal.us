@@ -60,8 +60,16 @@ const presetFetch = (method, body) => fetch('/dev/tuning', {
   ...(body ? { body: JSON.stringify(body) } : {}),
 }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${method} /dev/tuning → ${r.status}`))))
 
+/**
+ * The panel's own controls are not settings. Saving them stores WHICH PRESET WAS ACTIVE inside the
+ * preset, and replaying that on load flips the active preset out from under the values it has just
+ * applied — so a saved look came back as whatever had been selected when it was saved.
+ */
+const META_GROUP = 'Presets'
+
 /** Values for `group` from the active preset, or null. */
 const presetValuesFor = (group) => {
+  if (group === META_GROUP) return null
   const active = presetStore.presets?.[presetStore.active]
   return active && active[group] ? active[group] : null
 }
@@ -127,10 +135,15 @@ export const set = (group, key, value) => {
   return true
 }
 
-/** Everything currently set, as plain data — what Copy writes out. */
-export const values = () => {
+/**
+ * Everything currently set, as plain data — what Copy writes out and what a preset stores.
+ *
+ * `meta: false` drops the panel's own controls, which are state rather than settings.
+ */
+export const values = ({ meta = true } = {}) => {
   const out = {}
   for (const [name, { controls }] of groups) {
+    if (!meta && name === META_GROUP) continue
     const vals = Object.fromEntries(
       controls.filter((c) => c.type !== 'button').map((c) => [c.key, c.current]),
     )
@@ -467,9 +480,9 @@ if (!window.__tune) {
         apply: () => {
           const name = presetName || presetStore.active
           if (!name) { console.warn('[tune] give the preset a name first'); return }
-          presetFetch('POST', { name, values: values() })
+          presetFetch('POST', { name, values: values({ meta: false }) })
             .then((res) => {
-              presetStore.presets[name] = values()
+              presetStore.presets[name] = values({ meta: false })
               presetStore.active = name
               console.info(`[tune] saved "${name}" → resources/js/dev/tuning.json (${res.presets.length} presets)`)
               refreshPresetControls()

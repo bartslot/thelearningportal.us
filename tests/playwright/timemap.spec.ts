@@ -562,3 +562,135 @@ test('hovering a territory draws the glow, not just fills its source', async ({ 
   expect(drawn.source, `no glow geometry for ${drawn.name}`).toBeGreaterThan(0);
   expect(drawn.rendered, `glow source has ${drawn.source} features but the layer draws none`).toBeGreaterThan(0);
 });
+
+/**
+ * Hovering, dragging and clicking with a REAL pointer.
+ *
+ * Everything else in this file drives the map through its own functions, which proves the code works
+ * but not that the interaction does. Bart: "I want you to detect edge cases with the hovering. It's
+ * not great... really." These are the ones that bite:
+ *
+ *   - a name left behind after the pointer leaves the map
+ *   - a name that stops following inside a big territory
+ *   - a stale glow after dragging, because the drag never fires a territory change
+ *   - a duplicate name when the territory's own label is already on screen
+ */
+test('hover, drag and click behave with a real pointer', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-fill'), { timeout: 30_000 });
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [20, 40], zoom: 3.4, pitch: 0, bearing: 0 }));
+  await page.waitForTimeout(5_000);
+
+  const canvas = page.locator('canvas.maplibregl-canvas');
+  const box = (await canvas.boundingBox())!;
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  const state = () => page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    const cursor = m.querySourceFeatures('boundaries-cursor-name');
+    return {
+      glow: m.queryRenderedFeatures({ layers: ['boundaries-glow'] }).length,
+      cursorNames: cursor.map((f: any) => f.properties?.name),
+      cursorAt: cursor[0]?.geometry?.coordinates ?? null,
+    };
+  });
+
+  // ── Hovering ────────────────────────────────────────────────────────────────────────────────
+  await page.mouse.move(mid.x, mid.y);
+  await page.waitForTimeout(1_200);
+  const hovering = await state();
+  expect(hovering.glow, 'hovering a territory lit nothing').toBeGreaterThan(0);
+
+  // ── Following ───────────────────────────────────────────────────────────────────────────────
+  // Inside the SAME territory the outline does not change, but the name must still move with the
+  // pointer — the case that made this feature necessary is a territory too big to label once.
+  if (hovering.cursorNames.length) {
+    await page.mouse.move(mid.x + 30, mid.y + 20);
+    await page.waitForTimeout(600);
+    const moved = await state();
+    expect(moved.cursorAt, 'the cursor name stopped following the pointer').not.toEqual(hovering.cursorAt);
+  }
+
+  // ── Dragging ────────────────────────────────────────────────────────────────────────────────
+  // A drag never fires a territory change, so anything keyed only to that goes stale.
+  await page.mouse.down();
+  await page.mouse.move(mid.x - 160, mid.y + 60, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  const dragged = await state();
+  expect(dragged.cursorNames.length, 'more than one name after a drag').toBeLessThanOrEqual(1);
+
+  // ── Leaving ─────────────────────────────────────────────────────────────────────────────────
+  // Off the map entirely. Nothing may be left behind.
+  await page.mouse.move(box.x + box.width - 2, box.y + 2);
+  await page.mouse.move(4, 4);
+  await page.waitForTimeout(1_200);
+  const left = await state();
+  expect(left.cursorNames, 'a name was left behind after the pointer left').toEqual([]);
+  expect(left.glow, 'the glow was left behind after the pointer left').toBe(0);
+
+  // ── Clicking ────────────────────────────────────────────────────────────────────────────────
+  await page.mouse.move(mid.x, mid.y);
+  await page.waitForTimeout(500);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(2_500);
+  await expect(page.locator('aside')).toContainText(/.+/);
+});
+
+/**
+ * The nav: Explorer, the lesson submenu, and the indicator that follows the pointer.
+ *
+ * Driven with a real pointer. A synthetic click would prove the markup exists; it would not prove
+ * the indicator moves, which is the part with the moving parts.
+ *
+ * The trap worth guarding: this nav is morphed in by Livewire, and a <script> arriving through a
+ * morph never runs. Its x-data is therefore an inline object rather than a named function — if
+ * someone "tidies" it into navHover(), Alpine throws on arrival and the whole nav stops responding.
+ * The indicator moving IS that check.
+ */
+test('nav: Explorer, the lessons submenu, and a pointer-following indicator', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.waitForFunction(() => !!(window as any).__tmMap, { timeout: 30_000 });
+
+  // Renamed, and no longer a sixth top-level item competing with Lessons.
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'Explorer' })).toBeVisible();
+  const topLevelNewLesson = page.locator('nav a', { hasText: /^New Lesson$/ });
+  expect(await topLevelNewLesson.count(), '"New Lesson" is still a top-level destination').toBe(0);
+
+  const indicator = page.locator('nav span[aria-hidden="true"].pointer-events-none').first();
+  const readIndicator = () => indicator.evaluate((el) => ({
+    transform: getComputedStyle(el).transform,
+    opacity: +getComputedStyle(el).opacity,
+  }));
+
+  const atRest = await readIndicator();
+  expect(atRest.opacity, 'the indicator is showing before the pointer is anywhere near it').toBeLessThan(0.1);
+
+  // Hover one link, then another: it must MOVE, not appear twice.
+  const dashboard = page.getByRole('navigation').getByRole('link', { name: 'Dashboard' });
+  await dashboard.hover();
+  await page.waitForTimeout(500);
+  const onFirst = await readIndicator();
+  expect(onFirst.opacity, 'hovering a link did not show the indicator').toBeGreaterThan(0.5);
+
+  await page.getByRole('navigation').getByRole('link', { name: 'Classes' }).hover();
+  await page.waitForTimeout(500);
+  const onSecond = await readIndicator();
+  expect(onSecond.transform, 'the indicator did not follow the pointer to the next link')
+    .not.toEqual(onFirst.transform);
+
+  // Leaving the nav entirely puts it away.
+  await page.mouse.move(600, 500);
+  await page.waitForTimeout(600);
+  expect((await readIndicator()).opacity, 'the indicator was left behind').toBeLessThan(0.1);
+
+  // The submenu opens and holds the three ways to reach a lesson.
+  // Lessons is a dropdown trigger now, not a link.
+  await page.getByRole('navigation').getByRole('button', { name: 'Lessons' }).click();
+  await page.waitForTimeout(400);
+  for (const label of ['All lessons', 'New Lesson', 'Create with AI']) {
+    await expect(page.locator('.dropdown-content').getByText(label, { exact: true })).toBeVisible();
+  }
+
+  expect(errors.filter((m) => !/WebGL|uniformMatrix4fv/i.test(m)), 'a script error on the page').toEqual([]);
+});
