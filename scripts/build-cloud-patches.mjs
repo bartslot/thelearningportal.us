@@ -28,6 +28,7 @@
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
+import jpeg from 'jpeg-js'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,10 +39,41 @@ const arg = (name, fallback) => {
 }
 
 const DATE = arg('date', '2026-08-01')
+
+/**
+ * MODIS flies a swath and leaves wedges of the globe un-imaged on any given day. They arrive as pure
+ * black, and downstream nothing can tell black apart from "no cloud" — so a gap bakes into the deck
+ * as a hard clear wedge that then tiles across the planet, which is worse than the blur being
+ * replaced. Two of the first six patches had one and nothing noticed.
+ *
+ * The gaps MOVE daily but never all clear at once: every date tried had gaps somewhere. So the
+ * search is per REGION, not per run — each region walks back a day at a time until its own tile is
+ * clean, which is why these are separate from DATE rather than a global retry.
+ */
+const NO_DATA_LEVEL = 6
+const NO_DATA_LIMIT = 0.01
+const MAX_DAYS_BACK = Number(arg('search', 14))
+
+/** Fraction of near-black pixels — a swath gap, not weather. */
+const noDataFraction = (bytes) => {
+  const { data, width, height } = jpeg.decode(bytes, { useTArray: true })
+  let dark = 0
+  for (let i = 0; i < width * height; i++) {
+    const l = 0.2126 * data[i * 4] + 0.7152 * data[i * 4 + 1] + 0.0722 * data[i * 4 + 2]
+    if (l <= NO_DATA_LEVEL) dark++
+  }
+  return dark / (width * height)
+}
+
+const dayBefore = (iso, days) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d - days))
+  return t.toISOString().slice(0, 10)
+}
 const ZOOM = Number(arg('zoom', 6))
 const LAYER = 'MODIS_Terra_CorrectedReflectance_TrueColor'
-const TILE = (z, y, x) =>
-  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${LAYER}/default/${DATE}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`
+const TILE = (z, y, x, date) =>
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${LAYER}/default/${date}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`
 
 /**
  * Where to look. Open water only, spread across both hemispheres and several latitudes so the set
@@ -73,16 +105,29 @@ const main = async () => {
   const report = []
   for (const region of REGIONS) {
     const { x, y } = tileFor(region.lng, region.lat, ZOOM)
-    const url = TILE(ZOOM, y, x)
-    const response = await fetch(url)
-    if (!response.ok) {
-      report.push({ region: region.name, ok: false, status: response.status })
+    let landed = null
+
+    for (let back = 0; back <= MAX_DAYS_BACK && !landed; back++) {
+      const date = dayBefore(DATE, back)
+      const response = await fetch(TILE(ZOOM, y, x, date))
+      if (!response.ok) continue
+      const bytes = Buffer.from(await response.arrayBuffer())
+      const gap = noDataFraction(bytes)
+      if (gap > NO_DATA_LIMIT) continue
+      landed = { bytes, date, gap, tries: back + 1 }
+    }
+
+    if (!landed) {
+      report.push({ region: region.name, ok: false, status: `no gap-free tile in ${MAX_DAYS_BACK + 1} days` })
       continue
     }
-    const bytes = Buffer.from(await response.arrayBuffer())
+
     const file = resolve(outDir, `${region.name}-z${ZOOM}-${x}-${y}.jpg`)
-    writeFileSync(file, bytes)
-    report.push({ region: region.name, ok: true, z: ZOOM, x, y, bytes: bytes.length, file })
+    writeFileSync(file, landed.bytes)
+    report.push({
+      region: region.name, ok: true, z: ZOOM, x, y,
+      bytes: landed.bytes.length, file, date: landed.date, tries: landed.tries,
+    })
   }
 
   const metresPerTexel = (156543.03392 / 2 ** ZOOM).toFixed(0)
@@ -90,8 +135,8 @@ const main = async () => {
   console.log(`(the field being replaced is 19543 m per texel)\n`)
   for (const r of report) {
     console.log(r.ok
-      ? `  ok    ${r.region.padEnd(16)} z${r.z}/${r.x}/${r.y}  ${(r.bytes / 1024).toFixed(0)} KB`
-      : `  FAIL  ${r.region.padEnd(16)} HTTP ${r.status}`)
+      ? `  ok    ${r.region.padEnd(16)} z${r.z}/${r.x}/${r.y}  ${(r.bytes / 1024).toFixed(0)} KB  ${r.date}${r.tries > 1 ? `  (${r.tries} dates tried)` : ''}`
+      : `  FAIL  ${r.region.padEnd(16)} ${r.status}`)
   }
   const failed = report.filter((r) => !r.ok).length
   console.log(`\n${report.length - failed}/${report.length} fetched into storage/app/cloud-patches\n`)
