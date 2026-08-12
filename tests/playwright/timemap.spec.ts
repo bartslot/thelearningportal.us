@@ -458,3 +458,37 @@ test('no stray territory specks: Germany 1939 is not sitting in Italy', async ({
       .map((f: any) => String(f.properties?.Name ?? '')))] as string[]);
   expect(riviera, `rendered around Monaco: ${riviera.join(', ')}`).toContain('Kingdom of Monaco');
 });
+
+/**
+ * Named presets. The panel's values are only permanent once you name a set and save it, and then
+ * they land in resources/js/dev/tuning.json — in the source tree, in `git diff`.
+ *
+ * The assertion that matters is the RELOAD: a preset that applies while the page is open but is not
+ * there on the next load has saved nothing, and looks identical to a working one until you come
+ * back to it. It also has to survive the groups registering late — the map's controls do not exist
+ * until its load handler runs, so a preset applied in one pass at boot would miss most of them.
+ */
+test('a named preset survives a reload and reaches a late-registering group', async ({ page }) => {
+  const NAME = `pw-${Date.now()}`;
+  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
+
+  await page.evaluate(() => (window as any).__tune.set('Territory labels', 'size', 23.5));
+  await page.evaluate((name) => (window as any).__tune.set('Presets', 'name', name), NAME);
+  await page.evaluate(() => (window as any).__tune.set('Presets', 'save', true));
+  await page.waitForFunction((n) => (window as any).__tune.presets().presets?.[n], NAME, { timeout: 15_000 });
+
+  // The reload is the test.
+  await page.goto('/teacher/timemap');
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
+  await page.waitForFunction(
+    () => (window as any).__tmMap.getLayoutProperty('boundaries-label', 'text-size') === 23.5,
+    { timeout: 20_000 },
+  );
+
+  const active = await page.evaluate(() => (window as any).__tune.presets().active);
+  expect(active, 'the saved preset did not come back as the active one').toBe(NAME);
+
+  // Clean up after ourselves — this writes to the source tree.
+  await page.evaluate(() => (window as any).__tune.set('Presets', 'delete', true));
+  await page.waitForFunction((n) => !(window as any).__tune.presets().presets?.[n], NAME, { timeout: 15_000 });
+});

@@ -354,3 +354,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     })->name('avatars.toggle');
 
 });
+
+// Dev settings-panel presets. Registered ONLY when the app is local, because it writes named value
+// sets into the source tree (resources/js/dev/tuning.json) so a tuned look arrives as a reviewable
+// diff rather than as something living in one browser's storage. The controller guards again.
+if (app()->environment('local')) {
+    Route::middleware(['auth'])->prefix('dev/tuning')->name('dev.tuning.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\TuningPresetController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\TuningPresetController::class, 'store'])->name('store');
+        Route::delete('/', [\App\Http\Controllers\TuningPresetController::class, 'destroy'])->name('destroy');
+    });
+}

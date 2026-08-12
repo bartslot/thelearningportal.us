@@ -6,10 +6,11 @@
  * that loop into one drag: whatever is on screen registers the knobs it owns, you move them until
  * it looks right, and the panel tells you the numbers.
  *
- * IT CHANGES NOTHING PERMANENTLY, deliberately. Nothing is persisted and nothing is written back to
- * source — the value you land on is one for a human to put in the code, with a comment saying why.
- * A slider that silently became the default would be a constant nobody chose, which is exactly the
- * situation this exists to get out of.
+ * NOTHING IS SAVED BY MOVING A SLIDER. Values become permanent only when you name a preset and
+ * save it, and then they are written to resources/js/dev/tuning.json — in the source tree, in
+ * `git diff`, revertable. That distinction is the point: a slider that silently became the default
+ * would be a constant nobody chose, which is the situation this panel exists to get out of. Naming
+ * one is a decision, and it leaves a record of who made it.
  *
  * CONTEXT, not a global list. A group registers when its thing mounts and unregisters when it goes,
  * so the map's knobs appear on a map and a lesson's in a lesson. The tuner knows nothing about maps
@@ -38,6 +39,54 @@ const DEFAULT_TAB = 'General'
 const isOpen = () => !!root && root.style.display !== 'none'
 const tabsInUse = () => [...new Set([...groups.values()].map((g) => g.tab))]
 
+
+// ── Named presets ────────────────────────────────────────────────────────────────────────────
+//
+// A tuned look is a change to the app, so it is saved where changes live: a JSON file in the source
+// tree, written by a local-only endpoint, arriving as a reviewable diff. Not localStorage — a value
+// that exists on one machine and dies with a cleared cache is not a saved value.
+//
+// Applied AT REGISTRATION rather than in one pass at load. Groups register whenever their screen is
+// ready — the ocean and the clouds only exist once the map's load handler runs, the ships later
+// still — so a single sweep would miss whatever had not arrived yet, and miss it silently.
+let presetStore = { active: null, presets: {} }
+let presetsLoaded = false
+
+const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ?? ''
+
+const presetFetch = (method, body) => fetch('/dev/tuning', {
+  method,
+  headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
+  ...(body ? { body: JSON.stringify(body) } : {}),
+}).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${method} /dev/tuning → ${r.status}`))))
+
+/** Values for `group` from the active preset, or null. */
+const presetValuesFor = (group) => {
+  const active = presetStore.presets?.[presetStore.active]
+  return active && active[group] ? active[group] : null
+}
+
+/** Push the active preset into a group's controls, running each control's apply. */
+const applyPresetTo = (group, entry) => {
+  const saved = presetValuesFor(group)
+  if (!saved) return
+  for (const control of entry.controls) {
+    if (control.type === 'button' || !(control.key in saved)) continue
+    control.current = saved[control.key]
+    try { control.apply?.(saved[control.key]) } catch (e) { console.warn(`[tune] ${group}.${control.key} threw`, e) }
+  }
+}
+
+const loadPresets = () => presetFetch('GET')
+  .then((data) => {
+    presetStore = { active: data.active ?? null, presets: data.presets ?? {} }
+    presetsLoaded = true
+    // Anything registered before the file arrived still needs its values.
+    for (const [group, entry] of groups) applyPresetTo(group, entry)
+    redraw()
+  })
+  .catch(() => { presetsLoaded = true }) // no endpoint (not local) — the panel still works
+
 /**
  * Register a group of controls. Returns an unregister function.
  *
@@ -52,6 +101,7 @@ export const register = (group, controls, opts = {}) => {
     order: seq++,
     controls: controls.map((c) => ({ ...c, current: c.value })),
   })
+  applyPresetTo(group, groups.get(group))
   redraw()
   return () => {
     groups.delete(group)
@@ -390,7 +440,58 @@ const CSS = `
 // the group, the screen shows nothing, and nothing errors. First to load owns the window.
 if (!window.__tune) {
   window.addEventListener('dev:tune', () => toggle())
-  window.__tune = { register, values, toggle, set }
+  window.__tune = { register, values, toggle, set, presets: () => ({ ...presetStore }) }
+
+  /**
+   * Presets — save the whole panel under a name, and flip between them.
+   *
+   * A whole-panel snapshot rather than per-tab, because a look is not confined to one tab: the sea,
+   * the cloud deck, the twilight and the territory colours are one judgement, and half-applying a
+   * look is how you end up comparing two things that were never the same thing.
+   */
+  let presetName = ''
+  const refreshPresetControls = () => {
+    const names = Object.keys(presetStore.presets ?? {})
+    register('Presets', [
+      { key: 'active', label: 'Preset', type: 'select', options: names.length ? names : ['(none saved)'],
+        value: presetStore.active ?? (names[0] ?? '(none saved)'),
+        apply: (name) => {
+          if (!presetStore.presets?.[name]) return
+          presetStore.active = name
+          for (const [group, entry] of groups) applyPresetTo(group, entry)
+          redraw()
+        } },
+      { key: 'name', label: 'Name', type: 'text', value: '',
+        apply: (v) => { presetName = String(v).trim() } },
+      { key: 'save', label: 'Save preset', type: 'button',
+        apply: () => {
+          const name = presetName || presetStore.active
+          if (!name) { console.warn('[tune] give the preset a name first'); return }
+          presetFetch('POST', { name, values: values() })
+            .then((res) => {
+              presetStore.presets[name] = values()
+              presetStore.active = name
+              console.info(`[tune] saved "${name}" → resources/js/dev/tuning.json (${res.presets.length} presets)`)
+              refreshPresetControls()
+            })
+            .catch((e) => console.warn('[tune] could not save —', e.message))
+        } },
+      { key: 'delete', label: 'Delete preset', type: 'button',
+        apply: () => {
+          const name = presetStore.active
+          if (!name || !presetStore.presets?.[name]) { console.warn('[tune] nothing to delete'); return }
+          presetFetch('DELETE', { name })
+            .then(() => {
+              delete presetStore.presets[name]
+              presetStore.active = Object.keys(presetStore.presets)[0] ?? null
+              refreshPresetControls()
+            })
+            .catch((e) => console.warn('[tune] could not delete —', e.message))
+        } },
+    ], { tab: 'UI' })
+  }
+
+  loadPresets().then(refreshPresetControls)
 
   /**
    * A scratch stylesheet, always available.
