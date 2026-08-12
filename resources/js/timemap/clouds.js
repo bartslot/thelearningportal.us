@@ -71,8 +71,23 @@ const LAYER_ID = 'tm-clouds'
 export const deckDetailFor = (zoom, lat, altitudeM) => {
   const metresPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom)
 
-  // The real cloud field's own resolution, at the equator.
-  const FIELD_METRES_PER_PIXEL = 19543
+  /**
+   * The real cloud source's own resolution, at the equator.
+   *
+   * 2446 m, not the 19543 that stood here: the deck is drawn from harvested MODIS patches at z6
+   * rather than from the 2048x1024 whole-planet field, and that is eight times finer. The number is
+   * load-bearing rather than descriptive — it decides at what height the source is judged to have
+   * run out of pixels, and so how much of the deck the procedural noise is asked to invent. Left at
+   * 19543 the noise would take over eight times too early and paint invention over real cloud that
+   * is actually there, which is the failure the source replacement exists to end.
+   *
+   * Derived rather than typed. The patches come from GIBS at zoom 6 of the standard Web Mercator
+   * scheme, so their resolution is that scheme's, and writing it as the division keeps the ONE fact
+   * behind it — which zoom they were fetched at — visible in the code. Re-harvest at another zoom
+   * and this is the single line that moves.
+   */
+  const SOURCE_ZOOM = 6
+  const FIELD_METRES_PER_PIXEL = 156543.03392 / 2 ** SOURCE_ZOOM
   // 1 while one screen pixel still covers a whole field pixel; falls away as it is magnified.
   const fieldQuality = Math.min(1, metresPerPixel / FIELD_METRES_PER_PIXEL)
 
@@ -224,11 +239,14 @@ void main() {
  * @param {number} [opts.opacity]   deck density, 0 hides it entirely
  * @param {boolean} [opts.animate]  false freezes the drift (reduced-motion callers)
  * @param {string} [opts.fieldUrl]  equirectangular cloud-cover image (NASA Blue Marble clouds)
+ * @param {string} [opts.patchUrl]  harvested NASA cloud patches, tiled stochastically; supersedes
+ *                                  fieldUrl where both are given, and is 8x its resolution
  * @param {number} [opts.driftRate] revolutions per second of the real field, west to east
  * @param {number[]} [opts.sun]     direction TO the sun, in planet space
  */
 export const createCloudLayer = ({
-  opacity = 0.5, animate = true, fieldUrl = null, driftRate = 0.0004, sun = [0.4, 0.5, 0.75],
+  opacity = 0.5, animate = true, fieldUrl = null, patchUrl = null,
+  driftRate = 0.0004, sun = [0.4, 0.5, 0.75],
   // Wind advection: a real GFS field carrying the clouds along actual circulation. Off without a
   // texture, so a missing asset costs nothing but motion.
   windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
@@ -240,10 +258,13 @@ export const createCloudLayer = ({
   // One compiled program per projection variant: the prelude is different under globe and
   // mercator, and the variant flips mid-flight when the map crosses the globe/mercator threshold.
   const programs = new Map()
-  let state = { opacity, animate, fieldUrl, driftRate, sun, windUrl, windAmount, windScale, windRate }
+  let state = {
+    opacity, animate, fieldUrl, patchUrl, driftRate, sun, windUrl, windAmount, windScale, windRate,
+  }
   // Shared with daylight.js, which shades the ground with the shadow of these same clouds.
   let field = null
   let wind = null
+  let patches = null
 
   const programFor = (shaderData) => {
     const key = shaderData.variantName
@@ -312,6 +333,7 @@ export const createCloudLayer = ({
       }
       if (state.fieldUrl) field = acquireEquirectTexture(gl, state.fieldUrl, repaint)
       if (state.windUrl) wind = acquireEquirectTexture(gl, state.windUrl, repaint)
+      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint)
     },
 
     // Without this every style reload leaks a program, a texture and three buffers. The fields are
@@ -322,6 +344,7 @@ export const createCloudLayer = ({
       programs.clear()
       field?.release(); field = null
       wind?.release(); wind = null
+      patches?.release(); patches = null
       if (buffers) {
         gl.deleteBuffer(buffers.pos)
         gl.deleteBuffer(buffers.sphere)
@@ -353,7 +376,9 @@ export const createCloudLayer = ({
       if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
       // The clock, the drift and both textures — set the same way the ground sets them, so the
       // shadows land under the clouds that cast them.
-      setCloudFieldUniforms(gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind }, 0, 1)
+      setCloudFieldUniforms(
+        gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind, patches }, 0, 1, 2,
+      )
 
       const detail = deckDetailFor(map.getZoom(), map.getCenter().lat, cameraAltitudeMetres(map, maplibregl))
       if (uniforms.detailFreq) gl.uniform1f(uniforms.detailFreq, detail.frequency)
@@ -382,17 +407,28 @@ export const createCloudLayer = ({
 
     /** Live controls — density, drift, sun, and which cloud field is shown. */
     setOptions(next = {}) {
-      const previousUrl = state.fieldUrl
+      const previous = state
       state = { ...state, ...next }
-      if (gl && next.fieldUrl !== undefined && next.fieldUrl !== previousUrl) {
-        field?.release()
-        field = next.fieldUrl ? acquireEquirectTexture(gl, next.fieldUrl, repaint) : null
+      if (gl) {
+        const swap = (handle, key) => {
+          if (next[key] === undefined || next[key] === previous[key]) return handle
+          handle?.release()
+          return state[key] ? acquireEquirectTexture(gl, state[key], repaint) : null
+        }
+        field = swap(field, 'fieldUrl')
+        patches = swap(patches, 'patchUrl')
       }
       if (map) map.triggerRepaint()
     },
     getOptions: () => ({ ...state }),
-    /** True once a real cloud field is uploaded — the deck is procedural until then. */
-    get hasField () { return !!field?.ready },
+    /**
+     * True once a real cloud source is uploaded — the deck is procedural until then.
+     *
+     * Either source counts. The harness waits on this before it measures, so answering only for the
+     * old field would have it give up after twenty seconds on a build where the atlas is the source
+     * and the old field is not loaded at all.
+     */
+    get hasField () { return !!(field?.ready || patches?.ready) },
   }
 }
 

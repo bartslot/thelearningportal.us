@@ -153,7 +153,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
     // zoom. Zoom-out stays open so other continents/markers come into view.
     maxZoom: 7,
-    attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
+    // The cloud deck's source is credited here rather than on a raster source, because it is not
+    // one: it is a baked atlas a custom layer samples, so it has no MapLibre source of its own to
+    // hang an attribution on. Same short shape as map-imagery.js uses for Blue Marble; the full
+    // sentence GIBS asks for is in docs/credits.md.
+    attributionControl: {
+      customAttribution:
+        'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0) · '
+        + 'Cloud: NASA EOSDIS GIBS (MODIS)',
+    },
   });
 
   // Exposed for dev tooling and the Playwright spec (layer/feature introspection).

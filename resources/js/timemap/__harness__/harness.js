@@ -34,6 +34,9 @@ const RELIEF_URL = '/img/map/earth-normal-8192.webp'
 const RELIEF_WIDTH = 8192
 const FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_URL = '/img/map/wind-field.png'
+// The tiled source. `?patches=0` drops back to the whole-planet field, which is how the two are
+// compared: the same measurements, the same camera, one asset different.
+const PATCH_URL = '/img/map/cloud-patches.webp'
 const BACKGROUND = '#8a8a8a'
 
 const params = new URLSearchParams(location.search)
@@ -82,17 +85,21 @@ const map = new maplibregl.Map({
   attributionControl: false,
 })
 
+const patchUrl = params.get('patches') === '0' ? null : PATCH_URL
+
 const daylight = createDaylightLayer({
   sun: sunFor(-3.1, 0),
   reliefUrl: RELIEF_URL,
   reliefWidth: RELIEF_WIDTH,
   fieldUrl: FIELD_URL,
+  patchUrl,
   windUrl: WIND_URL,
   animate: false,          // a frozen clock, so two captures are comparable
 })
 const clouds = createCloudLayer({
   sun: sunFor(-3.1, 0),
   fieldUrl: FIELD_URL,
+  patchUrl,
   windUrl: WIND_URL,
   animate: false,
 })
@@ -967,6 +974,133 @@ const limbProfile = async () => {
   }
 }
 
+/**
+ * Whether the cloud deck repeats — the acceptance test for the tiled source, measured.
+ *
+ * The deck is built from six patches of real cloud, 626 km each, laid across the whole planet. Laid
+ * down on a plain grid that repeats every 626 km, and a visible repeat over open ocean is a worse
+ * artefact than the blur it replaces. So "is the repeat invisible" is the question the whole change
+ * turns on, and it is not one to answer by looking: a periodicity the eye only half-notices is
+ * exactly the kind of thing that gets argued about instead of measured.
+ *
+ * WHAT THIS READS. The deck alone, as the difference between a frame with it and a frame without —
+ * so the ground, the terminator and the lighting gradient all cancel and what is left is cloud. Then
+ * its autocorrelation along each axis. A repeat at period P puts a peak at lag P; a stochastic
+ * tiling has nothing anywhere but the origin. The number reported is the WORST sidelobe outside a
+ * small exclusion around zero, which is the strongest periodicity present at any scale.
+ *
+ * Zero-mean and unit-norm, or this measures the brightness gradient across the globe rather than the
+ * clouds on it — the same trap bestShift above documents.
+ */
+/**
+ * Zoom 3, not the close view. A repeat can only be SEEN where several tiles are on screen at once:
+ * closer in, less than one patch fills the window and there is nothing to repeat against, so a
+ * measurement there would pass for want of anything to find. At z3 a pixel covers about 6 km and the
+ * 300 px window spans roughly 1,800 km — near three patches side by side, which is where a plain
+ * tiling would announce itself.
+ */
+const cloudRepeat = async ({ lng = -20, lat = 53, zoom = 3, half = 150 } = {}) => {
+  const sun = sunFor(lng - 40, 20)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  // Advection off: the flow-map cross-fade blurs the field along the wind, which would soften a
+  // real repeat and flatter the result. The source is judged as it is, not as the wind leaves it.
+  const bare = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun }, clouds: { opacity: 0, sun, windAmount: 0 },
+  })
+  const decked = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun }, clouds: { opacity: 1, sun, windAmount: 0 },
+  })
+
+  const mask = differenceImage(bare, decked)
+  const centre = pixelAt(lng, lat)
+
+  /** Rows or columns through the box, as arrays of samples. */
+  const lines = (alongX) => {
+    const out = []
+    for (let a = -half; a <= half; a += 2) {
+      const line = []
+      for (let b = -half; b <= half; b++) {
+        const px = alongX ? centre.x + b : centre.x + a
+        const py = alongX ? centre.y + a : centre.y + b
+        if (px < 0 || py < 0 || px >= bare.width || py >= bare.height) { line.length = 0; break }
+        line.push(mask[py * bare.width + px])
+      }
+      if (line.length) out.push(line)
+    }
+    return out
+  }
+
+  /** Mean autocorrelation over a set of lines, as an array indexed by lag. */
+  const autocorrelation = (set, maxLag) => {
+    const total = new Float64Array(maxLag + 1)
+    let counted = 0
+    for (const line of set) {
+      const mean = line.reduce((s, v) => s + v, 0) / line.length
+      const centred = line.map((v) => v - mean)
+      const energy = centred.reduce((s, v) => s + v * v, 0)
+      // A line with no variation has no autocorrelation, and dividing by its zero energy would
+      // return NaN — or worse, a 1 that reads as a perfect repeat.
+      if (energy < 1e-6) continue
+      for (let lag = 0; lag <= maxLag; lag++) {
+        let sum = 0
+        for (let i = 0; i + lag < centred.length; i++) sum += centred[i] * centred[i + lag]
+        total[lag] += sum / energy
+      }
+      counted++
+    }
+    if (!counted) throw new Error('no cloud variation in the sample box — nothing here is a result')
+    return Array.from(total, (v) => v / counted)
+  }
+
+  const MAX_LAG = 120
+  // Below this lag the curve is still the central peak coming down, not a repeat.
+  const EXCLUDE = 6
+
+  const report = {}
+  for (const [name, alongX] of [['east', true], ['north', false]]) {
+    const curve = autocorrelation(lines(alongX), MAX_LAG)
+
+    /**
+     * PROMINENCE, not the raw correlation — and the difference is the whole measurement.
+     *
+     * The first version of this took the largest correlation outside a small exclusion around zero,
+     * and it could not tell the two cases apart: a plain repeating tiling scored 0.36 on one axis
+     * and 0.11 on the other, while the stochastic one scored 0.24 and 0.27. The stochastic figures
+     * were HIGHER on one axis than the artefact they were supposed to be ruling out.
+     *
+     * Nothing was wrong with the render. Cloud features here are hundreds of kilometres across, so
+     * the central peak is wide and decays slowly, and at any lag near it the raw correlation is
+     * mostly that shoulder. It swamped the thing being looked for. Pushing the exclusion out past
+     * the shoulder does not work either: the repeat sits at 167 km, INSIDE the width of one cloud.
+     *
+     * What actually distinguishes them is the SHAPE. An aperiodic field's autocorrelation falls and
+     * stays fallen. A repeat makes it come back up. So this measures how far the curve rises above
+     * its own running minimum — zero for any monotone decay, whatever height it decays from, and
+     * positive only where something recurs.
+     */
+    let worst = { lag: 0, value: 0, at: 0 }
+    let floor = curve[EXCLUDE]
+    for (let lag = EXCLUDE; lag <= MAX_LAG; lag++) {
+      if (curve[lag] < floor) floor = curve[lag]
+      const rise = curve[lag] - floor
+      if (rise > worst.value) worst = { lag, value: round(rise, 4), at: round(curve[lag], 4) }
+    }
+    report[name] = {
+      recurrence: worst.value,
+      atLagPx: worst.lag,
+      correlationThere: worst.at,
+      // Kept so a suspicious number can be looked at rather than taken on trust.
+      curve: curve.filter((_, i) => i % 6 === 0).map((v) => round(v, 3)),
+    }
+  }
+
+  report.metresPerPixel = Math.round(metresPerPixelAt(lng, lat))
+  report.where = { lng, lat, zoom }
+  return report
+}
+
 /** A coarse slice through the middle of the frame, so the scene's shape can be read rather than assumed. */
 const rowSlice = async () => {
   const frame = await capture()
@@ -983,6 +1117,7 @@ const rowSlice = async () => {
 // Driven from the browser tools as well as by eye.
 window.__rowSlice = rowSlice
 window.__limbProfile = limbProfile
+window.__cloudRepeat = cloudRepeat
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds
