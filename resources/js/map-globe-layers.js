@@ -32,6 +32,17 @@ const CLOUD_FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_FIELD_URL = '/img/map/wind-field.png'
 
 /**
+ * The deck's real source: six patches of MODIS true-colour cloud over open ocean, reduced to
+ * coverage and packed into one atlas. 2446 m per texel against the whole-planet field's 19543, and
+ * laid down stochastically so no repeat shows. Built by scripts/build-cloud-patches.mjs and
+ * scripts/build-cloud-atlas.mjs; credited in docs/credits.md, as GIBS asks.
+ *
+ * Both are passed. The atlas is the source wherever it has loaded, and the old field is what the
+ * deck falls back to if it has not — the same degradation the field itself has to procedural noise.
+ */
+const CLOUD_PATCH_URL = '/img/map/cloud-patches.webp'
+
+/**
  * '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples.
  *
  * Goes through the tuner's parser rather than doing its own hex arithmetic, because the colour
@@ -93,7 +104,13 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
   // you are close enough to see individual cells, which reads as a swirl filter rather than as
   // weather. Enough to carry the deck along real circulation, not enough to draw with it. The 0.2
   // is off the tuner — I had guessed 0.35 and it was still too busy.
-  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, windAmount: 0.2, animate }
+  const field = {
+    fieldUrl: CLOUD_FIELD_URL,
+    patchUrl: CLOUD_PATCH_URL,
+    windUrl: WIND_FIELD_URL,
+    windAmount: 0.2,
+    animate,
+  }
 
   const options = {
     starfield: { date, animate },
@@ -179,6 +196,24 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('clouds', { windRate: v }) },
       { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.05, value: 0.5,
         apply: (v) => set('daylight', { cloudShadow: v }) },
+      // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
+      // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
+      // shadows rather than like two settings that disagree.
+      { key: 'patchTiles', label: 'Cloud cells', min: 96, max: 320, step: 8, value: 144,
+        apply: (v) => { set('clouds', { patchTiles: v }); set('daylight', { patchTiles: v }) } },
+      // The atlas's own mean coverage, which the variance-preserving blend centres on. Wrong here
+      // and the lattice reappears as a faint brightness pattern — which is the one thing worth
+      // being able to check by eye, hence a control rather than a constant alone.
+      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.5177,
+        apply: (v) => { set('clouds', { patchMean: v }); set('daylight', { patchMean: v }) } },
+      // Off returns the deck to the 19.5 km whole-planet field, which is the A/B this change exists
+      // to win. Kept because "is the new source actually better" should be one click, not a rebuild.
+      { key: 'patchUrl', label: 'Tiled source', type: 'boolean', value: true,
+        apply: (v) => {
+          const url = v ? CLOUD_PATCH_URL : null
+          set('clouds', { patchUrl: url })
+          set('daylight', { patchUrl: url })
+        } },
     ], { tab: 'Earth' }),
 
     window.__tune?.register('Sky and light', [
