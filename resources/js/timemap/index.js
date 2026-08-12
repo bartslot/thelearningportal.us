@@ -232,7 +232,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   /** The hover shine: wide and blurred under the crisp border, invisible until pointed at. */
   const GLOW_COLOR = '#f59e0b';
-  const GLOW_WIDTH = ['interpolate', ['linear'], ['zoom'], 0, 3, 4, 7, 8, 12];
+  const GLOW_WIDTH_STOPS = [[0, 3], [4, 7], [8, 12]];
+
+  /**
+   * Width at each zoom, scaled.
+   *
+   * MapLibre allows a `zoom` expression only at the TOP level, so `['*', GLOW_WIDTH, scale]` — which
+   * is what this was — is rejected outright: "zoom expression may only be used as input to a
+   * top-level step or interpolate". paint() swallows the throw, so all four Hover glow controls
+   * appeared to do nothing while the console filled with the reason. Scale the OUTPUTS instead.
+   */
+  const glowWidthExpr = (scale = 1) => [
+    'interpolate', ['linear'], ['zoom'],
+    ...GLOW_WIDTH_STOPS.flatMap(([z, w]) => [z, w * scale]),
+  ];
+
+  const GLOW_WIDTH = glowWidthExpr(1);
 
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
   // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
@@ -368,9 +383,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
-    // The hover glow tracks the same era as the border it sits under, or scrubbing the timeline
-    // leaves it lighting up territories that no longer exist.
-    if (map.getLayer('boundaries-glow')) map.setFilter('boundaries-glow', polityFilter(year));
+    // NO era filter on the hover glow. It used to need one, when it drew from the Cliopatria vector
+    // source and its features carried Type/Name/FromYear/ToYear like everything else. It now has its
+    // own GeoJSON source that is EMPTY unless something is hovered, and those features carry no
+    // properties at all — so polityFilter rejected every one of them and the glow could never draw,
+    // whatever the paint said. Scrubbing cannot strand it either: the source is emptied on mouseout.
     scheduleSmoothBorders();   // different era, different outlines to round
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
@@ -816,11 +833,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     };
     const labelPaint = (prop, value) => { for (const layer of LABEL_LAYERS) paint(layer, prop, value); };
 
-    // The border colour has to survive the highlight case, or clicking a territory stops showing it.
+    /**
+     * Plain colour. This used to build a `case` around a `highlight` feature-state and read
+     * PALETTE.highlight — but there is no PALETTE in this module (only ATLAS_PALETTE), so the
+     * control threw on every use and the border colour has never once changed. Nothing sets a
+     * `highlight` feature-state anywhere either, so the case it was protecting could not fire.
+     *
+     * The selected territory is shown by its FILL, not by its border; see territoryFillExpr.
+     */
     const borderColour = (colour) => {
-      const expr = ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour];
-      styleOverride['boundaries-line.line-color'] = expr;
-      ownedPaint('boundaries-line', 'line-color', expr);
+      styleOverride['boundaries-line.line-color'] = colour;
+      ownedPaint('boundaries-line', 'line-color', colour);
     };
 
     const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
@@ -843,7 +866,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const applyGlow = () => {
       paint('boundaries-glow', 'line-color', glow.colour);
       paint('boundaries-glow', 'line-opacity', glow.strength);
-      paint('boundaries-glow', 'line-width', ['*', GLOW_WIDTH, glow.width]);
+      paint('boundaries-glow', 'line-width', glowWidthExpr(glow.width));
       paint('boundaries-glow', 'line-blur', glow.blur);
     };
 
