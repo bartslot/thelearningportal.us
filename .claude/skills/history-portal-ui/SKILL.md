@@ -36,9 +36,12 @@ with the year, the map style and the time of day. Everything below follows from 
 
 - **Chrome over the map is monochromatic.** Toolbars, tab bars, panels: the dark surface, three
   greys, white. Colourful content under colourful controls is what makes labels hard to read.
-- **One accent, used once per surface.** Amber marks the single thing the teacher asked about —
-  the era on a card. Not links, not icons, not headings, never decoration. If two things on a
-  screen are amber, one of them is wrong.
+- **Cards carry NO accent.** Title, era and body are white; muted for labels and inactive tabs.
+  Bart, while the card was built: "we shouldn't put so much colour in our UI while our footage is
+  already very colourful." Over a photographed planet the accent is the thing to drop. The era is
+  white and underlined, not amber.
+- **Amber still means something on the MAP** — selection, the hover glow. It means nothing on a
+  card. Do not carry it across.
 - **Contrast at rest, not just in motion.** Content scrolls under controls, so judge legibility in
   the resting state — the top of the scroll, on the brightest background the map can produce
   (Sahara at noon, a cloud deck). Check there, not over open ocean.
@@ -89,7 +92,7 @@ a single use.
 
 - [ ] Cut the text once more than felt comfortable
 - [ ] One primary action; every added option justified
-- [ ] Chrome monochrome; accent used once
+- [ ] Chrome monochrome; no accent on a card
 - [ ] Legible at rest over the brightest thing the map can show
 - [ ] Labels are labels, body is body
 - [ ] Scrolling copy fades

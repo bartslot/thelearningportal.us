@@ -31,15 +31,17 @@
   --color-card-body: #c7d5e3;        /* Figma variable `Menu` — the light blue-grey this UI reads in */
   --color-card-muted: #7c8b9d;       /* inactive tabs, footnotes, LINKS */
 
-  /* ONE accent, used ONCE per surface — on a card, that is the era and nothing else.
+  /* NO ACCENT ON THE CARD. There was an amber one here; Bart removed it while the card was being
+   * built: "it's white now — we shouldn't put so much colour in our UI while our footage is already
+   * very colourful", and then "goes white, follow figma" for the body.
    *
-   * The content layer here is a photographed planet: colourful, moving, and a different colour
-   * every year and every map style. Apple's guidance for exactly this case is a monochromatic
-   * chrome with one well-differentiated accent, because colourful controls over colourful content
-   * are what make labels hard to read. Links are muted, not amber. If two things on a screen are
-   * amber, one of them is wrong.
-   * https://developer.apple.com/design/human-interface-guidelines/color */
-  --color-card-accent: #f5c518;
+   * This is Apple's guidance taken one step further than I took it. Our content layer is a
+   * photographed planet: colourful, moving, a different colour every year and every map style. The
+   * HIG answer is monochromatic chrome plus one well-differentiated accent — and over footage this
+   * rich, the accent is the thing to drop, not the thing to keep. The era is white and underlined.
+   * https://developer.apple.com/design/human-interface-guidelines/color
+   *
+   * Amber still means something on the MAP (selection, hover glow). It means nothing on a card. */
 
   /* ── The small-caps label ─────────────────────────────────────────────────────────────────── */
   /* Figma: LABEL_SMALL_UI and LABEL_BIGGER. Inter SemiBold, 0.5 letter-spacing, uppercase. Used for

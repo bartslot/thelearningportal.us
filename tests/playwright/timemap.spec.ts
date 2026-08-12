@@ -58,11 +58,19 @@ test('timemap-timeline: dragging the tick timeline changes the year', async ({ p
 
 test('timemap-click-panel: clicking a region opens the polity panel', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  // `__portal.ready` and even isStyleLoaded() are both true well BEFORE map.loaded(), which also
+  // waits on every source and any pending work. Under swiftshader that gap is seconds long, and a
+  // click inside it reaches a handler whose queryRenderedFeatures finds nothing — so the panel never
+  // opens and the failure looks like a product bug rather than an impatient test.
+  await page.waitForFunction(() => (window as any).__tmMap?.loaded() === true, { timeout: 40_000 });
   const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
   if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 
-  // Either a polity panel (label + tabs) or the empty prompt — both prove the click round-trip.
-  const aside = page.locator('aside');
+  // VISIBLE, not merely present. `toContainText(/.+/)` passed with the panel shut — an aside that
+  // is display:none still "contains text", so the assertion held whether or not the click did
+  // anything. Spotted by the card session while rebuilding this panel.
+  const aside = page.locator('aside').first();
+  await expect(aside).toBeVisible();
   await expect(aside).toContainText(/.+/);
   const wikiTab = page.getByRole('tab', { name: 'Wikipedia' });
   if (await wikiTab.count()) {
