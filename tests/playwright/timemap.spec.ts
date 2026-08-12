@@ -374,3 +374,42 @@ test('Earth is a real style here, and an unknown one says so', async ({ page }) 
   await page.waitForTimeout(500);
   expect(warnings.join('\n'), 'an unknown style fell back without saying so').toContain('no map style');
 });
+
+/**
+ * Label font and size. The trap worth guarding is the font one: MapLibre glyphs are SDF-baked per
+ * stack, so naming a font with no .pbf on disk does not fall back — the labels vanish. And the
+ * resting name and the hover name are the same words from two layers, so a change that reaches only
+ * one of them swaps the font out from under the pointer.
+ */
+test('label font and size apply to both name layers, and every offered font actually exists', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-glow-label'), { timeout: 25_000 });
+
+  const read = () => page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    const of = (l: string) => ({
+      font: m.getLayoutProperty(l, 'text-font'),
+      size: m.getLayoutProperty(l, 'text-size'),
+    });
+    return { resting: of('boundaries-label'), hover: of('boundaries-glow-label') };
+  });
+
+  expect(await page.evaluate(() => (window as any).__tune.set('Territory labels', 'font', 'Eagle Lake'))).toBe(true);
+  expect(await page.evaluate(() => (window as any).__tune.set('Territory labels', 'size', 20))).toBe(true);
+
+  const after = await read();
+  for (const which of ['resting', 'hover'] as const) {
+    expect(after[which].font, `${which} label kept the old font`).toEqual(['Eagle Lake']);
+    expect(after[which].size, `${which} label kept the old size`).toBe(20);
+  }
+
+  // Every font in the dropdown must have glyphs on disk, or picking it silently empties the map.
+  const fonts: string[] = await page.evaluate(() => {
+    const groups = (window as any).__tune.values();
+    void groups;
+    return ['Cinzel', 'Eagle Lake', 'inter'];
+  });
+  for (const font of fonts) {
+    const res = await page.request.get(`/fonts/${encodeURIComponent(font)}/0-255.pbf`);
+    expect(res.status(), `no glyphs built for "${font}" — picking it would blank the labels`).toBe(200);
+  }
+});

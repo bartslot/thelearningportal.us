@@ -150,6 +150,18 @@ const rowFor = (group, control) => {
     return el('div', { className: 'lp-tune-stack' }, [label, area])
   }
 
+  // A fixed set of choices — a font stack, a projection, a preset. `options` is either plain
+  // strings or [value, label] pairs, so the value written to the map can differ from what is read.
+  if (control.type === 'select') {
+    const pick = el('select', { className: 'lp-tune-input' })
+    for (const opt of control.options ?? []) {
+      const [value, text] = Array.isArray(opt) ? opt : [opt, opt]
+      pick.appendChild(el('option', { value: String(value), textContent: String(text), selected: value === control.current }))
+    }
+    pick.onchange = () => applyValue(group, control, pick.value)
+    return el('label', { className: 'lp-tune-row' }, [label, pick, el('span')])
+  }
+
   if (control.type === 'boolean') {
     const box = el('input', { className: 'lp-tune-check', type: 'checkbox', checked: !!control.current })
     box.onchange = () => applyValue(group, control, box.checked)

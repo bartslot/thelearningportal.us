@@ -725,6 +725,25 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const paint = (layer, prop, value) => {
       if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, value); } catch (e) { /* style still parsing */ } }
     };
+    /**
+     * Territory names are drawn by TWO layers — the resting one and the one that appears under the
+     * pointer — and they are the same words in the same place. Anything that changes how a name
+     * looks has to change both, or hovering would swap the font out from under you.
+     *
+     * Glyph stacks are SDF-baked per font (scripts/build-glyphs.mjs), so this list is what is built,
+     * not what is installed: naming a font with no .pbf makes the labels disappear entirely.
+     */
+    const LABEL_LAYERS = ['boundaries-label', 'boundaries-glow-label'];
+    const FONT_STACKS = [['Cinzel', 'Cinzel (map serif)'], ['Eagle Lake', 'Eagle Lake (calligraphy)'], ['inter', 'Inter (plain)']];
+    const labelLayout = (prop, value) => {
+      for (const layer of LABEL_LAYERS) {
+        if (map.getLayer(layer)) {
+          try { map.setLayoutProperty(layer, prop, value); } catch (e) { /* style still parsing */ }
+        }
+      }
+    };
+    const labelPaint = (prop, value) => { for (const layer of LABEL_LAYERS) paint(layer, prop, value); };
+
     // The border colour has to survive the highlight case, or clicking a territory stops showing it.
     const borderColour = (colour) => {
       const expr = ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour];
@@ -886,6 +905,23 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { key: 'mergeKm', label: 'Front merge (km)', min: 0, max: 400, step: 10, value: 120,
           apply: (v) => { advanceMerge = v; reshape(); } },
         { key: 'clear', label: 'Clear', type: 'button', apply: () => advance?.clear() },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory labels', [
+        { key: 'font', label: 'Font', type: 'select', options: FONT_STACKS, value: 'Cinzel',
+          apply: (v) => labelLayout('text-font', [v]) },
+        { key: 'size', label: 'Size', min: 6, max: 32, step: 0.5, value: 12,
+          apply: (v) => labelLayout('text-size', v) },
+        { key: 'tracking', label: 'Letter spacing', min: 0, max: 0.4, step: 0.01, value: 0.06,
+          apply: (v) => labelLayout('text-letter-spacing', v) },
+        { key: 'caps', label: 'Small caps', type: 'boolean', value: true,
+          apply: (on) => labelLayout('text-transform', on ? 'uppercase' : 'none') },
+        // Over bright cloud a name can wash out completely — the halo is what keeps it readable,
+        // and on Earth there is a lot of white to sit on.
+        { key: 'haloWidth', label: 'Halo width', min: 0, max: 5, step: 0.25, value: 2,
+          apply: (v) => labelPaint('text-halo-width', v) },
+        { key: 'haloBlur', label: 'Halo softness', min: 0, max: 4, step: 0.25, value: 0.5,
+          apply: (v) => labelPaint('text-halo-blur', v) },
       ], { tab: 'Map' }),
 
       window.__tune.register('Territory borders', [
