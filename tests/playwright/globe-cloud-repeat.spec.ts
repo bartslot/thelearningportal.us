@@ -53,6 +53,9 @@ const RECURRENCE_LIMIT = 0.15;
 let report: Repeat;
 
 test.beforeAll(async ({ browser }) => {
+  // Waits for the whole measurement suite before taking its own frames, which is more than the
+  // default 60 s allows once several of these specs are running against one harness.
+  test.setTimeout(300_000);
   const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
   const failures: string[] = [];
   page.on('pageerror', (error) => failures.push(error.message));

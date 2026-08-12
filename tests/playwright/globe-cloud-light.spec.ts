@@ -36,6 +36,11 @@ type Lighting = {
 let light: Lighting;
 
 test.beforeAll(async ({ browser }) => {
+  // The default 60 s is not enough and the shortfall is invisible in the report: the hook times out
+  // and every assertion below is listed as skipped, which reads like a suite that was not run
+  // rather than one that ran out of time. This hook waits for the whole measurement suite and then
+  // drives twenty more frames of its own — four terms plus a seven-step sweep of the sun.
+  test.setTimeout(300_000);
   const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
   const failures: string[] = [];
   page.on('pageerror', (error) => failures.push(error.message));

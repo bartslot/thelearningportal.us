@@ -257,7 +257,20 @@ export const createDaylightLayer = ({
   reliefUrl = null,
   reliefWidth = 8192,
   reliefPower = 1.5,
-  cloudShadow = 0.5,
+  /**
+   * 0.38, down from 0.5, because the SOURCE changed underneath it rather than because it looked
+   * wrong.
+   *
+   * 0.5 was chosen against the 19.5 km whole-planet field, whose smoothstep left few pixels near
+   * full coverage. The harvested atlas is eight times finer and has real contrast, so the same 0.5
+   * now drives the ground harder: measured over the Himalaya, shadow strength went from 40.91 to
+   * 53.86 the moment the source was swapped, with nothing else touched. That is a 32% darker
+   * shadow that nobody asked for and no dial records.
+   *
+   * 0.5 x 40.91 / 53.86 = 0.38 restores the shading that was actually approved. A number carried
+   * across a source change is not the same setting, and this is the arithmetic that says so.
+   */
+  cloudShadow = 0.38,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same

@@ -105,6 +105,16 @@ const clouds = createCloudLayer({
 })
 
 /**
+ * The layers' own defaults, captured at construction.
+ *
+ * getOptions returns CURRENT state, and every measurement below drives these layers through
+ * setOptions to isolate one term at a time — so asking later returns whatever the last frame
+ * happened to set, which is usually zero. Read once, here, while they are still the defaults.
+ * This has now cost two separate measurements that came back 0.000 and looked like a clean pass.
+ */
+const SHIPPED = { daylight: daylight.getOptions(), clouds: clouds.getOptions() }
+
+/**
  * The haze band, for the night-limb measurement. Its own sun, set per capture, so the limb under
  * test can be put where the reading is taken rather than the camera flown to it.
  */
@@ -514,6 +524,23 @@ const measurements = async () => {
 
   const scale = metresPerPixelAt(...HIMALAYA)
   report.screen = { metresPerPixel: Math.round(scale) }
+
+  /**
+   * The same shadow at the SHIPPED setting, so the number that was reasoned about can be checked.
+   *
+   * cloudShadow came down from 0.5 to 0.38 on the arithmetic 0.5 x 40.91 / 53.86 — restoring the
+   * shading that was approved against the old blurred field, now that the sharper source drives the
+   * same dial 32% harder. That arithmetic assumes the response is LINEAR in the dial, which is an
+   * assumption about the shader and not a fact about it, so it is measured rather than trusted.
+   */
+  const shippedShadow = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: SHIPPED.daylight.cloudShadow, sun: lowSun },
+    clouds: { opacity: 0, sun: lowSun },
+  })
+  report.cloudShadowAtShipped = {
+    setting: SHIPPED.daylight.cloudShadow,
+    strength: round(differenceOver(shadowOff, shippedShadow, boxAround(shadowOff, ...HIMALAYA, 60)).mean, 2),
+  }
 
   report.cloudShadow = {
     strength: round(differenceOver(shadowOff, shadowOn, boxAround(shadowOff, ...HIMALAYA, 60)).mean, 2),
@@ -1129,7 +1156,7 @@ const cloudLighting = async ({ lng = -20, lat = 20, zoom = 3, half = 130 } = {})
    * and every measurement comes back 0.000 looking like a lighting model that does nothing. It did
    * exactly that once. The numbers have to be captured while they are still the layer's own.
    */
-  const shipped = clouds.getOptions()
+  const shipped = SHIPPED.clouds
 
   // The sun off to the WEST and low, so one side of the frame is backlit and the other is not —
   // which is what makes the forward-scattering asymmetry readable in a single frame.
@@ -1252,6 +1279,40 @@ const cloudLighting = async ({ lng = -20, lat = 20, zoom = 3, half = 130 } = {})
   }
 }
 
+/**
+ * What the wind advection costs the deck in sharpness, per setting.
+ *
+ * windAmount and windScale DEFORM the field; the drift rotates it. They are separate knobs and the
+ * distinction matters here, because slowing the drift does nothing at all about deformation — which
+ * is the thing that was actually reported as "trippy and fake" and was misread as the procedural
+ * noise being too strong.
+ *
+ * The measurement is pixel-scale structure, not mean brightness: smearing a field along a flow does
+ * not change how much cloud there is, only how sharp its edges are, and a mean is blind to that. It
+ * is the same reason the relief work had to stop measuring amplitude and start measuring detail.
+ *
+ * This matters more now than it did. The source is eight times finer than the field these settings
+ * were chosen against, so there is far more fine structure available for the advection to destroy.
+ */
+const cloudWind = async ({ lng = -20, lat = 40, zoom = 4, half = 120 } = {}) => {
+  const sun = sunFor(lng - 30, 20)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const clear = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+  const centre = pixelAt(lng, lat)
+
+  const out = {}
+  for (const windAmount of [0, 0.1, 0.2, 0.35, 0.6, 1]) {
+    const frame = await frameWith({
+      daylight: ground, clouds: { opacity: 1, sun, windAmount, animate: true },
+    })
+    out[windAmount] = round(detailOver(differenceImage(clear, frame), clear, centre, half), 3)
+  }
+  return { detailByWindAmount: out, where: { lng, lat, zoom } }
+}
+
 /** A coarse slice through the middle of the frame, so the scene's shape can be read rather than assumed. */
 const rowSlice = async () => {
   const frame = await capture()
@@ -1270,6 +1331,7 @@ window.__rowSlice = rowSlice
 window.__limbProfile = limbProfile
 window.__cloudRepeat = cloudRepeat
 window.__cloudLighting = cloudLighting
+window.__cloudWind = cloudWind
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds

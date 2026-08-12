@@ -111,6 +111,19 @@ export const deckDetailFor = (zoom, lat, altitudeM) => {
      *
      * The deck stays — voyages are sailed at this zoom and clouds belong there — but it stops
      * pretending to a detail it does not have. Softer and honest beats busy and invented.
+     *
+     * LEFT AT 0.14/0.10, and that is a decision rather than an omission. The cut from 0.56 was made
+     * blaming the procedural noise, and Bart has since said the artefact was wind advection curl —
+     * so the ceiling was compensating for a cause it never had, and the obvious move is to put it
+     * back. It is the wrong move. What was actually broken was WHEN the noise takes over: the
+     * crossover was pinned to a source resolution eight times too coarse, so the noise began
+     * inventing at about z3 instead of z6 and every complaint about it was made in a range where it
+     * should not have been doing anything at all. That constant is now derived from the source (see
+     * above), which fixes the cause rather than the symptom.
+     *
+     * Raising the ceiling on top of that fix would paint invention over real cloud that is now
+     * genuinely there, which is the failure this whole change exists to end. The curl, which was the
+     * real culprit, is dealt with where it lives: windAmount, in map-globe-layers.js.
      */
     amount: 0.14 + (1 - fieldQuality) * 0.10,
     // Gone by 1.35 deck heights, full again by 2.75. Both ends are strictly ABOVE the deck, so the
