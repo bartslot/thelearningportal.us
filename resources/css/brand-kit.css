@@ -1,0 +1,85 @@
+/**
+ * brand-kit.css — the History Portal information-card design, as tokens.
+ *
+ * SYNCED FROM FIGMA, NOT FETCHED FROM IT.
+ *   https://www.figma.com/design/PrVD4qMyoTtBvF7UV7Yhej/History-Portal?node-id=1462-1886
+ *
+ * The Figma file is upstream and it is where design decisions are MADE. This file is where they
+ * LAND, and it is what code reads. That split is deliberate: a build that calls Figma cannot run in
+ * CI, cannot run on a machine that is not signed in, and breaks the day a node id changes. Re-sync
+ * by hand when the design moves — see .claude/skills/history-portal-ui/SKILL.md.
+ *
+ * These sit ALONGSIDE the DaisyUI `learningportal` theme, they do not replace it. Component chrome
+ * still uses DaisyUI semantic classes; these are the card-specific values DaisyUI has no opinion
+ * about — the hairlines, the fade height, the label tracking.
+ */
+
+@theme {
+  /* ── Surfaces ─────────────────────────────────────────────────────────────────────────────── */
+  /* The card sits on the map, so it is darker than the app chrome and slightly translucent: the
+     globe must remain legible behind it or the card reads as a page, not a panel. */
+  --color-card-surface: #0b1119;
+  --color-card-surface-raised: #141c27;  /* the active tab, the button rail */
+
+  /* SUBTLE BREAKS OF CONTENT. Every division in this design is a hairline at low opacity, never a
+     box and never a shadow. If a separator is visible as a line rather than felt as a change, it is
+     too strong. */
+  --color-card-hairline: rgb(255 255 255 / 0.07);
+
+  /* ── Text ─────────────────────────────────────────────────────────────────────────────────── */
+  --color-card-title: #ffffff;
+  --color-card-body: #c7d5e3;        /* Figma variable `Menu` — the light blue-grey this UI reads in */
+  --color-card-muted: #7c8b9d;       /* inactive tabs, footnotes, LINKS */
+
+  /* ONE accent, used ONCE per surface — on a card, that is the era and nothing else.
+   *
+   * The content layer here is a photographed planet: colourful, moving, and a different colour
+   * every year and every map style. Apple's guidance for exactly this case is a monochromatic
+   * chrome with one well-differentiated accent, because colourful controls over colourful content
+   * are what make labels hard to read. Links are muted, not amber. If two things on a screen are
+   * amber, one of them is wrong.
+   * https://developer.apple.com/design/human-interface-guidelines/color */
+  --color-card-accent: #f5c518;
+
+  /* ── The small-caps label ─────────────────────────────────────────────────────────────────── */
+  /* Figma: LABEL_SMALL_UI and LABEL_BIGGER. Inter SemiBold, 0.5 letter-spacing, uppercase. Used for
+     "ROMAN REPUBLIC", "READ MORE ON", "SOMETHING NOT RIGHT?" — every piece of text that labels
+     rather than speaks. */
+  --text-card-label-sm: 0.5rem;      /* 8px  */
+  --text-card-label: 0.6875rem;      /* 11px */
+  --tracking-card-label: 0.5px;
+  --font-weight-card-label: 600;
+
+  /* ── Rhythm ───────────────────────────────────────────────────────────────────────────────── */
+  --radius-card: 0.75rem;
+  --radius-card-pill: 9999px;        /* the Create Lesson button */
+  --spacing-card-gutter: 1.25rem;
+
+  /* The body copy FADES rather than being cut. A hard clip says the text ended; a fade says there
+     is more and you can scroll to it. This is the height of that fade. */
+  --card-fade-height: 4.5rem;
+}
+
+/**
+ * The fade. Applied to the scrolling body of an information card.
+ *
+ * mask-image rather than a gradient overlay, because an overlay has to know the colour behind it —
+ * and this card sits on a map whose colour changes with the year, the style and the time of day.
+ */
+.lp-card-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--card-fade-height)), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--card-fade-height)), transparent 100%);
+}
+
+/** The label hand: anything that names a thing rather than saying it. */
+.lp-card-label {
+  font-size: var(--text-card-label);
+  font-weight: var(--font-weight-card-label);
+  letter-spacing: var(--tracking-card-label);
+  text-transform: uppercase;
+  color: var(--color-card-muted);
+}
+
+.lp-card-label-sm {
+  font-size: var(--text-card-label-sm);
+}

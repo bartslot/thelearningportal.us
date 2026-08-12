@@ -31,6 +31,23 @@ class CliopatriaQidOverridesTest extends TestCase
         $this->assertSame('Q1068371', $overrides->resolve('Q1068371'));
     }
 
+    /**
+     * Cliopatria tags its 500 BCE Roman Republic polygons with Q175881, which is the Roman Republic
+     * of 1798 — Napoleon's sister republic of the First French Republic. The panel faithfully
+     * fetched that article, its tricolour, and its 1799 end date, and presented all three over a
+     * map of the Mediterranean at 33 BCE.
+     *
+     * Worth pinning by QID rather than by name: the two items share a label exactly, so "Roman
+     * Republic" tells you nothing about which one you have.
+     */
+    public function test_the_ancient_roman_republic_is_not_the_one_napoleon_made(): void
+    {
+        $overrides = new CliopatriaQidOverrides;
+
+        $this->assertSame('Q17167', $overrides->resolve('Q175881', 'Roman Republic'));
+        $this->assertSame('Q17167', $overrides->resolve('Q175881'));
+    }
+
     public function test_unlisted_qid_passes_through(): void
     {
         $this->assertSame('Q12536', (new CliopatriaQidOverrides)->resolve('Q12536', 'Abbasid Caliphate'));

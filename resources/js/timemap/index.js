@@ -17,7 +17,7 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 // Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
 // layers ended up merged, tested and never loaded by any page.
 import { addGlobeLayers } from '../map-globe-layers.js';
-import { sweepBorder, outlineOf } from '../map/border-sweep.js';
+import { sweepBorder, outlineOf, withoutSeams } from '../map/border-sweep.js';
 import { createAdvance } from '../map/advance-layer.js';
 import { EASING } from '../easing.js';
 import { planetSpacePosition } from './planet-mesh.js';
@@ -179,11 +179,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * rendered as a bowl hanging below the earth. Resizing the box changes nothing the shaders read.
    *
    * Measured from the deck rather than hard-coded — it is `w-176 max-w-[92vw]`, so its height
-   * changes with the viewport as its controls wrap. Overridden by Camera → Framing when tuning.
+   * changes with the viewport as its controls wrap.
+   *
+   * IT GROWS THE BOX UPWARDS, it does not shrink it. Shrinking from the bottom centred the globe
+   * and cost 10-20% of the viewport, so the map stopped filling the window. Extending the top by the
+   * same amount moves the container's centre up by exactly as much while the canvas still covers
+   * every visible pixel — the extra height hides behind the header. Full height AND a centred globe;
+   * they were never actually in conflict, I just used the wrong edge.
    */
+  let chromeInsetEnabled = true;
   let chromeInsetLocked = false;
   const centreForChrome = () => {
-    if (chromeInsetLocked) return;
+    if (!chromeInsetEnabled || chromeInsetLocked) return;
     const deck = document.querySelector('[data-timemap-deck]');
     if (!deck) return;
     const box = el.getBoundingClientRect();
@@ -191,8 +198,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Clamped to a third: a deck taller than that means a viewport so short there would be nowhere
     // left to draw the map at all.
     const covered = Math.max(0, Math.min(box.bottom - bar.top, box.height / 3));
-    if (Math.abs(parseFloat(el.style.bottom || '0') - covered) < 1) return;
-    el.style.bottom = `${covered}px`;
+    if (Math.abs(parseFloat(el.style.top || '0') + covered) < 1) return;
+    // BOTH, or the box slides instead of growing. MapLibre puts its own height on the container, so
+    // moving the top alone translated the whole map upward and left a gap at the bottom of the
+    // window — the opposite of the problem being solved.
+    el.style.top = `-${covered}px`;
+    el.style.height = `calc(100% + ${covered}px)`;
     map.resize();
   };
 
@@ -232,7 +243,22 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   /** The hover shine: wide and blurred under the crisp border, invisible until pointed at. */
   const GLOW_COLOR = '#f59e0b';
-  const GLOW_WIDTH = ['interpolate', ['linear'], ['zoom'], 0, 3, 4, 7, 8, 12];
+  const GLOW_WIDTH_STOPS = [[0, 3], [4, 7], [8, 12]];
+
+  /**
+   * Width at each zoom, scaled.
+   *
+   * MapLibre allows a `zoom` expression only at the TOP level, so `['*', GLOW_WIDTH, scale]` — which
+   * is what this was — is rejected outright: "zoom expression may only be used as input to a
+   * top-level step or interpolate". paint() swallows the throw, so all four Hover glow controls
+   * appeared to do nothing while the console filled with the reason. Scale the OUTPUTS instead.
+   */
+  const glowWidthExpr = (scale = 1) => [
+    'interpolate', ['linear'], ['zoom'],
+    ...GLOW_WIDTH_STOPS.flatMap(([z, w]) => [z, w * scale]),
+  ];
+
+  const GLOW_WIDTH = glowWidthExpr(1);
 
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
   // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
@@ -368,9 +394,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
-    // The hover glow tracks the same era as the border it sits under, or scrubbing the timeline
-    // leaves it lighting up territories that no longer exist.
-    if (map.getLayer('boundaries-glow')) map.setFilter('boundaries-glow', polityFilter(year));
+    // NO era filter on the hover glow. It used to need one, when it drew from the Cliopatria vector
+    // source and its features carried Type/Name/FromYear/ToYear like everything else. It now has its
+    // own GeoJSON source that is EMPTY unless something is hovered, and those features carry no
+    // properties at all — so polityFilter rejected every one of them and the glow could never draw,
+    // whatever the paint said. Scrubbing cannot strand it either: the source is emptied on mouseout.
     scheduleSmoothBorders();   // different era, different outlines to round
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
@@ -626,7 +654,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const showGlow = (geometry, name = null, qid = null) => {
     const src = map.getSource('boundaries-glow-src');
     if (!src) return;
-    const rings = (geometry ? outlineOf(geometry) : []).filter((r) => r.length >= 4);
+    // Split each ring at its tile seams FIRST. The geometry arrives clipped to whichever tile it was
+    // found in, so its ring includes the tile's own edge — which is what drew a bright straight line
+    // down England, down France, and around the top of Spain. See withoutSeams for the measurements.
+    const rings = (geometry ? outlineOf(geometry) : [])
+      .flatMap((ring) => withoutSeams(ring))
+      .filter((r) => r.length >= 4);
 
     const features = rings.map((ring) => ({
       type: 'Feature', properties: {},
@@ -801,7 +834,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
      * Glyph stacks are SDF-baked per font (scripts/build-glyphs.mjs), so this list is what is built,
      * not what is installed: naming a font with no .pbf makes the labels disappear entirely.
      */
-    const LABEL_LAYERS = ['boundaries-label'];
+    // Every layer that writes a place name. Kept as one list precisely because these drifted apart:
+    // the manual markers were on a different font and case from the territories for as long as both
+    // existed. Size is NOT driven from here — applyLabelSize owns boundaries-label alone, so the
+    // region/polity size hierarchy stays.
+    const LABEL_LAYERS = ['boundaries-label', 'markers-label'];
     const FONT_STACKS = [['Cinzel', 'Cinzel (map serif)'], ['Eagle Lake', 'Eagle Lake (calligraphy)'], ['inter', 'Inter (plain)']];
     const labelLayout = (prop, value) => {
       for (const layer of LABEL_LAYERS) {
@@ -812,11 +849,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     };
     const labelPaint = (prop, value) => { for (const layer of LABEL_LAYERS) paint(layer, prop, value); };
 
-    // The border colour has to survive the highlight case, or clicking a territory stops showing it.
+    /**
+     * Plain colour. This used to build a `case` around a `highlight` feature-state and read
+     * PALETTE.highlight — but there is no PALETTE in this module (only ATLAS_PALETTE), so the
+     * control threw on every use and the border colour has never once changed. Nothing sets a
+     * `highlight` feature-state anywhere either, so the case it was protecting could not fire.
+     *
+     * The selected territory is shown by its FILL, not by its border; see territoryFillExpr.
+     */
     const borderColour = (colour) => {
-      const expr = ['case', ['boolean', ['feature-state', 'highlight'], false], PALETTE.highlight, colour];
-      styleOverride['boundaries-line.line-color'] = expr;
-      ownedPaint('boundaries-line', 'line-color', expr);
+      styleOverride['boundaries-line.line-color'] = colour;
+      ownedPaint('boundaries-line', 'line-color', colour);
     };
 
     const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
@@ -839,7 +882,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const applyGlow = () => {
       paint('boundaries-glow', 'line-color', glow.colour);
       paint('boundaries-glow', 'line-opacity', glow.strength);
-      paint('boundaries-glow', 'line-width', ['*', GLOW_WIDTH, glow.width]);
+      paint('boundaries-glow', 'line-width', glowWidthExpr(glow.width));
       paint('boundaries-glow', 'line-blur', glow.blur);
     };
 
@@ -1072,10 +1115,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
          */
         { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
           apply: (v) => {
-            // Tuning wins over the automatic measurement, or the two would fight on every resize.
-            chromeInsetLocked = true;
-            el.style.bottom = `${Math.max(0, Number(v) || 0)}px`;
+            const inset = Math.max(0, Number(v) || 0);
+            // Overriding the measurement. Above the top, like the automatic one — never off the
+            // bottom, which is what cost the viewport its height.
+            chromeInsetLocked = inset > 0;
+            el.style.top = `-${inset}px`;
+            el.style.height = `calc(100% + ${inset}px)`;
             map.resize();
+          } },
+        { key: 'autoInset', label: 'Auto-centre above the deck', type: 'boolean', value: true,
+          apply: (on) => {
+            chromeInsetEnabled = on;
+            chromeInsetLocked = false;
+            if (!on) { el.style.top = '0px'; el.style.height = ''; map.resize(); } else centreForChrome();
           } },
       ], { tab: 'Camera' }),
 
@@ -1466,10 +1518,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       id: 'markers-label', type: 'symbol', source: 'markers',
       layout: {
         'text-field': ['get', 'name'], 'text-size': 14,
-        // Regions/peoples in flowing Eagle Lake calligraphy (the body hand of the map).
-        'text-font': ['Eagle Lake'],
+        // The SAME hand as every other name on the map. These three (Gaul, Germania, Britannia) are
+        // added by hand rather than coming from Cliopatria, and they used to be set in flowing Eagle
+        // Lake title case while their neighbours were Cinzel small caps — so "Britannia" beside
+        // "ROMAN EMPIRE" read as two maps stacked, which is exactly how Bart found it.
+        //
+        // The hierarchy survives in the one place it belongs: size. A region is 14 to a polity's 12.
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase',
         'text-offset': [0, 0.9], 'text-anchor': 'top',
-        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.02,
+        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.06,
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
@@ -1602,7 +1659,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     borderSweep = hit
       ? sweepBorder(map, {
         id: 'polity-sweep',
-        lines: outlineOf(hit.geometry),
+        // Seams split out here too. The click sweep runs its light around the SAME tile-clipped
+        // geometry the hover glow does, so it had the same straight line through the country — it
+        // was just harder to catch, being a two-second gesture rather than a state you can sit in.
+        lines: outlineOf(hit.geometry).flatMap((ring) => withoutSeams(ring)).filter((r) => r.length >= 4),
         // No trail: this is a gesture, not a layer. It clears itself up when it finishes.
         durationMs: 2000,
         beforeId: map.getLayer('boundaries-label') ? 'boundaries-label' : undefined,

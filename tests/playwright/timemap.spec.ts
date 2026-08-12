@@ -1,29 +1,12 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { loginAsTeacher } from './support/auth';
 
 /**
- * Auth: uses the real login form with a playwright test account seeded into Supabase.
- * Playwright's browser context handles CSRF tokens and session cookies automatically.
- *
- * Auth setup: one-time seed (if not done):
- *   php artisan tinker --execute="App\Models\User::create(['name'=>'Playwright Teacher',
- *     'email'=>'teacher@playwright.test','password'=>bcrypt('playwright123'),'role'=>'teacher']);"
- *
- * WebGL: playwright.config.ts passes --enable-unsafe-swiftshader / --use-angle=swiftshader
- * so MapLibre can initialise in headless Chromium via software rendering (~6s load time).
+ * WebGL: playwright.config.ts passes --enable-unsafe-swiftshader / --use-angle=swiftshader so
+ * MapLibre can initialise in headless Chromium via software rendering (~6s load time).
  *
  * Server: start normally with `php artisan serve` (no .env changes needed).
  */
-async function loginAsTeacher(page: Page): Promise<void> {
-  // When APP_AUTO_LOGIN=true (local dev), every request is auto-authenticated as a seeded teacher,
-  // so the /login form immediately redirects away — there's no form to fill. Detect that and skip.
-  await page.goto('/login');
-  if (!page.url().includes('/login')) return; // auto-login already signed us in
-  await page.fill('#email', 'teacher@playwright.test');
-  await page.fill('#password', 'playwright123');
-  await page.click('button[type=submit]');
-  // Wait for redirect away from /login (successful auth lands on teacher dashboard)
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 10_000 });
-}
 
 test.beforeEach(async ({ page }) => {
   await loginAsTeacher(page);
@@ -491,4 +474,83 @@ test('a named preset survives a reload and reaches a late-registering group', as
   // Clean up after ourselves — this writes to the source tree.
   await page.evaluate(() => (window as any).__tune.set('Presets', 'delete', true));
   await page.waitForFunction((n) => !(window as any).__tune.presets().presets?.[n], NAME, { timeout: 15_000 });
+});
+
+/**
+ * Fire every control in the settings panel and assert none of them fails.
+ *
+ * Bart: "there are tonnes of other Settings that are not working." Three were dead and each failed
+ * silently in its own way:
+ *
+ *   - Hover glow (all four): applyGlow built ['*', GLOW_WIDTH, scale] around a zoom interpolate.
+ *     MapLibre only allows a zoom expression at the TOP level, so it threw — into paint()'s catch,
+ *     which exists for "style still parsing" and swallowed a permanent error just as quietly.
+ *   - Territory borders → colour: read PALETTE.highlight. There is no PALETTE in that module. The
+ *     control threw on every use and the border colour had never once changed.
+ *   - The glow itself: applyYear put the POLITY era filter on boundaries-glow, whose own source
+ *     carries no properties at all, so nothing in it could ever satisfy the filter.
+ *
+ * A control that throws into a catch is worse than one that is missing: the panel moves, the map
+ * does not, and nothing says why. This is the cheapest possible guard — it does not check that a
+ * control does the RIGHT thing, only that it does not fail, which is the failure mode this panel
+ * keeps having.
+ */
+test('every settings control applies without throwing', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.values()['Hover glow'], { timeout: 40_000 });
+  await page.waitForTimeout(2_000);
+
+  const broken = await page.evaluate(() => {
+    const t = (window as any).__tune;
+    const origWarn = console.warn;
+    const origError = console.error;
+    let warns: string[] = [];
+    console.warn = (...a: any[]) => { warns.push(String(a[0]).slice(0, 120)); origWarn.apply(console, a); };
+    console.error = (...a: any[]) => { warns.push('ERR ' + String(a[0]).slice(0, 120)); origError.apply(console, a); };
+
+    const out: Record<string, string> = {};
+    for (const [group, controls] of Object.entries(t.values() as Record<string, Record<string, unknown>>)) {
+      for (const [key, current] of Object.entries(controls)) {
+        warns = [];
+        let threw: string | null = null;
+        try { t.set(group, key, current); } catch (e: any) { threw = e.message; }
+        // Re-applying a control's OWN current value must be a no-op, never an error.
+        if (threw || warns.length) out[`${group} → ${key}`] = threw ?? warns[0];
+      }
+    }
+    console.warn = origWarn;
+    console.error = origError;
+    return out;
+  });
+
+  // The fleet warns honestly when its lazy three.js chunk has not arrived; that is the control
+  // reporting rather than failing, and it is the behaviour we want everywhere else.
+  const real = Object.entries(broken).filter(([, why]) => !/no fleet on this map yet/.test(why));
+  expect(Object.fromEntries(real), `controls that failed: ${real.map(([k]) => k).join(', ')}`).toEqual({});
+});
+
+/**
+ * The hover glow, end to end. Asserting the SOURCE has features is not enough — it had 10 while the
+ * layer rendered 0, because the era filter rejected every one of them. Only the rendered count
+ * proves the light actually reaches the screen.
+ */
+test('hovering a territory draws the glow, not just fills its source', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmShowGlow && !!(window as any).__tmMap?.getLayer('boundaries-glow'), { timeout: 30_000 });
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [10, 48], zoom: 3.4, pitch: 0 }));
+  await page.waitForTimeout(4_000);
+
+  const drawn = await page.evaluate(async () => {
+    const m = (window as any).__tmMap;
+    const f = m.queryRenderedFeatures({ layers: ['boundaries-fill'] }).find((x: any) => x.properties?.Name);
+    if (!f) return { source: -1, rendered: -1, name: null };
+    (window as any).__tmShowGlow(f.geometry, f.properties.Name, null);
+    await new Promise((r) => setTimeout(r, 1_200));
+    return {
+      name: f.properties.Name,
+      source: m.querySourceFeatures('boundaries-glow-src').length,
+      rendered: m.queryRenderedFeatures({ layers: ['boundaries-glow'] }).length,
+    };
+  });
+
+  expect(drawn.source, `no glow geometry for ${drawn.name}`).toBeGreaterThan(0);
+  expect(drawn.rendered, `glow source has ${drawn.source} features but the layer draws none`).toBeGreaterThan(0);
 });

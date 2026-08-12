@@ -31,6 +31,62 @@ const ringLength = (points) => {
 }
 
 /** Every ring of a Polygon/MultiPolygon as its own LineString — the outline, without the inside. */
+/**
+ * Tile seams, and how to tell one from a border.
+ *
+ * queryRenderedFeatures returns a polity CLIPPED TO THE TILE it was found in, so its ring includes
+ * the tile's own edge. Outline that and you draw a bright straight line across the country. Measured
+ * on the Iberian Union at z4: a 9.18-degree segment at a constant latitude of 40.647, a 2.09-degree
+ * one at a constant longitude of 0.439, and a 1.53-degree one at 43.537 — the box the tile cut.
+ *
+ * LENGTH ALONE IS NOT THE TEST. A first attempt at this split anything over 3 degrees and would have
+ * caught one of those three. What every seam has in common is that it is perfectly AXIS-ALIGNED:
+ * the clip runs along a meridian or a parallel, so one coordinate does not change at all. Real
+ * coastline never does that for a degree at a time.
+ *
+ * The known cost: a border that genuinely follows a parallel — the 49th between the US and Canada,
+ * several colonial lines in Africa — loses its glow along that stretch. A gap in a hover effect is
+ * a far smaller lie than a bright line through the middle of Spain.
+ */
+const SEAM_FLATNESS_DEG = 1e-4   // a coordinate that does not move is a clip, not a curve
+const SEAM_MIN_DEG = 0.5         // shorter than this and it is a genuine straight run of border
+const MAX_STEP_DEG = 3           // and any huge jump goes regardless of alignment
+
+/**
+ * Break a ring wherever it takes a step no border takes, and return the surviving runs.
+ *
+ * Splitting rather than dropping: the ring becomes open paths that still trace the real coastline,
+ * and only the manufactured edge goes.
+ */
+export const withoutSeams = (ring, opts = {}) => {
+  const flat = opts.flatness ?? SEAM_FLATNESS_DEG
+  const minSeam = opts.minSeam ?? SEAM_MIN_DEG
+  const maxStep = opts.maxStep ?? MAX_STEP_DEG
+  if (!Array.isArray(ring) || ring.length < 2) return []
+
+  const runs = []
+  let run = [ring[0]]
+  for (let i = 1; i < ring.length; i++) {
+    const [ax, ay] = ring[i - 1]
+    const [bx, by] = ring[i]
+    // Longitude the short way round, or a step across the antimeridian reads as a 360-degree jump.
+    const dx = Math.abs(((bx - ax + 540) % 360) - 180)
+    const dy = Math.abs(by - ay)
+    const axisAligned = dx < flat || dy < flat
+    const length = Math.hypot(dx, dy)
+    const isSeam = length > maxStep || (axisAligned && length > minSeam)
+
+    if (isSeam) {
+      if (run.length > 1) runs.push(run)
+      run = [ring[i]]
+      continue
+    }
+    run.push(ring[i])
+  }
+  if (run.length > 1) runs.push(run)
+  return runs
+}
+
 export const outlineOf = (geometry) => {
   if (!geometry) return []
   const polys = geometry.type === 'MultiPolygon' ? geometry.coordinates
