@@ -186,6 +186,17 @@ ${RELIEF_GLSL}
 // The field, the wind and the clock the ground's cloud shadows read from the same source.
 ${CLOUD_FIELD_GLSL}
 
+/**
+ * The cloud's SHAPE at a UV — the whole-planet field, thresholded the same way the deck is.
+ *
+ * Deliberately not the atlas and not the noise. Both carry detail far finer than a cloud's overall
+ * form, and a gradient taken across either is dominated by that detail rather than by the shape it
+ * is supposed to describe.
+ */
+float shapeFieldAt(vec2 uv) {
+  return smoothstep(0.16, 0.62, texture(u_field, uv).r);
+}
+
 void main() {
   vec3 p = normalize(v_sphere);
 
@@ -210,7 +221,7 @@ void main() {
 
   float coverage;
   /**
-   * The SHAPE of the cloud, without the texture on it — what the normal is taken from.
+   * Where to read the cloud's SHAPE, as opposed to the cloud that is drawn.
    *
    * Differentiation is a high-pass filter, so a normal computed from the drawn coverage is
    * dominated by whatever varies fastest in it. Lit by a normal, that came out as fine directional
@@ -226,11 +237,10 @@ void main() {
    * Nyquist at every zoom the deck is drawn at.
    *
    * So the shape comes from the whole-planet field alone: 19.5 km per texel, hopeless as texture and
-   * ideal here, because it is smooth across a pixel at every zoom and there is nothing left to
-   * alias. It is also the honest division of labour — light the weather SYSTEMS, whose tops really
-   * do catch the sun, and leave the fine structure as what it is, which is texture.
+   * ideal here. It is also the honest division of labour — light the weather SYSTEMS, whose tops
+   * really do catch the sun, and leave the fine structure as what it is, which is texture.
    */
-  float shapeCoverage;
+  vec2 shapeUV = equirectUV(p, u_drift);
   // Either real source will do here — the question is only whether there is real weather to draw at
   // all, or whether the deck falls back to latitude-banded noise. Asking about the global field
   // alone would put procedural cloud on a build where the atlas had loaded and it had not.
@@ -238,14 +248,8 @@ void main() {
     // Real weather. The texture decides WHERE cloud is; the noise decides what its edges look
     // like — and as the field runs out of resolution, u_detailAmount hands the noise more of the
     // job, until at close range it is carrying the structure on its own.
-    vec2 uv = equirectUV(p, u_drift);
-    float field = advectedField(uv, asin(clamp(p.y, -1.0, 1.0)));
+    float field = advectedField(shapeUV, asin(clamp(p.y, -1.0, 1.0)));
     coverage = smoothstep(0.16, 0.62, field + u_detailAmount * (detail - 0.5));
-    // One extra tap, straight from the smooth global field. Where it is absent the atlas is all
-    // there is, and the hatching comes back — which is the honest trade, not a hidden one.
-    shapeCoverage = u_fieldAmount > 0.0
-      ? smoothstep(0.16, 0.62, texture(u_field, uv).r)
-      : smoothstep(0.16, 0.62, field);
   } else {
     float cover = fbm(p * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004)) + 0.35 * detail;
     // Earth's cloud is banded, not evenly scattered: a wet belt at the equator, the clear
@@ -257,8 +261,6 @@ void main() {
       - 0.40 * exp(-pow((abs(sinLat) - 0.50) / 0.16, 2.0))      // subtropical highs
       + 0.20 * exp(-pow((abs(sinLat) - 0.82) / 0.18, 2.0));     // storm tracks
     coverage = smoothstep(0.70, 1.02, cover * band);
-    // No real field to fall back on here, so the noise is all there is to take a shape from.
-    shapeCoverage = coverage;
   }
 
   // ── Lighting ──────────────────────────────────────────────────────────────────────────────
@@ -278,48 +280,51 @@ void main() {
   // formulation, so a flat deck is left exactly as it was and the effect is naturally strongest at
   // the terminator.
   //
-  // THE GRADIENT IS FREE. Three more samples of the field would be twenty-seven more texture reads
-  // per pixel, on a layer that already costs nine. Screen-space derivatives cost nothing and are
-  // better evidence besides: they are the derivative of the coverage ACTUALLY DRAWN, noise and
-  // advection included, rather than of an approximation to it. dp/dx and dp/dy span the surface at
-  // this pixel, so two scalar derivatives fix the surface gradient exactly.
-  vec3 dpdx = dFdx(v_sphere);
-  vec3 dpdy = dFdy(v_sphere);
-  float dcdx = dFdx(shapeCoverage);
-  float dcdy = dFdy(shapeCoverage);
-
+  // FOUR TAPS OF THE COARSE FIELD, which is not where this started. The gradient was taken from
+  // screen-space derivatives, twice, because they are free — and both times the result was an
+  // artefact rather than a slope. See below for why a fixed step in the field is the only version
+  // of this that holds at every zoom.
   mat3 frame = equirectTangentFrame(p);
-  vec2 stepX = vec2(dot(dpdx, frame[0]), dot(dpdx, frame[1]));
-  vec2 stepY = vec2(dot(dpdy, frame[0]), dot(dpdy, frame[1]));
-  float det = stepX.x * stepY.y - stepX.y * stepY.x;
-
   vec3 cloudNormal = frame[2];
-  // A degenerate quad — the limb, a silhouette edge — has no surface to take a gradient across, and
-  // solving anyway puts an arbitrary normal exactly where the deck is most visible.
-  if (abs(det) > 1.0e-12) {
-    vec2 slope = vec2(dcdx * stepY.y - dcdy * stepX.y, dcdy * stepX.x - dcdx * stepY.x) / det;
-    // u_cloudRelief is a HEIGHT IN KILOMETRES — how tall fully covered sky stands — so the slope
-    // here is the real one and the control means something a person can picture. A cumulus tops out
-    // around 8 km, which is where the default sits; the gradient is per sphere radius, so the
+  if (u_cloudRelief > 0.0) {
+    /**
+     * The gradient over a FIXED STEP IN THE FIELD, not from screen-space derivatives.
+     *
+     * Screen derivatives were the third failure of this term and the subtlest. Bilinear
+     * interpolation is bilinear WITHIN a texel, so its derivative is discontinuous ACROSS texel
+     * boundaries — piecewise, with a jump at every edge. dFdx of it therefore returns a value that
+     * is constant-ish inside a texel and steps at the border, and the deck came out in hard-edged
+     * rectangles the size of the field's texels. They showed over bright land and hid over dark sea,
+     * which is what made them look like a shadow problem; they survive with the shadow switched off.
+     *
+     * Both earlier attempts were the same mistake at opposite ends. Taking the gradient from the
+     * atlas put it at Nyquist and gave hatching; taking it from the 19.5 km field put it below the
+     * texel grid and gave blocks. A screen-space derivative is only meaningful where the field
+     * varies smoothly across a PIXEL, and neither source does at every zoom.
+     *
+     * A fixed step in UV has no such dependence. It straddles more than a texel by construction, so
+     * it is the same gradient at every zoom, and there is no screen scale left in it to alias.
+     */
+    const vec2 SHAPE_STEP = vec2(1.5 / 2048.0, 1.5 / 1024.0);
+    float east = shapeFieldAt(shapeUV + vec2(SHAPE_STEP.x, 0.0))
+               - shapeFieldAt(shapeUV - vec2(SHAPE_STEP.x, 0.0));
+    float south = shapeFieldAt(shapeUV + vec2(0.0, SHAPE_STEP.y))
+                - shapeFieldAt(shapeUV - vec2(0.0, SHAPE_STEP.y));
+
+    // UV steps into distance along the sphere, in radii: u spans a full 2*pi*cos(lat) circle, v a
+    // half-circle of pi. Without the cosine the slope runs away toward the poles.
+    float coslat = max(cos(asin(clamp(p.y, -1.0, 1.0))), 0.05);
+    vec2 slope = vec2(
+      east / (2.0 * SHAPE_STEP.x * 6.28318531 * coslat),
+      south / (2.0 * SHAPE_STEP.y * 3.14159265)
+    );
+    // u_cloudRelief is a HEIGHT IN KILOMETRES applied to a SMOOTHED heightfield, so it runs larger
+    // than a real cloud — see the option's own note. The gradient is per sphere radius, so the
     // conversion is the earth's own.
     slope *= u_cloudRelief / 6371.0;
 
-    /**
-     * BOUNDED AT 1.5, which is 56 degrees, and the bound is doing real work rather than guarding an
-     * edge case.
-     *
-     * A screen-space derivative is a 2x2-quad estimate, and it is only honest where the field varies
-     * slowly across a quad. Once the source became genuinely sharp that stopped being true: at close
-     * range a cloud edge crosses a whole quad, the estimated normal alternates from quad to quad,
-     * and the deck came out covered in fine directional hatching — brush strokes rather than cloud.
-     * It is invisible at globe zoom and unmissable over Ireland, and turning this term off alone was
-     * what identified it.
-     *
-     * The bound is a statement about cloud rather than about floating point: a real cloud top does
-     * not stand steeper than about this, so anything past it was never a slope, it was the estimate
-     * falling apart. Magnitude only — the direction is left alone, since that is the part that is
-     * still right.
-     */
+    // Bounded at 56 degrees. A real cloud top does not stand steeper than about this, so anything
+    // past it is the estimate rather than the sky. Magnitude only; the direction is left alone.
     float steepness = length(slope);
     if (steepness > 1.5) slope *= 1.5 / steepness;
     cloudNormal = normalize(frame * normalize(vec3(-slope, 1.0)));
@@ -481,9 +486,12 @@ export const createCloudLayer = ({
    * slope and the term all but vanished — measured, spread 27.8 against a flat deck's 27.5.
    *
    * So the number is a height applied to a SMOOTHED heightfield, and it has to be larger to recover
-   * the slope a real cloud edge has. The 1.5 bound in the shader is what keeps that honest.
+   * the slope a real cloud edge has. It rose again, from 40 to 90, when the gradient stopped being a
+   * screen-space derivative and became a fixed step across the field — a wider baseline measures a
+   * gentler slope, so the same picture needs a taller nominal cloud. The 1.5 bound in the shader is
+   * what keeps that honest.
    */
-  cloudRelief = 40,
+  cloudRelief = 90,
   cloudDepth = 4,         // optical depth of fully covered sky
   powder = 1,
   forward = 0.5,

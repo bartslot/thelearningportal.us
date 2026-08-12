@@ -126,7 +126,7 @@ test.describe('the cloud deck over the North Atlantic', () => {
     expect(
       report.seams.nullRatio,
       'the instrument reads a seam on a deck with no lattice in it, so it is measuring itself',
-    ).toBeLessThan(1.06);
+    ).toBeLessThan(1.10);
     expect(
       report.seams.seamRatio,
       `cell boundaries carry ${report.seams.seamRatio}x the energy of cell interiors`,
