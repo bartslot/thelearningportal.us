@@ -801,7 +801,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
      * Glyph stacks are SDF-baked per font (scripts/build-glyphs.mjs), so this list is what is built,
      * not what is installed: naming a font with no .pbf makes the labels disappear entirely.
      */
-    const LABEL_LAYERS = ['boundaries-label'];
+    // Every layer that writes a place name. Kept as one list precisely because these drifted apart:
+    // the manual markers were on a different font and case from the territories for as long as both
+    // existed. Size is NOT driven from here — applyLabelSize owns boundaries-label alone, so the
+    // region/polity size hierarchy stays.
+    const LABEL_LAYERS = ['boundaries-label', 'markers-label'];
     const FONT_STACKS = [['Cinzel', 'Cinzel (map serif)'], ['Eagle Lake', 'Eagle Lake (calligraphy)'], ['inter', 'Inter (plain)']];
     const labelLayout = (prop, value) => {
       for (const layer of LABEL_LAYERS) {
@@ -1466,10 +1470,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       id: 'markers-label', type: 'symbol', source: 'markers',
       layout: {
         'text-field': ['get', 'name'], 'text-size': 14,
-        // Regions/peoples in flowing Eagle Lake calligraphy (the body hand of the map).
-        'text-font': ['Eagle Lake'],
+        // The SAME hand as every other name on the map. These three (Gaul, Germania, Britannia) are
+        // added by hand rather than coming from Cliopatria, and they used to be set in flowing Eagle
+        // Lake title case while their neighbours were Cinzel small caps — so "Britannia" beside
+        // "ROMAN EMPIRE" read as two maps stacked, which is exactly how Bart found it.
+        //
+        // The hierarchy survives in the one place it belongs: size. A region is 14 to a polity's 12.
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase',
         'text-offset': [0, 0.9], 'text-anchor': 'top',
-        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.02,
+        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.06,
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
     });
