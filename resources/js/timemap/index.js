@@ -17,7 +17,7 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 // Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
 // layers ended up merged, tested and never loaded by any page.
 import { addGlobeLayers } from '../map-globe-layers.js';
-import { sweepBorder, outlineOf } from '../map/border-sweep.js';
+import { sweepBorder, outlineOf, withoutSeams } from '../map/border-sweep.js';
 import { createAdvance } from '../map/advance-layer.js';
 import { EASING } from '../easing.js';
 import { planetSpacePosition } from './planet-mesh.js';
@@ -179,11 +179,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * rendered as a bowl hanging below the earth. Resizing the box changes nothing the shaders read.
    *
    * Measured from the deck rather than hard-coded — it is `w-176 max-w-[92vw]`, so its height
-   * changes with the viewport as its controls wrap. Overridden by Camera → Framing when tuning.
+   * changes with the viewport as its controls wrap.
+   *
+   * OFF BY DEFAULT, and that is a reversal. Doing this automatically cost 10-20% of the viewport:
+   * the map stopped being full height, and a map that does not fill the window is a worse trade
+   * than a globe sitting slightly low behind a deck that is a HUD anyway. The two wants genuinely
+   * conflict, so this is now a control (Camera → Framing → Bottom inset) rather than a decision
+   * made on Bart's behalf. Set the inset above 0 and the automatic measurement takes over again.
    */
+  let chromeInsetEnabled = false;
   let chromeInsetLocked = false;
   const centreForChrome = () => {
-    if (chromeInsetLocked) return;
+    if (!chromeInsetEnabled || chromeInsetLocked) return;
     const deck = document.querySelector('[data-timemap-deck]');
     if (!deck) return;
     const box = el.getBoundingClientRect();
@@ -643,7 +650,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const showGlow = (geometry, name = null, qid = null) => {
     const src = map.getSource('boundaries-glow-src');
     if (!src) return;
-    const rings = (geometry ? outlineOf(geometry) : []).filter((r) => r.length >= 4);
+    // Split each ring at its tile seams FIRST. The geometry arrives clipped to whichever tile it was
+    // found in, so its ring includes the tile's own edge — which is what drew a bright straight line
+    // down England, down France, and around the top of Spain. See withoutSeams for the measurements.
+    const rings = (geometry ? outlineOf(geometry) : [])
+      .flatMap((ring) => withoutSeams(ring))
+      .filter((r) => r.length >= 4);
 
     const features = rings.map((ring) => ({
       type: 'Feature', properties: {},
@@ -1099,10 +1111,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
          */
         { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
           apply: (v) => {
-            // Tuning wins over the automatic measurement, or the two would fight on every resize.
-            chromeInsetLocked = true;
-            el.style.bottom = `${Math.max(0, Number(v) || 0)}px`;
+            const inset = Math.max(0, Number(v) || 0);
+            // 0 means full height, which is the default. Anything above it is an explicit choice,
+            // and it wins over the automatic measurement or the two fight on every resize.
+            chromeInsetLocked = inset > 0;
+            el.style.bottom = `${inset}px`;
             map.resize();
+          } },
+        { key: 'autoInset', label: 'Auto-centre above the deck', type: 'boolean', value: false,
+          apply: (on) => {
+            chromeInsetEnabled = on;
+            chromeInsetLocked = false;
+            if (!on) { el.style.bottom = '0px'; map.resize(); } else centreForChrome();
           } },
       ], { tab: 'Camera' }),
 
@@ -1634,7 +1654,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     borderSweep = hit
       ? sweepBorder(map, {
         id: 'polity-sweep',
-        lines: outlineOf(hit.geometry),
+        // Seams split out here too. The click sweep runs its light around the SAME tile-clipped
+        // geometry the hover glow does, so it had the same straight line through the country — it
+        // was just harder to catch, being a two-second gesture rather than a state you can sit in.
+        lines: outlineOf(hit.geometry).flatMap((ring) => withoutSeams(ring)).filter((r) => r.length >= 4),
         // No trail: this is a gesture, not a layer. It clears itself up when it finishes.
         durationMs: 2000,
         beforeId: map.getLayer('boundaries-label') ? 'boundaries-label' : undefined,
