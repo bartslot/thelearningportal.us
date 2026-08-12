@@ -1107,10 +1107,26 @@ const cloudRepeat = async ({ lng = -20, lat = 53, zoom = 3, half = 150 } = {}) =
      * its own running minimum — zero for any monotone decay, whatever height it decays from, and
      * positive only where something recurs.
      */
+    /**
+     * AT A LOCAL MAXIMUM ONLY, and that qualification is not a refinement — without it this reads
+     * the wrong thing entirely.
+     *
+     * A finite window's autocorrelation dips below zero and then relaxes back toward it, so a rise
+     * from that trough to the window's edge is ordinary and means nothing. Measured on a source with
+     * no repeat in it, the metric picked lag 120 — the last lag searched — where the correlation was
+     * 0.0105, having climbed from -0.099. It reported 0.11 against a 0.15 limit and looked like a
+     * result that had nearly failed. It was the curve coming home.
+     *
+     * A repeat is a BUMP: the curve rises and then falls again. So a candidate has to turn over, and
+     * the window edge cannot be a peak — the same reasoning bestShift already applies with its
+     * `interior` flag, for the same reason.
+     */
     let worst = { lag: 0, value: 0, at: 0 }
     let floor = curve[EXCLUDE]
-    for (let lag = EXCLUDE; lag <= MAX_LAG; lag++) {
+    for (let lag = EXCLUDE; lag < MAX_LAG; lag++) {
       if (curve[lag] < floor) floor = curve[lag]
+      const turnsOver = lag > EXCLUDE && curve[lag] >= curve[lag - 1] && curve[lag] >= curve[lag + 1]
+      if (!turnsOver) continue
       const rise = curve[lag] - floor
       if (rise > worst.value) worst = { lag, value: round(rise, 4), at: round(curve[lag], 4) }
     }

@@ -40,13 +40,16 @@ type Repeat = {
  * NOT a number picked to make this pass. Both ends were measured, by forcing the tiling to be plain
  * — one patch, one window, no rotation — and reading the same box:
  *
- *     plain tiling     east 0.681 (at 171 km)   north 0.295
- *     stochastic       east 0.028               north 0.060
+ *     plain tiling     east 0.438 (at 165 km)   north 0.451
+ *     stochastic       east 0.076               north 0.031
  *
- * and the plain tiling's peak at 171 km is the lattice's own cell width at 53°N, 167 km, which is
+ * and the plain tiling's peak at 165 km is the lattice's own cell width at 53°N, 167 km, which is
  * the instrument finding the period it was supposed to find rather than merely returning a large
  * number. 0.15 sits in that gap with a factor of two either side. Anything nearer one end would be
  * a threshold shaped around the answer it was given.
+ *
+ * Re-measured at both ends after the patches were reselected on contrast, because a threshold whose
+ * control end was established against a different asset is a threshold about a different question.
  */
 const RECURRENCE_LIMIT = 0.15;
 

@@ -258,19 +258,27 @@ export const createDaylightLayer = ({
   reliefWidth = 8192,
   reliefPower = 1.5,
   /**
-   * 0.38, down from 0.5, because the SOURCE changed underneath it rather than because it looked
-   * wrong.
+   * 0.61, and the number is DERIVED FROM THE ATLAS rather than chosen — which is the point worth
+   * keeping, because it has now had to be derived twice.
    *
-   * 0.5 was chosen against the 19.5 km whole-planet field, whose smoothstep left few pixels near
-   * full coverage. The harvested atlas is eight times finer and has real contrast, so the same 0.5
-   * now drives the ground harder: measured over the Himalaya, shadow strength went from 40.91 to
-   * 53.86 the moment the source was swapped, with nothing else touched. That is a 32% darker
-   * shadow that nobody asked for and no dial records.
+   * What this dial does depends entirely on the coverage statistics of whatever cloud source is
+   * loaded, and those have moved twice in one change. 0.5 was set against the 19.5 km whole-planet
+   * field and gave a measured shadow strength of 40.91 over the Himalaya — that figure is the look
+   * that was actually approved, and it is the target. Then:
    *
-   * 0.5 x 40.91 / 53.86 = 0.38 restores the shading that was actually approved. A number carried
-   * across a source change is not the same setting, and this is the arithmetic that says so.
+   *   - swapping to the first harvested atlas took the same 0.5 to 53.86, a third darker, so the
+   *     dial came down to 0.38 and measured 41.15.
+   *   - reselecting the patches on contrast dropped the mean coverage from 0.5177 to 0.4715, and
+   *     0.38 fell to 25.6 — nearly 40% too light, in the other direction.
+   *
+   * 0.38 x 40.91 / 25.6 = 0.61, measured back at 41.4. Neither move was a change of mind about how
+   * dark a cloud shadow should be; both were the same target re-expressed against a different sky.
+   *
+   * SO: rebuild the atlas and this has to be re-derived. The harness measures it at the shipped
+   * setting (`cloudShadowAtShipped`) for exactly that reason — the target is 40.91 and the check is
+   * one number, not an opinion.
    */
-  cloudShadow = 0.38,
+  cloudShadow = 0.61,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same
