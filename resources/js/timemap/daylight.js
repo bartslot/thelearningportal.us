@@ -259,8 +259,17 @@ export const createDaylightLayer = ({
   reliefWidth = 8192,
   reliefPower = 1.5,
   /**
-   * 0.61, and the number is DERIVED FROM THE ATLAS rather than chosen — which is the point worth
-   * keeping, because it has now had to be derived twice.
+   * 0.5 — BART'S VALUE, kept, with the measurement recorded against it rather than argued with.
+   *
+   * On the source that now ships, 0.5 measures a shadow strength of 37.18 over the Himalaya against
+   * the 40.91 that the same 0.5 produced on the field he tuned it against: about 9% lighter. 0.55
+   * would restore that figure exactly, and this file said 0.55 until his Standard preset landed.
+   *
+   * It stays at his number. 9% is inside taste, the dial is his, and he has not yet seen the deck it
+   * now drives — so the useful thing is the arithmetic sitting next to the value, not an override of
+   * it. If he wants the old weight back, 0.55 is the number and the harness will confirm it.
+   *
+   * The rest of this note is why that arithmetic exists at all, and it is the durable part.
    *
    * What this dial does depends entirely on the coverage statistics of whatever cloud source is
    * loaded, and those have moved twice in one change. 0.5 was set against the 19.5 km whole-planet
@@ -273,15 +282,15 @@ export const createDaylightLayer = ({
    *     0.38 fell to 25.6 — nearly 40% too light, in the other direction. 0.61 measured back at 41.0.
    *   - putting the whole-planet field back in charge of WHERE cloud is moved it again, to 45.4.
    *
-   * 0.61 x 40.91 / 45.4 = 0.55, which is where it sits. None of the three moves was a change of mind
-   * about how dark a cloud shadow should be; all three were the same target re-expressed against a
-   * different sky.
+   * 0.61 x 40.91 / 45.4 = 0.55, which is where it stood until his preset arrived. None of the three
+   * moves was a change of mind about how dark a cloud shadow should be; all three were the same
+   * target re-expressed against a different sky. His 0.5 lands 9% under it.
    *
    * SO: rebuild the atlas and this has to be re-derived. The harness measures it at the shipped
    * setting (`cloudShadowAtShipped`) for exactly that reason — the target is 40.91 and the check is
    * one number, not an opinion.
    */
-  cloudShadow = 0.55,
+  cloudShadow = 0.5,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same

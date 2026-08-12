@@ -102,29 +102,32 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
    * Shared by the clouds and the shadows they cast. daylight.js is explicit that both layers must
    * be given the SAME field, or the shadows drift away from the clouds casting them.
    *
-   * windAmount 0.1, down from the 0.2 that was chosen against the old blurred field. Drift and curl
-   * are separate: windAmount and windScale DEFORM the field, and slowing the drift does nothing at
-   * all about that. What the deformation costs is sharpness, so it is measured in pixel-scale
-   * structure rather than in brightness, which is blind to smearing:
+   * windAmount 0.2 — BART'S VALUE, kept, after this file argued itself out of 0.1.
    *
-   *     windAmount   0     0.1    0.2    0.35   0.6    1.0
-   *     detail       10.03 9.68   9.35   8.83   8.61   9.56
+   * The argument for cutting it was that advection costs sharpness, measured in pixel-scale
+   * structure because brightness is blind to smearing. At the time that was true and the price was
+   * steep: 0.2 spent 6.9% of the deck's fine structure, against a source eight times finer than the
+   * one the number was chosen for.
    *
-   * At 0.2 the advection was spending 6.9% of the deck's fine structure. That was a fair price
-   * against a 19.5 km field with little structure to lose; against a source eight times finer there
-   * is a great deal more to lose and it is the detail this whole change exists to deliver. 0.1 costs
-   * 3.5% and still carries the deck along real circulation.
+   * Then the wind stopped carrying the detail. Advection now warps only the smooth 19.5 km field —
+   * it had to, because warping the tiled atlas stretched its lattice into streaks — and the cost it
+   * was being cut for went with it:
    *
-   * The 1.0 reading is not noise, and it says something about the knob itself: at full advection the
-   * static term drops out of the blend entirely, so the deck is sharper than at 0.6. Everything
-   * between is a static field cross-faded with a moving one — a double image, which is why the cost
-   * peaks in the middle. Worth knowing before anyone reaches for this dial again.
+   *     windAmount   0      0.1    0.2    0.35   0.6    1.0
+   *     detail       9.119  9.103  9.015  8.947  8.658  8.283
+   *
+   * 1.1% at 0.2, where it used to be 6.9%. So 0.1 would now be a value compensating for a cause that
+   * no longer exists — which is precisely the fault this whole piece of work was sent to correct in
+   * four other numbers, arrived at from the other direction. Bart tuned 0.2 and 0.2 is fine.
+   *
+   * Worth keeping about the knob itself: the cost no longer peaks in the middle, because the double
+   * image it used to produce was the tiled detail being cross-faded against itself.
    */
   const field = {
     fieldUrl: CLOUD_FIELD_URL,
     patchUrl: CLOUD_PATCH_URL,
     windUrl: WIND_FIELD_URL,
-    windAmount: 0.1,
+    windAmount: 0.2,
     animate,
   }
 
@@ -206,13 +209,13 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('clouds', { opacity: v }) },
       // "Drift" is the wrong word for it and always was: this DEFORMS the field. The real drift is
       // driftRate, which rotates it. Renamed rather than left to mislead the next person to drag it.
-      { key: 'windAmount', label: 'Curl', min: 0, max: 1, step: 0.05, value: 0.1,
+      { key: 'windAmount', label: 'Curl', min: 0, max: 1, step: 0.05, value: 0.2,
         apply: (v) => set('clouds', { windAmount: v }) },
       { key: 'windScale', label: 'Wind scale', min: 0.01, max: 0.5, step: 0.01, value: 0.06,
         apply: (v) => set('clouds', { windScale: v }) },
       { key: 'windRate', label: 'Wind speed', min: 0, max: 0.3, step: 0.005, value: 0.05,
         apply: (v) => set('clouds', { windRate: v }) },
-      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.55,
+      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.5,
         apply: (v) => set('daylight', { cloudShadow: v }) },
       // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
       // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
