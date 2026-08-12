@@ -562,3 +562,76 @@ test('hovering a territory draws the glow, not just fills its source', async ({ 
   expect(drawn.source, `no glow geometry for ${drawn.name}`).toBeGreaterThan(0);
   expect(drawn.rendered, `glow source has ${drawn.source} features but the layer draws none`).toBeGreaterThan(0);
 });
+
+/**
+ * Hovering, dragging and clicking with a REAL pointer.
+ *
+ * Everything else in this file drives the map through its own functions, which proves the code works
+ * but not that the interaction does. Bart: "I want you to detect edge cases with the hovering. It's
+ * not great... really." These are the ones that bite:
+ *
+ *   - a name left behind after the pointer leaves the map
+ *   - a name that stops following inside a big territory
+ *   - a stale glow after dragging, because the drag never fires a territory change
+ *   - a duplicate name when the territory's own label is already on screen
+ */
+test('hover, drag and click behave with a real pointer', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-fill'), { timeout: 30_000 });
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [20, 40], zoom: 3.4, pitch: 0, bearing: 0 }));
+  await page.waitForTimeout(5_000);
+
+  const canvas = page.locator('canvas.maplibregl-canvas');
+  const box = (await canvas.boundingBox())!;
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  const state = () => page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    const cursor = m.querySourceFeatures('boundaries-cursor-name');
+    return {
+      glow: m.queryRenderedFeatures({ layers: ['boundaries-glow'] }).length,
+      cursorNames: cursor.map((f: any) => f.properties?.name),
+      cursorAt: cursor[0]?.geometry?.coordinates ?? null,
+    };
+  });
+
+  // ── Hovering ────────────────────────────────────────────────────────────────────────────────
+  await page.mouse.move(mid.x, mid.y);
+  await page.waitForTimeout(1_200);
+  const hovering = await state();
+  expect(hovering.glow, 'hovering a territory lit nothing').toBeGreaterThan(0);
+
+  // ── Following ───────────────────────────────────────────────────────────────────────────────
+  // Inside the SAME territory the outline does not change, but the name must still move with the
+  // pointer — the case that made this feature necessary is a territory too big to label once.
+  if (hovering.cursorNames.length) {
+    await page.mouse.move(mid.x + 30, mid.y + 20);
+    await page.waitForTimeout(600);
+    const moved = await state();
+    expect(moved.cursorAt, 'the cursor name stopped following the pointer').not.toEqual(hovering.cursorAt);
+  }
+
+  // ── Dragging ────────────────────────────────────────────────────────────────────────────────
+  // A drag never fires a territory change, so anything keyed only to that goes stale.
+  await page.mouse.down();
+  await page.mouse.move(mid.x - 160, mid.y + 60, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  const dragged = await state();
+  expect(dragged.cursorNames.length, 'more than one name after a drag').toBeLessThanOrEqual(1);
+
+  // ── Leaving ─────────────────────────────────────────────────────────────────────────────────
+  // Off the map entirely. Nothing may be left behind.
+  await page.mouse.move(box.x + box.width - 2, box.y + 2);
+  await page.mouse.move(4, 4);
+  await page.waitForTimeout(1_200);
+  const left = await state();
+  expect(left.cursorNames, 'a name was left behind after the pointer left').toEqual([]);
+  expect(left.glow, 'the glow was left behind after the pointer left').toBe(0);
+
+  // ── Clicking ────────────────────────────────────────────────────────────────────────────────
+  await page.mouse.move(mid.x, mid.y);
+  await page.waitForTimeout(500);
+  await page.mouse.click(mid.x, mid.y);
+  await page.waitForTimeout(2_500);
+  await expect(page.locator('aside')).toContainText(/.+/);
+});

@@ -88,6 +88,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // The hover shine, as its own geometry rather than a feature-state on the raw polygons —
         // that is what lets it follow the ROUNDED outline when rounding is on.
         'boundaries-glow-src': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+        // The name that follows the cursor. Its own source, so it can never be mistaken for the
+        // resting label or filtered by anything that filters territories.
+        'boundaries-cursor-name': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         ...voyageStyleSources(),
       },
       layers: [
@@ -650,6 +653,42 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       finish();
     }, labelHoverMs + 40);
   };
+
+  /**
+   * The name under the cursor, for territories whose own label is nowhere near it.
+   *
+   * Bart: "some territories are big, like the Iberian Union — the hovering label can be positioned
+   * where the cursor is." That is the case a better anchor cannot solve. The Iberian Union's label
+   * sits on its largest visible piece, which zoomed in may be an overseas possession on the far side
+   * of the globe; no amount of choosing a smarter centroid puts a name under your pointer.
+   *
+   * ONLY when the resting label is not already on screen. If it is, hovering scales it in place and
+   * a second name at the cursor would be the duplicate that was removed earlier. So this is not a
+   * second copy of the label — it is what you get INSTEAD of one, when there is none to scale.
+   */
+  const CURSOR_LABEL_SRC = 'boundaries-cursor-name';
+  let cursorName = null;
+
+  const restingLabelOnScreen = (name) => map
+    .queryRenderedFeatures({ layers: ['boundaries-label'] })
+    .some((f) => f.properties?.name === name);
+
+  const setCursorName = (name, lngLat) => {
+    const src = map.getSource(CURSOR_LABEL_SRC);
+    if (!src) return;
+    const label = typeof name === 'string' && name.trim() !== '' ? name : null;
+    cursorName = label;
+    if (!label || !lngLat) { src.setData(EMPTY_FC); return; }
+    // Spinning the globe past the antimeridian gives longitudes outside [-180, 180]; a point placed
+    // at 190 is a point nobody can see.
+    const lng = ((((lngLat.lng + 180) % 360) + 360) % 360) - 180;
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { name: label }, geometry: { type: 'Point', coordinates: [lng, lngLat.lat] } }],
+    });
+    cursorLngLat = lngLat;
+  };
+  let cursorLngLat = null;
 
   const showGlow = (geometry, name = null, qid = null) => {
     const src = map.getSource('boundaries-glow-src');
@@ -1447,6 +1486,27 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Its job survives without it: the hovered name takes symbol-sort-key 0 (see refreshLabels), so
     // it is placed FIRST and wins the collision it used to lose, and hoverLabel() grows it in place.
     map.addLayer({
+      /**
+       * The hovered name, at the pointer, for territories whose own label is off screen.
+       *
+       * allow-overlap and ignore-placement: it is a pointer readout, not a map label. It must never
+       * lose a collision, because the one thing it exists to answer is "what am I pointing at".
+       *
+       * Offset ABOVE the cursor so the pointer does not sit on its own answer.
+       */
+      id: 'boundaries-cursor-label', type: 'symbol', source: 'boundaries-cursor-name',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
+        'text-size': 12, 'text-anchor': 'bottom', 'text-offset': [0, -1.1],
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5,
+      },
+    });
+    map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
     });
@@ -1588,18 +1648,28 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.on('mousemove', 'boundaries-fill', (e) => {
       map.getCanvas().style.cursor = 'pointer';
       if (!e.features.length) return;
-      if (e.features[0].id === hoveredId) return;   // same territory, nothing to redraw
+      if (e.features[0].id === hoveredId) {
+        // Same territory: the outline does not change, but the name FOLLOWS. Moving the point is a
+        // setData on two coordinates, which is why this can run on every mousemove.
+        if (cursorName) setCursorName(cursorName, e.lngLat);
+        return;
+      }
       hoveredId = e.features[0].id;
       const p = e.features[0].properties;
       // Same QID resolution the click path uses — Cliopatria reuses a QID across different polities,
       // so the name is part of the key.
       const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
       showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
+      // Decided per territory, not per pixel: if its own label is on screen, hovering scales that
+      // one and nothing appears at the cursor.
+      const label = p.Name ?? null;
+      setCursorName(label && !restingLabelOnScreen(label) ? label : null, e.lngLat);
     });
     map.on('mouseleave', 'boundaries-fill', () => {
       map.getCanvas().style.cursor = '';
       hoveredId = null;
       showGlow(null);
+      setCursorName(null);
     });
 
     state.ready = true;
