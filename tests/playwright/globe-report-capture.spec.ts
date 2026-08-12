@@ -36,7 +36,8 @@ test('capture the harness report', async ({ browser }) => {
 
   const report = await page.evaluate(() => (window as any).__report);
   const cloudRepeat = await page.evaluate(() => (window as any).__cloudRepeat());
-  writeFileSync(OUT!, JSON.stringify({ ...report, cloudRepeat }, null, 2));
+  const cloudLighting = await page.evaluate(() => (window as any).__cloudLighting());
+  writeFileSync(OUT!, JSON.stringify({ ...report, cloudRepeat, cloudLighting }, null, 2));
   if (failures.length) console.log('page errors:', failures.join('\n'));
   console.log(`report written to ${OUT}`);
 });
