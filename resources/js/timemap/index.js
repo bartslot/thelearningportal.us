@@ -1431,7 +1431,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       },
       // Strong halo so names stay readable over borders/fills in every style.
       // icon-translate lifts the flag a few px above the name (independent of icon-size).
-      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9] },
+      // From theme.json, not repeated here. These were the same two hex values written out twice,
+      // and when the hover-name layer (the other reader of theme.text) was removed, nothing read
+      // the theme's ink at all — leaving a group in theme.json that looked live and was not.
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9],
+      },
     });
 
     // Mountains: hand-painted glyphs repeated along curated ridge lines, varied per range
