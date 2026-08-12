@@ -188,8 +188,13 @@ describe('deckDetailFor', () => {
   })
 
   it('hands the noise more of the job as the field runs out of pixels', () => {
-    expect(at(2).amount).toBeLessThan(at(7).amount)
-    expect(at(7).amount).toBeLessThanOrEqual(at(11).amount)
+    // Zooms chosen either side of the crossover rather than at fixed levels. It used to compare z2
+    // against z7, which stopped meaning anything when the source went from z6 to z8: both are now
+    // ABOVE the crossover, the source still has pixels at each, and the noise is correctly doing
+    // nothing extra at either. The test failed on a build that was right.
+    expect(at(2).amount).toBeLessThanOrEqual(at(9).amount)
+    expect(at(9).amount).toBeLessThan(at(11).amount)
+    expect(at(11).amount).toBeLessThanOrEqual(at(13).amount)
     // Never so much that the real weather stops deciding where cloud is.
     expect(at(14).amount).toBeLessThan(0.6)
   })
@@ -204,27 +209,33 @@ describe('deckDetailFor', () => {
    * happened here: the deck was rebuilt on a source eight times finer and not one of the tests
    * above could tell.
    *
-   * So this anchors to a number nobody here chose. The patches are fetched from GIBS at zoom 6 of
+   * So this anchors to a number nobody here chose. The patches are fetched from GIBS at zoom 8 of
    * the standard Web Mercator scheme, whose resolution at the equator is 156543.034 / 2^z metres per
-   * pixel — 2446 m at z6. That is a property of the tiling scheme, not of our code, and it is what
+   * pixel — 611 m at z8. That is a property of the tiling scheme, not of our code, and it is what
    * the harvester's own output reports.
    *
-   * The discriminating case is z4. One screen pixel there covers 9784 m, still four times a source
+   * IT HAS ALREADY EARNED ITS KEEP. The source moved from z6 to z8 and this test went red while
+   * every relative assertion above stayed green — which is exactly the failure it was written to
+   * catch, arriving from the direction nobody expects: not a regression, but a genuine improvement
+   * that silently invalidated a constant.
+   *
+   * The discriminating case is z6. One screen pixel there covers 2446 m, still four times a source
    * texel, so the source has NOT run out and the noise must be given nothing extra. Under the old
-   * 19543 the same point reads as half-magnified and lifts amount to 0.19 — so this goes red on the
-   * previous constant rather than merely passing on the new one.
+   * z6 constant the same point reads as exactly one texel per pixel and the noise starts lifting —
+   * so this goes red on the previous value rather than merely passing on the new one.
    */
-  it('judges the source run out at 2446 m per texel, which is GIBS zoom 6', () => {
+  it('judges the source run out at 611 m per texel, which is GIBS zoom 8', () => {
     const WEB_MERCATOR_M_PER_PIXEL_Z0 = 156543.03392
-    const sourceMetresPerTexel = WEB_MERCATOR_M_PER_PIXEL_Z0 / 2 ** 6
-    expect(sourceMetresPerTexel).toBeCloseTo(2446, 0)
+    const SOURCE_ZOOM = 8
+    const sourceMetresPerTexel = WEB_MERCATOR_M_PER_PIXEL_Z0 / 2 ** SOURCE_ZOOM
+    expect(sourceMetresPerTexel).toBeCloseTo(611, 0)
 
     // The zoom at which one screen pixel covers exactly one source texel, at the equator.
     const crossover = Math.log2(WEB_MERCATOR_M_PER_PIXEL_Z0 / sourceMetresPerTexel)
-    expect(crossover).toBeCloseTo(6, 6)
+    expect(crossover).toBeCloseTo(SOURCE_ZOOM, 6)
 
     // Above it the source still has the pixels, so the noise carries only its floor.
-    expect(at(4).amount).toBeCloseTo(0.14, 6)
+    expect(at(6).amount).toBeCloseTo(0.14, 6)
     expect(at(crossover).amount).toBeCloseTo(0.14, 6)
     // Below it the source is being magnified and the noise takes over, in proportion.
     expect(at(crossover + 1).amount).toBeCloseTo(0.14 + 0.5 * 0.10, 6)

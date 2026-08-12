@@ -29,6 +29,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import jpeg from 'jpeg-js'
+import { PNG } from 'pngjs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -105,7 +106,24 @@ const dayBefore = (iso, days) => {
   const t = new Date(Date.UTC(y, m - 1, d - days))
   return t.toISOString().slice(0, 10)
 }
+/**
+ * TWO ZOOMS, and the split is what makes sixteen times the detail almost free.
+ *
+ * SCORING happens at `zoom`, one tile per candidate. Cloud fraction is a property of the sky, not of
+ * the resolution it is photographed at, so a z6 tile answers "is this patch worth having" exactly as
+ * well as a z8 one and costs a sixteenth as much. Eighteen candidates, eighteen fetches.
+ *
+ * FETCHING happens at `detail-zoom`, and only for the six that won. A z8 tile is 611 m per texel and
+ * 156 km across, so a 4x4 grid of them spans 626 km — the SAME footprint as one z6 tile, to the
+ * metre. Sixteen times the texels over identical ground.
+ *
+ * Because the footprint does not move, nothing downstream that is expressed as a RATIO moves either:
+ * CLOUD_PATCH_TILES stays at 144 and a lattice cell stays 0.44 of a patch. Only the sampling gets
+ * finer.
+ */
 const ZOOM = Number(arg('zoom', 6))
+const DETAIL_ZOOM = Number(arg('detail-zoom', 8))
+const GRID = 2 ** (DETAIL_ZOOM - ZOOM)
 const LAYER = 'MODIS_Terra_CorrectedReflectance_TrueColor'
 const TILE = (z, y, x, date) =>
   `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${LAYER}/default/${date}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`
@@ -160,6 +178,99 @@ const tileFor = (lng, lat, z) => {
   const latRad = (lat * Math.PI) / 180
   const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n)
   return { x, y, inGrid: x >= 0 && y >= 0 && x < n && y < n }
+}
+
+/**
+ * One winner, re-fetched as a GRID x GRID block of finer tiles and stitched into a single image.
+ *
+ * ON THE WINNER'S OWN DATE, not the run's. Each region walked back independently until its own tile
+ * was gap-free, so a block fetched on a different day would be different weather from the one that
+ * was scored — and could carry the very swath gap the walk was avoiding.
+ *
+ * Every sub-tile is checked for no-data in its own right. The z6 tile being clean does not promise
+ * sixteen z8 tiles are: a gap edge that covered under 1% of the coarse tile can still fill one
+ * sixteenth of the area completely.
+ */
+const fetchDetail = async (x6, y6, date) => {
+  const size = 256
+  const out = new PNG({ width: GRID * size, height: GRID * size })
+  let fetched = 0
+  let clear = 0
+  let cloud = 0
+
+  for (let dy = 0; dy < GRID; dy++) {
+    for (let dx = 0; dx < GRID; dx++) {
+      const x = x6 * GRID + dx
+      const y = y6 * GRID + dy
+      const response = await fetch(TILE(DETAIL_ZOOM, y, x, date))
+      if (!response.ok) return { error: `z${DETAIL_ZOOM}/${x}/${y} returned ${response.status}` }
+
+      const bytes = Buffer.from(await response.arrayBuffer())
+      const marks = scoreOf(bytes)
+      if (marks.noData > NO_DATA_LIMIT) {
+        return { error: `z${DETAIL_ZOOM}/${x}/${y} is ${(marks.noData * 100).toFixed(1)}% no-data` }
+      }
+      // The block's own contrast, accumulated as it arrives. The score that chose this region was
+      // measured on a COARSE tile and possibly on a different date, so it does not describe what is
+      // actually being written — and a date walked back to dodge a gap can land on quite different
+      // weather.
+      clear += marks.clear
+      cloud += marks.cloud
+
+      const { data, width, height } = jpeg.decode(bytes, { useTArray: true })
+      if (width !== size || height !== size) {
+        return { error: `z${DETAIL_ZOOM}/${x}/${y} is ${width}x${height}, expected ${size}` }
+      }
+      for (let row = 0; row < size; row++) {
+        for (let col = 0; col < size; col++) {
+          const from = (row * size + col) * 4
+          const to = ((dy * size + row) * out.width + (dx * size + col)) * 4
+          out.data[to] = data[from]
+          out.data[to + 1] = data[from + 1]
+          out.data[to + 2] = data[from + 2]
+          out.data[to + 3] = 255
+        }
+      }
+      fetched++
+      process.stdout.write(`\r    fetching ${fetched}/${GRID * GRID} tiles`)
+    }
+  }
+  process.stdout.write('\r'.padEnd(40) + '\r')
+  const n = GRID * GRID
+  return { png: out, tiles: fetched, clear: clear / n, cloud: cloud / n, score: (clear / n) * (cloud / n) }
+}
+
+/**
+ * A winner, fetched at detail — walking its own date back until the whole block is gap-free.
+ *
+ * THE COARSE TILE PASSING DOES NOT PROMISE THE FINE ONES DO, and this is not a corner case: on the
+ * first z8 run, three of six winners had a sub-tile over the no-data limit while their z6 tile was
+ * under it. A gap edge covering 0.9% of a coarse tile can fill a sixteenth of that ground
+ * completely, and averaging is exactly what hid it.
+ *
+ * So the same per-region date walk the harvester already does at the coarse zoom happens again here.
+ * It is cheap because it abandons a date on the FIRST bad tile rather than fetching all sixteen, and
+ * because only the six winners ever reach it.
+ *
+ * The block is re-scored on arrival. The score that chose the region was measured on a coarse tile
+ * and possibly on another date, so it describes a different picture from the one being written.
+ */
+const DETAIL_DAYS_BACK = Number(arg('detail-search', 8))
+const DETAIL_SCORE_FLOOR = 0.02
+
+const harvestDetail = async (hit) => {
+  const tried = []
+  for (let back = 0; back <= DETAIL_DAYS_BACK; back++) {
+    const date = dayBefore(hit.date, back)
+    const block = await fetchDetail(hit.x, hit.y, date)
+    if (block.error) { tried.push(`${date} ${block.error}`); continue }
+    if (block.score < DETAIL_SCORE_FLOOR) {
+      tried.push(`${date} contrast collapsed to ${(block.score * 1000).toFixed(1)}`)
+      continue
+    }
+    return { ...block, date, tries: back + 1 }
+  }
+  return { error: `no clean ${GRID}x${GRID} block in ${DETAIL_DAYS_BACK + 1} days`, tried }
 }
 
 const main = async () => {
@@ -218,18 +329,48 @@ const main = async () => {
     process.exit(1)
   }
 
-  console.log(`\nKeeping ${kept.length}, dropping ${scored.length - kept.length}:\n`)
+  const detailMetres = (156543.03392 / 2 ** DETAIL_ZOOM).toFixed(0)
+  console.log(
+    `\nKeeping ${kept.length}, dropping ${scored.length - kept.length}.`
+    + ` Re-fetching each at z${DETAIL_ZOOM} as ${GRID}x${GRID} tiles — ${detailMetres} m per texel:\n`,
+  )
+
+  const failures = []
   for (const [index, hit] of kept.entries()) {
+    const detail = await harvestDetail(hit)
+    if (detail.error) {
+      console.log(`  FAIL  ${hit.region.name.padEnd(17)} ${detail.error}`)
+      for (const line of detail.tried) console.log(`          ${line}`)
+      failures.push(hit.region.name)
+      continue
+    }
+
+    // PNG, not JPEG. The block is stitched from sixteen already-compressed tiles and the atlas
+    // builder decodes it again — re-encoding to JPEG in between would put a second generation of
+    // ringing on exactly the cloud edges this whole change exists to sharpen. Nothing ships from
+    // storage/, so lossless costs only disk.
+    //
     // Numbered, so the atlas builder's directory sort lands them in score order rather than in
     // alphabetical order — which would otherwise reshuffle the atlas every time a candidate is
     // renamed, and silently move which patch a given lattice cell draws.
-    const file = resolve(outDir, `${index}-${hit.region.name}-z${ZOOM}-${hit.x}-${hit.y}.jpg`)
-    writeFileSync(file, hit.bytes)
+    const file = resolve(outDir, `${index}-${hit.region.name}-z${DETAIL_ZOOM}-${hit.x}-${hit.y}.png`)
+    const bytes = PNG.sync.write(detail.png)
+    writeFileSync(file, bytes)
     console.log(
-      `  ok    ${hit.region.name.padEnd(17)} z${ZOOM}/${hit.x}/${hit.y}`
-      + `  ${(hit.bytes.length / 1024).toFixed(0)} KB  score ${(hit.score * 1000).toFixed(1)}`,
+      `  ok    ${hit.region.name.padEnd(17)} z${DETAIL_ZOOM} ${detail.png.width}x${detail.png.height}`
+      + `  ${(bytes.length / 1024 / 1024).toFixed(1)} MB`
+      + `  clear ${(detail.clear * 100).toFixed(1).padStart(5)}%  cloud ${(detail.cloud * 100).toFixed(1).padStart(5)}%`
+      + `  ${detail.date}${detail.tries > 1 ? `  (${detail.tries} dates)` : ''}`,
     )
   }
+
+  if (failures.length) {
+    console.error(`\n  ${failures.length} region(s) failed at z${DETAIL_ZOOM}: ${failures.join(', ')}`)
+    console.error('  Try another date; the gaps move daily:')
+    console.error('    node scripts/build-cloud-patches.mjs --date=2026-07-18\n')
+    process.exit(1)
+  }
+
   console.log(`\n${kept.length}/${KEEP} into storage/app/cloud-patches\n`)
 }
 

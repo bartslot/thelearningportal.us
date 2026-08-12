@@ -33,8 +33,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const PATCHES = join(ROOT, 'storage/app/cloud-patches')
 const OUT_WEBP = join(ROOT, 'public/img/map/cloud-patches.webp')
 
-/** 3 x 2 grid of 256px tiles. Matches the six regions the harvester takes. */
-const TILE = 256
+/**
+ * 3 x 2 grid of patches. Matches the six regions the harvester takes.
+ *
+ * 1024, not the 256 this started at: the harvester now fetches each region as a 4x4 block of z8
+ * tiles rather than one z6 tile. Same 626 km of sky per patch, sixteen times the texels — 611 m per
+ * texel against 2446. Bart's verdict on the coarse version was "this is not HQ clouds", and the
+ * arithmetic agreed: 393,216 texels of cloud in the whole product, against ground running 0.6 km per
+ * pixel underneath it.
+ *
+ * The GEOMETRY does not move, because the footprint does not. CLOUD_PATCH_TILES stays at 144 and a
+ * lattice cell stays 0.44 of a patch; both are ratios. Only the sampling gets finer.
+ */
+const TILE = Number(process.argv.find((a) => a.startsWith('--tile='))?.split('=')[1] ?? 1024)
 const COLS = 3
 const ROWS = 2
 
@@ -53,7 +64,7 @@ const luma = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 const percentile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(p * (sorted.length - 1))))]
 
-/** Nearest-neighbour resample to TILE x TILE. The patches arrive at 256 already; this is a guard. */
+/** Nearest-neighbour resample to TILE x TILE. The patches arrive at TILE already; this is a guard. */
 const resample = (src, w, h) => {
   const out = new Float32Array(TILE * TILE)
   for (let y = 0; y < TILE; y++) {
@@ -78,8 +89,16 @@ const NO_DATA_LEVEL = 6
 const NO_DATA_LIMIT = 0.01
 
 /** One patch → coverage in 0..1, normalised against its own ocean and its own brightest cloud. */
+const decodeAny = (file) => {
+  if (/\.png$/i.test(file)) {
+    const png = PNG.sync.read(readFileSync(file))
+    return { data: png.data, width: png.width, height: png.height }
+  }
+  return jpeg.decode(readFileSync(file), { useTArray: true })
+}
+
 const coverageOf = (file) => {
-  const { data, width, height } = jpeg.decode(readFileSync(file), { useTArray: true })
+  const { data, width, height } = decodeAny(file)
   const bright = new Float32Array(width * height)
   for (let i = 0; i < width * height; i++) {
     bright[i] = luma(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])
@@ -103,7 +122,9 @@ const coverageOf = (file) => {
 }
 
 const files = existsSync(PATCHES)
-  ? readdirSync(PATCHES).filter((f) => f.endsWith('.jpg')).sort()
+  // PNG since the patches became stitched blocks; .jpg still read so a single-tile harvest from an
+  // older run is not silently ignored.
+  ? readdirSync(PATCHES).filter((f) => /\.(png|jpg)$/i.test(f)).sort()
   : []
 
 if (files.length === 0) {
@@ -179,7 +200,8 @@ const pngKb = kb(tmpPng)
 rmSync(tmpPng, { force: true })
 
 console.log(`\n  ${OUT_WEBP.replace(ROOT + '/', '')} — ${webpKb} KB (png was ${pngKb} KB)`)
-console.log(`  ${COLS * TILE}x${ROWS * TILE}, ${wanted} regions, 2446 m per texel`)
+const metresPerTexel = (626157 / TILE).toFixed(0)
+console.log(`  ${COLS * TILE}x${ROWS * TILE}, ${wanted} regions, ${metresPerTexel} m per texel`)
 
 /**
  * The atlas's own mean coverage — a number the SHADER needs, not a statistic for the log.
@@ -213,6 +235,13 @@ console.log(`
 
     CLOUD_PATCH_MEAN   cloud-field.js      the figure above. Wrong, and the lattice reappears as a
                                            faint brightness pattern in the shape of the grid.
+                                           The panel's 'Atlas mean' default moves with it.
+
+    CLOUD_PATCH_TEXELS cloud-field.js      ${TILE}, the patch edge in texels. It sets the half-texel
+                                           inset that stops bilinear reaching across the atlas grid
+                                           into the neighbouring patch. Only moves when the patch
+                                           size does — and this line was NOT on the checklist the
+                                           first time the patch size moved, which is why it is here.
 
     cloudShadow        daylight.js         harness cloudShadowAtShipped. TARGET 40.91, which is the
                                            shading approved on the original field. Scale the dial by
