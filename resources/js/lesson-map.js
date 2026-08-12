@@ -681,6 +681,16 @@ export function renderLessonMap (el, opts = {}) {
         globe = addGlobeLayers(map, {
           date: globeDate(),
           reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true,
+          /**
+           * Everything from the city dots up is annotation and belongs above the planet; everything
+           * below them — imagery, land, coast, borders, the territory wash — is the planet's
+           * surface and belongs under the sea, exactly as on the Time-Map.
+           *
+           * This was missing, and MapLibre's answer to a missing anchor is "put it on top". So the
+           * sea went over the writing and erased each name where it crossed water: Constantinople
+           * cut in half at the Bosphorus, Carthage stopping at the coast, Athens down to "Ath".
+           */
+          beforeId: 'city-dots',
         })
       })
       .catch((e) => {
