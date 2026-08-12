@@ -1,29 +1,12 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { loginAsTeacher } from './support/auth';
 
 /**
- * Auth: uses the real login form with a playwright test account seeded into Supabase.
- * Playwright's browser context handles CSRF tokens and session cookies automatically.
- *
- * Auth setup: one-time seed (if not done):
- *   php artisan tinker --execute="App\Models\User::create(['name'=>'Playwright Teacher',
- *     'email'=>'teacher@playwright.test','password'=>bcrypt('playwright123'),'role'=>'teacher']);"
- *
- * WebGL: playwright.config.ts passes --enable-unsafe-swiftshader / --use-angle=swiftshader
- * so MapLibre can initialise in headless Chromium via software rendering (~6s load time).
+ * WebGL: playwright.config.ts passes --enable-unsafe-swiftshader / --use-angle=swiftshader so
+ * MapLibre can initialise in headless Chromium via software rendering (~6s load time).
  *
  * Server: start normally with `php artisan serve` (no .env changes needed).
  */
-async function loginAsTeacher(page: Page): Promise<void> {
-  // When APP_AUTO_LOGIN=true (local dev), every request is auto-authenticated as a seeded teacher,
-  // so the /login form immediately redirects away — there's no form to fill. Detect that and skip.
-  await page.goto('/login');
-  if (!page.url().includes('/login')) return; // auto-login already signed us in
-  await page.fill('#email', 'teacher@playwright.test');
-  await page.fill('#password', 'playwright123');
-  await page.click('button[type=submit]');
-  // Wait for redirect away from /login (successful auth lands on teacher dashboard)
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 10_000 });
-}
 
 test.beforeEach(async ({ page }) => {
   await loginAsTeacher(page);
