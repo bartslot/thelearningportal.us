@@ -252,7 +252,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       // Applied to the 19.5 km field rather than to the atlas, so it is a height on a SMOOTHED
       // heightfield and runs larger than a real cloud. See clouds.js for why the atlas cannot be
       // used here.
-      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 120, step: 2, value: 40,
+      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 120, step: 2, value: 90,
         apply: (v) => set('clouds', { cloudRelief: v }) },
       { key: 'cloudDepth', label: 'Optical depth', min: 0, max: 12, step: 0.25, value: 4,
         apply: (v) => set('clouds', { cloudDepth: v }) },

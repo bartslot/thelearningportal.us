@@ -1372,8 +1372,13 @@ const cloudSeams = async ({ lng = -25, lat = 40, zoom = 4, half = 130, tiles = 1
   const ground = { reliefPower: 0, cloudShadow: 0, sun }
   const clear = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
   // Advection off and the clock frozen, so the lattice computed here is the lattice drawn there.
+  // patchUrl set EXPLICITLY, not inherited. It is the difference between the two frames below, and
+  // leaving it to whatever the last measurement happened to set made this instrument's own null
+  // reading drift between 1.009 and 1.065 depending on which other measurements had run first — a
+  // number that moves with the order of the suite is not a measurement.
   const deck = await frameWith({
-    daylight: ground, clouds: { opacity: 1, sun, windAmount: 0, animate: false },
+    daylight: ground,
+    clouds: { opacity: 1, sun, windAmount: 0, animate: false, patchUrl: PATCH_URL },
   })
 
   // THE NULL. The same lattice classification against a deck drawn with no lattice in it at all —
