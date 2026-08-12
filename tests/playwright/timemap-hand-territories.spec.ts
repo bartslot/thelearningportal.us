@@ -68,15 +68,25 @@ test('the Marcomannic Wars have their belligerents, and Bohemia is empty before 
   expect(await renderedNames(page, 'hand-fill')).not.toContain('Marcomanni');
 });
 
-test('a hand-authored territory is labelled by the same pass as every other one', async ({ page }) => {
+test('hovering one names it at the cursor, exactly as any other territory is named', async ({ page }) => {
+  // The map now RESTS SILENT — Bart: "the labels are appearing so randomly. I only want labels to
+  // show where the user is hovering." Resting names were anchored to the centroid of whatever tile
+  // FRAGMENT was largest on screen, so they wandered with the camera. Names follow the pointer now.
+  //
+  // So the thing to prove is no longer that a hand-authored territory gets a resting label. It is
+  // that it gets the CURSOR name, from the same handler, on the same source — which is what makes
+  // it an ordinary territory under the newest behaviour rather than under the one it was built on.
   await page.evaluate((y) => (window as any).__setTimemapYear(y), TEUTOBURG);
-  await overGermania(page);
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [9.47, 52.27], zoom: 5, pitch: 0 }));
+  await page.waitForTimeout(3_000);
 
-  // boundaries-label is the ONE name layer on this map, fed by refreshLabels from the rendered
-  // fills. A name appearing there is proof the label pass queried our source, not a second one.
-  await expect.poll(() => labelsOnScreen(page), {
-    message: 'the territory name never reached the label layer',
-    timeout: 20_000,
+  const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+  await expect.poll(() => page.evaluate(() => (window as any).__tmMap
+    .querySourceFeatures('boundaries-cursor-name').map((f: any) => String(f.properties?.name ?? ''))), {
+    message: 'hovering a hand-authored territory put no name at the cursor',
+    timeout: 15_000,
   }).toContain('Cherusci');
 });
 
@@ -89,10 +99,15 @@ test('a hand-authored territory is labelled by the same pass as every other one'
  * territory that replaced it. It hid exactly one name, because the Chatti is the only one whose
  * centroid lands near that marker, which is why it looked like a one-off rather than a rule.
  *
- * Asserting all five names at once is what makes this a regression test rather than a coincidence:
- * a fix that helps the Chatti by pushing some other name out would fail it.
+ * Resting names are OFF by default now, so this only bites once a teacher turns them back on — which
+ * is exactly what the test does. Turning them on is the only way to exercise the collision rule at
+ * all; asserting it in the default silent mode would pass on any stacking order whatsoever.
  */
-test('every seeded people is named, not just filled', async ({ page }) => {
+test('with names at rest turned on, every seeded people is named and not just filled', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.set, { timeout: 25_000 });
+  expect(await page.evaluate(() => (window as any).__tune.set('Territory labels', 'resting', true)),
+    'the resting-names control has been renamed or removed').toBe(true);
+
   await page.evaluate((y) => (window as any).__setTimemapYear(y), TEUTOBURG);
   await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [11, 51.4], zoom: 4.6, pitch: 0 }));
 
@@ -234,6 +249,44 @@ test('a teacher can report it, and the report carries the year they were looking
   expect(posted[0].territory_id).toBe('cherusci');
   expect(posted[0].source).toBe('hand');
   expect(posted[0].comment).toContain('Elbe');
+});
+
+/**
+ * A control that is NOT this panel can open the report dialog.
+ *
+ * The information-card work moves the territory card into its own Blade component, so its footer
+ * will sit outside this page's <aside> — and the dialog used to live INSIDE that aside, which is
+ * x-show'd on there being an open polity. A <dialog> under a display:none ancestor cannot be shown
+ * at all, so a foreign footer could never have opened it, silently.
+ *
+ * This test opens the dialog with nothing selected and no panel visible, which is precisely the
+ * state that used to be impossible. It is also the contract that lets the two halves meet with one
+ * endpoint and one dialog rather than two of each.
+ */
+test('any control can raise the report dialog, with no panel open at all', async ({ page }) => {
+  const posted: any[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/teacher/timemap/report') && r.method() === 'POST') posted.push(JSON.parse(r.postData() ?? '{}'));
+  });
+
+  await expect(page.locator('aside')).toBeHidden();
+
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('timemap-report-requested', {
+    detail: { territory_id: 'chatti', wikidata_qid: 'Q164076', label: 'Chatti', source: 'hand', year: 9 },
+  })));
+
+  const dialog = page.locator('dialog[open]');
+  await expect(dialog).toBeVisible();
+  // The year travels in the event rather than being re-read, so a foreign footer's year wins.
+  await expect(dialog).toContainText('Chatti');
+  await expect(dialog).toContainText('9 CE');
+
+  await dialog.locator('textarea').fill('Raised from outside the panel.');
+  await page.getByRole('button', { name: 'Send report' }).click();
+  await expect(dialog).toContainText('Thank you', { timeout: 10_000 });
+
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({ territory_id: 'chatti', source: 'hand', year: 9 });
 });
 
 test('the report control is on an imported territory too, not just on ours', async ({ page }) => {

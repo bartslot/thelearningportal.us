@@ -33,10 +33,10 @@
                     per-feature provenance to show for a Cliopatria border, and the dataset-level
                     credit is already on the map's attribution line. --}}
                provenance: null, sourcesOpen: false,
-               {{-- Everything a report needs to be actionable, captured at the moment of the click
-                    rather than assembled when the dialog opens — by then the teacher may have
-                    scrubbed the year, and the year they SAW is the whole point of recording it. --}}
-               reportContext: null, reportComment: '', reportState: 'idle', reportYear: 0,
+               {{-- What was clicked, captured at click time so the footer can hand it straight to
+                    the report dialog. The dialog itself is a SIBLING of this panel and owns the
+                    rest; see the timemap-report-requested listener below. --}}
+               reportContext: null,
                grades: {
                    A: @js(__('Scholarly atlas')),
                    B: @js(__('Specialist project')),
@@ -46,40 +46,6 @@
                {{-- A disagreement names a source by key; a teacher needs its title. --}}
                sourceTitle(key) {
                    return this.provenance?.sources.find((s) => s.key === key)?.title ?? key;
-               },
-               {{-- The year is CAPTURED here, not read again when Send is pressed.
-                    Two reasons, and the second one is the bug that made this a method rather than
-                    an inline expression. The teacher may scrub the slider between opening this and
-                    sending it, and what they are reporting is what was on screen when they decided
-                    something was wrong. And `window.__portal` is not an Alpine dependency, so an
-                    x-text that read it directly evaluated once, at first render, and then never
-                    again — the dialog showed "0 CE" while correctly sending 9. A number shown to a
-                    teacher that differs from the number sent is worse than showing none. --}}
-               openReport() {
-                   this.reportComment = '';
-                   this.reportState = 'idle';
-                   this.reportYear = Math.round(window.__portal?.year ?? 0);
-                   $refs.reportDialog.showModal();
-               },
-               eraLabel(year) { return year < 0 ? Math.abs(year) + ' BCE' : year + ' CE'; },
-               sendReport() {
-                   if (this.reportState === 'sending' || this.reportComment.trim().length < 3) return;
-                   this.reportState = 'sending';
-                   fetch('{{ route('teacher.timemap.report') }}', {
-                       method: 'POST',
-                       headers: {
-                           'Content-Type': 'application/json',
-                           'Accept': 'application/json',
-                           'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content ?? '',
-                       },
-                       body: JSON.stringify({
-                           ...this.reportContext,
-                           year: this.reportYear,
-                           comment: this.reportComment,
-                       }),
-                   })
-                       .then((r) => { this.reportState = r.ok ? 'sent' : 'failed'; })
-                       .catch(() => { this.reportState = 'failed'; });
                },
            }"
            x-show="polity || loading"
@@ -330,12 +296,63 @@
                      ours. Same control, same place, whatever the territory. --}}
                 <div class="mt-4 border-t border-card-hairline pt-3 text-center">
                     <span class="lp-card-label">{{ __('Something not right?') }}</span>
-                    <button type="button" x-on:click="openReport()"
+                    <button type="button"
+                            x-on:click="$dispatch('timemap-report-requested', { ...reportContext, year: Math.round(window.__portal?.year ?? 0) })"
                             class="lp-card-label ml-1.5 text-card-title underline underline-offset-2 hover:text-card-accent">{{ __('Report') }}</button>
                 </div>
             </div>
         </template>
 
+    </aside>
+
+
+    {{-- THE REPORT DIALOG — a SIBLING of the panel, not a child of it, and that is the whole point.
+
+         It used to live inside the <aside>, which is x-show'd on there being an open polity. A
+         <dialog> under a display:none ancestor cannot be shown at all, so any control outside that
+         panel could never open it — and the information-card work is moving the card into its own
+         component, where the footer will be exactly that: outside.
+
+         So the dialog owns reporting and listens for `timemap-report-requested`. Anything that can
+         name a territory can raise it: this page's footer, the information card's footer, or a
+         control that does not exist yet. One dialog, one endpoint, any number of callers. --}}
+    <div x-data="{
+             context: null, comment: '', state: 'idle', year: 0,
+             eraLabel(y) { return y < 0 ? Math.abs(y) + ' BCE' : y + ' CE'; },
+             {{-- The year is CAPTURED when the dialog opens, not read again when Send is pressed.
+                  Two reasons, and the second is the bug that made this a method rather than an
+                  inline expression. A teacher may scrub the slider between opening this and
+                  sending it, and what they are reporting is what was on screen when they decided
+                  something was wrong. And `window.__portal` is not an Alpine dependency, so an
+                  x-text reading it directly evaluated once at first render and never again — the
+                  dialog showed \'0 CE\' while correctly sending 9. A number shown to a teacher
+                  that differs from the number sent is worse than showing none. --}}
+             open(detail) {
+                 this.context = { ...(detail || {}) };
+                 this.comment = '';
+                 this.state = 'idle';
+                 this.year = Number.isFinite(detail?.year)
+                     ? Math.round(detail.year)
+                     : Math.round(window.__portal?.year ?? 0);
+                 $refs.reportDialog.showModal();
+             },
+             send() {
+                 if (this.state === 'sending' || this.comment.trim().length < 3) return;
+                 this.state = 'sending';
+                 fetch('{{ route('teacher.timemap.report') }}', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Accept': 'application/json',
+                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content ?? '',
+                     },
+                     body: JSON.stringify({ ...this.context, year: this.year, comment: this.comment }),
+                 })
+                     .then((r) => { this.state = r.ok ? 'sent' : 'failed'; })
+                     .catch(() => { this.state = 'failed'; });
+             },
+         }"
+         x-on:timemap-report-requested.window="open($event.detail)">
         {{-- The report dialog. Native <dialog>, so Esc and the DaisyUI backdrop form close it for
              free; the ✕ is the third way. --}}
         <dialog x-ref="reportDialog" class="modal">
@@ -349,20 +366,20 @@
 
                 {{-- What the report will carry, shown rather than described. A teacher can see the
                      year is included, which is the part they would otherwise type out by hand. --}}
-                <p class="lp-card-label mt-2" x-show="reportContext">
-                    <span x-text="reportContext?.label"></span>
-                    <span x-show="reportContext"> · </span>
-                    <span x-text="eraLabel(reportYear)"></span>
+                <p class="lp-card-label mt-2" x-show="context">
+                    <span x-text="context?.label"></span>
+                    <span x-show="context"> · </span>
+                    <span x-text="eraLabel(year)"></span>
                 </p>
 
-                <template x-if="reportState !== 'sent'">
+                <template x-if="state !== 'sent'">
                     <div>
-                        <textarea x-model="reportComment" rows="4"
+                        <textarea x-model="comment" rows="4"
                                   class="textarea textarea-bordered mt-3 w-full"
-                                  :disabled="reportState === 'sending'"
+                                  :disabled="state === 'sending'"
                                   placeholder="{{ __('What looks wrong?') }}"></textarea>
 
-                        <p x-show="reportState === 'failed'" class="mt-2 text-sm text-error" style="display:none">
+                        <p x-show="state === 'failed'" class="mt-2 text-sm text-error" style="display:none">
                             {{ __('That did not send. Please try again.') }}
                         </p>
 
@@ -370,16 +387,16 @@
                             <button type="button" class="btn btn-ghost btn-sm"
                                     x-on:click="$refs.reportDialog.close()">{{ __('Cancel') }}</button>
                             <button type="button" class="btn btn-warning btn-sm"
-                                    :disabled="reportState === 'sending' || reportComment.trim().length < 3"
-                                    x-on:click="sendReport()">
-                                <span x-show="reportState === 'sending'" class="loading loading-spinner loading-xs"></span>
+                                    :disabled="state === 'sending' || comment.trim().length < 3"
+                                    x-on:click="send()">
+                                <span x-show="state === 'sending'" class="loading loading-spinner loading-xs"></span>
                                 {{ __('Send report') }}
                             </button>
                         </div>
                     </div>
                 </template>
 
-                <template x-if="reportState === 'sent'">
+                <template x-if="state === 'sent'">
                     <div>
                         <p class="mt-3">{{ __('Thank you. We have it, with the year you were looking at.') }}</p>
                         <div class="modal-action">
@@ -393,7 +410,7 @@
                 <button aria-label="{{ __('Close') }}">{{ __('Close') }}</button>
             </form>
         </dialog>
-    </aside>
+    </div>
 
     {{-- Time slider (oldmapsonline-style) --}}
     {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
