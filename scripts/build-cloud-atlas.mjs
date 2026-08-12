@@ -192,4 +192,37 @@ console.log(`  ${COLS * TILE}x${ROWS * TILE}, ${wanted} regions, 2446 m per texe
 let total = 0
 for (let i = 0; i < atlas.data.length; i += 4) total += atlas.data[i]
 const mean = total / (atlas.data.length / 4) / 255
-console.log(`\n  mean coverage ${mean.toFixed(4)}  ->  CLOUD_PATCH_MEAN in resources/js/timemap/cloud-field.js\n`)
+console.log(`\n  mean coverage ${mean.toFixed(4)}  ->  CLOUD_PATCH_MEAN in resources/js/timemap/cloud-field.js`)
+
+/**
+ * WHAT ELSE HAS TO BE RE-DERIVED, printed rather than filed, because whoever rebuilds this asset
+ * hits all of it at once and none of it fails loudly.
+ *
+ * Every constant downstream of this file is a function of the atlas's coverage STATISTICS, not of
+ * the code around it. Rebuilding the patches changes those statistics, and each of these then means
+ * something different while still looking like a deliberate value. In one day's work `cloudShadow`
+ * moved three times, the noise crossover once and the blend's centre once — never because anyone
+ * changed their mind about how it should look, always because the same intent had to be re-expressed
+ * against a different sky.
+ *
+ * The only safe form for any of them is a harness reading taken AT THE SHIPPED VALUE. Each line
+ * below names the reading that settles it.
+ */
+console.log(`
+  Re-derive these against the new atlas — all three, and none of them will fail loudly:
+
+    CLOUD_PATCH_MEAN   cloud-field.js      the figure above. Wrong, and the lattice reappears as a
+                                           faint brightness pattern in the shape of the grid.
+
+    cloudShadow        daylight.js         harness cloudShadowAtShipped. TARGET 40.91, which is the
+                                           shading approved on the original field. Scale the dial by
+                                           40.91 / measured.
+
+    SOURCE_ZOOM        clouds.js           only if re-harvested at a zoom other than 6. It decides
+                                           when the procedural noise starts inventing.
+
+  And re-measure the two thresholds whose control ends were calibrated against an atlas:
+  globe-cloud-repeat.spec.ts (plain-tiling control) and globe-cloud-light.spec.ts (powder ratio).
+
+    HARNESS_URL=http://localhost:5198/ npx playwright test globe-cloud-repeat globe-cloud-light
+`)
