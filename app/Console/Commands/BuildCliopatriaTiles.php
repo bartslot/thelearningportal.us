@@ -44,6 +44,11 @@ class BuildCliopatriaTiles extends Command
     private const ZIP_URL = 'https://raw.githubusercontent.com/Seshat-Global-History-Databank/cliopatria/master/cliopatria.geojson.zip';
 
     /** Land polygons to clip against — the same Natural Earth 50m the coastline and graticule use. */
+    /** A part below BOTH of these is raster noise, not territory. See withoutSpecks(). */
+    private const SPECK_SHARE = 0.005;
+
+    private const SPECK_AREA = 0.1;
+
     private const LAND_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson';
 
     private const UA = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
@@ -81,10 +86,18 @@ class BuildCliopatriaTiles extends Command
             return self::FAILURE;
         }
 
-        $clipped = $this->clipToCoastline($work, $geojson);
-        if ($clipped === null) {
-            return self::FAILURE;
+        $existingClip = "{$work}/cliopatria_clipped.geojson";
+        if ($this->option('keep-source') && File::exists($existingClip)) {
+            $this->info('Reusing the existing coastline clip (--keep-source).');
+            $clipped = $existingClip;
+        } else {
+            $clipped = $this->clipToCoastline($work, $geojson);
+            if ($clipped === null) {
+                return self::FAILURE;
+            }
         }
+
+        $clipped = $this->dropSpecks($work, $clipped);
 
         $out = public_path('cliopatria-tiles');
         File::deleteDirectory($out);
@@ -157,5 +170,121 @@ class BuildCliopatriaTiles extends Command
         }
 
         return $clipped;
+    }
+
+    /**
+     * Cliopatria carries raster-to-vector noise: alongside its real body, a polity-year is dotted
+     * with 5-point specks of a few thousand square kilometres, scattered anywhere on the map. Nazi
+     * Germany in 1939 has its own two real pieces (Germany, East Prussia) and 185 specks, as far
+     * afield as Karelia, Greece, Lebanon and the open Atlantic. 76% of multipart polity-years in the
+     * source have them.
+     *
+     * They are invisible in the source at world scale and unmistakable on the map: the tiles stop at
+     * z4, so anything past that is over-zoomed, and a speck blows up into a hard-edged block of
+     * colour sitting in the middle of another country.
+     *
+     * @see self::withoutSpecks() for the rule and why it is written as an AND.
+     */
+    private function dropSpecks(string $work, string $in): string
+    {
+        $out = "{$work}/cliopatria_despeckled.geojson";
+        $this->info('Dropping raster specks…');
+
+        $reader = fopen($in, 'r');
+        $writer = fopen($out, 'w');
+        $dropped = 0;
+        $touched = 0;
+
+        while (($line = fgets($reader)) !== false) {
+            // Match on the brace, NOT on a spelling. The Cliopatria download writes
+            // `{ "type": "Feature"` and mapshaper writes `{"type":"Feature"`, and a filter keyed to
+            // one of them silently processes nothing when handed the other — which is exactly what
+            // happened the first time this ran: "removed 0 specks", and a clean exit.
+            $start = strpos($line, '{');
+            if ($start === false) {
+                fwrite($writer, $line);
+                continue;
+            }
+            $tail = rtrim(rtrim(trim(substr($line, $start)), ','));
+            $feature = json_decode($tail, true);
+            if (! is_array($feature) || ($feature['type'] ?? '') !== 'Feature' || ($feature['geometry']['type'] ?? '') !== 'MultiPolygon') {
+                fwrite($writer, $line);
+                continue;
+            }
+
+            $before = count($feature['geometry']['coordinates']);
+            $feature['geometry']['coordinates'] = self::withoutSpecks($feature['geometry']['coordinates']);
+            $after = count($feature['geometry']['coordinates']);
+
+            if ($after < $before) {
+                $touched++;
+                $dropped += $before - $after;
+            }
+
+            $suffix = str_ends_with(rtrim(trim(substr($line, $start))), ',') ? ",\n" : "\n";
+            fwrite($writer, substr($line, 0, $start).json_encode($feature, JSON_UNESCAPED_SLASHES).$suffix);
+        }
+
+        fclose($reader);
+        fclose($writer);
+        $this->info("  removed {$dropped} specks across {$touched} polity-years");
+
+        return $out;
+    }
+
+    /**
+     * Drop a part only when it is BOTH a negligible share of the polity AND tiny in absolute terms.
+     *
+     * The AND is the whole point, and it is what makes this safe to run over every polity in the
+     * set. A microstate — Monaco, San Marino, the Vatican — is far below the absolute threshold, but
+     * it is its own largest part, so the relative test never fires and it always survives. An
+     * absolute rule on its own would quietly delete every microstate on the map.
+     *
+     * Numbers, in square degrees of shoelace area: the specks measure 0.02–0.07, East Prussia (a
+     * real exclave worth keeping) measures 5.86, and Germany proper 81.4. 0.5% of the largest part
+     * puts the cut at 0.4 for Germany, well clear of both.
+     *
+     * @param  array  $polygons  a MultiPolygon's coordinates
+     * @return array the same, minus the specks
+     */
+    public static function withoutSpecks(array $polygons): array
+    {
+        if (count($polygons) < 2) {
+            return $polygons;
+        }
+
+        $areas = array_map(fn (array $polygon) => self::ringArea($polygon[0] ?? []), $polygons);
+        $largest = max($areas);
+        if ($largest <= 0.0) {
+            return $polygons;
+        }
+
+        $kept = [];
+        foreach ($polygons as $i => $polygon) {
+            $isSpeck = $areas[$i] < $largest * self::SPECK_SHARE && $areas[$i] < self::SPECK_AREA;
+            if (! $isSpeck) {
+                $kept[] = $polygon;
+            }
+        }
+
+        return $kept === [] ? $polygons : array_values($kept);
+    }
+
+    /** Shoelace area in square degrees — a ranking measure, not a real-world one. */
+    private static function ringArea(array $ring): float
+    {
+        $n = count($ring);
+        if ($n < 3) {
+            return 0.0;
+        }
+
+        $sum = 0.0;
+        for ($i = 0; $i < $n; $i++) {
+            $a = $ring[$i];
+            $b = $ring[($i - 1 + $n) % $n];
+            $sum += ($a[0] * $b[1]) - ($b[0] * $a[1]);
+        }
+
+        return abs($sum) / 2.0;
     }
 }

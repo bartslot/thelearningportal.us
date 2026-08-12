@@ -422,3 +422,39 @@ test('label font and size apply, and every offered font actually exists', async 
     expect(res.status(), `no glyphs built for "${font}" — picking it would blank the labels`).toBe(200);
   }
 });
+
+/**
+ * Cliopatria's source polygons carry raster-to-vector noise: a polity-year has its real body plus
+ * dozens of 5-point specks scattered anywhere on the map. Nazi Germany 1939 had 185 of them, as far
+ * off as Karelia, Greece, Lebanon and the open Atlantic — 94,505 across the set.
+ *
+ * They are invisible at world scale and unmistakable when zoomed: the tiles stop at z4, so a speck
+ * over-zoomed becomes a hard block of colour in the middle of another country. Bart found them as
+ * yellow crosses sitting in Italy while Germany was selected.
+ *
+ * Guarded here rather than only in the unit test because the filter runs at BUILD time — a correct
+ * rule that never ran (it matched a JSON spelling mapshaper does not use, and reported "removed 0")
+ * passes every unit test there is.
+ */
+test('no stray territory specks: Germany 1939 is not sitting in Italy', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-fill'), { timeout: 25_000 });
+  await page.evaluate(() => (window as any).__setTimemapYear(1939));
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [12.8, 42.3], zoom: 6.2, pitch: 0 }));
+  await page.waitForTimeout(5_000);
+
+  const overItaly: string[] = await page.evaluate(() => [...new Set(
+    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-fill'] })
+      .map((f: any) => String(f.properties?.Name ?? '')))] as string[]);
+
+  expect(overItaly, `rendered over central Italy: ${overItaly.join(', ')}`).not.toContain('Nazi Germany');
+  // A positive control: if the query returns nothing at all, the assertion above is vacuous.
+  expect(overItaly, 'nothing rendered — the check above proves nothing').toContain('Kingdom of Italy');
+
+  // And the filter must not have eaten the microstates, which is what an absolute size rule does.
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [7.42, 43.74], zoom: 7, pitch: 0 }));
+  await page.waitForTimeout(4_000);
+  const riviera: string[] = await page.evaluate(() => [...new Set(
+    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-fill'] })
+      .map((f: any) => String(f.properties?.Name ?? '')))] as string[]);
+  expect(riviera, `rendered around Monaco: ${riviera.join(', ')}`).toContain('Kingdom of Monaco');
+});
