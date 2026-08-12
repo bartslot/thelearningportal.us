@@ -212,7 +212,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('clouds', { windScale: v }) },
       { key: 'windRate', label: 'Wind speed', min: 0, max: 0.3, step: 0.005, value: 0.05,
         apply: (v) => set('clouds', { windRate: v }) },
-      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.38,
+      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.61,
         apply: (v) => set('daylight', { cloudShadow: v }) },
       // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
       // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
@@ -222,7 +222,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       // The atlas's own mean coverage, which the variance-preserving blend centres on. Wrong here
       // and the lattice reappears as a faint brightness pattern — which is the one thing worth
       // being able to check by eye, hence a control rather than a constant alone.
-      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.5177,
+      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.4715,
         apply: (v) => { set('clouds', { patchMean: v }); set('daylight', { patchMean: v }) } },
       // Off returns the deck to the 19.5 km whole-planet field, which is the A/B this change exists
       // to win. Kept because "is the new source actually better" should be one click, not a rebuild.

@@ -238,13 +238,16 @@ export const CLOUD_FIELD_UNIFORMS = [
 export const CLOUD_PATCH_TILES = 144
 
 /**
- * The atlas's own mean coverage, measured over all six patches: 0.5177.
+ * The atlas's own mean coverage, measured over all six patches: 0.4715.
  *
  * Not decoration — the variance-preserving blend centres on it, and an error here reappears as a
  * brightness modulation in the shape of the lattice, which is the one artefact the tiling exists to
- * prevent. Re-measure it whenever the atlas is rebuilt; build-cloud-atlas.mjs prints it.
+ * prevent. It MUST be re-measured whenever the atlas is rebuilt: it moved from 0.5177 to 0.4715 the
+ * moment the patches were reselected on contrast, which is a big enough step to show. So
+ * build-cloud-atlas.mjs prints it and names this constant, rather than leaving the pair to be kept
+ * in step by whoever remembers.
  */
-export const CLOUD_PATCH_MEAN = 0.5177
+export const CLOUD_PATCH_MEAN = 0.4715
 
 /**
  * Set every cloud-field uniform from one state object.

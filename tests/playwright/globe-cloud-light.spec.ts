@@ -96,6 +96,22 @@ test('is lit as a scattering medium, not as a solid: thin edges darken, thick ce
     light.beerPowder.thinRatio,
     `thin cloud kept ${light.beerPowder.thinRatio} of its brightness — the powder term is not biting`,
   ).toBeLessThan(0.7);
+
+  /**
+   * AND A FLOOR, which this spec did not have and needed.
+   *
+   * Reselecting the patches on contrast moved this to -0.07: not dim, INVERTED — the thinnest
+   * quarter of the deck was coming out darker than the surface under it, because a deck at zero
+   * brightness still writes alpha and subtracts from the ground. Thin cloud scatters skylight and is
+   * never darker than the sea; it read as a dark veil where there should have been white wisps.
+   *
+   * Every assertion here passed through it. "Thin is darker than thick" is satisfied just as well by
+   * a hole in the sky, so the bound that was missing is the one saying it is still cloud.
+   */
+  expect(
+    light.beerPowder.thinRatio,
+    'thin cloud is darker than the surface beneath it — the deck is subtracting light, not scattering it',
+  ).toBeGreaterThan(0.05);
   expect(light.beerPowder.thickRatio).toBeGreaterThan(0.85);
   expect(
     light.beerPowder.thickRatio - light.beerPowder.thinRatio,
