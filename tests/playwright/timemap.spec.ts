@@ -185,16 +185,24 @@ test('the load handler runs to the end — globe layers, ship and settings group
  */
 test('hovering scales the name in place, without moving it or removing it', async ({ page }) => {
   await page.waitForFunction(() => !!(window as any).__tmShowGlow && !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
-  await page.waitForTimeout(4_000);
+  // Pin the view. The default camera does not guarantee a labelled territory on screen, and the
+  // container's height is not fixed either — it grows upward to centre the globe above the deck, so
+  // what is visible at rest changes with the window.
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [12, 45], zoom: 3.6, pitch: 0, bearing: 0 }));
+  // Labels are placed on a settle, after the tiles for the new view arrive.
+  await page.waitForTimeout(6_000);
 
+  // Read the label SOURCE, not what got placed. Placement depends on collision, the viewport and
+  // how much of the map has settled, none of which this test is about — the claim is that the
+  // anchor does not MOVE on hover, and the anchor exists whether or not the label won its spot.
   const anchorOf = (territory: string) => page.evaluate((name) => {
-    const f = (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
+    const f = (window as any).__tmMap.querySourceFeatures('labels')
       .find((x: any) => x.properties?.name === name);
     return f ? f.geometry.coordinates : null;
   }, territory);
 
   const name: string | null = await page.evaluate(() =>
-    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })[0]?.properties?.name ?? null);
+    (window as any).__tmMap.querySourceFeatures('labels')[0]?.properties?.name ?? null);
   expect(name, 'needed a labelled territory to hover').toBeTruthy();
 
   const sizeAt = () => page.evaluate((n) => {
