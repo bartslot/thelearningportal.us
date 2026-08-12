@@ -194,6 +194,43 @@ describe('deckDetailFor', () => {
     expect(at(14).amount).toBeLessThan(0.6)
   })
 
+  /**
+   * WHERE the noise starts taking over, against an authority outside this file.
+   *
+   * Every other assertion about `amount` here is a RELATIVE one — this zoom against that zoom, the
+   * curve rising, the ceiling holding. A uniform error in the source resolution satisfies every one
+   * of them, because it moves both sides equally. That is the shape of the bug that carried a
+   * twenty-degree error through moon.js's whole self-consistent suite, and it is exactly what
+   * happened here: the deck was rebuilt on a source eight times finer and not one of the tests
+   * above could tell.
+   *
+   * So this anchors to a number nobody here chose. The patches are fetched from GIBS at zoom 6 of
+   * the standard Web Mercator scheme, whose resolution at the equator is 156543.034 / 2^z metres per
+   * pixel — 2446 m at z6. That is a property of the tiling scheme, not of our code, and it is what
+   * the harvester's own output reports.
+   *
+   * The discriminating case is z4. One screen pixel there covers 9784 m, still four times a source
+   * texel, so the source has NOT run out and the noise must be given nothing extra. Under the old
+   * 19543 the same point reads as half-magnified and lifts amount to 0.19 — so this goes red on the
+   * previous constant rather than merely passing on the new one.
+   */
+  it('judges the source run out at 2446 m per texel, which is GIBS zoom 6', () => {
+    const WEB_MERCATOR_M_PER_PIXEL_Z0 = 156543.03392
+    const sourceMetresPerTexel = WEB_MERCATOR_M_PER_PIXEL_Z0 / 2 ** 6
+    expect(sourceMetresPerTexel).toBeCloseTo(2446, 0)
+
+    // The zoom at which one screen pixel covers exactly one source texel, at the equator.
+    const crossover = Math.log2(WEB_MERCATOR_M_PER_PIXEL_Z0 / sourceMetresPerTexel)
+    expect(crossover).toBeCloseTo(6, 6)
+
+    // Above it the source still has the pixels, so the noise carries only its floor.
+    expect(at(4).amount).toBeCloseTo(0.14, 6)
+    expect(at(crossover).amount).toBeCloseTo(0.14, 6)
+    // Below it the source is being magnified and the noise takes over, in proportion.
+    expect(at(crossover + 1).amount).toBeCloseTo(0.14 + 0.5 * 0.10, 6)
+    expect(at(crossover + 2).amount).toBeCloseTo(0.14 + 0.75 * 0.10, 6)
+  })
+
   it('retires the deck BEFORE the camera reaches it, not while passing through', () => {
     /**
      * The bug this replaced: the fade was specified in ZOOM while the thing to avoid is the camera

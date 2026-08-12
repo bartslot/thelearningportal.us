@@ -61,7 +61,7 @@ import { acquireEquirectTexture } from './equirect-texture.js'
 const LAYER_ID = 'tm-daylight'
 
 /** Texture units. Field and wind match clouds.js, because they are literally the same textures. */
-const UNIT = { field: 0, wind: 1, relief: 2, lights: 3 }
+const UNIT = { field: 0, wind: 1, relief: 2, lights: 3, patches: 4 }
 
 /**
  * GLSL ES 3.00, which the tile pyramid requires of every consumer.
@@ -257,12 +257,27 @@ export const createDaylightLayer = ({
   reliefUrl = null,
   reliefWidth = 8192,
   reliefPower = 1.5,
-  cloudShadow = 0.5,
+  /**
+   * 0.38, down from 0.5, because the SOURCE changed underneath it rather than because it looked
+   * wrong.
+   *
+   * 0.5 was chosen against the 19.5 km whole-planet field, whose smoothstep left few pixels near
+   * full coverage. The harvested atlas is eight times finer and has real contrast, so the same 0.5
+   * now drives the ground harder: measured over the Himalaya, shadow strength went from 40.91 to
+   * 53.86 the moment the source was swapped, with nothing else touched. That is a 32% darker
+   * shadow that nobody asked for and no dial records.
+   *
+   * 0.5 x 40.91 / 53.86 = 0.38 restores the shading that was actually approved. A number carried
+   * across a source change is not the same setting, and this is the arithmetic that says so.
+   */
+  cloudShadow = 0.38,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same
-  // values or the shadows drift away from the clouds casting them.
-  fieldUrl = null, windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
+  // values or the shadows drift away from the clouds casting them. `patchUrl` included: the deck
+  // draws the tiled atlas, so the ground has to cast the shadow of THAT sky and not of the old
+  // whole-planet field, which is a different sky entirely.
+  fieldUrl = null, patchUrl = null, windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
   driftRate = 0.0004, animate = true,
 } = {}) => {
   const mesh = buildSphereMesh()
@@ -273,11 +288,12 @@ export const createDaylightLayer = ({
   let relief = null
   let field = null
   let wind = null
+  let patches = null
   const programs = new Map()
   let state = {
     sun, nightDarkness, lightsUrl, lightsAmount, nightColour, twilightColour, twilightCool, twilightStrength,
     reliefUrl, reliefWidth, reliefPower, cloudShadow, eclipse, date,
-    fieldUrl, windUrl, windAmount, windScale, windRate, driftRate, animate,
+    fieldUrl, patchUrl, windUrl, windAmount, windScale, windRate, driftRate, animate,
   }
 
   const programFor = (shaderData) => {
@@ -357,6 +373,7 @@ export const createDaylightLayer = ({
       if (state.reliefUrl) relief = acquireEquirectTexture(gl, state.reliefUrl, repaint)
       if (state.fieldUrl) field = acquireEquirectTexture(gl, state.fieldUrl, repaint)
       if (state.windUrl) wind = acquireEquirectTexture(gl, state.windUrl, repaint)
+      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint)
     },
 
     onRemove() {
@@ -368,6 +385,7 @@ export const createDaylightLayer = ({
       relief?.release(); relief = null
       field?.release(); field = null
       wind?.release(); wind = null
+      patches?.release(); patches = null
       if (buffers) {
         gl.deleteBuffer(buffers.pos)
         gl.deleteBuffer(buffers.sphere)
@@ -428,8 +446,9 @@ export const createDaylightLayer = ({
       if (uniforms.sunRadius) gl.uniform1f(uniforms.sunRadius, moon ? solarAngularRadius(eclipseDate) : 0)
       if (moon && uniforms.moon) gl.uniform3f(uniforms.moon, ...moon)
 
-      setCloudFieldUniforms(gl, uniforms, state, { seconds: performance.now() * 0.001, field, wind },
-        UNIT.field, UNIT.wind)
+      setCloudFieldUniforms(gl, uniforms, state,
+        { seconds: performance.now() * 0.001, field, wind, patches },
+        UNIT.field, UNIT.wind, UNIT.patches)
       bind(uniforms, relief, 'relief', UNIT.relief)
       bind(uniforms, lights, 'lights', UNIT.lights)
 
@@ -450,8 +469,10 @@ export const createDaylightLayer = ({
       gl.enable(gl.DEPTH_TEST)
       gl.depthMask(true)
 
-      // The cloud shadows move with the deck, so the ground has to be redrawn with it.
-      if (state.animate && field?.ready && state.cloudShadow > 0) map.triggerRepaint()
+      // The cloud shadows move with the deck, so the ground has to be redrawn with it. Either
+      // source counts: with only the atlas loaded the shadows still move, and asking about the old
+      // field alone would freeze them against a sky that is still drifting.
+      if (state.animate && (field?.ready || patches?.ready) && state.cloudShadow > 0) map.triggerRepaint()
     },
 
     /** Live controls — chiefly the sun, which a lesson moves as its date moves. */
@@ -468,6 +489,7 @@ export const createDaylightLayer = ({
       relief = swap(relief, 'reliefUrl')
       field = swap(field, 'fieldUrl')
       wind = swap(wind, 'windUrl')
+      patches = swap(patches, 'patchUrl')
       map?.triggerRepaint()
     },
     getOptions: () => ({ ...state }),

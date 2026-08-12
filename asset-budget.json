@@ -13,8 +13,10 @@
       "transferBytes": 8388608,
       "vramBytes": 100663296,
       "maxSingleAssetTransferBytes": 4194304,
+      "//cloud-patches": "The cloud deck's real source: six MODIS patches at 2446 m per texel, tiled stochastically. 768x512 is 1.5 MiB resident before mipmaps, 2 MiB with them — it buys eight times the resolution of clouds-field.webp for a fortieth of that field's residency. Both are declared and both ship: the atlas is the source, the field is what the deck falls back to before the atlas has loaded.",
       "assets": [
         "public/img/map/clouds-field.webp",
+        "public/img/map/cloud-patches.webp",
         "public/img/map/wind-field.png",
         "public/img/map/milkyway.jpg",
         "public/img/map/moon.jpg"

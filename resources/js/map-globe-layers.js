@@ -32,6 +32,17 @@ const CLOUD_FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_FIELD_URL = '/img/map/wind-field.png'
 
 /**
+ * The deck's real source: six patches of MODIS true-colour cloud over open ocean, reduced to
+ * coverage and packed into one atlas. 2446 m per texel against the whole-planet field's 19543, and
+ * laid down stochastically so no repeat shows. Built by scripts/build-cloud-patches.mjs and
+ * scripts/build-cloud-atlas.mjs; credited in docs/credits.md, as GIBS asks.
+ *
+ * Both are passed. The atlas is the source wherever it has loaded, and the old field is what the
+ * deck falls back to if it has not — the same degradation the field itself has to procedural noise.
+ */
+const CLOUD_PATCH_URL = '/img/map/cloud-patches.webp'
+
+/**
  * '#1d5c8f' → [0.11, 0.36, 0.56]. The shaders take colours as 0..1 triples.
  *
  * Goes through the tuner's parser rather than doing its own hex arithmetic, because the colour
@@ -87,13 +98,35 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
   const sun = sunDirection(date)
   const animate = !reduceMotion
 
-  // Shared by the clouds and the shadows they cast. daylight.js is explicit that both layers must be
-  // given the SAME field, or the shadows drift away from the clouds casting them.
-  // windAmount 0.2, not the module's 1: full advection drags the field into visible spirals once
-  // you are close enough to see individual cells, which reads as a swirl filter rather than as
-  // weather. Enough to carry the deck along real circulation, not enough to draw with it. The 0.2
-  // is off the tuner — I had guessed 0.35 and it was still too busy.
-  const field = { fieldUrl: CLOUD_FIELD_URL, windUrl: WIND_FIELD_URL, windAmount: 0.2, animate }
+  /**
+   * Shared by the clouds and the shadows they cast. daylight.js is explicit that both layers must
+   * be given the SAME field, or the shadows drift away from the clouds casting them.
+   *
+   * windAmount 0.1, down from the 0.2 that was chosen against the old blurred field. Drift and curl
+   * are separate: windAmount and windScale DEFORM the field, and slowing the drift does nothing at
+   * all about that. What the deformation costs is sharpness, so it is measured in pixel-scale
+   * structure rather than in brightness, which is blind to smearing:
+   *
+   *     windAmount   0     0.1    0.2    0.35   0.6    1.0
+   *     detail       10.03 9.68   9.35   8.83   8.61   9.56
+   *
+   * At 0.2 the advection was spending 6.9% of the deck's fine structure. That was a fair price
+   * against a 19.5 km field with little structure to lose; against a source eight times finer there
+   * is a great deal more to lose and it is the detail this whole change exists to deliver. 0.1 costs
+   * 3.5% and still carries the deck along real circulation.
+   *
+   * The 1.0 reading is not noise, and it says something about the knob itself: at full advection the
+   * static term drops out of the blend entirely, so the deck is sharper than at 0.6. Everything
+   * between is a static field cross-faded with a moving one — a double image, which is why the cost
+   * peaks in the middle. Worth knowing before anyone reaches for this dial again.
+   */
+  const field = {
+    fieldUrl: CLOUD_FIELD_URL,
+    patchUrl: CLOUD_PATCH_URL,
+    windUrl: WIND_FIELD_URL,
+    windAmount: 0.1,
+    animate,
+  }
 
   const options = {
     starfield: { date, animate },
@@ -171,17 +204,83 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
     window.__tune?.register('Clouds', [
       { key: 'opacity', label: 'Density', min: 0, max: 1, step: 0.01, value: 1,
         apply: (v) => set('clouds', { opacity: v }) },
-      { key: 'windAmount', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.2,
+      // "Drift" is the wrong word for it and always was: this DEFORMS the field. The real drift is
+      // driftRate, which rotates it. Renamed rather than left to mislead the next person to drag it.
+      { key: 'windAmount', label: 'Curl', min: 0, max: 1, step: 0.05, value: 0.1,
         apply: (v) => set('clouds', { windAmount: v }) },
       { key: 'windScale', label: 'Wind scale', min: 0.01, max: 0.5, step: 0.01, value: 0.06,
         apply: (v) => set('clouds', { windScale: v }) },
       { key: 'windRate', label: 'Wind speed', min: 0, max: 0.3, step: 0.005, value: 0.05,
         apply: (v) => set('clouds', { windRate: v }) },
-      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.05, value: 0.5,
+      { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.38,
         apply: (v) => set('daylight', { cloudShadow: v }) },
+      // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
+      // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
+      // shadows rather than like two settings that disagree.
+      { key: 'patchTiles', label: 'Cloud cells', min: 96, max: 320, step: 8, value: 144,
+        apply: (v) => { set('clouds', { patchTiles: v }); set('daylight', { patchTiles: v }) } },
+      // The atlas's own mean coverage, which the variance-preserving blend centres on. Wrong here
+      // and the lattice reappears as a faint brightness pattern — which is the one thing worth
+      // being able to check by eye, hence a control rather than a constant alone.
+      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.5177,
+        apply: (v) => { set('clouds', { patchMean: v }); set('daylight', { patchMean: v }) } },
+      // Off returns the deck to the 19.5 km whole-planet field, which is the A/B this change exists
+      // to win. Kept because "is the new source actually better" should be one click, not a rebuild.
+      { key: 'patchUrl', label: 'Tiled source', type: 'boolean', value: true,
+        apply: (v) => {
+          const url = v ? CLOUD_PATCH_URL : null
+          set('clouds', { patchUrl: url })
+          set('daylight', { patchUrl: url })
+        } },
+    ], { tab: 'Earth' }),
+
+    /**
+     * The four lighting terms, in the order they have to be built — each one alone looks wrong.
+     * The normal by itself is grey terrain; the normal with Beer-Powder is cloud; the forward lobe
+     * on top of that is what makes it look photographed.
+     *
+     * All four are zero-is-off, so any of them can be taken out on the panel and the deck returns
+     * to exactly the flat white shell it was before. That is what makes an A/B here worth anything.
+     */
+    window.__tune?.register('Cloud light', [
+      // Cloud coverage is a heightfield, and this is how tall the fully covered sky stands. A real
+      // cumulus tops out around 8 km, which is where it sits.
+      { key: 'cloudRelief', label: 'Cloud height km', min: 0, max: 40, step: 0.5, value: 8,
+        apply: (v) => set('clouds', { cloudRelief: v }) },
+      { key: 'cloudDepth', label: 'Optical depth', min: 0, max: 12, step: 0.25, value: 4,
+        apply: (v) => set('clouds', { cloudDepth: v }) },
+      // Thin edges darker than the plain exponential says. Take it to 0 and the rims fade out
+      // linearly, which is what makes a cloud read as painted-on fog.
+      { key: 'powder', label: 'Powder', min: 0, max: 1, step: 0.05, value: 1,
+        apply: (v) => set('clouds', { powder: v }) },
+      { key: 'forward', label: 'Silver lining', min: 0, max: 2, step: 0.05, value: 0.5,
+        apply: (v) => set('clouds', { forward: v }) },
+      { key: 'forwardG', label: 'Lobe sharpness', min: 0, max: 0.95, step: 0.05, value: 0.7,
+        apply: (v) => set('clouds', { forwardG: v }) },
+      { key: 'selfShadow', label: 'Self shadow', min: 0, max: 1, step: 0.02, value: 0.18,
+        apply: (v) => set('clouds', { selfShadow: v }) },
+      // How far the shadow read walks sunward. Too far and it stops being a shadow and becomes an
+      // even dimmer — measured at 25 km, where it took a quarter of the deck's brightness flat.
+      { key: 'selfShadowStep', label: 'Shadow reach', min: 0.0002, max: 0.006, step: 0.0002,
+        value: 0.0015,
+        apply: (v) => set('clouds', { selfShadowStep: v }) },
     ], { tab: 'Earth' }),
 
     window.__tune?.register('Sky and light', [
+      /**
+       * LEFT AT 0.965, and left deliberately rather than settled.
+       *
+       * It belongs with the three values resettled in this change: it was chosen while the draw
+       * order had the clouds shadowing themselves, which is fixed, so the picture it was judged
+       * against no longer exists. The other three moved on measurements — the shadow dial on 40.91
+       * against 53.86, the curl on detail per setting, the noise ceiling on a source-derived
+       * crossover. There is no equivalent measurement for how black a night side should be. It is a
+       * look, and it is Bart's to set.
+       *
+       * Moving it on taste and calling that a resettlement would put a number in the code with no
+       * reason attached, which is the thing every comment in this file is trying to prevent. The
+       * control is here and the reason to revisit it is written down; the drag is his.
+       */
       { key: 'nightDarkness', label: 'Night', min: 0, max: 1, step: 0.005, value: 0.965,
         apply: (v) => set('daylight', { nightDarkness: v }) },
       // Twilight is two colours on opposite sides of the terminator — warm sunward, blue nightward
