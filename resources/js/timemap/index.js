@@ -153,7 +153,16 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
     // zoom. Zoom-out stays open so other continents/markers come into view.
     maxZoom: 7,
-    attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
+    // OFF FOR NOW, at Bart's request — the strip sat across the bottom of the globe and over the
+    // labels near the south of the frame.
+    //
+    // IT HAS TO COME BACK BEFORE THIS SHIPS. OpenStreetMap's licence (ODbL) and Cliopatria's CC-BY
+    // both REQUIRE visible credit, and the satellite imagery is NASA GIBS and Sentinel. The fix is
+    // to move it somewhere it does not fight the map — behind the settings icon, or in an About
+    // panel — not to leave it out. The text, so it is not lost:
+    //   Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)
+    //   Imagery: NASA EOSDIS GIBS · Sentinel-2 cloudless (2020) by EOX IT Services GmbH
+    attributionControl: false,
   });
 
   // Exposed for dev tooling and the Playwright spec (layer/feature introspection).
