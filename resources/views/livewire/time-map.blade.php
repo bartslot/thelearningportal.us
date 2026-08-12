@@ -212,7 +212,10 @@
          x-data="{ settingsOpen: false, paletteOpen: false,
                    style: (window.localStorage.getItem('tm-style') || 'soft-atlas'),
                    sound: (window.localStorage.getItem('tm-sound') === '1'),
-                   items: [['soft-atlas','Soft Atlas'],['antique','Hand-coloured Antique'],['pen-ink','Tolkien'],['night','Night'],['satellite','Satellite']] }"
+                   {{-- Soft Atlas, Night and Earth only. Antique and Tolkien read almost identically
+                        to Soft Atlas, and Earth is Satellite v2 — all three stay DEFINED so existing
+                        saved choices keep working and nothing 404s, they are simply not offered. --}}
+                   items: [['soft-atlas','Soft Atlas'],['night','Night'],['earth','Earth']] }"
          x-on:click.outside="settingsOpen = false; paletteOpen = false">
 
         {{-- Cog --}}

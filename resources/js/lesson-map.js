@@ -16,7 +16,7 @@ import { addScatterLayer } from './map-scatter.js'
 import { addVolcanoLayer } from './map-volcanoes.js'
 import { renderAnnotations } from './map-annotations.js'
 import { mapTextProjector } from './map-text-projector.js'
-import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, MAX_RELIEF, satelliteLayers } from './map-imagery.js'
+import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, MAX_RELIEF, satelliteLayers, EARTH_COLOURS } from './map-imagery.js'
 
 const PALETTE = {
   land: '#f3ead6',
@@ -53,7 +53,20 @@ const MAP_STYLES = {
   // sea lit as water, the terminator, the haze band at the limb, the cloud deck, and the sky
   // bodies behind the planet. `globe` is what pulls map-globe-layers.js in, and it is the only
   // style that does, so a lesson on any other one never downloads a shader it will not draw.
-  'earth': { imagery: true, globe: true, land: '#26331d', water: '#08131f', coast: '#f6efdc', coastShadow: '#000000', line: '#ffd9a0', river: '#8fc3e8', text: '#241a10', halo: '#f2e9d4', grid: '#7f9ab0', terrain: false },
+  'earth': {
+    imagery: true,
+    globe: true,
+    terrain: false,
+    land: EARTH_COLOURS.land,
+    water: EARTH_COLOURS.water,
+    coast: EARTH_COLOURS.coast,
+    coastShadow: EARTH_COLOURS.coastShadow,
+    line: EARTH_COLOURS.line,
+    river: EARTH_COLOURS.river,
+    text: EARTH_COLOURS.text,
+    halo: EARTH_COLOURS.halo,
+    grid: EARTH_COLOURS.grid,
+  },
 }
 const DEFAULT_STYLE = 'soft-atlas'
 

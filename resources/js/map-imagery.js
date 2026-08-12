@@ -43,6 +43,27 @@
  * Depth still drives the WATER'S COLOUR — shallow turquoise through to deep blue. What is excluded
  * is any shading, normal or slope term derived from the sea floor. Values, not relief.
  */
+/**
+ * Earth's colours, in the module both maps already share, so the lesson map and the Time-Map draw
+ * the same planet. The two style tables have different shapes — the lesson map is flat, the
+ * Time-Map nests line/shore/text — so they cannot share an entry, but they can share the values,
+ * which is the part that would drift.
+ */
+export const EARTH_COLOURS = {
+  land: '#26331d',
+  water: '#08131f',
+  coast: '#f6efdc',
+  coastShadow: '#000000',
+  line: '#ffd9a0',
+  river: '#8fc3e8',
+  text: '#241a10',
+  halo: '#f2e9d4',
+  grid: '#7f9ab0',
+  selected: '#f5c518',
+  hover: '#e8cf94',
+  voyage: '#ffce6b',
+}
+
 export const SATELLITE_SOURCE = {
   type: 'raster',
   tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg'],

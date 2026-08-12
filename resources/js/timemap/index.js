@@ -11,7 +11,7 @@ import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle, smooth } from './voyages.js';
 import nationalColors from './national-colors.json';
-import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers } from '../map-imagery.js';
+import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers, EARTH_COLOURS } from '../map-imagery.js';
 import { CLOUD_LAYER_ID } from './clouds.js';
 // The whole globe stack, assembled in one place and shared with the lesson map's Earth style. The
 // Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
@@ -621,6 +621,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       line: { color: '#ffd9a0', width: 0.9, blur: 0.2 },
       text: { color: '#241a10', halo: '#f2e9d4' }, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
     },
+    // Earth — Satellite v2, and the same planet the lesson map draws (shared EARTH_COLOURS). The
+    // photographed ground with the globe render over it: sea lit as water, the terminator, the haze
+    // at the limb, the cloud deck. Until now this existed only in lessons, so choosing it here fell
+    // through to Soft Atlas without a word — see the warning in applyMapStyle.
+    'earth': {
+      palette: NIGHT_PAL, imagery: true, globe: true,
+      water: EARTH_COLOURS.water, land: EARTH_COLOURS.land, fillOpacity: 0.22,
+      selected: EARTH_COLOURS.selected, hover: EARTH_COLOURS.hover,
+      shore: { color: EARTH_COLOURS.coast, width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
+      line: { color: EARTH_COLOURS.line, width: 0.9, blur: 0.2 },
+      text: { color: EARTH_COLOURS.text, halo: EARTH_COLOURS.halo },
+      voyage: EARTH_COLOURS.voyage, paper: 0, vignette: 'rgba(0,0,0,0.4)',
+    },
     'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
@@ -1014,6 +1027,13 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const applyMapStyle = (name) => {
     // Migrate the retired raster 'ink-art' style → the vector 'pen-ink' Tolkien style.
     if (name === 'ink-art' || name === 'inkart') name = 'pen-ink';
+    // An unknown style falls back rather than throwing, which is right — but it used to do it in
+    // total silence, so picking a style that was never defined here just quietly drew Soft Atlas.
+    // "Earth" did exactly that for as long as it existed only on the lesson map: the map changed to
+    // something, so it looked like a style, and there was nothing anywhere to say otherwise.
+    if (!MAP_STYLES[name]) {
+      console.warn(`[timemap] no map style "${name}" — falling back to soft-atlas. Defined: ${Object.keys(MAP_STYLES).join(', ')}`);
+    }
     const key = MAP_STYLES[name] ? name : 'soft-atlas';
     const s = MAP_STYLES[key];
     currentStyleName = key;

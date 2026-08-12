@@ -338,3 +338,39 @@ test('the advance takes ground over time and stops when it is done', async ({ pa
   const settled = await covered();
   expect(Math.abs(settled - late) / late, 'the front never stopped').toBeLessThan(0.25);
 });
+
+/**
+ * "Earth" existed only on the lesson map, so choosing it on the Time-Map fell through to Soft Atlas
+ * in silence — the map changed to something, so it looked like a style had been applied. Bart spotted
+ * it from a screenshot: "there's no style but the satellite footage map is not loaded, only the
+ * normal map."
+ *
+ * Two assertions, because the missing style was only half of it: the fallback has to be audible, or
+ * the next missing style hides exactly the same way.
+ */
+test('Earth is a real style here, and an unknown one says so', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__applyMapStyle && !!(window as any).__tmMap?.getLayer('satellite'), { timeout: 25_000 });
+
+  await page.evaluate(() => (window as any).__applyMapStyle('earth'));
+  await page.waitForTimeout(1_200);
+
+  const state = await page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    return {
+      saved: localStorage.getItem('tm-style'),
+      satellite: m.getLayoutProperty('satellite', 'visibility') ?? 'visible',
+      // The drawn ground steps aside for the photographed one.
+      land: m.getLayoutProperty('land', 'visibility') ?? 'visible',
+    };
+  });
+  expect(state.saved, 'Earth fell back to another style').toBe('earth');
+  expect(state.satellite, 'Earth did not turn the imagery on').toBe('visible');
+  expect(state.land, 'the drawn land is still covering the photographed ground').toBe('none');
+
+  // And a name that genuinely does not exist must be audible rather than silent.
+  const warnings: string[] = [];
+  page.on('console', (m) => m.type() === 'warning' && warnings.push(m.text()));
+  await page.evaluate(() => (window as any).__applyMapStyle('no-such-style'));
+  await page.waitForTimeout(500);
+  expect(warnings.join('\n'), 'an unknown style fell back without saying so').toContain('no map style');
+});
