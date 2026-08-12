@@ -6,6 +6,16 @@ A globe, the sun layer on it, and a way to **measure** what actually reached the
 node tools/sun-harness/serve.mjs --port 5212
 ```
 
+Open `http://localhost:5212/` and a slider panel comes up on the right — camera, date, sun disc,
+analytic glare, bloom, light shafts, clouds, haze — with **Copy these settings** to get whatever you
+land on back out as the exact options objects to paste into the layer defaults. `H` hides the panel.
+`?panel=0` never shows it, `?panel=1` always does.
+
+**The camera has to be near antisolar or there is no sun on screen at all.** The view axis points at
+the planet and the sun has to be within half a field of view of it, so you are always looking at the
+night side; drag the globe by hand and the sun is gone in a second. The two camera sliders re-solve
+the pose for you, and "Find the sun again" puts it back.
+
 Then open `http://localhost:5212/` (optionally `?w=1280&h=720` to pin the canvas size) and drive it
 from the console:
 

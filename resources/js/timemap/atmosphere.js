@@ -57,6 +57,8 @@ uniform float u_top;        // top of the atmosphere, in earth radii
 uniform float u_strength;
 uniform vec3 u_dayColour;
 uniform vec3 u_duskColour;
+uniform float u_forward;      // how much of the forward-scattering lobe to keep, 0 = none
+uniform float u_scatter_g;    // its narrowness; 0 is uniform, 0.9 is a searchlight
 
 const int SAMPLES = 6;
 
@@ -109,6 +111,38 @@ void main() {
   // which is where a photograph puts it; a linear falloff leaves the disc under a blue wash and
   // buries the imagery it is supposed to sit on.
   alpha *= 0.04 + 0.96 * pow(grazing, 2.5);
+
+  // FORWARD SCATTERING, which is why haze is not equally bright all the way round.
+  //
+  // Air does not scatter light evenly in all directions. Particles comparable to the wavelength
+  // throw most of it very nearly FORWARD, so looking through haze toward the sun is many times
+  // brighter than looking through the same haze away from it. It is why a windscreen you cannot see
+  // through driving west is perfectly clear driving east, and on a globe it is why the limb beside
+  // the sun blazes while the far limb stays a thin cold line.
+  //
+  // Henyey-Greenstein, the standard one-parameter phase function. Normalised at right angles so
+  // u_forward = 0 is exactly the old look and the term only ever adds. Clamped because the true
+  // lobe runs to 25x within a couple of degrees of the sun's centre, where the disc is drawn over
+  // it anyway — uncapped it produces a white blob on the limb rather than a bright limb.
+  float cosTheta = dot(ray, u_sun);
+  float g = u_scatter_g;
+  float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosTheta, 1.5);
+  float sideways = (1.0 - g * g) / pow(1.0 + g * g, 1.5);
+  float boost = u_forward * min(phase / sideways - 1.0, 5.0);
+
+  // Bright haze is WHITE haze. Scattering that strong is light that has bounced several times, and
+  // multiple scattering washes the colour out — which is why a hazy sun is a white glare and not a
+  // saturated blue one. Without this the boost merely amplifies the existing day/dusk ramp, and
+  // since that ramp runs from orange to blue the amplified overlap lands on magenta: a rainbow
+  // fringe around the limb that looks exactly like chromatic aberration and is nothing of the sort.
+  colour = mix(colour, vec3(1.0), clamp(boost * 0.2, 0.0, 0.7));
+  alpha *= 1.0 + boost;
+
+  // Alpha ABOVE ONE is the other half of that bug. The output is premultiplied, so an alpha of 1.6
+  // writes a colour brighter than its own coverage; the channels then clip one at a time and the
+  // hue shifts as it saturates rather than simply going white.
+  alpha = min(alpha, 1.0);
+
   if (alpha < 0.002) discard;
   gl_FragColor = vec4(colour * alpha, alpha);
 }`
@@ -119,19 +153,23 @@ void main() {
  * @param {number[]} [opts.sun]       direction TO the sun, planet space; share it with the clouds
  * @param {number[]} [opts.dayColour] the band's colour in full daylight
  * @param {number[]} [opts.duskColour] its colour at the terminator
+ * @param {number} [opts.forwardScatter] strength of the forward lobe; 0 is the old even haze
+ * @param {number} [opts.scatterG]    how narrow that lobe is, 0..0.95
  */
 export const createAtmosphereLayer = ({
   strength = 1,
   sun = [0.4, 0.5, 0.75],
   dayColour = [0.32, 0.55, 1.0],
   duskColour = [1.0, 0.45, 0.18],
+  forwardScatter = 0.35,
+  scatterG = 0.6,
 } = {}) => {
   const mesh = buildSphereMesh()
   let map = null
   let gl = null
   let buffers = null
   const programs = new Map()
-  let state = { strength, sun, dayColour, duskColour }
+  let state = { strength, sun, dayColour, duskColour, forwardScatter, scatterG }
 
   const programFor = (shaderData) => {
     const key = shaderData.variantName
@@ -152,6 +190,8 @@ export const createAtmosphereLayer = ({
         strength: gl.getUniformLocation(program, 'u_strength'),
         dayColour: gl.getUniformLocation(program, 'u_dayColour'),
         duskColour: gl.getUniformLocation(program, 'u_duskColour'),
+        forward: gl.getUniformLocation(program, 'u_forward'),
+        scatterG: gl.getUniformLocation(program, 'u_scatter_g'),
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
         tileMercatorCoords: gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
         clippingPlane: gl.getUniformLocation(program, 'u_projection_clipping_plane'),
@@ -224,6 +264,8 @@ export const createAtmosphereLayer = ({
       if (uniforms.strength) gl.uniform1f(uniforms.strength, state.strength)
       if (uniforms.dayColour) gl.uniform3f(uniforms.dayColour, ...state.dayColour)
       if (uniforms.duskColour) gl.uniform3f(uniforms.duskColour, ...state.duskColour)
+      if (uniforms.forward) gl.uniform1f(uniforms.forward, state.forwardScatter)
+      if (uniforms.scatterG) gl.uniform1f(uniforms.scatterG, state.scatterG)
 
       gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos)
       gl.enableVertexAttribArray(attribs.pos)
