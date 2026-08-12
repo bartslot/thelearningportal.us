@@ -487,6 +487,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         if (!cur || area > cur.area) best.set(id, { area, c, name });
       }
     }
+    applyRestingLabels();
     // `sel`/`hov` drive symbol-sort-key so the open territory's name — and the one under the
     // pointer — are placed first and never culled by a neighbour's label.
     labelBest = best;
@@ -677,6 +678,23 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    */
   const CURSOR_LABEL_SRC = 'boundaries-cursor-name';
   let cursorName = null;
+
+  /**
+   * Territory names appear WHERE YOU POINT, and nowhere else.
+   *
+   * The resting labels were placed at the centroid of whatever fragment of a polity happened to be
+   * largest on screen. That fragment changes with the camera, so names moved about, landed in the
+   * sea, sat on the wrong continent, or vanished — "appearing so randomly", which is exactly what it
+   * was. No anchor fixes it, because the thing being anchored is a tile fragment, not a country.
+   *
+   * So the map rests silent and answers when asked. Off by default; the control below brings them
+   * back for anyone who wants the old atlas look.
+   */
+  let restingLabels = false;
+  const applyRestingLabels = () => {
+    if (!map.getLayer('boundaries-label')) return;
+    try { map.setLayoutProperty('boundaries-label', 'visibility', restingLabels ? 'visible' : 'none'); } catch (e) { /* parsing */ }
+  };
 
   const restingLabelOnScreen = (name) => map
     .queryRenderedFeatures({ layers: ['boundaries-label'] })
@@ -1067,6 +1085,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ], { tab: 'Map' }),
 
       window.__tune.register('Territory labels', [
+        // Off by default: names follow the pointer instead of sitting where a tile fragment put
+        // them. On restores the atlas look, with the hover name scaling in place as before.
+        { key: 'resting', label: 'Names at rest', type: 'boolean', value: false,
+          apply: (on) => { restingLabels = on; applyRestingLabels(); } },
         { key: 'font', label: 'Font', type: 'select', options: FONT_STACKS, value: 'Cinzel',
           apply: (v) => labelLayout('text-font', [v]) },
         { key: 'size', label: 'Size', min: 6, max: 32, step: 0.5, value: 12,
@@ -1669,10 +1691,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       // so the name is part of the key.
       const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
       showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
-      // Decided per territory, not per pixel: if its own label is on screen, hovering scales that
-      // one and nothing appears at the cursor.
+      // With resting labels off there is never anything to scale, so the pointer always answers.
+      // With them on, it answers only when the territory's own name is not already on screen.
       const label = p.Name ?? null;
-      setCursorName(label && !restingLabelOnScreen(label) ? label : null, e.lngLat);
+      const needed = label && (!restingLabels || !restingLabelOnScreen(label));
+      setCursorName(needed ? label : null, e.lngLat);
     });
     map.on('mouseleave', 'boundaries-fill', () => {
       map.getCanvas().style.cursor = '';
