@@ -635,3 +635,62 @@ test('hover, drag and click behave with a real pointer', async ({ page }) => {
   await page.waitForTimeout(2_500);
   await expect(page.locator('aside')).toContainText(/.+/);
 });
+
+/**
+ * The nav: Explorer, the lesson submenu, and the indicator that follows the pointer.
+ *
+ * Driven with a real pointer. A synthetic click would prove the markup exists; it would not prove
+ * the indicator moves, which is the part with the moving parts.
+ *
+ * The trap worth guarding: this nav is morphed in by Livewire, and a <script> arriving through a
+ * morph never runs. Its x-data is therefore an inline object rather than a named function — if
+ * someone "tidies" it into navHover(), Alpine throws on arrival and the whole nav stops responding.
+ * The indicator moving IS that check.
+ */
+test('nav: Explorer, the lessons submenu, and a pointer-following indicator', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.waitForFunction(() => !!(window as any).__tmMap, { timeout: 30_000 });
+
+  // Renamed, and no longer a sixth top-level item competing with Lessons.
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'Explorer' })).toBeVisible();
+  const topLevelNewLesson = page.locator('nav a', { hasText: /^New Lesson$/ });
+  expect(await topLevelNewLesson.count(), '"New Lesson" is still a top-level destination').toBe(0);
+
+  const indicator = page.locator('nav span[aria-hidden="true"].pointer-events-none').first();
+  const readIndicator = () => indicator.evaluate((el) => ({
+    transform: getComputedStyle(el).transform,
+    opacity: +getComputedStyle(el).opacity,
+  }));
+
+  const atRest = await readIndicator();
+  expect(atRest.opacity, 'the indicator is showing before the pointer is anywhere near it').toBeLessThan(0.1);
+
+  // Hover one link, then another: it must MOVE, not appear twice.
+  const dashboard = page.getByRole('navigation').getByRole('link', { name: 'Dashboard' });
+  await dashboard.hover();
+  await page.waitForTimeout(500);
+  const onFirst = await readIndicator();
+  expect(onFirst.opacity, 'hovering a link did not show the indicator').toBeGreaterThan(0.5);
+
+  await page.getByRole('navigation').getByRole('link', { name: 'Classes' }).hover();
+  await page.waitForTimeout(500);
+  const onSecond = await readIndicator();
+  expect(onSecond.transform, 'the indicator did not follow the pointer to the next link')
+    .not.toEqual(onFirst.transform);
+
+  // Leaving the nav entirely puts it away.
+  await page.mouse.move(600, 500);
+  await page.waitForTimeout(600);
+  expect((await readIndicator()).opacity, 'the indicator was left behind').toBeLessThan(0.1);
+
+  // The submenu opens and holds the three ways to reach a lesson.
+  // Lessons is a dropdown trigger now, not a link.
+  await page.getByRole('navigation').getByRole('button', { name: 'Lessons' }).click();
+  await page.waitForTimeout(400);
+  for (const label of ['All lessons', 'New Lesson', 'Create with AI']) {
+    await expect(page.locator('.dropdown-content').getByText(label, { exact: true })).toBeVisible();
+  }
+
+  expect(errors.filter((m) => !/WebGL|uniformMatrix4fv/i.test(m)), 'a script error on the page').toEqual([]);
+});
