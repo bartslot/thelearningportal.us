@@ -78,7 +78,7 @@
     }
 @endphp
 
-<nav class="sticky top-0 z-50 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+<nav class="sticky top-0 z-50 border-none hover:border-b border-slate-800 hover:bg-slate-900/80 bg-slate-900/0 hover:backdrop-blur-sm transition-colors">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center justify-between">
             <a href="{{ route('home') }}" class="flex items-center gap-3">
