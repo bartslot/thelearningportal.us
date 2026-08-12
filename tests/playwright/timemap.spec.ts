@@ -303,3 +303,38 @@ test('a tuned territory colour survives a year scrub and a style switch', async 
   await page.waitForTimeout(1_200);
   await stillThere('a style switch');
 });
+
+/**
+ * The advancing-front effect (Germany into Poland, 1939). The interesting assertion is not that a
+ * layer exists — it is that ground gets TAKEN over time and then stops, because the failure modes
+ * here are "nothing ever appears" and "everything appears at once", and both leave a layer behind.
+ */
+test('the advance takes ground over time and stops when it is done', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-fill'), { timeout: 25_000 });
+
+  // Put Poland on screen first — the field is built from what the map has actually rendered.
+  await page.evaluate(() => (window as any).__tmMap.jumpTo({ center: [19.4, 52.1], zoom: 4.4, pitch: 0 }));
+  await page.waitForTimeout(3_000);
+
+  // A long advance on purpose. √t is very fast early — with three seeds spread along the border,
+  // a 3-second run has most of Poland taken inside the first second, which leaves no headroom to
+  // measure growth against. That is a real property of the curve, not a test artefact.
+  await page.evaluate(() => (window as any).__tune.set('Advance', 'seconds', 8));
+  await page.evaluate(() => (window as any).__tune.set('Advance', 'play', true));
+  await page.waitForFunction(() => !!(window as any).__tmAdvance, { timeout: 20_000 });
+
+  const covered = () => page.evaluate(() => (window as any).__tmAdvance.painted);
+
+  await page.waitForTimeout(400);
+  const early = await covered();
+  await page.waitForTimeout(6_000);
+  const late = await covered();
+
+  expect(early, 'nothing was painted at all').toBeGreaterThan(0);
+  expect(late, 'the front never advanced').toBeGreaterThan(early * 1.3);
+
+  // And it settles rather than running forever.
+  await page.waitForTimeout(3_000);
+  const settled = await covered();
+  expect(Math.abs(settled - late) / late, 'the front never stopped').toBeLessThan(0.25);
+});

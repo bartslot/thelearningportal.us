@@ -18,6 +18,7 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 // layers ended up merged, tested and never loaded by any page.
 import { addGlobeLayers } from '../map-globe-layers.js';
 import { sweepBorder, outlineOf } from '../map/border-sweep.js';
+import { createAdvance } from '../map/advance-layer.js';
 import { planetSpacePosition } from './planet-mesh.js';
 import { sunDirection } from './sun.js';
 
@@ -742,6 +743,83 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint('boundaries-glow', 'line-blur', glow.blur);
     };
 
+      // ── An army taking ground ────────────────────────────────────────────────────────────────
+      //
+      // The documentary effect: a front creeping across a country in rounded lobes, like ink
+      // spreading through paper. See advance-field.js for why it is an arrival field and not an
+      // animation — and why the front moves on √t rather than at a constant speed.
+      //
+      // Germany into Poland, September 1939, is the reference case: three axes (the western
+      // border, East Prussia in the north, Slovakia in the south) converging, which is also the
+      // case that shows off the merge — fronts that meet fuse into one shape instead of crossing.
+      const ADVANCE_CASES = {
+        'Poland 1939': {
+          year: 1939,
+          match: /^(second )?poland|polish republic/i,
+          // Where the Wehrmacht crossed, roughly: Pomerania/Silesia in the west, East Prussia in
+          // the north, and the Slovak border in the south.
+          seeds: [[15.0, 52.3], [20.5, 54.0], [19.6, 49.4]],
+        },
+      };
+      let advance = null;
+      let advanceCase = 'Poland 1939';
+
+      /** Every rendered piece of the target country, unioned by being drawn into the same mask. */
+      const advanceTarget = (test) => {
+        const parts = map.queryRenderedFeatures({ layers: ['boundaries-fill'] })
+          .filter((f) => test.test(String(f.properties?.Name ?? '')));
+        if (!parts.length) return null;
+        const coordinates = parts.flatMap((f) => (
+          f.geometry.type === 'Polygon' ? [f.geometry.coordinates]
+            : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : []
+        ));
+        return coordinates.length ? { type: 'MultiPolygon', coordinates } : null;
+      };
+
+      const advanceOptions = () => ({
+        colour: advanceColour, rimColour: advanceRim, opacity: advanceOpacity,
+        seconds: advanceSeconds, curve: advanceCurve, lobeScale: advanceLobeScale,
+        lobeAmount: advanceLobeAmount, mergeKm: advanceMerge, rimKm: advanceRimKm,
+      });
+
+      /**
+       * Jump to the year, find the country, build the field, play. Split out because the field is
+       * built once and replayed — rebuilding it per play would also reshuffle the lobes, and a
+       * shape that changes every replay cannot be judged against the one before it.
+       */
+      const runAdvance = () => {
+        const preset = ADVANCE_CASES[advanceCase];
+        if (!preset) return;
+        window.__setTimemapYear(preset.year);
+        // Tiles for the new year have to arrive before the country can be found.
+        setTimeout(() => {
+          const geometry = advanceTarget(preset.match);
+          if (!geometry) {
+            console.warn(`[tune] no territory matching ${preset.match} on screen at ${preset.year} — pan to it and try again`);
+            return;
+          }
+          if (!advance) {
+            advance = createAdvance(map, { beforeId: 'boundaries-label', ...advanceOptions() });
+            window.__tmAdvance = advance; // dev tooling + Playwright
+          } else advance.setOptions(advanceOptions());
+          if (advance.prepare(geometry, preset.seeds)) advance.play();
+        }, 700);
+      };
+
+      let advanceColour = '#b31217';
+      let advanceRim = '#4a0505';
+      let advanceOpacity = 0.85;
+      let advanceSeconds = 4;
+      let advanceCurve = 0.5;
+      let advanceLobeScale = 6;
+      let advanceLobeAmount = 45;
+      let advanceMerge = 120;
+      let advanceRimKm = 40;
+      // Shape controls change the field itself, so they need a rebuild rather than a repaint.
+      const reshape = () => { if (advance) { advance.setOptions(advanceOptions()); runAdvance(); } };
+      const restyle = () => { if (advance) advance.setOptions(advanceOptions()); };
+
+
     tuneOff = [
       // A territory is resting, hovered, or opened by a click. Each state gets its own colour and
       // opacity, and each writes into the expression rather than over it — see fillOverride.
@@ -770,6 +848,31 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { fillOverride.active.colour = v; applyTerritoryFill(); } },
         { key: 'activeOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
           apply: (v) => { fillOverride.active.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Advance', [
+        { key: 'play', label: 'Play advance', type: 'button', apply: runAdvance },
+        { key: 'seconds', label: 'Seconds', min: 1, max: 15, step: 0.5, value: 4,
+          apply: (v) => { advanceSeconds = v; restyle(); } },
+        // 0.5 is √t, how liquid actually creeps. 1 is a constant speed — worth a look, because it
+        // is what makes hand-animated versions of this read as mechanical.
+        { key: 'curve', label: 'Slowdown (0.5 = liquid, 1 = linear)', min: 0.25, max: 1, step: 0.05, value: 0.5,
+          apply: (v) => { advanceCurve = v; restyle(); } },
+        { key: 'colour', label: 'Colour', type: 'color', value: '#b31217',
+          apply: (v) => { advanceColour = v; restyle(); } },
+        { key: 'rimColour', label: 'Leading edge', type: 'color', value: '#4a0505',
+          apply: (v) => { advanceRim = v; restyle(); } },
+        { key: 'rimKm', label: 'Leading edge depth (km)', min: 0, max: 200, step: 5, value: 40,
+          apply: (v) => { advanceRimKm = v; restyle(); } },
+        { key: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, value: 0.85,
+          apply: (v) => { advanceOpacity = v; restyle(); } },
+        { key: 'lobeAmount', label: 'Lobe depth (km)', min: 0, max: 150, step: 5, value: 45,
+          apply: (v) => { advanceLobeAmount = v; reshape(); } },
+        { key: 'lobeScale', label: 'Lobe count', min: 1, max: 20, step: 1, value: 6,
+          apply: (v) => { advanceLobeScale = v; reshape(); } },
+        { key: 'mergeKm', label: 'Front merge (km)', min: 0, max: 400, step: 10, value: 120,
+          apply: (v) => { advanceMerge = v; reshape(); } },
+        { key: 'clear', label: 'Clear', type: 'button', apply: () => advance?.clear() },
       ], { tab: 'Map' }),
 
       window.__tune.register('Territory borders', [
