@@ -191,45 +191,59 @@ test('the load handler runs to the end — globe layers, ship and settings group
 });
 
 /**
- * Hovering a territory adds a second name layer on top of the resting one. They draw the same words
- * in the same place, from different sources, so a territory that already had a label showed it
- * TWICE, half a line apart. The first attempt at this aligned the two so the duplicate at least sat
- * straight — which is not a fix, it is a tidier bug.
+ * Hovering a territory used to draw its name from a SECOND layer, anchored differently from the
+ * resting one, so the name visibly slid sideways as you pointed at it. Bart: "the labels drift from
+ * position when the territory is hovered. I don't want a different position."
+ *
+ * There is one name layer now and hovering only scales it. So the assertions are: the label is
+ * still there, it is BIGGER, and the point it is drawn at has not moved by so much as a fraction of
+ * a degree — that last one is the actual complaint, and it is the one a "does it get bigger" test
+ * would sail straight past.
  */
-test('hovering a named territory does not print its name twice', async ({ page }) => {
-  await page.waitForFunction(() => !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
+test('hovering scales the name in place, without moving it or removing it', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tmShowGlow && !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
   await page.waitForTimeout(4_000);
 
-  const name: string | null = await page.evaluate(() => {
-    const m = (window as any).__tmMap;
-    const f = m.queryRenderedFeatures({ layers: ['boundaries-label'] })[0];
-    return f?.properties?.name ?? null;
-  });
-  expect(name, 'needed at least one labelled territory to hover').toBeTruthy();
+  const anchorOf = (territory: string) => page.evaluate((name) => {
+    const f = (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
+      .find((x: any) => x.properties?.name === name);
+    return f ? f.geometry.coordinates : null;
+  }, territory);
 
-  // Drive showGlow the way a hover does.
-  await page.evaluate((territory) => {
+  const name: string | null = await page.evaluate(() =>
+    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })[0]?.properties?.name ?? null);
+  expect(name, 'needed a labelled territory to hover').toBeTruthy();
+
+  const sizeAt = () => page.evaluate((n) => {
+    const m = (window as any).__tmMap;
+    const size = m.getLayoutProperty('boundaries-label', 'text-size');
+    // Either a plain number (nothing hovered) or the case expression; pull out what this name gets.
+    if (typeof size === 'number') return size;
+    return size[2];
+  }, name);
+
+  const before = { anchor: await anchorOf(name!), size: await sizeAt() };
+
+  await page.evaluate((n) => {
     const m = (window as any).__tmMap;
     const geom = m.queryRenderedFeatures({ layers: ['boundaries-fill'] })
-      .find((f: any) => f.properties?.Name === territory)?.geometry;
-    (window as any).__tmShowGlow(geom ?? null, territory, null);
+      .find((f: any) => f.properties?.Name === n)?.geometry;
+    (window as any).__tmShowGlow(geom ?? null, n, null);
   }, name);
-  // The filter needs a render pass before queryRenderedFeatures reflects it.
-  await page.waitForTimeout(1_500);
+  await page.waitForTimeout(600); // past the 180ms tween
 
-  // The hover layer is showing this name, so the resting layer must not be.
-  const resting = await page.evaluate((territory) =>
-    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
-      .filter((f: any) => f.properties?.name === territory).length, name);
-  expect(resting, `"${name}" still drawn by boundaries-label while hovered`).toBe(0);
+  const after = { anchor: await anchorOf(name!), size: await sizeAt() };
 
-  // And it comes back when the pointer leaves, or hovering would permanently erase names.
+  expect(after.anchor, 'the name vanished on hover').not.toBeNull();
+  // THE complaint: same point, to the last decimal.
+  expect(after.anchor![0]).toBeCloseTo(before.anchor![0], 10);
+  expect(after.anchor![1]).toBeCloseTo(before.anchor![1], 10);
+  expect(after.size, 'hovering did not grow the name').toBeGreaterThan(before.size);
+
+  // And it comes back down, rather than leaving every hovered name permanently large.
   await page.evaluate(() => (window as any).__tmShowGlow(null));
-  await page.waitForTimeout(1_500);
-  const restored = await page.evaluate((territory) =>
-    (window as any).__tmMap.queryRenderedFeatures({ layers: ['boundaries-label'] })
-      .filter((f: any) => f.properties?.name === territory).length, name);
-  expect(restored, `"${name}" never came back after the hover ended`).toBeGreaterThan(0);
+  await page.waitForTimeout(600);
+  expect(await sizeAt()).toBeCloseTo(before.size, 5);
 });
 
 /**
@@ -381,26 +395,21 @@ test('Earth is a real style here, and an unknown one says so', async ({ page }) 
  * resting name and the hover name are the same words from two layers, so a change that reaches only
  * one of them swaps the font out from under the pointer.
  */
-test('label font and size apply to both name layers, and every offered font actually exists', async ({ page }) => {
-  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-glow-label'), { timeout: 25_000 });
-
-  const read = () => page.evaluate(() => {
-    const m = (window as any).__tmMap;
-    const of = (l: string) => ({
-      font: m.getLayoutProperty(l, 'text-font'),
-      size: m.getLayoutProperty(l, 'text-size'),
-    });
-    return { resting: of('boundaries-label'), hover: of('boundaries-glow-label') };
-  });
+test('label font and size apply, and every offered font actually exists', async ({ page }) => {
+  await page.waitForFunction(() => !!(window as any).__tune?.set && !!(window as any).__tmMap?.getLayer('boundaries-label'), { timeout: 25_000 });
 
   expect(await page.evaluate(() => (window as any).__tune.set('Territory labels', 'font', 'Eagle Lake'))).toBe(true);
   expect(await page.evaluate(() => (window as any).__tune.set('Territory labels', 'size', 20))).toBe(true);
 
-  const after = await read();
-  for (const which of ['resting', 'hover'] as const) {
-    expect(after[which].font, `${which} label kept the old font`).toEqual(['Eagle Lake']);
-    expect(after[which].size, `${which} label kept the old size`).toBe(20);
-  }
+  const after = await page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    return {
+      font: m.getLayoutProperty('boundaries-label', 'text-font'),
+      size: m.getLayoutProperty('boundaries-label', 'text-size'),
+    };
+  });
+  expect(after.font, 'the label kept the old font').toEqual(['Eagle Lake']);
+  expect(after.size, 'the label kept the old size').toBe(20);
 
   // Every font in the dropdown must have glyphs on disk, or picking it silently empties the map.
   const fonts: string[] = await page.evaluate(() => {

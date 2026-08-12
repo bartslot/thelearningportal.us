@@ -19,6 +19,7 @@ import { CLOUD_LAYER_ID } from './clouds.js';
 import { addGlobeLayers } from '../map-globe-layers.js';
 import { sweepBorder, outlineOf } from '../map/border-sweep.js';
 import { createAdvance } from '../map/advance-layer.js';
+import { EASING } from '../easing.js';
 import { planetSpacePosition } from './planet-mesh.js';
 import { sunDirection } from './sun.js';
 
@@ -412,6 +413,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const LABEL_ANCHOR = {
     Q217196: [-3.7, 40.4], // Crown of Castile → Madrid
   };
+  /** Last computed label points, kept so a hover can re-flag one without re-querying every tile. */
+  let labelBest = new Map();
+  const writeLabels = () => {
+    const src = map.getSource('labels');
+    if (!src) return;
+    src.setData({
+      type: 'FeatureCollection',
+      features: [...labelBest.entries()].map(([id, b]) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: LABEL_ANCHOR[id] || b.c },
+        properties: {
+          name: b.name,
+          flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '',
+          sel: String(selectedId) === id,
+          hov: b.name === labelHoverName,
+        },
+      })),
+    });
+  };
   const refreshLabels = () => {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
@@ -428,15 +447,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         if (!cur || area > cur.area) best.set(id, { area, c, name });
       }
     }
-    const apply = () => src.setData({
-      type: 'FeatureCollection',
-      features: [...best.entries()].map(([id, b]) => ({
-        type: 'Feature', geometry: { type: 'Point', coordinates: LABEL_ANCHOR[id] || b.c },
-        // `sel` drives symbol-sort-key so the open territory's name is placed first and never
-        // culled by a neighbour's label (its flag survived collision but its text was dropped).
-        properties: { name: b.name, flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '', sel: String(selectedId) === id },
-      })),
-    });
+    // `sel`/`hov` drive symbol-sort-key so the open territory's name — and the one under the
+    // pointer — are placed first and never culled by a neighbour's label.
+    labelBest = best;
+    const apply = writeLabels;
     apply();
     // Lazily load flag images for visible flagged polities, then redraw so icons appear above names.
     const toLoad = [...best.keys()].filter((id) => flaggedIds.has(id) && !map.hasImage(`flag-${id}`) && !triedFlag.has(id));
@@ -543,6 +557,72 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
    * same shape. A feature-state glow could only ever trace the hard-cornered source, which is
    * exactly what it did — rounded borders with a sharp-cornered halo behind them.
    */
+  /**
+   * Hovering a territory grows its name where it already is.
+   *
+   * text-size is a LAYOUT property, so two ordinary routes are closed: MapLibre cannot transition
+   * it, and it cannot read feature-state (that is paint-only). What it CAN do is read a feature
+   * property, so the size is a `case` on the name and the tween is stepped here — which is also the
+   * only way to honour a named curve rather than whatever MapLibre would have interpolated.
+   *
+   * Stepping a layout property re-places the symbols each frame. That is fine at this scale: the
+   * labels source holds one point per polity on screen, a couple of dozen at most.
+   */
+  let labelBaseSize = 12;
+  let labelHoverScale = 1.35;
+  let labelHoverMs = 180;
+  let labelHoverName = null;
+  let labelScaleNow = 1;
+  let labelTween = null;
+  let labelSettle = null;
+
+  const applyLabelSize = () => {
+    if (!map.getLayer('boundaries-label')) return;
+    const big = labelBaseSize * labelScaleNow;
+    const size = labelHoverName && labelScaleNow !== 1
+      ? ['case', ['==', ['get', 'name'], labelHoverName], big, labelBaseSize]
+      : labelBaseSize;
+    try { map.setLayoutProperty('boundaries-label', 'text-size', size); } catch (e) { /* parsing */ }
+  };
+
+  const hoverLabel = (name) => {
+    if (name === labelHoverName) return;
+    // Keep growing/shrinking from wherever the last tween got to, so flicking between neighbours
+    // does not snap back to 1 before starting again.
+    const from = labelScaleNow;
+    const to = name ? labelHoverScale : 1;
+    labelHoverName = name || labelHoverName; // hold the name while it shrinks back
+    const settleTo = name;
+    writeLabels(); // once per hover change, so `hov` (placement priority) is current
+    if (labelTween) cancelAnimationFrame(labelTween);
+    if (labelSettle) clearTimeout(labelSettle);
+    const started = performance.now();
+    const finish = () => {
+      labelScaleNow = to;
+      labelHoverName = settleTo;
+      applyLabelSize();
+      if (!settleTo) writeLabels();
+    };
+    const step = (now) => {
+      const t = labelHoverMs > 0 ? Math.min(1, (now - started) / labelHoverMs) : 1;
+      labelScaleNow = from + (to - from) * EASING.easeInOutQuad(t);
+      applyLabelSize();
+      if (t < 1) { labelTween = requestAnimationFrame(step); return; }
+      labelTween = null;
+      finish();
+    };
+    labelTween = requestAnimationFrame(step);
+    // requestAnimationFrame does not fire in a backgrounded tab, so without this the tween never
+    // starts and the name silently keeps its old size — hovering, switching tabs and coming back
+    // would leave it wrong with nothing to show why. The timer lands the END state regardless; if
+    // the tween did run, this is a no-op that sets what is already set.
+    labelSettle = setTimeout(() => {
+      labelSettle = null;
+      if (labelTween) { cancelAnimationFrame(labelTween); labelTween = null; }
+      finish();
+    }, labelHoverMs + 40);
+  };
+
   const showGlow = (geometry, name = null, qid = null) => {
     const src = map.getSource('boundaries-glow-src');
     if (!src) return;
@@ -553,27 +633,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       geometry: { type: 'LineString', coordinates: smoothSamples >= 1 ? smooth(ring, smoothSamples) : ring },
     }));
 
-    // The name rides along on a Point, anchored the way the ordinary label is — largest ring's
-    // centroid, with the same hand-tuned LABEL_ANCHOR override — so when both happen to be drawn
-    // the hover name sits exactly where the real one does instead of jumping to a second spot.
-    if (name && rings.length) {
-      const biggest = rings.map(ringCentroid).reduce((a, b) => (b.area > a.area ? b : a));
-      features.push({
-        type: 'Feature',
-        properties: { name },
-        geometry: { type: 'Point', coordinates: (qid && LABEL_ANCHOR[qid]) || biggest.c },
-      });
-    }
-
     src.setData({ type: 'FeatureCollection', features });
 
-    // Both layers write the same words in the same place, so hovering a territory that already had
-    // a resting label drew its name TWICE, half a line apart. Aligning them (above) was treating the
-    // symptom — the resting one has to go while this one is up. Named, not id'd, because the two
-    // layers come from different sources and the name is the only thing they share.
-    if (map.getLayer('boundaries-label')) {
-      map.setFilter('boundaries-label', name ? ['!=', ['get', 'name'], name] : null);
-    }
+    // The NAME is not drawn here. It used to be — a second symbol layer over the same words — and
+    // because that layer anchored differently from the real label, hovering visibly nudged the name
+    // sideways. Two layers can be aligned, and I tried; they still cannot be kept aligned through a
+    // font change, an offset change or a flag appearing above the text.
+    //
+    // So there is ONE name layer, always, and hovering only makes it bigger. Nothing moves.
+    hoverLabel(name);
   };
   const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
 
@@ -733,7 +801,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
      * Glyph stacks are SDF-baked per font (scripts/build-glyphs.mjs), so this list is what is built,
      * not what is installed: naming a font with no .pbf makes the labels disappear entirely.
      */
-    const LABEL_LAYERS = ['boundaries-label', 'boundaries-glow-label'];
+    const LABEL_LAYERS = ['boundaries-label'];
     const FONT_STACKS = [['Cinzel', 'Cinzel (map serif)'], ['Eagle Lake', 'Eagle Lake (calligraphy)'], ['inter', 'Inter (plain)']];
     const labelLayout = (prop, value) => {
       for (const layer of LABEL_LAYERS) {
@@ -911,7 +979,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         { key: 'font', label: 'Font', type: 'select', options: FONT_STACKS, value: 'Cinzel',
           apply: (v) => labelLayout('text-font', [v]) },
         { key: 'size', label: 'Size', min: 6, max: 32, step: 0.5, value: 12,
-          apply: (v) => labelLayout('text-size', v) },
+          // Owned, not painted: the hover tween rebuilds text-size every frame from this.
+          apply: (v) => { labelBaseSize = v; applyLabelSize(); } },
+        { key: 'hoverScale', label: 'Hover scale', min: 1, max: 2.5, step: 0.05, value: 1.35,
+          apply: (v) => { labelHoverScale = v; } },
+        { key: 'hoverMs', label: 'Hover speed (ms)', min: 0, max: 800, step: 10, value: 180,
+          apply: (v) => { labelHoverMs = v; } },
         { key: 'tracking', label: 'Letter spacing', min: 0, max: 0.4, step: 0.01, value: 0.06,
           apply: (v) => labelLayout('text-letter-spacing', v) },
         { key: 'caps', label: 'Small caps', type: 'boolean', value: true,
@@ -1181,10 +1254,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       map.setLayoutProperty('boundaries-line', 'visibility', (s.borderSource || roundedBordersOn) ? 'none' : 'visible');
       ownedPaint('boundaries-label', 'text-color', s.text.color);
       ownedPaint('boundaries-label', 'text-halo-color', s.text.halo);
-      // The hover name is a label too. Without this it kept the atlas ink on Night and Satellite,
-      // where it would be the one piece of text on the map not matching its neighbours.
-      ownedPaint('boundaries-glow-label', 'text-color', s.text.color);
-      ownedPaint('boundaries-glow-label', 'text-halo-color', s.text.halo);
     }
     if (map.getLayer('markers-label')) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
@@ -1319,34 +1388,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'line-opacity-transition': { duration: 140 },
       },
     });
-    map.addLayer({
-      /**
-       * The hovered territory's name, ALWAYS drawn.
-       *
-       * The ordinary label layer yields to collision, so in a crowded era the thing under the
-       * pointer often had no name on it — you could light up a shape and still not be told what it
-       * was, which is most of the value of hovering it.
-       *
-       * Above the glow line so the name is never crossed by its own halo, and after it in the
-       * layer order for the same reason.
-       */
-      id: 'boundaries-glow-label', type: 'symbol', source: 'boundaries-glow-src',
-      filter: ['==', ['geometry-type'], 'Point'],
-      layout: {
-        'text-field': ['get', 'name'],
-        // The same face and rhythm as every other territory name, so the hovered one does not read
-        // as a different kind of thing.
-        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
-        'text-size': 12,
-        // THE POINT OF THIS LAYER: it never yields. There is only ever one of these on screen, and
-        // it is the answer to "what am I pointing at".
-        'text-allow-overlap': true, 'text-ignore-placement': true,
-      },
-      paint: {
-        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
-        'text-halo-width': 2, 'text-halo-blur': 0.5,
-      },
-    });
+    // NOTE: there was a second name layer here — the hovered territory's name, drawn from the glow
+    // source so it could never be culled by collision. It is gone, because it anchored differently
+    // from the real label and so hovering visibly shifted the name sideways.
+    //
+    // Its job survives without it: the hovered name takes symbol-sort-key 0 (see refreshLabels), so
+    // it is placed FIRST and wins the collision it used to lose, and hoverLabel() grows it in place.
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
@@ -1377,7 +1424,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'text-padding': 6, // space labels out so dense regions de-clutter
         // Place the selected territory's label first (lowest key wins collision) so its name
         // always shows; everyone else keeps the default source-order placement.
-        'symbol-sort-key': ['case', ['get', 'sel'], 0, 1],
+        // Lowest key is placed first, so it never loses a collision. Both the OPEN territory and
+        // the one under the pointer get 0 — the hovered name winning placement is what the removed
+        // always-on-top hover layer used to guarantee.
+        'symbol-sort-key': ['case', ['get', 'sel'], 0, ['get', 'hov'], 0, 1],
       },
       // Strong halo so names stay readable over borders/fills in every style.
       // icon-translate lifts the flag a few px above the name (independent of icon-size).
