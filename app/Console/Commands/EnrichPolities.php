@@ -17,6 +17,9 @@ class EnrichPolities extends Command
 
     protected $description = 'Resolve each boundary polity to Wikidata/Wikipedia: flag, summary, dates, significance';
 
+    /** PNG signature. Commons answers a 200 with an HTML error page often enough to check. */
+    private const PNG_MAGIC = "\x89PNG\r\n\x1a\n";
+
     private array $insignificantPatterns = ['cultures', 'nomads', 'hunter', 'forager', 'pastoral', 'peoples', 'tribes'];
 
     private int $significantSitelinkFloor = 5;
@@ -38,12 +41,18 @@ class EnrichPolities extends Command
         foreach ($polities as $p) {
             $data = $resolver->resolve($p->name);
 
+            // Only claim a flag once one is actually on disk — see the same guard in
+            // SyncCliopatriaPolities. A path written from the Commons filename alone points at a
+            // file that may never have been fetched, and the card then requests a 404.
             $flagPath = null;
             if ($data['flag_commons']) {
-                $flagPath = "/flags/{$p->polity_id}.png";
-                $bytes = Http::withHeaders(['User-Agent' => 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational'])
-                    ->get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=80')->body();
-                File::put($flagsDir.'/'.$p->polity_id.'.png', $bytes);
+                $response = Http::withHeaders(['User-Agent' => 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational'])
+                    ->get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=80');
+
+                if ($response->successful() && str_starts_with($response->body(), self::PNG_MAGIC)) {
+                    File::put($flagsDir.'/'.$p->polity_id.'.png', $response->body());
+                    $flagPath = "/flags/{$p->polity_id}.png";
+                }
             }
 
             $significant = ! $this->isInsignificant($p->name) && $data['sitelinks'] >= $this->significantSitelinkFloor;

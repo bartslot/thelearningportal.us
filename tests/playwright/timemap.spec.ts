@@ -58,11 +58,19 @@ test('timemap-timeline: dragging the tick timeline changes the year', async ({ p
 
 test('timemap-click-panel: clicking a region opens the polity panel', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  // `__portal.ready` and even isStyleLoaded() are both true well BEFORE map.loaded(), which also
+  // waits on every source and any pending work. Under swiftshader that gap is seconds long, and a
+  // click inside it reaches a handler whose queryRenderedFeatures finds nothing — so the panel never
+  // opens and the failure looks like a product bug rather than an impatient test.
+  await page.waitForFunction(() => (window as any).__tmMap?.loaded() === true, { timeout: 40_000 });
   const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
   if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 
-  // Either a polity panel (label + tabs) or the empty prompt — both prove the click round-trip.
-  const aside = page.locator('aside');
+  // VISIBLE, not merely present. `toContainText(/.+/)` passed with the panel shut — an aside that
+  // is display:none still "contains text", so the assertion held whether or not the click did
+  // anything. Spotted by the card session while rebuilding this panel.
+  const aside = page.locator('aside').first();
+  await expect(aside).toBeVisible();
   await expect(aside).toContainText(/.+/);
   const wikiTab = page.getByRole('tab', { name: 'Wikipedia' });
   if (await wikiTab.count()) {
@@ -582,7 +590,24 @@ test('hover, drag and click behave with a real pointer', async ({ page }) => {
 
   const canvas = page.locator('canvas.maplibregl-canvas');
   const box = (await canvas.boundingBox())!;
-  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  // FIND a territory rather than assuming one is under the middle. The canvas centre at this camera
+  // is the Mediterranean, so hovering it lights nothing and the test fails for a reason that has
+  // nothing to do with hovering. Scan a coarse grid and take the first point that actually has a
+  // territory under it.
+  const found = await page.evaluate(() => {
+    const m = (window as any).__tmMap;
+    const c = m.getCanvas();
+    for (let fy = 0.3; fy <= 0.7; fy += 0.1) {
+      for (let fx = 0.25; fx <= 0.75; fx += 0.05) {
+        const pt = { x: c.clientWidth * fx, y: c.clientHeight * fy };
+        if (m.queryRenderedFeatures(pt, { layers: ['boundaries-fill'] }).length) return pt;
+      }
+    }
+    return null;
+  });
+  expect(found, 'no territory anywhere on screen to hover').not.toBeNull();
+  const mid = { x: box.x + found!.x, y: box.y + found!.y };
 
   const state = () => page.evaluate(() => {
     const m = (window as any).__tmMap;
@@ -599,6 +624,12 @@ test('hover, drag and click behave with a real pointer', async ({ page }) => {
   await page.waitForTimeout(1_200);
   const hovering = await state();
   expect(hovering.glow, 'hovering a territory lit nothing').toBeGreaterThan(0);
+
+  // The map rests silent: names appear only where the pointer is.
+  const restingCount = await page.evaluate(() =>
+    (window as any).__tmMap.getLayoutProperty('boundaries-label', 'visibility'));
+  expect(restingCount, 'territory names are still sitting on the map at rest').toBe('none');
+  expect(hovering.cursorNames.length, 'hovering a territory named nothing').toBeGreaterThan(0);
 
   // ── Following ───────────────────────────────────────────────────────────────────────────────
   // Inside the SAME territory the outline does not change, but the name must still move with the

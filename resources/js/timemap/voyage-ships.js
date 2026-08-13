@@ -141,6 +141,35 @@ export const waypointAt = (track, t) => {
  * space nor swamps an ocean. Passing anchored=false keeps the old constant-pixel behaviour, where
  * the marker looks enormous from far out and appears to shrink as you zoom in.
  */
+/**
+ * Metres per screen pixel WHERE THE MAP ACTUALLY DRAWS, measured rather than derived.
+ *
+ * EARTH_CIRCUMFERENCE / (512 * 2^zoom) is the Web Mercator answer, and MapLibre is not drawing Web
+ * Mercator here — on the globe the whole planet is squeezed into a disc, so at globe view that
+ * formula overestimates metres-per-pixel several times over. A ship asked to be 110 px wide was
+ * then given several times 110 px worth of metres, and drew across an ocean.
+ *
+ * Two projected points a known distance apart give the real answer, including the compression near
+ * the limb. Falls back to the formula when the projection cannot answer, which it cannot for a
+ * point on the far side of the globe.
+ *
+ * @param {(lngLat: [number, number]) => {x: number, y: number}} project  map.project
+ * @param {number} fallbackMpp  the Mercator value, for when projection is unusable
+ */
+export const projectedMpp = (project, lng, lat, fallbackMpp) => {
+  const STEP_DEG = 0.25;
+  const METRES_PER_DEG_LAT = 111320;
+  try {
+    const from = project([lng, lat]);
+    const to = project([lng, Math.max(-89, Math.min(89, lat + STEP_DEG))]);
+    const px = Math.hypot(to.x - from.x, to.y - from.y);
+    // Below about a twentieth of a pixel the two points have collapsed together and the ratio is
+    // noise, not a measurement.
+    if (Number.isFinite(px) && px > 0.05) return (STEP_DEG * METRES_PER_DEG_LAT) / px;
+  } catch (e) { /* off-globe, or no projection yet */ }
+  return fallbackMpp;
+};
+
 export const unitWorldSize = (basePx, scale, metresPerPixel, anchored = true) => {
   if (!anchored) return basePx * scale * metresPerPixel;
   // Strict world-anchoring DOUBLES the marker every zoom level, so a ship hits the ceiling by
@@ -528,7 +557,12 @@ export function addVoyageShips(map, { beforeId = 'tm-clouds', only = null, ambie
       const mainMatrix = args && args.defaultProjectionData ? args.defaultProjectionData.mainMatrix : args;
 
       const zoom = map.getZoom();
-      const metresPerPixel = EARTH_CIRCUMFERENCE / (512 * Math.pow(2, zoom));
+      const centre = map.getCenter();
+      const metresPerPixel = projectedMpp(
+        (lngLat) => map.project(lngLat),
+        centre.lng, centre.lat,
+        EARTH_CIRCUMFERENCE / (512 * Math.pow(2, zoom)),
+      );
       const unitMetres = (basePx) => unitWorldSize(basePx, sScale, metresPerPixel, sAnchored);
 
       const shipMetres = unitMetres(SHIP_PX);

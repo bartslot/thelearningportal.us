@@ -38,11 +38,35 @@ const cacheFor = (gl) => {
   return cache
 }
 
-const upload = (gl, image, mipmap) => {
+/**
+ * How many channels this texture's data actually has.
+ *
+ * A coverage mask is ONE byte of real information per texel, and uploading it as RGBA stores three
+ * copies of it plus a constant. On the cloud atlas that is 32 MiB of VRAM to carry 8 MiB of data —
+ * against a 96 MiB surface ceiling and a school Chromebook. The shader already reads `.r`; nothing
+ * downstream changes.
+ *
+ * Same argument tiles/atlas.js makes for choosing RG8 over RGBA8 on the DEM, one channel further
+ * down. Bart's instinct was to PACK four layers into the four channels; the cheaper answer was that
+ * three of the four were never carrying anything.
+ *
+ * WEBGL1 HAS NO SIZED R8. `LUMINANCE` is its one-byte equivalent and it replicates into r, g and b,
+ * so a shader reading `.r` is correct on both paths without knowing which it got. Decided here
+ * rather than discovered: the fallback is the reason this returns a format triple instead of a flag.
+ */
+const formatFor = (gl, channels) => {
+  if (channels !== 1) return { internal: gl.RGBA, format: gl.RGBA }
+  // texStorage2D's presence is the WebGL2 tell already used in planet-mesh.js.
+  if (typeof gl.texStorage2D === 'function') return { internal: gl.R8, format: gl.RED }
+  return { internal: gl.LUMINANCE, format: gl.LUMINANCE }
+}
+
+const upload = (gl, image, mipmap, channels) => {
   const texture = gl.createTexture()
   gl.bindTexture(gl.TEXTURE_2D, texture)
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
+  const { internal, format } = formatFor(gl, channels)
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, format, gl.UNSIGNED_BYTE, image)
   // Longitude wraps; latitude does not. REPEAT on T folds the Arctic onto the Antarctic.
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
@@ -58,14 +82,17 @@ const upload = (gl, image, mipmap) => {
  * @param {WebGLRenderingContext} gl
  * @param {string} url
  * @param {() => void} [onReady]  called once the texture is uploaded — immediately if it already is
- * @param {{mipmap?: boolean}} [options]  mipmap false for a field seen from inside; see above
+ * @param {{mipmap?: boolean, channels?: number}} [options]  mipmap false for a field seen from
+ *        inside; channels 1 for a mask whose data is one byte per texel (a quarter the VRAM)
  * @returns {{texture: WebGLTexture|null, ready: boolean, width: number, release: () => void}}
  */
-export const acquireEquirectTexture = (gl, url, onReady = null, { mipmap = true } = {}) => {
+export const acquireEquirectTexture = (gl, url, onReady = null, { mipmap = true, channels = 4 } = {}) => {
   const cache = cacheFor(gl)
-  // Filtering is part of the identity, not a setting applied afterwards: the same image minified
-  // for the ground and sampled flat for the sky are two textures on the card.
-  const key = `${url}|${mipmap ? 'mip' : 'flat'}`
+  // Filtering and CHANNEL COUNT are part of the identity, not settings applied afterwards: the same
+  // image minified for the ground and sampled flat for the sky are two textures on the card, and one
+  // uploaded as R8 is a third. Leaving channels out of the key would hand the second caller whichever
+  // format the first happened to ask for.
+  const key = `${url}|${mipmap ? 'mip' : 'flat'}|c${channels}`
   let entry = cache.get(key)
 
   if (!entry) {
@@ -82,7 +109,7 @@ export const acquireEquirectTexture = (gl, url, onReady = null, { mipmap = true 
       const limit = gl.getParameter?.(gl.MAX_TEXTURE_SIZE) ?? Infinity
       if (image.width > limit) { entry.waiters = []; return }
       entry.width = image.width
-      entry.texture = upload(gl, image, mipmap)
+      entry.texture = upload(gl, image, mipmap, channels)
       entry.ready = true
       const waiters = entry.waiters
       entry.waiters = []

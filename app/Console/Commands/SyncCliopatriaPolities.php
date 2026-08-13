@@ -26,6 +26,9 @@ class SyncCliopatriaPolities extends Command
 
     private const UA = 'TheLearningPortal/1.0 (https://thelearningportal.us; bartslot@gmail.com) educational';
 
+    /** PNG signature. Commons answers a 200 with an HTML error page often enough to check. */
+    private const PNG_MAGIC = "\x89PNG\r\n\x1a\n";
+
     public function handle(WikidataPolityResolver $resolver, CliopatriaSpans $spans, CliopatriaQidOverrides $overrides): int
     {
         $list = json_decode(File::get(database_path('data/cliopatria-polities.json')), true);
@@ -84,12 +87,22 @@ class SyncCliopatriaPolities extends Command
             // Bourbon Restoration item) to the right entity; the row stays keyed by the tile QID.
             $data = $resolver->resolveByQid($overrides->resolve($qid));
 
+            // flag_path is written ONLY once a real PNG is on disk. It used to be set from the
+            // presence of a Commons filename alone, before the download was even attempted — so a
+            // failed fetch, a Commons error page or an empty body still left the column pointing at
+            // a file that was never written. That is where the 581 flag_paths that 404 came from:
+            // every card asked for one, got HTML or nothing, and drew a broken image.
             $flagPath = null;
             if (! empty($data['flag_commons'])) {
-                $flagPath = "/flags/{$qid}.png";
-                $bytes = Http::withHeaders(['User-Agent' => self::UA])
-                    ->get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=120')->body();
-                File::put($flagsDir.'/'.$qid.'.png', $bytes);
+                $response = Http::withHeaders(['User-Agent' => self::UA])
+                    ->get('https://commons.wikimedia.org/wiki/Special:FilePath/'.rawurlencode($data['flag_commons']).'?width=120');
+
+                if ($response->successful() && str_starts_with($response->body(), self::PNG_MAGIC)) {
+                    File::put($flagsDir.'/'.$qid.'.png', $response->body());
+                    $flagPath = "/flags/{$qid}.png";
+                } else {
+                    $this->warn("  flag skipped for {$qid}: Commons returned no usable PNG");
+                }
             }
 
             $corpus->table('public.polities')->updateOrInsert(

@@ -67,7 +67,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BRJzKVN3.css",
+    "file": "assets/app-C29CFE43.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -76,7 +76,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-B6W0QKv9.js",
+    "file": "assets/app-DqYxOnSP.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -105,7 +105,7 @@
     ]
   },
   "resources/js/avatar-3d.js": {
-    "file": "assets/avatar-3d-BagkU99e.js",
+    "file": "assets/avatar-3d-CV4K54r1.js",
     "name": "avatar-3d",
     "src": "resources/js/avatar-3d.js",
     "isEntry": true,
@@ -136,7 +136,7 @@
     ]
   },
   "resources/js/lesson-player.js": {
-    "file": "assets/lesson-player-xNvBBuZn.js",
+    "file": "assets/lesson-player-BwHwJFrJ.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -199,7 +199,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-    "file": "assets/index-YPwlWol7.js",
+    "file": "assets/index-BfUn6zq7.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -222,7 +222,7 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-u5CE8jv6.js",
+    "file": "assets/index-CaZLFgpg.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
@@ -239,7 +239,7 @@
     ]
   },
   "resources/js/timemap/voyage-ships.js": {
-    "file": "assets/voyage-ships-B4Ix0AV5.js",
+    "file": "assets/voyage-ships-BVQIgNws.js",
     "name": "voyage-ships",
     "src": "resources/js/timemap/voyage-ships.js",
     "isDynamicEntry": true,
@@ -250,7 +250,7 @@
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-CGIi_loQ.js",
+    "file": "assets/voyage-tour-C1bQy5Fp.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,

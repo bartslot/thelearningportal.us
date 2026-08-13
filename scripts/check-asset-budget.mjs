@@ -66,14 +66,35 @@ const dimensionsOf = (buf, label) => {
 
 const mib = (bytes) => `${(bytes / 1048576).toFixed(1)} MiB`
 
-/** Resident cost of an RGBA8 upload, mipmaps included. Independent of how small the file was. */
-const vramOf = ({ width, height }) => Math.round(width * height * 4 * budget.mipmapOverhead)
+/**
+ * Resident cost, mipmaps included. Independent of how small the file was.
+ *
+ * BYTES PER TEXEL IS PER ASSET, not a constant four. An asset carrying one byte of real data per
+ * texel — a coverage mask, a height field — can be uploaded as R8 and costs a quarter of what an
+ * RGBA8 upload does. Billing everything at four over-reports those fourfold and fails a build that
+ * genuinely fits, which is the wrong direction for a check whose whole job is to be believed.
+ *
+ * It is declared rather than inferred because nothing in the FILE says how it will be uploaded:
+ * the atlas is a grey PNG-through-WebP either way, and only the call site knows it asks for
+ * `channels: 1`. Declaring it keeps the two in one place a reviewer can compare.
+ */
+const bytesPerTexelOf = (path) => budget.channels?.[path] ?? 4
 
+const vramOf = ({ width, height }, path) =>
+  Math.round(width * height * bytesPerTexelOf(path) * budget.mipmapOverhead)
+
+/** An asset entry is a path; everything else about it is looked up. */
 const inspect = (path) => {
   const abs = resolve(root, path)
   const buf = readFileSync(abs)
   const dims = dimensionsOf(buf, path)
-  return { path, transfer: statSync(abs).size, vram: vramOf(dims), ...dims }
+  return {
+    path,
+    transfer: statSync(abs).size,
+    vram: vramOf(dims, path),
+    bytesPerTexel: bytesPerTexelOf(path),
+    ...dims,
+  }
 }
 
 const failures = []
@@ -86,7 +107,8 @@ for (const [name, surface] of Object.entries(budget.surfaces)) {
 
   report.push(`\n${name} — ${assets.length} texture${assets.length === 1 ? '' : 's'}`)
   for (const a of assets) {
-    report.push(`   ${a.width}x${a.height}  ${mib(a.transfer).padStart(9)} transfer  ${mib(a.vram).padStart(9)} resident   ${a.path}`)
+    const format = a.bytesPerTexel === 4 ? '' : `  ${a.bytesPerTexel === 1 ? 'R8' : `${a.bytesPerTexel}B`}`
+    report.push(`   ${a.width}x${a.height}  ${mib(a.transfer).padStart(9)} transfer  ${mib(a.vram).padStart(9)} resident${format}   ${a.path}`)
     if (a.transfer > surface.maxSingleAssetTransferBytes) {
       failures.push(`${name}: ${a.path} is ${mib(a.transfer)}, over the ${mib(surface.maxSingleAssetTransferBytes)} single-asset limit`)
     }

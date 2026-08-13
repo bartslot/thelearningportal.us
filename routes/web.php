@@ -126,6 +126,29 @@ Route::post('/lesson/{lessonCode}/quiz-score', [\App\Http\Controllers\QuizLeader
 // the student player, both of which load the map unauthenticated.
 Route::get('/map/historical-cities.geojson', HistoricalCitiesController::class)->name('map.historical-cities');
 
+// Which polities have a flag PNG, so the map never 404-probes for one.
+//
+// A FALLBACK, not the primary: timemap:sync-cliopatria-polities writes public/flags/manifest.json
+// and the web server serves that file directly, never reaching this route. This exists because
+// public/flags is gitignored — a fresh clone or worktree has no flags and no manifest, and the
+// fetch then 404s on every page load. That is a real console error, so it failed the shell test,
+// and it would have been just as wrong to commit an empty [] to silence it: a stub says "no flags
+// exist" in the one environment that has them too.
+//
+// Read from disk rather than served as a constant, so it cannot disagree with what is actually
+// there. An empty list is the honest answer when the directory is missing.
+Route::get('/flags/manifest.json', function () {
+    $dir = public_path('flags');
+    $qids = is_dir($dir)
+        ? array_values(array_map(
+            static fn (string $path): string => basename($path, '.png'),
+            glob($dir.'/*.png') ?: [],
+        ))
+        : [];
+
+    return response()->json($qids);
+})->name('flags.manifest');
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 Route::middleware('guest')->group(function () {
@@ -183,6 +206,11 @@ Route::middleware(['auth'])->prefix('teacher')->name('teacher.')->group(function
 
         return response()->json(['url' => "/{$rel}"]);
     })->name('timemap.speak');
+
+    // "Something not right? Report" on the territory card. A teacher who spots a wrong border is
+    // the cheapest reviewer this dataset has; read what has come in with `timemap:territory-reports`.
+    Route::post('/timemap/report', [\App\Http\Controllers\TerritoryReportController::class, 'store'])
+        ->name('timemap.report');
 
     Route::get('/timemap/polity/{osmId}', function (\Illuminate\Http\Request $request, string $osmId) {
         $corpus = \Illuminate\Support\Facades\DB::connection('pgsql_corpus');

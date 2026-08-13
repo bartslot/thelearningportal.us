@@ -600,7 +600,10 @@ export const createCloudLayer = ({
       }
       if (state.fieldUrl) field = acquireEquirectTexture(gl, state.fieldUrl, repaint)
       if (state.windUrl) wind = acquireEquirectTexture(gl, state.windUrl, repaint)
-      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint)
+      // ONE CHANNEL. The atlas is a coverage mask: one byte of real data per texel, and an RGBA
+      // upload stores three copies of it plus a constant. 32 MiB of VRAM for 8 MiB of information.
+      // Both readers must ask for the same format or the cache hands them two textures.
+      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint, { channels: 1 })
     },
 
     // Without this every style reload leaks a program, a texture and three buffers. The fields are
@@ -691,7 +694,10 @@ export const createCloudLayer = ({
         const swap = (handle, key) => {
           if (next[key] === undefined || next[key] === previous[key]) return handle
           handle?.release()
-          return state[key] ? acquireEquirectTexture(gl, state[key], repaint) : null
+          // The atlas is a one-byte mask; every other field here is colour. A swap that forgot
+          // this would quietly re-upload it as RGBA and put the 24 MiB back.
+          const options = key === 'patchUrl' ? { channels: 1 } : undefined
+          return state[key] ? acquireEquirectTexture(gl, state[key], repaint, options) : null
         }
         field = swap(field, 'fieldUrl')
         patches = swap(patches, 'patchUrl')
