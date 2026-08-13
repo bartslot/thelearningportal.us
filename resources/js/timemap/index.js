@@ -1276,6 +1276,42 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { borderOverride.active.blur = v; applyTerritoryBorder(); } },
 ], { tab: 'Map' }),
 
+      /**
+       * VOYAGES — the routes, and the names on them.
+       *
+       * Yellow ink over a planet that is half bright cloud and half desert is the hardest case
+       * there is: at the crossings the text and the ground sit at nearly the same luminance and the
+       * halo does all the work. The territory labels already solved this by going dark on a bright
+       * halo. These are the knobs to settle that by eye rather than by argument.
+       *
+       * Through ownedPaint, so a style switch cannot quietly reset what has been tuned — the same
+       * trap the border and label colours were falling into.
+       */
+      window.__tune.register('Voyages', [
+        { key: 'voyageColour', label: 'Route', type: 'color', value: '#20618f',
+          apply: (v) => ownedPaint('voyage-line', 'line-color', v) },
+        { key: 'voyageWidth', label: 'Route width', min: 0.2, max: 8, step: 0.1, value: 1.7,
+          apply: (v) => ownedPaint('voyage-line', 'line-width', v) },
+        { key: 'voyageOpacity', label: 'Route opacity', min: 0, max: 1, step: 0.05, value: 0.85,
+          apply: (v) => ownedPaint('voyage-line', 'line-opacity', v) },
+        { key: 'voyageBlur', label: 'Route softness', min: 0, max: 4, step: 0.1, value: 0,
+          apply: (v) => ownedPaint('voyage-line', 'line-blur', v) },
+        { key: 'voyageLabelColour', label: 'Name', type: 'color', value: '#20618f',
+          apply: (v) => ownedPaint('voyage-label', 'text-color', v) },
+        { key: 'voyageLabelHalo', label: 'Name halo', type: 'color', value: '#f3ead6',
+          apply: (v) => ownedPaint('voyage-label', 'text-halo-color', v) },
+        { key: 'voyageLabelHaloWidth', label: 'Name halo width', min: 0, max: 4, step: 0.1, value: 1.2,
+          apply: (v) => ownedPaint('voyage-label', 'text-halo-width', v) },
+        // Layout, not paint — it cannot be transitioned and does not read feature-state, so it is
+        // set directly rather than through ownedPaint.
+        { key: 'voyageLabelSize', label: 'Name size', min: 6, max: 28, step: 0.5, value: 11.5,
+          apply: (v) => { if (map.getLayer('voyage-label')) { try { map.setLayoutProperty('voyage-label', 'text-size', v); } catch (e) { /* style reloading */ } } } },
+        // The invisible twin that makes a route clickable without pixel-hunting. 20 is Bart's 10px
+        // either side of the line.
+        { key: 'voyageHitWidth', label: 'Hover tolerance', min: 4, max: 40, step: 1, value: 16,
+          apply: (v) => ownedPaint('voyage-hit', 'line-width', v) },
+      ], { tab: 'Map' }),
+
       window.__tune.register('Advance', [
         { key: 'play', label: 'Play advance', type: 'button', apply: runAdvance },
         { key: 'seconds', label: 'Seconds', min: 1, max: 15, step: 0.5, value: 4,
