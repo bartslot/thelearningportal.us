@@ -1216,11 +1216,18 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           return coordinates.length ? { type: 'MultiPolygon', coordinates } : null;
         };
 
-        const named = test ? rendered.filter((f) => test.test(String(f.properties?.Name ?? ''))) : [];
-        if (named.length) return { geometry: union(named), named: true };
+        // THE TERRITORY YOU HAVE OPEN WINS. You clicked it and its card is on screen, so it is the
+        // only thing here that is unambiguously the subject — ahead of a preset written months ago
+        // against a dataset that turned out not to contain the country it names.
+        const open = selectedId != null ? rendered.filter((f) => f.id === selectedId) : [];
+        if (open.length) return { geometry: union(open), from: 'selected', label: open[0]?.properties?.Name };
 
-        // Biggest by ring count is a crude proxy for area, and the right kind of crude: it costs
-        // nothing and only has to pick something worth watching a front cross.
+        const named = test ? rendered.filter((f) => test.test(String(f.properties?.Name ?? ''))) : [];
+        if (named.length) return { geometry: union(named), from: 'preset', label: named[0]?.properties?.Name };
+
+        // Last resort. Biggest by ring count picked the SOVIET UNION for an invasion of Poland,
+        // which is what "the largest thing on screen" gets you on a map of 1939 — so this only
+        // stands in when nothing is selected and the preset found nothing either.
         const byPolity = new Map();
         for (const f of rendered) {
           const key = f.id ?? f.properties?.Name;
@@ -1229,7 +1236,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         const biggest = [...byPolity.values()]
           .sort((a, b) => b.flatMap(ringsOf).length - a.flatMap(ringsOf).length)[0];
         const geometry = biggest ? union(biggest) : null;
-        return geometry ? { geometry, named: false, label: biggest[0]?.properties?.Name } : null;
+        return geometry ? { geometry, from: 'largest', label: biggest[0]?.properties?.Name } : null;
       };
 
       /** Three entry points on the western edge, for a target the preset did not choose. */
@@ -1261,8 +1268,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       const runAdvance = () => {
         const preset = ADVANCE_CASES[advanceCase];
         if (!preset) return;
-        window.__setTimemapYear(preset.year);
-        if (preset.camera) map.jumpTo(preset.camera);
+        // Only take the camera when nothing is selected. If a card is open, that territory IS the
+        // subject and flying somewhere else is the last thing wanted.
+        if (selectedId == null) {
+          window.__setTimemapYear(preset.year);
+          if (preset.camera) map.jumpTo(preset.camera);
+        }
 
         // Keep asking until the tiles for the new year and view have arrived, instead of guessing
         // how long that takes.
@@ -1274,11 +1285,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
             console.warn(`[tune] nothing on screen to advance across at ${preset.year}`);
             return;
           }
-          const { geometry, named, label } = hit;
-          // Preset seeds are placed against the country the preset names. On a fallback target they
-          // would land in the sea, so the entry points are derived from the shape instead.
-          const seeds = named ? preset.seeds : seedsFor(geometry);
-          if (!named) console.info(`[tune] no ${preset.match} at ${preset.year} — advancing across ${label} instead`);
+          const { geometry, from, label } = hit;
+          // Preset seeds are placed against the country the PRESET names. On any other target they
+          // would land in the sea, so the entry points come from that shape instead.
+          const seeds = from === 'preset' ? preset.seeds : seedsFor(geometry);
+          if (from !== 'preset') console.info(`[tune] advancing across ${label} (${from})`);
           if (!advance) {
             advance = createAdvance(map, { beforeId: 'boundaries-label', ...advanceOptions() });
             window.__tmAdvance = advance; // dev tooling + Playwright
