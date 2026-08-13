@@ -26,6 +26,7 @@ import { createAdvance } from '../map/advance-layer.js';
 import { EASING } from '../easing.js';
 import { planetSpacePosition } from './planet-mesh.js';
 import { sunDirection } from './sun.js';
+import { registerCardControls } from './information-card.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -1420,6 +1421,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           }), 120);
         } },
       ], { tab: 'Camera' }),
+
+      // The territory card is CSS rather than a layer, so its knobs write custom properties.
+      registerCardControls(),
     ];
   };
   let tuneOff = [];
@@ -2048,6 +2052,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   el._tmMap = map;
   window.__tmMap = map; // for debugging + Playwright assertions
+
+  /**
+   * Let the card put the map back the way it was when it closes.
+   *
+   * Clicking a territory does three things beyond opening the panel: it sets a MapLibre
+   * feature-state, it re-ranks the labels so the chosen name wins its collisions, and it publishes
+   * the selection on __portal. Closing the card used to undo NONE of them, so the territory stayed
+   * lit with nothing on screen explaining why — a highlight with no card reads as a stuck map.
+   *
+   * Exported rather than reachable, because selectedId, setSelected and refreshLabels are closure
+   * state in here and a panel has no business knowing any of it. This is the same shape as clicking
+   * empty sea, which is the other way a selection ends.
+   */
+  window.__timemapClearSelection = () => {
+    if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+    state.selectedRegion = null;
+    sync();
+  };
 
   return map;
 };

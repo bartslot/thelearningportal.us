@@ -36,17 +36,26 @@ with the year, the map style and the time of day. Everything below follows from 
 
 - **Chrome over the map is monochromatic.** Toolbars, tab bars, panels: the dark surface, three
   greys, white. Colourful content under colourful controls is what makes labels hard to read.
-- **Cards carry NO accent.** Title, era and body are white; muted for labels and inactive tabs.
-  Bart, while the card was built: "we shouldn't put so much colour in our UI while our footage is
-  already very colourful." Over a photographed planet the accent is the thing to drop. The era is
-  white and underlined, not amber.
+- **The footage is the colour. The UI is not.** The information card has NO accent — not on the
+  era, not anywhere. Bart, on seeing the era in amber: *"we shouldn't put so much colour in our UI
+  while our footage is already very colourful."* A photographed planet is already saturated and
+  already moving; a coloured control competing with it is one more thing to look at, and the card
+  loses either way. Reach for a second colour and you are almost certainly solving a hierarchy
+  problem that position, weight or an underline solves better.
+- **Affordance is carried by form, not colour.** The two era dates scrub the timeline, and what
+  says so is the underline — white text, underlined. This matters beyond taste: a colour-only
+  affordance is invisible to a colour-blind teacher, and invisible over a bright map.
 - **Amber still means something on the MAP** — selection, the hover glow. It means nothing on a
   card. Do not carry it across.
 - **Contrast at rest, not just in motion.** Content scrolls under controls, so judge legibility in
   the resting state — the top of the scroll, on the brightest background the map can produce
   (Sahara at noon, a cloud deck). Check there, not over open ocean.
-- **Three text colours and no fourth.** Title white, body `--color-card-body`, muted for what you
-  are allowed to miss. A hierarchy problem is not solved by a new colour.
+- **Two text colours and no third.** White for anything that says something — title, body copy,
+  links. Muted for anything that names something, or that you are allowed to miss. That is the
+  whole palette of a card. The Figma frame has six near-identical greys in it (`#7e8b9c`,
+  `#8ba1b9`, `#9aa2b0`, `#e2e8f0`…); they are a file's untidiness, not a hierarchy, and they
+  collapse to these two. A hierarchy problem is not solved by a new colour — it is solved by
+  position, weight, or a hairline.
 
 ## 3. Type
 
@@ -92,7 +101,7 @@ a single use.
 
 - [ ] Cut the text once more than felt comfortable
 - [ ] One primary action; every added option justified
-- [ ] Chrome monochrome; no accent on a card
+- [ ] Chrome monochrome; no accent colour anywhere on it
 - [ ] Legible at rest over the brightest thing the map can show
 - [ ] Labels are labels, body is body
 - [ ] Scrolling copy fades
