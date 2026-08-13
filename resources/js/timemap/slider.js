@@ -1,71 +1,122 @@
-// An oldmapsonline.org-style time control:
-//   • a year number input with up/down steppers (two-way bound to the map year)
-//   • a horizontal, scrubbable tick timeline (minor ticks per decade, medium per
-//     half-century, bold labelled ticks per century) that scrolls/drags under a fixed
-//     centre mark, with gradient fades at both edges
-//   • the EraService "≈ X years ago · ~N generations" readout
+// The time scrubber: one 47px bar at the foot of the map.
 //
-// The timeline uses a centre-aligned scroll model: the year under the fixed centre mark is
-// the selected year. With the strip padded by half the viewport on each side,
-//   scrollLeft === (year - min) * PX_PER_YEAR
+//   • a ruler of decade ticks that scrolls/drags under a fixed playhead
+//   • the play control and the year, on a scrim at the left end
+//   • the EraService "≈ X years ago · ~N generations" readout, on the year's tooltip
+//
+// Drawn to Figma node 1471:2238 (`timeline-scrubber`); the values it decides are tokens in
+// resources/css/brand-kit.css and this file reads them from there rather than repeating them.
+//
+// TWO THINGS THE DESIGN SETTLES, because both were once the other way round here:
+//   The ruler emphasises by WEIGHT, not by length. Every tick is the same height and hangs from the
+//   top edge; a century tick is brighter and half a pixel wider, and carries the year. Three tick
+//   lengths read as three kinds of thing — one length reads as one ruler, which is what it is.
+//   The playhead is a plain light line. No accent colour, no arrowhead: it marks a position, and a
+//   position needs neither to be understood.
+//
+// The timeline uses a centre-aligned scroll model: the year under the fixed playhead is the
+// selected year. With the strip padded by half the viewport on each side,
+//   scrollLeft === (year - min) * pxPerYear
 // so reading/seeking a year is a single multiply/divide. onYear(year) fires (immediately for
-// stepper/input edits, throttled while scrubbing) so the caller can reload the map.
+// input edits, throttled while scrubbing) so the caller can reload the map.
 import { formatReadout } from './era.js';
 
-const PX_PER_YEAR = 2; // century = 200px, decade = 20px
+/** Read a unitless number token off :root, so the stylesheet stays the single source. */
+const token = (name, fallback) => {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : fallback;
+};
 
+/**
+ * Read a LENGTH token as pixels. Must resolve the unit: these are authored in rem, so a bare
+ * parseFloat of "2.9375rem" is 2.9375 — a slider that opens 16× below the number the bar is
+ * actually drawn at, with nothing to say so.
+ */
+const lengthPx = (name, fallback) => {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return raw.endsWith('rem') ? n * parseFloat(getComputedStyle(document.documentElement).fontSize) : n;
+};
+
+// Century labels are bare and BCE ones are marked — the convention every atlas uses, and what the
+// design shows. Spelling "CE" on two thirds of a ruler that runs from 4000 BCE is noise.
+const fmtTick = (y) => (y < 0 ? `${Math.abs(y)} BCE` : String(y));
 const fmtEra = (y) => (y < 0 ? `${Math.abs(y)} BCE` : `${y} CE`);
 const fmtSuffix = (y) => (y < 0 ? 'BCE' : 'CE');
 
-export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
+// Heroicons outline, 24×24, fill none, stroke 1.5 — the house icon set.
+//
+// vector-effect="non-scaling-stroke" so 1.5 means 1.5 SCREEN pixels, not 1.5 of a 24-unit box shrunk
+// to a 17px control. The design's own play glyph is 12px tall with a 1.5px stroke — twice the weight
+// a scaled Heroicon lands on — and at this size the difference is a crisp control against a wispy
+// one. It also keeps play and pause at matching weight for free.
+//
+// 17px, not a round 16 or 18, because the stroke no longer scales with the box: Heroicons' triangle
+// is 14.67 of 24 units tall, so the drawn glyph is 14.67·(17/24) + 1.5 = 11.9px — the design's 12.
+const ICON_PLAY = '<path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z"/>';
+const ICON_PAUSE = '<path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/>';
+
+// How close a century label may come to the playhead before it steps aside. Half a four-digit label
+// at 10px: any nearer and the line runs through the digits.
+const LABEL_CLEARANCE_PX = 24;
+
+/**
+ * `labels` comes in from Blade, already translated. The play control is icon-only, so the app-wide
+ * tooltip gives it a name — which makes these strings VISIBLE rather than screen-reader-only, and
+ * visible text in this product is five languages. English is only the fallback for a caller that
+ * has not passed them.
+ */
+const DEFAULT_LABELS = {
+  play: 'Play timeline',
+  pause: 'Pause timeline',
+  track: 'Timeline year',
+  year: 'Year (negative for BCE)',
+};
+
+export function mountTimeSlider(el, { min, max, value, onYear, onPlay, labels }) {
+  const t = { ...DEFAULT_LABELS, ...(labels ?? {}) };
   const clamp = (y) => Math.min(max, Math.max(min, y));
   let current = clamp(Math.round(value));
+  let pxPerYear = token('--scrubber-px-per-year', 4);
 
   el.classList.add('select-none');
   el.innerHTML = `
-    <!-- Play/pause: cog-sized circular button at the bottom edge of the scrubber, before the year -->
-    <button type="button" aria-label="Play timeline" aria-pressed="false"
-            class="tm-play btn btn-circle border-none bg-warning text-black shadow-lg hover:bg-warning absolute bottom-3 left-3 z-30">
-      <svg class="tm-ic-play h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>
-      <svg class="tm-ic-pause h-6 w-6" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-    </button>
-
-    <div class="tm-input-row flex items-center justify-center gap-2">
-      <button type="button" class="tm-step btn btn-circle btn-ghost btn-sm" data-step="-1" aria-label="Previous year">
-        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3 5 8l5 5"/></svg>
-      </button>
-      <div class="flex items-baseline gap-1">
-        <input type="number" inputmode="numeric" class="tm-year-input input input-sm input-bordered w-24 text-center text-lg font-bold tabular-nums"
-               min="${min}" max="${max}" step="1" value="${current}" aria-label="Year (negative for BCE)">
-        <span class="tm-era-suffix text-sm font-semibold opacity-70">${fmtSuffix(current)}</span>
-      </div>
-      <button type="button" class="tm-step btn btn-circle btn-ghost btn-sm" data-step="1" aria-label="Next year">
-        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 3 5 5-5 5"/></svg>
-      </button>
-    </div>
-
-    <div class="tm-readout mt-0.5 text-center text-xs opacity-70"></div>
-
-    <div class="tm-track relative mt-2 h-12 overflow-hidden"
+    <div class="tm-track absolute inset-0 overflow-hidden rounded-card"
          role="slider" tabindex="0"
-         aria-label="Timeline year" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${current}">
-      <!-- fixed centre indicator -->
-      <div class="pointer-events-none absolute left-1/2 top-0 z-20 h-full -translate-x-1/2">
-        <div class="mx-auto h-full w-px bg-primary"></div>
-        <div class="absolute -top-px left-1/2 -translate-x-1/2 border-x-4 border-t-[6px] border-x-transparent border-t-primary"></div>
-      </div>
-      <!-- edge fades -->
-      <div class="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-base-100 to-transparent"></div>
-      <div class="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-base-100 to-transparent"></div>
-      <!-- scrollable tick strip -->
+         aria-label="${t.track}" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${current}">
+      <!-- A lighter band gives the playhead somewhere to sit; it is behind everything. -->
+      <div class="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 bg-scrubber-band"
+           style="width: var(--scrubber-band-width)"></div>
       <div class="tm-scroll absolute inset-0 cursor-grab overflow-x-scroll overflow-y-hidden no-scrollbar">
         <div class="tm-strip relative h-full"></div>
       </div>
+    </div>
+
+    <!-- The playhead overshoots the top edge, so it reads as a mark ON the ruler, not a seam in it. -->
+    <div class="pointer-events-none absolute left-1/2 z-20 w-[1.5px] -translate-x-1/2 rounded-[2px] bg-scrubber-playhead"
+         style="top: -3px; height: calc(var(--scrubber-height) + 3px)"></div>
+
+    <!-- Play + year, on a scrim: 90% of the bar's own colour, so ticks pass under them and dim
+         instead of colliding with them. -->
+    <div class="absolute inset-y-0 left-0 z-30 flex items-center gap-1 rounded-l-card bg-scrubber-scrim pl-1 pr-3">
+      <button type="button" aria-label="${t.play}" aria-pressed="false" data-tooltip="${t.play}"
+              class="tm-play grid h-6 w-6 place-items-center rounded-full text-scrubber-control">
+        <svg class="tm-ic-play h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">${ICON_PLAY}</svg>
+        <svg class="tm-ic-pause h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg" style="display:none">${ICON_PAUSE}</svg>
+      </button>
+      <label class="tm-year-badge flex h-[30px] cursor-text items-center gap-0.5 rounded-md border border-scrubber-badge-edge bg-scrubber-badge px-2">
+        <input type="number" inputmode="numeric"
+               class="tm-year-input w-[5ch] bg-transparent text-right font-mono text-scrubber-num tracking-[0.8px] tabular-nums text-scrubber-year outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+               min="${min}" max="${max}" step="1" value="${current}" aria-label="${t.year}">
+        <span class="tm-era-suffix lp-card-label lp-card-label-sm">${fmtSuffix(current)}</span>
+      </label>
     </div>`;
 
   const input = el.querySelector('.tm-year-input');
   const suffix = el.querySelector('.tm-era-suffix');
-  const readout = el.querySelector('.tm-readout');
+  const badge = el.querySelector('.tm-year-badge');
   const track = el.querySelector('.tm-track');
   const scroll = el.querySelector('.tm-scroll');
   const strip = el.querySelector('.tm-strip');
@@ -73,46 +124,73 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   // Hide the native scrollbar without a global stylesheet.
   scroll.style.scrollbarWidth = 'none';
 
-  // Build ticks: every decade a minor tick, every half-century a medium tick, every century a
-  // bold tick with a label. Strip is half-viewport padded so endpoints can reach the centre.
-  const stripWidth = (max - min) * PX_PER_YEAR;
+  // Build ticks: one per decade, hanging from the top edge, all the same height. Every century is
+  // brighter, half a pixel wider, and labelled. Strip is half-viewport padded so the endpoints can
+  // reach the centre.
+  const centuryLabels = new Map(); // year → its label element, for the playhead clearance below
   const buildStrip = () => {
     const pad = track.clientWidth / 2;
-    strip.style.width = `${stripWidth + pad * 2}px`;
+    strip.style.width = `${(max - min) * pxPerYear + pad * 2}px`;
     strip.style.paddingLeft = `${pad}px`;
     strip.innerHTML = '';
+    centuryLabels.clear();
+    steppedAside = null; // the element it pointed at has just been thrown away
     const start = Math.ceil(min / 10) * 10;
     for (let y = start; y <= max; y += 10) {
       const isCentury = y % 100 === 0;
-      const isHalf = y % 50 === 0;
+      const x = pad + (y - min) * pxPerYear;
       const tick = document.createElement('div');
-      const h = isCentury ? 'h-6' : isHalf ? 'h-4' : 'h-2.5';
-      const shade = isCentury ? 'bg-base-content/60' : 'bg-base-content/25';
-      tick.className = `absolute bottom-4 w-px ${h} ${shade}`;
-      tick.style.left = `${pad + (y - min) * PX_PER_YEAR}px`;
-      if (isCentury) {
-        const label = document.createElement('span');
-        label.className = 'absolute bottom-0 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold tabular-nums text-base-content/70';
-        label.style.left = `${pad + (y - min) * PX_PER_YEAR}px`;
-        label.textContent = fmtEra(y);
-        strip.appendChild(label);
-      }
+      tick.className = isCentury
+        ? 'absolute top-0 w-[1.5px] rounded-[3px] bg-scrubber-tick-major'
+        : 'absolute top-0 w-px rounded-[3px] bg-scrubber-tick';
+      tick.style.left = `${x}px`;
+      tick.style.height = 'var(--scrubber-tick-height)';
       strip.appendChild(tick);
+      if (!isCentury) continue;
+      const label = document.createElement('span');
+      label.className = 'absolute -translate-x-1/2 whitespace-nowrap text-scrubber-num font-semibold tabular-nums text-scrubber-tick-major';
+      label.style.left = `${x}px`;
+      label.style.top = 'var(--scrubber-label-top)';
+      label.textContent = fmtTick(y);
+      strip.appendChild(label);
+      centuryLabels.set(y, label);
     }
+  };
+
+  /**
+   * Keep the playhead off the century labels.
+   *
+   * The mock never had one under the line, but a live ruler puts one there every time the year is a
+   * round century — which, at the very least, is where it starts. A 1.5px white line through "1600"
+   * reads as a strike-through, so the label the playhead is standing on steps aside. It loses
+   * nothing: that year is the one the badge is already showing.
+   */
+  let steppedAside = null;
+  const clearPlayhead = () => {
+    const century = Math.round(current / 100) * 100;
+    const label = centuryLabels.get(century);
+    const collides = !!label && Math.abs((century - current) * pxPerYear) < LABEL_CLEARANCE_PX;
+    const next = collides ? label : null;
+    if (steppedAside && steppedAside !== next) steppedAside.style.visibility = '';
+    if (next) next.style.visibility = 'hidden';
+    steppedAside = next;
   };
 
   // Guards against the scroll⇄input feedback loop.
   let seeking = false;
 
-  const yearFromScroll = () => clamp(min + Math.round(scroll.scrollLeft / PX_PER_YEAR));
-  const scrollForYear = (y) => (y - min) * PX_PER_YEAR;
+  const yearFromScroll = () => clamp(min + Math.round(scroll.scrollLeft / pxPerYear));
+  const scrollForYear = (y) => (y - min) * pxPerYear;
 
   const renderReadout = () => {
     input.value = String(current);
     suffix.textContent = fmtSuffix(current);
-    readout.textContent = formatReadout(current);
+    // The "≈ 87 years ago · ~3 generations" line has no room on a 47px bar, and it is something a
+    // teacher wants occasionally rather than always — so it hangs off the year as a tooltip.
+    badge.setAttribute('data-tooltip', formatReadout(current));
     track.setAttribute('aria-valuenow', String(current));
     track.setAttribute('aria-valuetext', fmtEra(current));
+    clearPlayhead();
   };
 
   // Move the timeline (and UI) to `y`. fireYear=false suppresses the onYear callback (used when
@@ -138,12 +216,12 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   let playRaf = null;
   let playYear = 0; // float accumulator so rounding to whole years doesn't drift the rate
   let playLast = 0;
-  const playing = () => playOn;
   const renderPlay = () => {
     icPlay.style.display = playOn ? 'none' : '';
     icPause.style.display = playOn ? '' : 'none';
     playBtn.setAttribute('aria-pressed', playOn ? 'true' : 'false');
-    playBtn.setAttribute('aria-label', playOn ? 'Pause timeline' : 'Play timeline');
+    playBtn.setAttribute('aria-label', playOn ? t.pause : t.play);
+    playBtn.setAttribute('data-tooltip', playOn ? t.pause : t.play);
   };
   const playStep = (now) => {
     if (!playOn) return;
@@ -220,7 +298,8 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   scroll.addEventListener('pointerup', endDrag);
   scroll.addEventListener('pointercancel', endDrag);
 
-  // Number input: typing a year scrubs the map.
+  // Number input: typing a year scrubs the map. ↑/↓ step it by one — which is why the design has no
+  // stepper buttons and this no longer draws any.
   input.addEventListener('input', () => {
     stopPlay();
     const raw = parseInt(input.value, 10);
@@ -229,11 +308,6 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   });
   // Re-normalise the displayed value on blur (clamp / strip stray characters).
   input.addEventListener('change', () => seek(parseInt(input.value, 10) || current));
-
-  // Steppers.
-  el.querySelectorAll('.tm-step').forEach((btn) => {
-    btn.addEventListener('click', () => { stopPlay(); seek(current + Number(btn.dataset.step)); });
-  });
 
   // Keyboard on the track (arrow keys nudge by a year, Page keys by a decade).
   track.addEventListener('keydown', (e) => {
@@ -253,5 +327,29 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay }) {
   const ro = new ResizeObserver(() => { buildStrip(); seek(current, { fireYear: false }); });
   ro.observe(track);
 
-  return { setYear: (y) => { stopPlay(); seek(y, { fireYear: false }); } };
+  // Dev-panel controls for the geometry this file draws. They write the same custom properties the
+  // stylesheet declares, so the panel and the bar can never disagree about what a number means.
+  const css = (name, v, unit = 'px') => document.documentElement.style.setProperty(name, `${v}${unit}`);
+  const relayout = () => { buildStrip(); seek(current, { fireYear: false }); };
+  const tuneOff = window.__tune?.register('Time scrubber', [
+    { key: 'width', label: 'Bar width', min: 480, max: 1400, step: 5, value: lengthPx('--scrubber-width', 875),
+      apply: (v) => css('--scrubber-width', v) },
+    { key: 'height', label: 'Bar height', min: 32, max: 88, step: 1, value: lengthPx('--scrubber-height', 47),
+      apply: (v) => css('--scrubber-height', v) },
+    { key: 'tickHeight', label: 'Tick height', min: 8, max: 64, step: 1, value: lengthPx('--scrubber-tick-height', 30),
+      apply: (v) => css('--scrubber-tick-height', v) },
+    { key: 'labelTop', label: 'Label baseline', min: 8, max: 72, step: 1, value: lengthPx('--scrubber-label-top', 36),
+      apply: (v) => css('--scrubber-label-top', v) },
+    { key: 'bandWidth', label: 'Centre band', min: 0, max: 640, step: 4, value: lengthPx('--scrubber-band-width', 268),
+      apply: (v) => css('--scrubber-band-width', v) },
+    // Sets how much ruler a century occupies, so it changes both tick density and how far a drag
+    // travels. Rebuilds the strip and re-seeks, because both depend on it.
+    { key: 'pxPerYear', label: 'Pixels per year', min: 1, max: 10, step: 0.5, value: pxPerYear,
+      apply: (v) => { pxPerYear = v; document.documentElement.style.setProperty('--scrubber-px-per-year', String(v)); relayout(); } },
+  ], { tab: 'Map' });
+
+  return {
+    setYear: (y) => { stopPlay(); seek(y, { fireYear: false }); },
+    destroy: () => { ro.disconnect(); stopPlay(); if (tuneOff) tuneOff(); },
+  };
 }

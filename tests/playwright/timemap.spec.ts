@@ -39,7 +39,91 @@ test('timemap-year-input: typing a year scrubs the map', async ({ page }) => {
   // Number input two-way-binds to the map year (debounced reload inside _setYear).
   await page.waitForFunction(() => (window as any).__portal?.year === 1500, { timeout: 15_000 });
   await expect(page.locator('.tm-era-suffix')).toHaveText('CE');
-  await expect(page.locator('.tm-readout')).toContainText('years ago');
+  // "≈ N years ago · ~N generations" moved onto the year's tooltip when the deck became one 47px
+  // bar — it is still computed and still current, it just no longer occupies a line of its own.
+  await expect(page.locator('.tm-year-badge')).toHaveAttribute('data-tooltip', /\d+ years ago/);
+});
+
+/**
+ * The scrubber, against Figma node 1471:2238.
+ *
+ * Absolutes, not relations. An earlier lesson on this codebase: a suite where every assertion is a
+ * difference is satisfied by a uniform offset, so "the century tick is brighter than a decade tick"
+ * would still pass with the whole ruler drawn in the wrong grey. These are the numbers the design
+ * decided.
+ */
+test('timemap-scrubber: one bar, monochrome, and a ruler that emphasises by weight', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+
+  const deck = page.locator('[data-timemap-deck]');
+  const box = await deck.boundingBox();
+  // 47px. Everything the scrubber needs fits in one bar — a taller box means a second row grew back.
+  expect(Math.round(box!.height)).toBe(47);
+  await expect(deck).toHaveCSS('background-color', 'rgb(4, 9, 20)');
+  await expect(deck).toHaveCSS('border-radius', '12px');
+  // Chrome is hairlines, never boxes: no shadow on anything that sits over the map.
+  await expect(deck).toHaveCSS('box-shadow', 'none');
+
+  const ruler = await page.evaluate(() => {
+    const cs = (el: Element | null) => (el ? getComputedStyle(el) : null);
+    const strip = document.querySelector('.tm-strip')!;
+    const ticks = [...strip.querySelectorAll('div')];
+    const minor = cs(ticks.find((t) => !t.className.includes('major')) ?? null)!;
+    const major = cs(ticks.find((t) => t.className.includes('major')) ?? null)!;
+    const head = cs([...document.querySelectorAll('[data-timemap-deck] > div')]
+      .find((d) => d.className.includes('playhead')) ?? null)!;
+    return {
+      minor: { w: minor.width, h: minor.height, bg: minor.backgroundColor },
+      major: { w: major.width, h: major.height, bg: major.backgroundColor },
+      head: { w: head.width, h: head.height, bg: head.backgroundColor },
+    };
+  });
+
+  // Same height, different weight — that is the whole distinction between a decade and a century.
+  expect(ruler.minor.h).toBe('30px');
+  expect(ruler.major.h).toBe(ruler.minor.h);
+  expect(ruler.minor.w).toBe('1px');
+  expect(ruler.major.w).toBe('1.5px');
+  expect(ruler.minor.bg).toBe('rgba(139, 161, 185, 0.2)');
+  expect(ruler.major.bg).toBe('rgba(139, 161, 185, 0.5)');
+
+  // The playhead is a plain light line. Not the theme's amber, and not any accent: if this ever
+  // reads as a hue, the "the footage is the colour, the UI is not" rule has been broken here.
+  expect(ruler.head.bg).toBe('rgb(217, 217, 217)');
+  expect(ruler.head.w).toBe('1.5px');
+
+  // A century label directly under the playhead steps aside rather than being struck through by it.
+  await page.locator('.tm-year-input').fill('1500');
+  await page.waitForTimeout(400);
+  const atCentury = await page.evaluate(() => [...document.querySelectorAll('.tm-strip span')]
+    .find((s) => s.textContent === '1500')?.style.visibility);
+  expect(atCentury).toBe('hidden');
+
+  // …and comes back as soon as the playhead has moved off it.
+  await page.locator('.tm-year-input').fill('1540');
+  await page.waitForTimeout(400);
+  const offCentury = await page.evaluate(() => [...document.querySelectorAll('.tm-strip span')]
+    .find((s) => s.textContent === '1500')?.style.visibility);
+  expect(offCentury).toBe('');
+});
+
+test('timemap-scrubber-play: the play control toggles to pause and advances the year', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  await page.locator('.tm-year-input').fill('1200');
+  await page.waitForTimeout(300);
+
+  const play = page.locator('.tm-play');
+  await expect(play).toHaveAttribute('aria-pressed', 'false');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.tm-ic-pause')).toBeVisible();
+
+  await page.waitForFunction(() => Number((document.querySelector('.tm-year-input') as HTMLInputElement).value) > 1210,
+    undefined, { timeout: 10_000 });
+
+  await play.click();
+  await expect(play).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.tm-ic-play')).toBeVisible();
 });
 
 test('timemap-timeline: dragging the tick timeline changes the year', async ({ page }) => {

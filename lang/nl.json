@@ -1167,5 +1167,9 @@
     "validation.max.string": "Dit veld is te lang.",
     "validation.min.string": "Dit veld is te kort.",
     "validation.required": "Dit veld is verplicht.",
-    "years old": "jaar oud"
+    "years old": "jaar oud",
+    "Play timeline": "Tijdlijn afspelen",
+    "Pause timeline": "Tijdlijn pauzeren",
+    "Timeline year": "Jaar op de tijdlijn",
+    "Year (negative for BCE)": "Jaar (negatief voor v.Chr.)"
 }

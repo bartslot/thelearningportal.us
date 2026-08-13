@@ -1121,5 +1121,9 @@
     "validation.max.string": "Questo campo è troppo lungo.",
     "validation.min.string": "Questo campo è troppo corto.",
     "validation.required": "Questo campo è obbligatorio.",
-    "years old": "anni"
+    "years old": "anni",
+    "Play timeline": "Riproduci la linea del tempo",
+    "Pause timeline": "Metti in pausa la linea del tempo",
+    "Timeline year": "Anno sulla linea del tempo",
+    "Year (negative for BCE)": "Anno (negativo per a.C.)"
 }

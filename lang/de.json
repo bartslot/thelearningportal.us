@@ -1121,5 +1121,9 @@
     "validation.max.string": "Dieses Feld ist zu lang.",
     "validation.min.string": "Dieses Feld ist zu kurz.",
     "validation.required": "Dieses Feld ist erforderlich.",
-    "years old": "Jahre alt"
+    "years old": "Jahre alt",
+    "Play timeline": "Zeitleiste abspielen",
+    "Pause timeline": "Zeitleiste pausieren",
+    "Timeline year": "Jahr auf der Zeitleiste",
+    "Year (negative for BCE)": "Jahr (negativ für v. Chr.)"
 }

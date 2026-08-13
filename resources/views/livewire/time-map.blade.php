@@ -172,14 +172,24 @@
         </template>
     </aside>
 
-    {{-- Time slider (oldmapsonline-style) --}}
+    {{-- The time scrubber — Figma node 1471:2238. One bar: no padding, no shadow, no second row;
+         everything it needs sits inside those 47px. Its geometry is tokens, so the dev panel can
+         move it without this file knowing. --}}
     {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
          be seen in, and shrinks itself so the globe centres in what is left. Without it the earth
          sits half the deck's height too low and the southern hemisphere hides behind this card. --}}
-    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-176 max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+    <div class="absolute bottom-0 left-1/2 z-10 mb-6 max-w-[92vw] -translate-x-1/2 rounded-card bg-scrubber-surface"
+         style="width: var(--scrubber-width); height: var(--scrubber-height)"
          data-timemap-deck
          x-ref="sliderbox"
-         x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
+         {{-- The play control is icon-only, so its tooltip is the name a teacher actually reads —
+              which makes these five-language strings, and they can only be translated here. --}}
+         x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}, @js([
+             'play' => __('Play timeline'),
+             'pause' => __('Pause timeline'),
+             'track' => __('Timeline year'),
+             'year' => __('Year (negative for BCE)'),
+         ])))">
     </div>
 
     {{-- Colour strength: scales territory fill intensity. National colours (NL orange, France

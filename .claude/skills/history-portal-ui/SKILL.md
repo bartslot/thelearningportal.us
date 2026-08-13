@@ -68,6 +68,32 @@ must carry.
 
 ---
 
+## Rulers, and anything that scrolls under a mark
+
+From the time scrubber (node 1471:2238), because the same questions come up on every timeline,
+progress bar and filmstrip after it.
+
+**A ruler emphasises by weight, not by length.** Every tick is the same height and hangs from the
+same edge; the important one is brighter and half a pixel wider. Ticks of three different lengths
+read as three kinds of thing and the eye spends its time sorting them. One length reads as one
+ruler, which is what it is.
+
+**The mark that says "here" is a plain light line.** No accent, no arrowhead, no glow. A position
+needs none of them to be understood, and the map behind is already carrying every colour the screen
+can take.
+
+**Controls that sit over scrolling content get a scrim, not a fade.** A gradient fade has to know
+the colour behind it. A scrim at 90% of the surface's own colour lets the content pass under and
+dim, which is legible, and reads as one layer over another rather than as content that gave up.
+
+**A static mock never meets the cases a live one does, so read it for intent and not for debris.**
+This one carried a stray full-height tick behind the play button, a label chip in near-black on
+near-black, and no century label under the playhead — because its numbers happened to miss. Live,
+the playhead lands on a century label constantly and struck it through. Reproduce what the design
+decided, fix what it never had to face, and say in the commit which was which.
+
+---
+
 ## Alongside the rest of the system
 
 DaisyUI `learningportal` remains the source of truth for component chrome — `btn`, `tabs`, `modal`.
@@ -94,4 +120,7 @@ a single use.
 - [ ] Labels are labels, body is body
 - [ ] Scrolling copy fades
 - [ ] DaisyUI for chrome, tokens for colour, no raw Tailwind colours
+- [ ] Every class you invented actually generated something — grep the BUILT css
+- [ ] No two tokens share a utility prefix: `--text-x` and `--color-x` both answer to `text-x`, the
+      size wins, and the colour is dropped with nothing anywhere to say so
 - [ ] Looked at on the real page, at the size a teacher uses

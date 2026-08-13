@@ -58,6 +58,55 @@
   /* The body copy FADES rather than being cut. A hard clip says the text ended; a fade says there
      is more and you can scroll to it. This is the height of that fade. */
   --card-fade-height: 4.5rem;
+
+  /* ── The timeline scrubber ────────────────────────────────────────────────────────────────── */
+  /* Figma node 1471:2238 (`timeline-scrubber`). One 47px bar: a ruler that scrolls under a fixed
+     playhead, with the play control and the year sitting on a scrim at the left end.
+     https://www.figma.com/design/PrVD4qMyoTtBvF7UV7Yhej/History-Portal?node-id=1471-2238
+     Darker than the card, because a ruler is chrome and must not read as a second panel. */
+  --color-scrubber-surface: #040914;
+
+  /* The left cluster is a SCRIM, not a panel: 90% of the bar's own colour, so ticks pass under the
+     year and dim instead of colliding with it. A hard-edged box there would read as a button bar. */
+  --color-scrubber-scrim: rgb(4 9 20 / 0.9);
+
+  --color-scrubber-badge: #0b1528;
+  --color-scrubber-badge-edge: #162235;
+
+  /* Two steps, and they are a hierarchy rather than a duplicate: the play control is the one thing
+     on this bar at full white, and the year sits a shade under it. */
+  --color-scrubber-control: #ffffff;
+  --color-scrubber-year: #e2e8f0;
+
+  /* A band a shade lighter than the bar, behind the middle, giving the playhead somewhere to sit.
+     The step is 4 points of red — felt rather than seen, which is the whole intent. */
+  --color-scrubber-band: #08101e;
+
+  /* The ruler emphasises by WEIGHT, not by length: every tick is the same height, and the century
+     is simply brighter and half a pixel wider. Ticks of three different lengths read as three kinds
+     of thing; one length reads as one ruler, which is what it is. */
+  --color-scrubber-tick: rgb(139 161 185 / 0.2);
+  --color-scrubber-tick-major: rgb(139 161 185 / 0.5);
+
+  /* The playhead — a plain light line. No accent, no arrowhead: it marks a position, and position
+     needs no colour to be understood. */
+  --color-scrubber-playhead: #d9d9d9;
+
+  /* 10px — the year in the badge and under a century tick. Named `num` and not `year` on purpose:
+     `text-*` utilities resolve against BOTH --text-* and --color-*, so a --text-scrubber-year next
+     to --color-scrubber-year would make `text-scrubber-year` mean the size and silently drop the
+     colour. Two things a utility can mean must never share a name. */
+  --text-scrubber-num: 0.625rem;
+
+  /* Geometry. Referenced as `h-[var(--scrubber-height)]` rather than a `h-scrubber` utility: these
+     names are not in a Tailwind theme namespace, so no utility is generated for them and the class
+     would silently style nothing. */
+  --scrubber-width: 54.6875rem;      /* 875px */
+  --scrubber-height: 2.9375rem;      /* 47px  */
+  --scrubber-tick-height: 1.875rem;  /* 30px, hanging from the top edge */
+  --scrubber-label-top: 2.25rem;     /* 36px = tick + the 6px gap under it */
+  --scrubber-band-width: 16.75rem;   /* 268px */
+  --scrubber-px-per-year: 4;         /* decade tick every 40px, century every 400px */
 }
 
 /**

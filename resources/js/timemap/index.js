@@ -1663,7 +1663,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   return map;
 };
 
-window.mountAtlasSlider = function (el, mapEl, initialYear) {
+window.mountAtlasSlider = function (el, mapEl, initialYear, labels) {
   // Throttle map updates (leading + trailing, ~100ms). _setYear is continuous/no-fetch, so this
   // keeps the map animating live while the timeline is played or dragged, while capping filter
   // churn, and the trailing call guarantees the map lands on the final year.
@@ -1683,7 +1683,7 @@ window.mountAtlasSlider = function (el, mapEl, initialYear) {
     }
   };
   const slider = mountTimeSlider(el, {
-    min: -4000, max: 2010, value: initialYear,
+    min: -4000, max: 2010, value: initialYear, labels,
     onYear: (year) => pushYear(year),
     onPlay: (playing) => { if (mapEl._setFadeMode) mapEl._setFadeMode(playing); },
   });
