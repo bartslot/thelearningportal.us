@@ -66,9 +66,10 @@
      Darker than the card, because a ruler is chrome and must not read as a second panel. */
   --color-scrubber-surface: #040914;
 
-  /* The left cluster is a SCRIM, not a panel: 90% of the bar's own colour, so ticks pass under the
-     year and dim instead of colliding with it. A hard-edged box there would read as a button bar. */
-  --color-scrubber-scrim: rgb(4 9 20 / 0.9);
+  /* NO SCRIM under the play control and the year. The Figma frame backs that group with the bar's
+     own colour at 90% — invisible as a shape, but it erases every tick behind it, and on a live
+     ruler that reads as a solid slab the timeline only starts after. They overlay the ruler
+     instead, and the year stays readable because the badge below carries its own fill. */
 
   --color-scrubber-badge: #0b1528;
   --color-scrubber-badge-edge: #162235;
@@ -104,7 +105,10 @@
   --scrubber-width: 54.6875rem;      /* 875px */
   --scrubber-height: 2.9375rem;      /* 47px  */
   --scrubber-tick-height: 1.875rem;  /* 30px, hanging from the top edge */
-  --scrubber-label-top: 2.25rem;     /* 36px = tick + the 6px gap under it */
+  /* 36px = tick + the 6px gap under it. The label's line box is the REMAINDER of the bar rather
+     than the font's own line-height, so the digits centre in the space left and never touch the
+     bottom edge whatever these two are set to. */
+  --scrubber-label-top: 2.25rem;
   --scrubber-band-width: 16.75rem;   /* 268px */
   --scrubber-px-per-year: 4;         /* decade tick every 40px, century every 400px */
 }

@@ -98,9 +98,13 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay, labels })
     <div class="pointer-events-none absolute left-1/2 z-20 w-[1.5px] -translate-x-1/2 rounded-[2px] bg-scrubber-playhead"
          style="top: -3px; height: calc(var(--scrubber-height) + 3px)"></div>
 
-    <!-- Play + year, on a scrim: 90% of the bar's own colour, so ticks pass under them and dim
-         instead of colliding with them. -->
-    <div class="absolute inset-y-0 left-0 z-30 flex items-center gap-1 rounded-l-card bg-scrubber-scrim pl-1 pr-3">
+    <!-- Play + year: an overlay ON the ruler, with no surface of its own.
+         The mock backs this group with 90% of the bar's own colour — invisible as a shape, but it
+         wipes out every tick behind it, and live that turns the left end into a solid slab the
+         ruler appears to start after. Bart: "the play button and year input is an overlay that
+         should be an overlay of the scrub bar." So the ruler runs unbroken underneath, and the
+         year stays readable because the badge carries its own fill rather than the group doing it. -->
+    <div class="absolute inset-y-0 left-0 z-30 flex items-center gap-1 pl-1 pr-3">
       <button type="button" aria-label="${t.play}" aria-pressed="false" data-tooltip="${t.play}"
               class="tm-play grid h-6 w-6 place-items-center rounded-full text-scrubber-control">
         <svg class="tm-ic-play h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">${ICON_PLAY}</svg>
@@ -151,6 +155,10 @@ export function mountTimeSlider(el, { min, max, value, onYear, onPlay, labels })
       label.className = 'absolute -translate-x-1/2 whitespace-nowrap text-scrubber-num font-semibold tabular-nums text-scrubber-tick-major';
       label.style.left = `${x}px`;
       label.style.top = 'var(--scrubber-label-top)';
+      // The line box is exactly the room left below the ticks. Inter's own line-height at 10px is
+      // 15px, which ran 4px past the bottom of a 47px bar and shaved the digits — visible only as
+      // labels that look slightly wrong, never as an error.
+      label.style.lineHeight = 'calc(var(--scrubber-height) - var(--scrubber-label-top))';
       label.textContent = fmtTick(y);
       strip.appendChild(label);
       centuryLabels.set(y, label);
