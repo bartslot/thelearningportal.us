@@ -47,7 +47,7 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   uniform float u_windAmount;   // 0 = the field sits still, 1 = fully advected
   uniform float u_windScale;    // how far the flow carries per cycle, in UV
   uniform float u_windRate;     // cycles per second
-  uniform sampler2D u_patches;  // harvested NASA cloud patches, 3x2 of 256px coverage tiles
+  uniform sampler2D u_patches;  // harvested NASA cloud patches, 3x2 of 2048px coverage tiles
   uniform float u_patchAmount;  // 0 = no atlas, fall back to the whole-planet field
   uniform float u_patchTiles;   // lattice cells around the equator
   uniform float u_patchMean;    // the atlas's own mean coverage; see the blend below
@@ -64,8 +64,8 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   // ── The tiled source ──────────────────────────────────────────────────────────────────────────
   //
   // The whole-planet field is 2048x1024 — 19.5 km per texel — against ground running under a
-  // kilometre, so it collapses to a grey wash on approach. The atlas is real MODIS cloud at 2446 m
-  // per texel, eight times finer, but it is only six patches of open ocean: 626 km of sky each.
+  // kilometre, so it collapses to a grey wash on approach. The atlas is real MODIS cloud at 306 m
+  // per texel, sixty-four times finer, but it is only six patches of open ocean: 626 km of sky each.
   // Laid down on a plain grid it would repeat every 626 km, and a visible repeat over open ocean is
   // a worse artefact than the blur it replaces.
   //
@@ -80,9 +80,10 @@ export const CLOUD_FIELD_GLSL = /* glsl */`
   // seam to show, and the patch is twice the size of a cell, so there is room to move it.
   const vec2 CLOUD_PATCH_GRID = vec2(3.0, 2.0);
   const float CLOUD_PATCH_COUNT = 6.0;
-  const float CLOUD_PATCH_TEXELS = 1024.0;
+  const float CLOUD_PATCH_TEXELS = 2048.0;
   // Patch widths around the equator: 40075 km of circumference over 626 km of patch. It is what
-  // makes the atlas display at its native 2446 m per texel whatever u_patchTiles is set to.
+  // makes the atlas display at its native resolution whatever u_patchTiles is set to — and it is why
+  // the geometry has not moved once across three source zooms: the footprint never changed.
   const float CLOUD_PATCH_WIDTHS = 64.0;
 
   uint cloudMix(uint h) {
@@ -367,17 +368,17 @@ export const CLOUD_PATCH_DETAIL = 0.75
 export const CLOUD_PATCH_TILES = 144
 
 /**
- * The atlas's own mean coverage, measured over all six patches: 0.4359.
+ * The atlas's own mean coverage, measured over all six patches: 0.4335.
  *
  * Not decoration — the variance-preserving blend centres on it, and an error here reappears as a
  * brightness modulation in the shape of the lattice, which is the one artefact the tiling exists to
  * prevent. It MUST be re-measured whenever the atlas is rebuilt: it moved from 0.5177 to 0.4715 the
- * moment the patches were reselected on contrast, and again to 0.4359 at z8. Each step is big
+ * moment the patches were reselected on contrast, and again at z8 and z9. Each step is big
  * enough to show. So
  * build-cloud-atlas.mjs prints it and names this constant, rather than leaving the pair to be kept
  * in step by whoever remembers.
  */
-export const CLOUD_PATCH_MEAN = 0.4359
+export const CLOUD_PATCH_MEAN = 0.4335
 
 /**
  * Set every cloud-field uniform from one state object.
