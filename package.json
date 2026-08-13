@@ -3,22 +3,25 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && node scripts/check-asset-budget.mjs",
         "dev": "vite",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "check:assets": "node scripts/check-asset-budget.mjs"
     },
     "devDependencies": {
         "@mapbox/vector-tile": "^3.0.0",
         "@playwright/test": "^1.60.0",
         "@tailwindcss/vite": "^4.1.18",
         "@turf/turf": "^7.3.5",
+        "@vitest/coverage-v8": "^4.1.10",
         "@vitest/ui": "^4.1.6",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
         "daisyui": "^5.5.19",
         "jsdom": "^29.1.1",
         "laravel-vite-plugin": "^2.0.0",
+        "mapshaper": "^0.7.51",
         "pbf": "^5.1.0",
         "tailwindcss": "^4.1.18",
         "vite": "^7.0.7",

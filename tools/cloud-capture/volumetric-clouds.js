@@ -1,0 +1,434 @@
+/**
+ * volumetric-clouds.js — the expensive cloud deck, for OFFLINE capture only.
+ *
+ * Never imported by the app. resources/js/timemap/clouds.js is the live layer: a shell, 120 fps,
+ * and what a classroom machine can afford every frame. This one marches a ray through a slab, which
+ * buys real depth and mist when the camera passes through it, and costs 21 fps on an M3 Pro.
+ *
+ * That trade only makes sense when frames are rendered ahead of time. At half a second a frame
+ * nobody cares, so this is deliberately tuned for QUALITY over speed — more steps, more octaves —
+ * and the result is baked into a video the live map composites over itself.
+ *
+ * Two things differ from the live layer besides the shader:
+ *
+ *  - TIME IS EXPLICIT. `setTime(seconds)` instead of performance.now(), because a captured frame
+ *    must be reproducible: re-running the capture has to yield the same weather, or the video will
+ *    not match a second take.
+ *  - IT NEVER ASKS FOR A FRAME. No triggerRepaint; the capture harness drives rendering.
+ */
+import maplibregl from 'maplibre-gl'
+import { buildSphereMesh, cameraInPlanetSpace, buildProgram, EQUIRECT_GLSL, SPHERE_SPAN_GLSL } from '../../resources/js/timemap/planet-mesh.js'
+
+const LAYER_ID = 'tm-clouds-volumetric'
+// Deck height. Real cloud tops out around 12 km; on a 6371 km globe that is invisible, so this is
+// exaggerated until the shell parallaxes against the ground as the camera moves.
+const SLAB_BOTTOM_M = 30000
+const SLAB_TOP_M = 130000
+
+// Value noise + fbm over the unit sphere. Cheap, and at cloud scale nobody can tell it from
+// gradient noise. `u_time` drifts the field along one axis: weather moving over the planet.
+const NOISE_GLSL = /* glsl */`
+  float hash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
+  }
+  float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float n000 = hash(i);
+    float n100 = hash(i + vec3(1.0, 0.0, 0.0));
+    float n010 = hash(i + vec3(0.0, 1.0, 0.0));
+    float n110 = hash(i + vec3(1.0, 1.0, 0.0));
+    float n001 = hash(i + vec3(0.0, 0.0, 1.0));
+    float n101 = hash(i + vec3(1.0, 0.0, 1.0));
+    float n011 = hash(i + vec3(0.0, 1.0, 1.0));
+    float n111 = hash(i + vec3(1.0, 1.0, 1.0));
+    return mix(
+      mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+      mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+      f.z);
+  }
+  float fbm(vec3 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 5; i++) {
+      value += amplitude * noise(p);
+      p *= 2.0;
+      amplitude *= 0.5;
+    }
+    return value;
+  }
+`
+
+const vertexSource = (shaderData) => `${shaderData.vertexShaderPrelude}
+${shaderData.define}
+attribute vec2 a_pos;
+attribute vec3 a_sphere;
+uniform float a_elevation_globe;
+uniform float a_elevation_mercator;
+varying vec3 v_sphere;
+void main() {
+  v_sphere = a_sphere;
+  // Globe wants metres above the sphere; mercator wants z in mercator units. Same deck, two rulers.
+  #ifdef GLOBE
+    gl_Position = projectTileFor3D(a_pos, a_elevation_globe);
+  #else
+    gl_Position = projectTileFor3D(a_pos, a_elevation_mercator);
+  #endif
+}`
+
+// Marched, not shelled. Everything is in PLANET SPACE: the earth is a unit sphere at the origin
+// and altitudes are fractions of its radius, which keeps the ray/sphere maths conditioned and makes
+// the density field a pure function of direction and height.
+const fragmentSource = (marchSteps, lightSteps) => `precision highp float;
+varying vec3 v_sphere;
+uniform vec3 u_camera;        // camera in planet space
+uniform vec3 u_sun;           // direction TO the sun
+uniform float u_inner;        // slab floor, in earth radii
+uniform float u_outer;        // slab ceiling
+uniform float u_time;
+uniform float u_opacity;
+uniform float u_drift;
+uniform sampler2D u_field;
+uniform float u_fieldAmount;  // 0 = procedural weather, 1 = the real field
+uniform sampler2D u_wind;     // real wind field: R = eastward, G = southward, 0.5 = still
+uniform float u_windAmount;   // 0 = the field sits still, 1 = fully advected
+uniform float u_windScale;    // how far the flow carries per cycle, in UV
+uniform float u_windRate;     // cycles per second
+
+${NOISE_GLSL}
+${EQUIRECT_GLSL}
+
+// ── Wind advection ────────────────────────────────────────────────────────────────────────────
+// Sliding the whole texture makes clouds drift like a painted backdrop; real weather TURNS. The
+// field here is a genuine GFS wind grid, so the rotation comes from actual circulation — the low
+// off Newfoundland spins because it was really spinning.
+//
+// The trick is the double sample. Offsetting UVs by flow*time smears without limit — after a few
+// seconds every cloud is a streak. So the flow is sampled at two clocks half a cycle apart and
+// cross-faded, and each one resets before it has time to smear. Standard flow-map practice.
+vec2 windAt(vec2 uv, float lat) {
+  vec2 wind = texture2D(u_wind, uv).rg * 2.0 - 1.0;
+  // Degrees of longitude per metre grow toward the poles; without this correction the flow slows
+  // to a crawl at high latitude and the polar cells stop turning.
+  wind.x /= max(cos(lat), 0.25);
+  return wind * u_windScale;
+}
+
+float advectedField(vec2 uv, float lat) {
+  if (u_windAmount <= 0.0) return texture2D(u_field, uv).r;
+  vec2 flow = windAt(uv, lat);
+  float cycle = u_time * u_windRate;
+  float phase1 = fract(cycle);
+  float phase2 = fract(cycle + 0.5);
+  float blend = abs(1.0 - 2.0 * phase1);       // triangle wave: 1 at the resets, 0 mid-cycle
+  float a = texture2D(u_field, uv - flow * phase1).r;
+  float b = texture2D(u_field, uv - flow * phase2).r;
+  return mix(mix(a, b, blend), texture2D(u_field, uv).r, 1.0 - u_windAmount);
+}
+
+const int MARCH_STEPS = ${marchSteps};
+const int LIGHT_STEPS = ${lightSteps};
+
+// The satellite field decides WHERE cloud is — real cyclones, real fronts. Noise decides what its
+// edges look like from close up, which is the only part a 39 km-per-pixel texture cannot tell us.
+float density(vec3 pos) {
+  float r = length(pos);
+  float h = (r - u_inner) / (u_outer - u_inner);
+  if (h < 0.0 || h > 1.0) return 0.0;
+  vec3 dir = pos / r;
+
+  float cover = fbm(dir * 3.2 + vec3(u_time * 0.006, 0.0, u_time * 0.004));
+  if (u_fieldAmount > 0.0) {
+    cover = mix(cover, advectedField(equirectUV(dir, u_drift), asin(clamp(dir.y, -1.0, 1.0))), u_fieldAmount);
+  }
+
+  // Flat-bottomed and billowing on top, the shape of a fair-weather deck.
+  float profile = smoothstep(0.0, 0.12, h) * (1.0 - smoothstep(0.45, 1.0, h));
+
+  // Erosion. SUBTRACTING noise keeps the cores solid while the edges dissolve; multiplying just
+  // fades the whole deck evenly, which is what makes a cloud look like a decal.
+  float detail = fbm(dir * 60.0 + vec3(0.0, u_time * 0.03, 0.0));
+  float fine = fbm(dir * 180.0 - vec3(u_time * 0.05, 0.0, 0.0));
+  return clamp((cover * profile - 0.22 * detail - 0.10 * fine) * 3.0, 0.0, 1.0);
+}
+
+${SPHERE_SPAN_GLSL}
+
+void main() {
+  vec3 shell = normalize(v_sphere) * u_outer;
+  vec3 ray = normalize(shell - u_camera);
+
+  vec2 outer = sphereSpan(u_camera, ray, u_outer);
+  if (outer.x > outer.y) discard;
+
+  float near = max(outer.x, 0.0);          // 0 when the camera is already inside the deck
+  float far = outer.y;
+  vec2 ground = sphereSpan(u_camera, ray, 1.0);
+  if (ground.x <= ground.y && ground.x > 0.0) far = min(far, ground.x);
+  vec2 inner = sphereSpan(u_camera, ray, u_inner);
+  if (inner.x <= inner.y && inner.x > 0.0) far = min(far, inner.x);
+  if (far <= near) discard;
+
+  float stepLen = (far - near) / float(MARCH_STEPS);
+  // Dither the start so banding becomes noise, which the eye forgives and a band never is.
+  float jitter = hash(vec3(gl_FragCoord.xy, u_time)) * stepLen;
+
+  float transmittance = 1.0;
+  vec3 scattered = vec3(0.0);
+
+  for (int i = 0; i < MARCH_STEPS; i++) {
+    float t = near + jitter + stepLen * float(i);
+    if (t > far) break;
+    vec3 pos = u_camera + ray * t;
+    float d = density(pos);
+    if (d <= 0.001) continue;
+
+    // How much sun reaches this sample through the cloud above it: a lit top and a shadowed base.
+    float shadow = 0.0;
+    float lightStep = (u_outer - u_inner) / float(LIGHT_STEPS);
+    for (int j = 1; j <= LIGHT_STEPS; j++) {
+      shadow += density(pos + u_sun * (lightStep * float(j)));
+    }
+    float sunlight = exp(-shadow * lightStep * 26.0);
+    // Powder: sunward edges brighten before they thin out. Most of what separates cloud from smoke.
+    float powder = 1.0 - exp(-d * 8.0);
+    vec3 lit = mix(vec3(0.52, 0.57, 0.66), vec3(1.0), sunlight * powder);
+
+    float extinction = d * stepLen * 42.0;
+    float absorbed = 1.0 - exp(-extinction);
+    scattered += lit * absorbed * transmittance;
+    transmittance *= exp(-extinction);
+    if (transmittance < 0.01) break;
+  }
+
+  float alpha = (1.0 - transmittance) * u_opacity;
+  if (alpha < 0.002) discard;
+  gl_FragColor = vec4(scattered * u_opacity, alpha);
+}`
+
+/**
+ * @param {object} opts
+ * @param {number} [opts.opacity]   deck density, 0 hides it entirely
+ * @param {boolean} [opts.animate]  false freezes the drift (reduced-motion callers)
+ * @param {string} [opts.fieldUrl]  equirectangular cloud-cover image (NASA Blue Marble clouds)
+ * @param {number} [opts.driftRate] revolutions per second of the real field, west to east
+ * @param {number[]} [opts.sun]     direction TO the sun, in planet space
+ */
+export const createVolumetricCloudLayer = ({
+  opacity = 0.5, fieldUrl = null, driftRate = 0.0004, sun = [0.4, 0.5, 0.75],
+  marchSteps = 96, lightSteps = 8,
+  windUrl = null, windAmount = 1, windScale = 0.06, windRate = 0.05,
+} = {}) => {
+  let clock = 0
+  const mesh = buildSphereMesh()
+  let map = null
+  let gl = null
+  let buffers = null
+  // One compiled program per projection variant: the prelude is different under globe and
+  // mercator, and the variant flips mid-flight when the map crosses the globe/mercator threshold.
+  const programs = new Map()
+  let state = { opacity, fieldUrl, driftRate, sun, marchSteps, lightSteps, windUrl, windAmount, windScale, windRate }
+  let fieldTexture = null
+  let fieldReady = false
+  let windTexture = null
+  let windReady = false
+
+  const programFor = (shaderData) => {
+    const key = shaderData.variantName
+    if (programs.has(key)) return programs.get(key)
+
+    const program = buildProgram(gl, vertexSource(shaderData), fragmentSource(state.marchSteps, state.lightSteps), 'tm-clouds-volumetric')
+    const entry = {
+      program,
+      attribs: {
+        pos: gl.getAttribLocation(program, 'a_pos'),
+        sphere: gl.getAttribLocation(program, 'a_sphere'),
+      },
+      uniforms: {
+        elevationGlobe: gl.getUniformLocation(program, 'a_elevation_globe'),
+        elevationMercator: gl.getUniformLocation(program, 'a_elevation_mercator'),
+        time: gl.getUniformLocation(program, 'u_time'),
+        opacity: gl.getUniformLocation(program, 'u_opacity'),
+        drift: gl.getUniformLocation(program, 'u_drift'),
+        sun: gl.getUniformLocation(program, 'u_sun'),
+        field: gl.getUniformLocation(program, 'u_field'),
+        fieldAmount: gl.getUniformLocation(program, 'u_fieldAmount'),
+        wind: gl.getUniformLocation(program, 'u_wind'),
+        windAmount: gl.getUniformLocation(program, 'u_windAmount'),
+        windScale: gl.getUniformLocation(program, 'u_windScale'),
+        windRate: gl.getUniformLocation(program, 'u_windRate'),
+        camera: gl.getUniformLocation(program, 'u_camera'),
+        inner: gl.getUniformLocation(program, 'u_inner'),
+        outer: gl.getUniformLocation(program, 'u_outer'),
+        // Projection uniforms the prelude declares. Only the globe variant has the last four, so
+        // every one of these is allowed to come back null.
+        matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
+        tileMercatorCoords: gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
+        clippingPlane: gl.getUniformLocation(program, 'u_projection_clipping_plane'),
+        transition: gl.getUniformLocation(program, 'u_projection_transition'),
+        fallbackMatrix: gl.getUniformLocation(program, 'u_projection_fallback_matrix'),
+      },
+    }
+    programs.set(key, entry)
+    return entry
+  }
+
+  const setProjectionUniforms = (u, data) => {
+    if (u.matrix) gl.uniformMatrix4fv(u.matrix, false, data.mainMatrix)
+    if (u.tileMercatorCoords) gl.uniform4f(u.tileMercatorCoords, ...data.tileMercatorCoords)
+    if (u.clippingPlane) gl.uniform4f(u.clippingPlane, ...data.clippingPlane)
+    if (u.transition) gl.uniform1f(u.transition, data.projectionTransition)
+    if (u.fallbackMatrix) gl.uniformMatrix4fv(u.fallbackMatrix, false, data.fallbackMatrix)
+  }
+
+  // The field wraps in longitude and clamps at the poles — REPEAT on T would fold the Arctic onto
+  // the Antarctic at the seam.
+  const loadEquirect = (url, onReady) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => {
+      if (!gl) return
+      const texture = gl.createTexture()
+      gl.bindTexture(gl.TEXTURE_2D, texture)
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.generateMipmap(gl.TEXTURE_2D)
+      onReady(texture)
+      map?.triggerRepaint()
+    }
+    // Decorative: a failed load leaves the procedural weather in place rather than an empty sky.
+    image.src = url
+  }
+
+  const loadField = (url) => loadEquirect(url, (t) => { fieldTexture = t; fieldReady = true })
+  const loadWind = (url) => loadEquirect(url, (t) => { windTexture = t; windReady = true })
+
+  return {
+    id: LAYER_ID,
+    type: 'custom',
+    renderingMode: '3d',
+
+    onAdd(mapInstance, glContext) {
+      map = mapInstance
+      gl = glContext
+      const buffer = (target, data) => {
+        const b = gl.createBuffer()
+        gl.bindBuffer(target, b)
+        gl.bufferData(target, data, gl.STATIC_DRAW)
+        return b
+      }
+      buffers = {
+        pos: buffer(gl.ARRAY_BUFFER, mesh.positions),
+        sphere: buffer(gl.ARRAY_BUFFER, mesh.spheres),
+        index: buffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices),
+      }
+      if (state.fieldUrl) loadField(state.fieldUrl)
+      if (state.windUrl) loadWind(state.windUrl)
+    },
+
+    // Without this every style reload leaks a program, a texture and three buffers.
+    onRemove() {
+      if (!gl) return
+      programs.forEach(({ program }) => gl.deleteProgram(program))
+      programs.clear()
+      if (fieldTexture) { gl.deleteTexture(fieldTexture); fieldTexture = null; fieldReady = false }
+      if (windTexture) { gl.deleteTexture(windTexture); windTexture = null; windReady = false }
+      if (buffers) {
+        gl.deleteBuffer(buffers.pos)
+        gl.deleteBuffer(buffers.sphere)
+        gl.deleteBuffer(buffers.index)
+        buffers = null
+      }
+      map = null
+      gl = null
+    },
+
+    render(glContext, args) {
+      if (!buffers || state.opacity <= 0) return
+      // v4 handed a matrix here; v5 hands this options object. Bail rather than feed the old code
+      // path something it will silently mis-read.
+      const shaderData = args && args.shaderData
+      const projection = args && args.defaultProjectionData
+      if (!shaderData || !projection) return
+
+      const { program, attribs, uniforms } = programFor(shaderData)
+      gl.useProgram(program)
+      setProjectionUniforms(uniforms, projection)
+
+      const lat = map.getCenter().lat
+      const seconds = clock            // explicit: a captured frame must be reproducible
+      const EARTH_RADIUS_M = 6371008.8
+      if (uniforms.elevationGlobe) gl.uniform1f(uniforms.elevationGlobe, SLAB_TOP_M)
+      if (uniforms.elevationMercator) {
+        gl.uniform1f(uniforms.elevationMercator, maplibregl.MercatorCoordinate.fromLngLat([0, lat], SLAB_TOP_M).z)
+      }
+      if (uniforms.inner) gl.uniform1f(uniforms.inner, 1 + SLAB_BOTTOM_M / EARTH_RADIUS_M)
+      if (uniforms.outer) gl.uniform1f(uniforms.outer, 1 + SLAB_TOP_M / EARTH_RADIUS_M)
+      if (uniforms.camera) {
+        const c = cameraInPlanetSpace(map, maplibregl)
+        gl.uniform3f(uniforms.camera, c[0], c[1], c[2])
+      }
+      if (uniforms.time) gl.uniform1f(uniforms.time, seconds)
+      if (uniforms.opacity) gl.uniform1f(uniforms.opacity, state.opacity)
+      if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
+      if (uniforms.fieldAmount) gl.uniform1f(uniforms.fieldAmount, fieldReady ? 1 : 0)
+      // Real weather tracks west to east. Slow enough that a lesson never sees it move, fast enough
+      // that the planet is not visibly frozen across a long scene.
+      if (uniforms.drift) gl.uniform1f(uniforms.drift, seconds * state.driftRate)
+      if (uniforms.windAmount) gl.uniform1f(uniforms.windAmount, windReady ? state.windAmount : 0)
+      if (uniforms.windScale) gl.uniform1f(uniforms.windScale, state.windScale)
+      if (uniforms.windRate) gl.uniform1f(uniforms.windRate, state.windRate)
+      if (windReady && uniforms.wind) {
+        gl.activeTexture(gl.TEXTURE1)
+        gl.bindTexture(gl.TEXTURE_2D, windTexture)
+        gl.uniform1i(uniforms.wind, 1)
+      }
+      if (fieldReady && uniforms.field) {
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, fieldTexture)
+        gl.uniform1i(uniforms.field, 0)
+      }
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos)
+      gl.enableVertexAttribArray(attribs.pos)
+      gl.vertexAttribPointer(attribs.pos, 2, gl.FLOAT, false, 0, 0)
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.sphere)
+      gl.enableVertexAttribArray(attribs.sphere)
+      gl.vertexAttribPointer(attribs.sphere, 3, gl.FLOAT, false, 0, 0)
+
+      gl.enable(gl.DEPTH_TEST)
+      gl.depthFunc(gl.LEQUAL)
+      // Transparent: test against the globe's depth, never write. Writing is what would cull the
+      // ships and voyage lines beneath the deck (see voyage-ships.js).
+      gl.depthMask(false)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index)
+      gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+      gl.depthMask(true)
+      // No triggerRepaint: the capture harness decides when a frame happens.
+    },
+
+    /** The capture clock, in seconds. Set it before each frame. */
+    setTime (seconds) { clock = seconds },
+
+    /** Options — density, drift, sun, and which cloud field is shown. */
+    setOptions(next = {}) {
+      const previousUrl = state.fieldUrl
+      state = { ...state, ...next }
+      if (next.fieldUrl !== undefined && next.fieldUrl !== previousUrl) {
+        fieldReady = false
+        if (next.fieldUrl) loadField(next.fieldUrl)
+      }
+      if (map) map.triggerRepaint()
+    },
+    getOptions: () => ({ ...state }),
+    /** True once a real cloud field is uploaded — the deck is procedural until then. */
+    get hasField () { return fieldReady },
+  }
+}
+
+export const VOLUMETRIC_LAYER_ID = LAYER_ID

@@ -7,11 +7,26 @@ import { addForestLayer } from '../map-forests.js';
 import { addScatterLayer } from '../map-scatter.js';
 import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
+// Territories we drew ourselves, where Cliopatria has nothing. A separate source on purpose: an
+// upstream refresh can never overwrite hand-drawn work, and hand-drawn work is never mistaken for
+// theirs. Everything below treats it as an ordinary territory.
+import { handTerritories, provenanceFor } from './hand-territories.js';
 import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
-import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle } from './voyages.js';
+import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle, smooth } from './voyages.js';
 import nationalColors from './national-colors.json';
-import { SATELLITE_SOURCE, DEM_SOURCE, RELIEF } from '../map-imagery.js';
+import { SATELLITE_SOURCE, SATELLITE_DETAIL_SOURCE, DEM_SOURCE, satelliteLayers, EARTH_COLOURS } from '../map-imagery.js';
+import { CLOUD_LAYER_ID } from './clouds.js';
+// The whole globe stack, assembled in one place and shared with the lesson map's Earth style. The
+// Time-Map used to build the cloud deck by hand and nothing else, which is how seven of these
+// layers ended up merged, tested and never loaded by any page.
+import { addGlobeLayers } from '../map-globe-layers.js';
+import { sweepBorder, outlineOf, withoutSeams } from '../map/border-sweep.js';
+import { createAdvance } from '../map/advance-layer.js';
+import { EASING } from '../easing.js';
+import { planetSpacePosition } from './planet-mesh.js';
+import { sunDirection } from './sun.js';
+import { registerCardControls } from './information-card.js';
 
 // Curated national fill colours (schoolbook hues: NL orange, France blue, Spain gold) keyed by the
 // tile QID; a nation's regimes AND colonies share one hue, so Spanish Peru reads as Spain. Polities
@@ -64,6 +79,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // Real satellite ground for the Satellite style (keyless NASA GIBS Blue Marble). Hidden in
         // every other style, so its tiles are never requested there.
         satellite: SATELLITE_SOURCE,
+        'satellite-detail': SATELLITE_DETAIL_SOURCE,
         coast: { type: 'vector', tiles: [`${location.origin}/coast-echo-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         rivers: { type: 'vector', tiles: [`${location.origin}/river-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4 },
         lakes: { type: 'vector', tiles: [`${location.origin}/lake-tiles/{z}/{x}/{y}.pbf`], maxzoom: 6 },
@@ -71,13 +87,27 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // True coastline (NE 50m, light-simplified) for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
+        // The hand-authored supplement. Its features carry Cliopatria's own property names
+        // (Name/Wikidata/FromYear/ToYear/Type), which is what lets the year filter, the colour
+        // palette, the label pass and the click path take it without a single special case.
+        // promoteId is our stable id rather than the QID: two territories could one day share a
+        // Wikidata item, and feature-state keyed on a shared id selects both.
+        'hand-territories': { type: 'geojson', data: handTerritories(), promoteId: 'id' },
         // Explorer voyage routes (curated GeoJSON, baked at import time from voyages.json).
+        // Rounded borders: filled in from what is on screen, empty until the control asks for it.
+        'boundaries-smooth': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+        // The hover shine, as its own geometry rather than a feature-state on the raw polygons —
+        // that is what lets it follow the ROUNDED outline when rounding is on.
+        'boundaries-glow-src': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+        // The name that follows the cursor. Its own source, so it can never be mistaken for the
+        // resting label or filtered by anything that filters territories.
+        'boundaries-cursor-name': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         ...voyageStyleSources(),
       },
       layers: [
         { id: 'water', type: 'background', paint: { 'background-color': theme.water } },
         // Satellite ground — bottom of the stack, under the whole atlas. Satellite style only.
-        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 250 } },
+        ...satelliteLayers({ visible: false }),
         // Sketched sea grid (old-chart graticule), water-only (clipped at build time). Beneath the
         // coast/land. Recolored + toggled per style by applyMapStyle (atlas styles only).
         { id: 'graticule', type: 'line', source: 'graticule', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8a9aa0', 'line-width': 0.6, 'line-opacity': 0.5 } },
@@ -104,19 +134,92 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         ...voyageStyleLayers(['Cinzel']),
       ],
     },
-    center: [8.23, 46.8], // Switzerland
-    zoom: 4,
-    // A gentler lean than the lesson map's. This map's job is reading borders across a continent,
-    // and a steep tilt buries the far half of Europe behind the near half; the lesson map is showing
-    // a journey, where the silhouette matters more than the plan view.
-    pitch: 28,   // "map on a table" (symbols stay billboarded upright)
+    /**
+     * A CENTRED EARTH, seen straight on.
+     *
+     * It used to open on Switzerland at zoom 4 with 28° of pitch — a tilted close-up of the northern
+     * hemisphere, which made the globe read as a map on a table rather than as a planet, and put the
+     * southern hemisphere off the bottom of the frame entirely.
+     *
+     * Latitude 20 rather than 46.8: the content is northern-heavy and Europe should stay comfortably
+     * in frame, but 20 keeps Africa whole and the southern hemisphere visible, where 46.8 did not.
+     *
+     * PITCH IS NOT ZERO, and that was a wrong turn worth recording. Flat-on, the camera points at
+     * the centre of the earth and the horizon leaves the frame entirely — the globe reads as a disc
+     * with a map on it. The curvature only exists when you are looking ALONG the surface, so some
+     * tilt is what makes it a planet. 45 is enough to put a horizon in the picture without the far
+     * hemisphere folding away; the limits are on sliders because this is a taste call.
+     *
+     * Where it sits VERTICALLY is a separate problem with a separate fix — see centreForChrome.
+     */
+    center: [8.23, 20],
+    zoom: 1.9,
+    pitch: 45,
+    // 70 up from the 60 MapLibre defaults to, and it can go further now: the far-hemisphere cut
+    // reads transform.cameraPosition, where the old lngLat reconstruction was 43° adrift at exactly
+    // this kind of angle and drew the sea as a bowl hanging under the earth. 70 keeps a horizon in
+    // shot without the globe folding to an edge; Camera → Tilt and turn raises it to 85 to try.
     maxPitch: 70,
     // Allow three extra zoom steps for regional detail. The vector sources cap at z4 but overzoom
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
     // zoom. Zoom-out stays open so other continents/markers come into view.
     maxZoom: 7,
-    attributionControl: { customAttribution: 'Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)' },
+    // Off HERE so it is not auto-placed bottom-right on top of the colour slider; it is added just
+    // below instead, collapsed and in the corner. See addControl.
+    attributionControl: false,
   });
+
+  /**
+   * The credit, back — as a mark you open, not a strip across the globe.
+   *
+   * It was switched off because the expanded strip ran along the bottom of the frame and over the
+   * southern labels. That could not stand: OpenStreetMap's ODbL and Cliopatria's CC-BY both REQUIRE
+   * visible credit, and the ground is NASA GIBS and Sentinel imagery. So this is MapLibre's own
+   * control in `compact` mode — a single ⓘ in the corner that opens the full text on click, which
+   * is the form the OSM attribution guidelines exist to allow on a map with no room for a strip.
+   *
+   * MapLibre's control, rather than a hand-written line in the blade, because it collects each
+   * source's own `attribution` field: add a source tomorrow and its credit appears by itself. Only
+   * the two that carry no attribution of their own are named here. The imagery lines are NOT
+   * repeated — map-imagery.js already declares them on the raster sources.
+   *
+   * Bottom-LEFT: bottom-right is the colour slider and the dev flask, top-right is the settings cog.
+   */
+  map.addControl(new maplibregl.AttributionControl({
+    compact: true,
+    customAttribution: [
+      'Borders © Cliopatria / Seshat (CC-BY 4.0)',
+      'Land © OpenStreetMap (CC0)',
+      // The cloud deck is named here for the same reason as the two above: it is a baked atlas a
+      // custom layer samples, not a MapLibre source, so there is no `attribution` field for the
+      // control to collect. The full sentence GIBS asks for is in docs/credits.md.
+      'Cloud: NASA EOSDIS GIBS (MODIS)',
+    ],
+  }), 'bottom-left');
+
+  /**
+   * Start closed, and stay closed until someone asks.
+   *
+   * `compact: true` gets you the ⓘ, but MapLibre still OPENS the panel the moment the control is
+   * added and again on every resize — it only closes on the first drag. This map resizes constantly
+   * (a ResizeObserver drives it, see below), so without this the credit reopens itself over the
+   * globe again and again, which is the behaviour that got the whole control switched off.
+   *
+   * `.maplibregl-*` class names are MapLibre's documented styling surface, so reading them here is
+   * no more coupled than the CSS in app.css that dresses the same element.
+   */
+  let openedByTeacher = false;
+  const attributionEl = el.querySelector('.maplibregl-ctrl-attrib');
+  const closeAttribution = () => {
+    if (openedByTeacher) return;
+    attributionEl?.classList.remove('maplibregl-compact-show');
+    attributionEl?.removeAttribute('open');
+  };
+  closeAttribution();
+  // After MapLibre's own resize handler, which is registered in its onAdd and so runs first.
+  map.on('resize', closeAttribution);
+  // Once it has been opened on purpose it stays open — a resize must not shut it under the teacher.
+  attributionEl?.addEventListener('click', () => { openedByTeacher = true; });
 
   // Exposed for dev tooling and the Playwright spec (layer/feature introspection).
   window.__tmMap = map;
@@ -131,12 +234,71 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const resizeObserver = new ResizeObserver(() => map.resize());
   resizeObserver.observe(el);
 
+  /**
+   * Put the globe in the middle of the part of the map you can SEE.
+   *
+   * The time deck is drawn over the bottom of the map and MapLibre centres on the CONTAINER, so the
+   * earth sat about 77px low with a band of empty sky above it and the southern hemisphere tucked
+   * behind the deck. Measured, not estimated: projected centre y=457 against a visible middle of 381.
+   *
+   * IT SHRINKS THE CONTAINER RATHER THAN PADDING THE TRANSFORM. Padding was the obvious answer and
+   * it broke the planet: the custom layers cut the far hemisphere using transform.cameraPosition,
+   * which padding does not move, so the sea's horizon and the drawn globe disagreed and the ocean
+   * rendered as a bowl hanging below the earth. Resizing the box changes nothing the shaders read.
+   *
+   * Measured from the deck rather than hard-coded — it is `w-176 max-w-[92vw]`, so its height
+   * changes with the viewport as its controls wrap.
+   *
+   * IT GROWS THE BOX UPWARDS, it does not shrink it. Shrinking from the bottom centred the globe
+   * and cost 10-20% of the viewport, so the map stopped filling the window. Extending the top by the
+   * same amount moves the container's centre up by exactly as much while the canvas still covers
+   * every visible pixel — the extra height hides behind the header. Full height AND a centred globe;
+   * they were never actually in conflict, I just used the wrong edge.
+   */
+  let chromeInsetEnabled = true;
+  let chromeInsetLocked = false;
+  const centreForChrome = () => {
+    if (!chromeInsetEnabled || chromeInsetLocked) return;
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) return;
+    const box = el.getBoundingClientRect();
+    const bar = deck.getBoundingClientRect();
+    // Clamped to a third: a deck taller than that means a viewport so short there would be nowhere
+    // left to draw the map at all.
+    const covered = Math.max(0, Math.min(box.bottom - bar.top, box.height / 3));
+    if (Math.abs(parseFloat(el.style.top || '0') + covered) < 1) return;
+    // BOTH, or the box slides instead of growing. MapLibre puts its own height on the container, so
+    // moving the top alone translated the whole map upward and left a gap at the bottom of the
+    // window — the opposite of the problem being solved.
+    el.style.top = `-${covered}px`;
+    el.style.height = `calc(100% + ${covered}px)`;
+    map.resize();
+  };
+
+  // The deck mounts on Alpine's $nextTick — after this module runs AND after the map's first idle,
+  // both of which were tried and both of which measured an element that was not there yet. That
+  // fails silently as "no inset", so wait for it, then watch it.
+  const watchDeck = (attempt = 0) => {
+    const deck = document.querySelector('[data-timemap-deck]');
+    if (!deck) {
+      if (attempt < 30) setTimeout(() => watchDeck(attempt + 1), 100);
+      return;
+    }
+    centreForChrome();
+    new ResizeObserver(centreForChrome).observe(deck);
+  };
+  watchDeck();
+
   // Atlas styling comes from theme.json — edit colours/lines there, no JS changes needed.
   const ATLAS_PALETTE = theme.palette;
+  // HOVER DOES NOT TOUCH THE FILL. Lighting up a whole territory's interior on hover floods the
+  // imagery underneath and turns a map into a chart of coloured blocks — the thing you are moving
+  // the mouse across stops being the earth. The border glows instead (see boundaries-glow below),
+  // which says the same thing about the same shape without covering anything up. Selection still
+  // takes the fill: that is a state you chose, not one the pointer wandered into.
   const FILL_COLOR = [
     'case',
     ['boolean', ['feature-state', 'selected'], false], theme.selected,
-    ['boolean', ['feature-state', 'hover'], false], theme.hover,
     // `match` returns colors directly; hash the numeric part of the Wikidata QID into the palette.
     ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], ATLAS_PALETTE.length],
       ...ATLAS_PALETTE.flatMap((c, i) => [i, c]), ATLAS_PALETTE[0]],
@@ -144,9 +306,70 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const FILL_OPACITY = [
     'case',
     ['boolean', ['feature-state', 'selected'], false], theme.fillOpacity.selected,
-    ['boolean', ['feature-state', 'hover'], false], theme.fillOpacity.hover,
     theme.fillOpacity.normal,
   ];
+
+  /** The hover shine: wide and blurred under the crisp border, invisible until pointed at. */
+  const GLOW_COLOR = '#f59e0b';
+  const GLOW_WIDTH_STOPS = [[0, 3], [4, 7], [8, 12]];
+
+  /**
+   * Width at each zoom, scaled.
+   *
+   * MapLibre allows a `zoom` expression only at the TOP level, so `['*', GLOW_WIDTH, scale]` — which
+   * is what this was — is rejected outright: "zoom expression may only be used as input to a
+   * top-level step or interpolate". paint() swallows the throw, so all four Hover glow controls
+   * appeared to do nothing while the console filled with the reason. Scale the OUTPUTS instead.
+   */
+  const glowWidthExpr = (scale = 1) => [
+    'interpolate', ['linear'], ['zoom'],
+    ...GLOW_WIDTH_STOPS.flatMap(([z, w]) => [z, w * scale]),
+  ];
+
+  const GLOW_WIDTH = glowWidthExpr(1);
+
+  /**
+   * THE ONE PLACE A HAND-DRAWN TERRITORY IS ALLOWED TO LOOK DIFFERENT: its edge.
+   *
+   * Everything else about it is an ordinary territory — same fill, same palette, same hover, same
+   * click, same label. A lesson cannot tell the difference and has no business trying.
+   *
+   * But a border is a claim, and these have none. The Barrington Atlas does not draw a frontier for
+   * a Roman-era people; it prints the name across a region. Drawing that as a crisp line would tell
+   * a pupil we know exactly where the Cherusci stopped, which nobody does and nobody ever did.
+   *
+   * So the edge is dashed and blurred, and HOW blurred is driven by the recorded confidence — a
+   * `low` territory (Suebi, which was an umbrella for peoples spread over half of Germania) reads
+   * as a wash with barely an edge at all. That is the map saying out loud what the panel says in
+   * words, without a teacher having to open it.
+   */
+  const byConfidence = (low, medium) => ['match', ['get', 'confidence'], 'low', low, medium];
+
+  /**
+   * The edge's numbers, OWNED here rather than written into the paint.
+   *
+   * The same trap the territory fill fell into: applyMapStyle repaints this layer's colour on every
+   * style switch and applyBoundaryOpacity rewrites its opacity on every year tick, so a settings
+   * control that called setPaintProperty would work for a moment and then be silently wiped by an
+   * unrelated action. The expressions are BUILT from these, so there is nothing to overwrite.
+   */
+  const handEdge = {
+    opacityLow: 0.42, opacityMedium: 0.7,
+    blurLow: 3.2, blurMedium: 1.4,
+    width: 1, dash: 2,
+  };
+  const handLineOpacityExpr = () => byConfidence(handEdge.opacityLow, handEdge.opacityMedium);
+  const handLineBlurExpr = () => byConfidence(handEdge.blurLow, handEdge.blurMedium);
+  const handLineDash = () => [handEdge.dash, handEdge.dash * 1.25];
+  /**
+   * Softer than a Cliopatria border at every zoom, and never crisp.
+   *
+   * The width scale multiplies the STOPS, not the whole expression: MapLibre allows a `zoom`
+   * expression only at the top level, so `['*', expr, scale]` is rejected outright and the throw is
+   * swallowed by paint(). That is the bug that made all four hover-glow controls look dead.
+   */
+  const handLineWidthExpr = () => ['interpolate', ['linear'], ['zoom'],
+    ...[[0, 0.8], [4, 1.4], [8, 2.2]].flatMap(([z, w]) => [z, w * handEdge.width])];
 
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
   // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
@@ -179,14 +402,80 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (Number.isFinite(saved)) colorStrength = Math.min(1, Math.max(0, saved));
   } catch (e) { /* private mode */ }
   const strengthOpacity = (base) => Math.min(0.92, Math.max(0.06, base * (0.45 + 1.1 * colorStrength)));
+  /**
+   * A territory is in one of three states — resting, under the pointer, or opened by a click — and
+   * each has a colour and an opacity. Both are single expressions with a `case` per state, so there
+   * is no way to set one state's value by writing a plain number: that would flatten all three.
+   *
+   * Which is exactly what the settings panel used to do. It called setPaintProperty directly, and
+   * then applyBoundaryOpacity (every year tick) and applyMapStyle (every style switch) rewrote the
+   * same two properties from the style. The controls appeared to work and were wiped a moment later
+   * by an unrelated action — which is worse than not working, because nothing tells you it happened.
+   *
+   * So the panel owns values here, and the expression is BUILT from them. null means "whatever the
+   * active map style says", which is the default and keeps every style looking as designed.
+   */
+  const fillOverride = {
+    normal: { opacity: null },
+    hover: { colour: null, opacity: null },
+    active: { colour: null, opacity: null },
+  };
+  let usePalette = true;
+
+  /**
+   * The same problem for everything else applyMapStyle repaints: border colour, width, softness, the
+   * label ink. A style switch used to reset all of them, so a tuned value survived only until the
+   * next style change. Keyed `layer.property`; a value here wins over the style's.
+   */
+  const styleOverride = {};
+  const ownedPaint = (layer, prop, styleValue) => {
+    const v = styleOverride[`${layer}.${prop}`];
+    if (map.getLayer(layer)) {
+      try { map.setPaintProperty(layer, prop, v !== undefined ? v : styleValue); } catch (e) { /* parsing */ }
+    }
+  };
+
+  /** The fill colour for all three states, from the active style unless the panel overrode it. */
+  const territoryFillExpr = () => {
+    const s = MAP_STYLES[currentStyleName] || {};
+    const pal = s.palette || ATLAS_PALETTE;
+    const palette = ['match', ['coalesce', ['get', 'Wikidata'], 'Q0'],
+      ...NATIONAL_PAIRS,
+      ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
+        ...pal.flatMap((c, i) => [i, c]), pal[0]]];
+    return ['case',
+      ['boolean', ['feature-state', 'selected'], false], fillOverride.active.colour ?? s.selected ?? theme.selected,
+      ['boolean', ['feature-state', 'hover'], false], fillOverride.hover.colour ?? s.hover ?? theme.hover,
+      usePalette ? palette : fillColour];
+  };
+
   // Recompute the fill-opacity case (selected/hover boosted) from the active style + slider.
   const refreshFillOpacity = () => {
     const s = MAP_STYLES[currentStyleName] || {};
     const base = strengthOpacity(s.fillOpacity != null ? s.fillOpacity : theme.fillOpacity.normal);
     fillOpacityCase = ['case',
-      ['boolean', ['feature-state', 'selected'], false], Math.max(0.85, base),
-      ['boolean', ['feature-state', 'hover'], false], Math.max(0.6, base + 0.18),
-      base];
+      ['boolean', ['feature-state', 'selected'], false], fillOverride.active.opacity ?? Math.max(0.85, base),
+      ['boolean', ['feature-state', 'hover'], false], fillOverride.hover.opacity ?? Math.max(0.6, base + 0.18),
+      fillOverride.normal.opacity ?? base];
+  };
+
+  /**
+   * Every layer that fills a territory. Cliopatria's and our own, in one list, because the whole
+   * claim of the hand-authored layer is that nothing downstream treats it differently — and the
+   * only way that stays true is if there is no second place to forget to update.
+   */
+  const TERRITORY_FILL_LAYERS = ['boundaries-fill', 'hand-fill'];
+
+  /** The one way to repaint the territories. Everything that changes a fill value ends up here. */
+  const applyTerritoryFill = () => {
+    if (!map.getLayer('boundaries-fill')) return;
+    const expr = territoryFillExpr();
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      try { map.setPaintProperty(layer, 'fill-color', expr); } catch (e) { /* parsing */ }
+    }
+    refreshFillOpacity();
+    applyBoundaryOpacity(state.year);
   };
   // Called by the colour slider (Blade, bottom right).
   window.__tmSetColorStrength = (v) => {
@@ -204,9 +493,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let fadeMode = false;
   const applyBoundaryOpacity = (year) => {
     if (!map.getLayer('boundaries-fill')) return;
-    map.setPaintProperty('boundaries-fill', 'fill-opacity', fadeMode ? fillFadeExpr(year) : fillOpacityCase);
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      map.setPaintProperty(layer, 'fill-opacity', fadeMode ? fillFadeExpr(year) : fillOpacityCase);
+    }
     if (map.getLayer('boundaries-line')) {
       map.setPaintProperty('boundaries-line', 'line-opacity', fadeMode ? lineFadeExpr(year) : lineOpacityValue);
+    }
+    // The hand-drawn edge keeps its own confidence-driven opacity — it is not the style's border,
+    // it is a statement about how much we know — but it still fades with the year like everything
+    // else, or a played timeline would leave it hard against neighbours easing in and out.
+    if (map.getLayer('hand-line')) {
+      map.setPaintProperty('hand-line', 'line-opacity',
+        fadeMode ? ['*', handLineOpacityExpr(), fadeFactor(year)] : handLineOpacityExpr());
     }
   };
   // Wobbled ink-border lines (pre-filtered to POLITY at build time) carry only FromYear/ToYear.
@@ -220,9 +519,25 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     ['>', ['coalesce', ['to-number', ['get', 'end_decdate']], 1e6], year],
   ];
   const applyYear = (year) => {
+    // Before the early return: the sun is not a map layer, so it must not be gated on the borders
+    // having loaded. Scrubbing the slider during the first tile load would otherwise leave the
+    // planet lit for whatever year the page opened on.
+    globe?.setDate(dateForYear(year));
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
+    // The SAME filter, not a parallel one. The hand-authored features carry Cliopatria's property
+    // names precisely so the year slider needs no second implementation to drift out of step with
+    // the first — see hand-territories.js.
+    for (const layer of ['hand-fill', 'hand-line']) {
+      if (map.getLayer(layer)) map.setFilter(layer, polityFilter(year));
+    }
+    // NO era filter on the hover glow. It used to need one, when it drew from the Cliopatria vector
+    // source and its features carried Type/Name/FromYear/ToYear like everything else. It now has its
+    // own GeoJSON source that is EMPTY unless something is hovered, and those features carry no
+    // properties at all — so polityFilter rejected every one of them and the glow could never draw,
+    // whatever the paint said. Scrubbing cannot strand it either: the source is emptied on mouseout.
+    scheduleSmoothBorders();   // different era, different outlines to round
     applyBoundaryOpacity(year); // full opacity when static; eases in/out only while playing
     map.setFilter('markers-dot', markerFilter(year));
     map.setFilter('markers-label', markerFilter(year));
@@ -264,11 +579,30 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const LABEL_ANCHOR = {
     Q217196: [-3.7, 40.4], // Crown of Castile → Madrid
   };
+  /** Last computed label points, kept so a hover can re-flag one without re-querying every tile. */
+  let labelBest = new Map();
+  const writeLabels = () => {
+    const src = map.getSource('labels');
+    if (!src) return;
+    src.setData({
+      type: 'FeatureCollection',
+      features: [...labelBest.entries()].map(([id, b]) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: LABEL_ANCHOR[id] || b.c },
+        properties: {
+          name: b.name,
+          flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '',
+          sel: String(selectedId) === id,
+          hov: b.name === labelHoverName,
+        },
+      })),
+    });
+  };
   const refreshLabels = () => {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
     const best = new Map(); // qid -> { area, c, name }
-    for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
+    const layers = TERRITORY_FILL_LAYERS.filter((l) => map.getLayer(l));
+    for (const f of map.queryRenderedFeatures({ layers })) {
       const name = f.properties.Name;
       if (name == null) continue;
       const id = String(f.properties.Wikidata);
@@ -280,15 +614,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         if (!cur || area > cur.area) best.set(id, { area, c, name });
       }
     }
-    const apply = () => src.setData({
-      type: 'FeatureCollection',
-      features: [...best.entries()].map(([id, b]) => ({
-        type: 'Feature', geometry: { type: 'Point', coordinates: LABEL_ANCHOR[id] || b.c },
-        // `sel` drives symbol-sort-key so the open territory's name is placed first and never
-        // culled by a neighbour's label (its flag survived collision but its text was dropped).
-        properties: { name: b.name, flag: map.hasImage(`flag-${id}`) ? `flag-${id}` : '', sel: String(selectedId) === id },
-      })),
-    });
+    applyRestingLabels();
+    // `sel`/`hov` drive symbol-sort-key so the open territory's name — and the one under the
+    // pointer — are placed first and never culled by a neighbour's label.
+    labelBest = best;
+    const apply = writeLabels;
     apply();
     // Lazily load flag images for visible flagged polities, then redraw so icons appear above names.
     const toLoad = [...best.keys()].filter((id) => flaggedIds.has(id) && !map.hasImage(`flag-${id}`) && !triedFlag.has(id));
@@ -315,23 +645,283 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const scheduleSettle = () => { clearTimeout(settleTimer); settleTimer = setTimeout(onSettle, 250); };
 
   let hoveredId = null;
-  let selectedId = null;
-  let voyageShips = null; // set once the lazy three.js ships chunk loads
-  const setHover = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { hover: on });
-  const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
+  /** The amber light currently running around a clicked territory, so a new click replaces it. */
+  let borderSweep = null;
 
-  // ---- The ground ----
-  // There used to be five: Soft Atlas, Antique, Tolkien, Night and Satellite, switched from a
-  // palette dropdown behind the cog. The dropdown is gone and so are the other four. A drawn atlas
-  // of any year still draws its coastline the way 2026 knows it, so the parchment bought no
-  // historical truth — and the Tolkien one, which was the reason to have the choice at all, never
-  // looked the way it was meant to. Photography of the real earth is what the map is now.
+  /**
+   * ROUNDED CORNERS — a second border, drawn from the same polygons run through a spline.
+   *
+   * Cliopatria's outlines are generalised political shapes: straight runs meeting at hard vertices,
+   * which is why the map reads as a digital thing rather than a drawn one. No line-join setting
+   * fixes that, because the angles are in the GEOMETRY, not in how the line is capped.
+   *
+   * So the polygon keeps the job it is good at — telling us what you clicked — and a smoothed copy
+   * of its outline becomes the visible border. Exactly the split Bart described.
+   *
+   * The curve is `smooth` from voyages.js: the centripetal Catmull-Rom that already rounds every
+   * sailing route on this map. A route and a frontier are the same problem, so they get the same
+   * spline rather than a second one written to look similar.
+   *
+   * Rebuilt from what is ON SCREEN (queryRenderedFeatures), so the cost tracks the view rather than
+   * the dataset — at 0 it does nothing at all and the plain border comes back.
+   */
+  const SMOOTH_SRC = 'boundaries-smooth';
+  const EMPTY_FC = { type: 'FeatureCollection', features: [] };
+  let smoothSamples = 0;
+  let smoothPending = null;
+  let fillColour = '#5b7fa8';
+
+  const rebuildSmoothBorders = () => {
+    const src = map.getSource(SMOOTH_SRC);
+    if (!src) return;
+    if (smoothSamples < 1) { src.setData(EMPTY_FC); return; }
+
+    const features = [];
+    const seen = new Set();
+    for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
+      // queryRenderedFeatures returns a polity once per tile it touches; the rings are already
+      // clipped per tile, so each piece is smoothed on its own and the seams stay where they were.
+      const key = `${f.id}|${f.geometry?.coordinates?.[0]?.[0]?.[0] ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const ring of outlineOf(f.geometry)) {
+        if (ring.length < 4) continue;
+        features.push({
+          type: 'Feature', properties: {},
+          geometry: { type: 'LineString', coordinates: smooth(ring, smoothSamples) },
+        });
+      }
+    }
+    src.setData({ type: 'FeatureCollection', features });
+  };
+
+  /**
+   * Samples per segment through the spline. 0 leaves the raw polygon border; anything above swaps in
+   * the smoothed copy, so the two are never both drawn — which is the whole point, since drawing
+   * both puts the sharp corners straight back over the rounded ones. applyMapStyle has to honour
+   * this too; see the visibility line there.
+   */
+  const applyRounding = (v) => {
+    smoothSamples = Math.round(v);
+    const on = smoothSamples >= 1;
+    for (const [layer, vis] of [['boundaries-line', !on], ['boundaries-smooth', on]]) {
+      if (map.getLayer(layer)) { try { map.setLayoutProperty(layer, 'visibility', vis ? 'visible' : 'none'); } catch (e) { /* parsing */ } }
+    }
+    rebuildSmoothBorders();
+  };
+
+  /** Coalesce the rebuild: a pan fires moveend once, but a year scrub fires applyYear per tick. */
+  const scheduleSmoothBorders = () => {
+    if (smoothPending) clearTimeout(smoothPending);
+    smoothPending = setTimeout(() => { smoothPending = null; rebuildSmoothBorders(); }, 120);
+  };
+  let selectedId = null;
+  /** Which source the open territory came from, so its highlight is cleared off the right one. */
+  let selectedHand = false;
+  const clearSelection = () => {
+    if (selectedId === null) return;
+    setSelected(selectedId, false, selectedHand);
+    selectedId = null;
+    selectedHand = false;
+  };
+  let voyageShips = null; // set once the lazy three.js ships chunk loads
+  /**
+   * Light the outline under the pointer.
+   *
+   * Drawn from the hovered feature's OWN geometry rather than as a feature-state on the raw
+   * polygons, so it picks up the rounding for free: the same spline the visible border uses, on the
+   * same shape. A feature-state glow could only ever trace the hard-cornered source, which is
+   * exactly what it did — rounded borders with a sharp-cornered halo behind them.
+   */
+  /**
+   * Hovering a territory grows its name where it already is.
+   *
+   * text-size is a LAYOUT property, so two ordinary routes are closed: MapLibre cannot transition
+   * it, and it cannot read feature-state (that is paint-only). What it CAN do is read a feature
+   * property, so the size is a `case` on the name and the tween is stepped here — which is also the
+   * only way to honour a named curve rather than whatever MapLibre would have interpolated.
+   *
+   * Stepping a layout property re-places the symbols each frame. That is fine at this scale: the
+   * labels source holds one point per polity on screen, a couple of dozen at most.
+   */
+  let labelBaseSize = 12;
+  let labelHoverScale = 1.35;
+  let labelHoverMs = 180;
+  let labelHoverName = null;
+  let labelScaleNow = 1;
+  let labelTween = null;
+  let labelSettle = null;
+
+  const applyLabelSize = () => {
+    if (!map.getLayer('boundaries-label')) return;
+    const big = labelBaseSize * labelScaleNow;
+    const size = labelHoverName && labelScaleNow !== 1
+      ? ['case', ['==', ['get', 'name'], labelHoverName], big, labelBaseSize]
+      : labelBaseSize;
+    try { map.setLayoutProperty('boundaries-label', 'text-size', size); } catch (e) { /* parsing */ }
+  };
+
+  const hoverLabel = (name) => {
+    if (name === labelHoverName) return;
+    // Keep growing/shrinking from wherever the last tween got to, so flicking between neighbours
+    // does not snap back to 1 before starting again.
+    const from = labelScaleNow;
+    const to = name ? labelHoverScale : 1;
+    labelHoverName = name || labelHoverName; // hold the name while it shrinks back
+    const settleTo = name;
+    writeLabels(); // once per hover change, so `hov` (placement priority) is current
+    if (labelTween) cancelAnimationFrame(labelTween);
+    if (labelSettle) clearTimeout(labelSettle);
+    const started = performance.now();
+    const finish = () => {
+      labelScaleNow = to;
+      labelHoverName = settleTo;
+      applyLabelSize();
+      if (!settleTo) writeLabels();
+    };
+    const step = (now) => {
+      const t = labelHoverMs > 0 ? Math.min(1, (now - started) / labelHoverMs) : 1;
+      labelScaleNow = from + (to - from) * EASING.easeInOutQuad(t);
+      applyLabelSize();
+      if (t < 1) { labelTween = requestAnimationFrame(step); return; }
+      labelTween = null;
+      finish();
+    };
+    labelTween = requestAnimationFrame(step);
+    // requestAnimationFrame does not fire in a backgrounded tab, so without this the tween never
+    // starts and the name silently keeps its old size — hovering, switching tabs and coming back
+    // would leave it wrong with nothing to show why. The timer lands the END state regardless; if
+    // the tween did run, this is a no-op that sets what is already set.
+    labelSettle = setTimeout(() => {
+      labelSettle = null;
+      if (labelTween) { cancelAnimationFrame(labelTween); labelTween = null; }
+      finish();
+    }, labelHoverMs + 40);
+  };
+
+  /**
+   * The name under the cursor, for territories whose own label is nowhere near it.
+   *
+   * Bart: "some territories are big, like the Iberian Union — the hovering label can be positioned
+   * where the cursor is." That is the case a better anchor cannot solve. The Iberian Union's label
+   * sits on its largest visible piece, which zoomed in may be an overseas possession on the far side
+   * of the globe; no amount of choosing a smarter centroid puts a name under your pointer.
+   *
+   * ONLY when the resting label is not already on screen. If it is, hovering scales it in place and
+   * a second name at the cursor would be the duplicate that was removed earlier. So this is not a
+   * second copy of the label — it is what you get INSTEAD of one, when there is none to scale.
+   */
+  const CURSOR_LABEL_SRC = 'boundaries-cursor-name';
+  let cursorName = null;
+
+  /**
+   * Territory names appear WHERE YOU POINT, and nowhere else.
+   *
+   * The resting labels were placed at the centroid of whatever fragment of a polity happened to be
+   * largest on screen. That fragment changes with the camera, so names moved about, landed in the
+   * sea, sat on the wrong continent, or vanished — "appearing so randomly", which is exactly what it
+   * was. No anchor fixes it, because the thing being anchored is a tile fragment, not a country.
+   *
+   * So the map rests silent and answers when asked. Off by default; the control below brings them
+   * back for anyone who wants the old atlas look.
+   */
+  let restingLabels = false;
+  const applyRestingLabels = () => {
+    if (!map.getLayer('boundaries-label')) return;
+    try { map.setLayoutProperty('boundaries-label', 'visibility', restingLabels ? 'visible' : 'none'); } catch (e) { /* parsing */ }
+  };
+
+  const restingLabelOnScreen = (name) => map
+    .queryRenderedFeatures({ layers: ['boundaries-label'] })
+    .some((f) => f.properties?.name === name);
+
+  const setCursorName = (name, lngLat) => {
+    const src = map.getSource(CURSOR_LABEL_SRC);
+    if (!src) return;
+    const label = typeof name === 'string' && name.trim() !== '' ? name : null;
+    cursorName = label;
+    if (!label || !lngLat) { src.setData(EMPTY_FC); return; }
+    // Spinning the globe past the antimeridian gives longitudes outside [-180, 180]; a point placed
+    // at 190 is a point nobody can see.
+    const lng = ((((lngLat.lng + 180) % 360) + 360) % 360) - 180;
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { name: label }, geometry: { type: 'Point', coordinates: [lng, lngLat.lat] } }],
+    });
+    cursorLngLat = lngLat;
+  };
+  let cursorLngLat = null;
+
+  const showGlow = (geometry, name = null, qid = null) => {
+    const src = map.getSource('boundaries-glow-src');
+    if (!src) return;
+    // Split each ring at its tile seams FIRST. The geometry arrives clipped to whichever tile it was
+    // found in, so its ring includes the tile's own edge — which is what drew a bright straight line
+    // down England, down France, and around the top of Spain. See withoutSeams for the measurements.
+    const rings = (geometry ? outlineOf(geometry) : [])
+      .flatMap((ring) => withoutSeams(ring))
+      .filter((r) => r.length >= 4);
+
+    const features = rings.map((ring) => ({
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: smoothSamples >= 1 ? smooth(ring, smoothSamples) : ring },
+    }));
+
+    src.setData({ type: 'FeatureCollection', features });
+
+    // The NAME is not drawn here. It used to be — a second symbol layer over the same words — and
+    // because that layer anchored differently from the real label, hovering visibly nudged the name
+    // sideways. Two layers can be aligned, and I tried; they still cannot be kept aligned through a
+    // font change, an offset change or a flag appearing above the text.
+    //
+    // So there is ONE name layer, always, and hovering only makes it bigger. Nothing moves.
+    hoverLabel(name);
+  };
+  /**
+   * The open territory's `selected` feature-state, on whichever source it came from.
+   *
+   * `hand` rather than a lookup, because feature ids are not unique ACROSS sources — Cliopatria
+   * keys on the QID and the hand layer on its own slug — and setting the state on the wrong source
+   * is silent: MapLibre accepts an id that matches nothing and simply never lights anything up.
+   */
+  const setSelected = (id, on, hand = false) => map.setFeatureState(
+    hand ? { source: 'hand-territories', id } : { source: 'cliopatria', sourceLayer: 'boundaries', id },
+    { selected: on },
+  );
+
+  // ---- Map styles: switched live from the palette dropdown (window.__applyMapStyle). ----
+  const ATLAS_PAL = theme.palette;
   const NIGHT_PAL = ['#39496a', '#4a3b63', '#37614f', '#63503b', '#4c6140', '#63415a', '#3a5570', '#56426a', '#3f6657', '#665445', '#414f6e', '#5c4258'];
-  // Labels are set in the app sans: calligraphy over satellite imagery reads as a costume rather
-  // than a map. Fontstacks are built by scripts/build-glyphs.mjs; `display` labels territories,
-  // `body` labels everything else.
-  const MODERN = { display: ['inter'], body: ['inter'] };
+  // Greyscale paper-grain texture (multiply-blended) to break up the flat vector fills.
+  const PAPER_URI = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>";
+  // Per-feature line width from a hash of the polity QID → adjacent borders get visibly different
+  // weights (the main source of "hand-drawn" width variance; MapLibre can't vary width along a line).
+  const inkWidth = (min, max) => ['interpolate', ['linear'],
+    ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q7'], 1]], 89], 0, min, 88, max];
   const MAP_STYLES = {
+    'soft-atlas': { palette: ATLAS_PAL, water: '#c7d4c6', shore: { color: '#5b4a36', width: 0.7, shadow: '#9fb0b4', shadowWidth: 1.8, dy: 1.6 }, land: '#efe6d0', fillOpacity: 0.55, selected: '#f5c518', hover: '#ecd9a0', line: { color: '#6b5640', width: 0.8, blur: 0.3 }, grid: { color: '#93a18f', opacity: 0.5, width: 0.5 }, hillshade: true, text: { color: '#3b3326', halo: '#f3ead6' }, voyage: '#1f5f8f', paper: 0.08, vignette: 'rgba(80,55,30,0.14)' },
+    'antique': { palette: ATLAS_PAL, water: '#dcdcba', shore: { color: '#43301c', width: 1.0, shadow: '#8f7d5c', shadowWidth: 2.5, dy: 2 }, land: '#e8d6ac', fillOpacity: 0.3, selected: '#e0a200', hover: '#d9c089', line: { color: '#4a3420', width: 1.7, blur: 0.25 }, coast: { color: '#6a5238', opacity: 0.5, width: 0.85 }, river: { color: '#8a9aa0', opacity: 0.6, width: 0.7 }, mountains: true, forest: true, hillshade: true, grid: { color: '#9b9277', opacity: 0.55, width: 0.55 }, text: { color: '#3a2c1a', halo: '#ecdcb8' }, voyage: '#274f66', paper: 0.2, vignette: 'rgba(80,55,30,0.3)' },
+    'pen-ink': {
+      palette: ATLAS_PAL, water: '#dedec0', land: '#e6d6ad', fillOpacity: 0.16, selected: '#c98a00', hover: '#d9c089',
+      shore: { color: '#2f2418', width: 1.15, shadow: '#574631', shadowWidth: 2.9, dy: 2 },
+      line: { color: '#3a2c1c', width: inkWidth(0.4, 1.2), blur: 0.25 },
+      // Draw borders from the wobbled ink-border tileset (hand-drawn jitter baked into geometry).
+      borderSource: { source: 'ink-borders', sourceLayer: 'ink' },
+      coast: { color: '#5e4a34', opacity: 0.55, width: 0.85 },
+      river: { color: '#6a7c74', opacity: 0.55, width: 0.6 },
+      grid: { color: '#8f8c6e', opacity: 0.45, width: 0.5 }, hillshade: true,
+      mountains: true,
+      forest: true,
+      // Stacked passes on the wobbled lines: faint bleed, offset rough, the main dark stroke, then a
+      // light broken accent — all width-varied so borders read as uneven pen work.
+      inkLayers: [
+        { color: '#5a4630', width: inkWidth(1.2, 2.4), opacity: 0.1, blur: 1.4 },
+        { color: '#4a3826', width: inkWidth(0.7, 1.5), opacity: 0.18, blur: 0.6, offset: 0.4 },
+        { color: '#33261a', width: inkWidth(0.4, 1.2), opacity: 0.8, blur: 0.2 },
+        { color: '#2a1f12', width: 0.6, opacity: 0.32, blur: 0.1, offset: 0.4, dash: [3, 3], above: true },
+      ],
+      text: { color: '#33271a', halo: '#efe2c4' }, voyage: '#2f4e66', paper: 0.22, vignette: 'rgba(80,55,30,0.3)',
+    },
     // Real satellite ground instead of a drawn one. `imagery` turns the raster on and the painted
     // atlas ground (land fill, sea grid, coast shadow, lakes, ink hills/forests) off — the photo
     // already shows all of that, relief and ocean depth included, so no hillshade either (over
@@ -341,12 +931,35 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       selected: '#f5c518', hover: '#e8cf94',
       shore: { color: '#f6efdc', width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
       line: { color: '#ffd9a0', width: 0.9, blur: 0.2 },
-      text: { color: '#241a10', halo: '#f2e9d4' }, fonts: MODERN, voyage: '#ffce6b', vignette: 'rgba(0,0,0,0.4)',
+      text: { color: '#241a10', halo: '#f2e9d4' }, voyage: '#ffce6b', paper: 0, vignette: 'rgba(0,0,0,0.4)',
     },
+    // Earth — Satellite v2, and the same planet the lesson map draws (shared EARTH_COLOURS). The
+    // photographed ground with the globe render over it: sea lit as water, the terminator, the haze
+    // at the limb, the cloud deck. Until now this existed only in lessons, so choosing it here fell
+    // through to Soft Atlas without a word — see the warning in applyMapStyle.
+    'earth': {
+      palette: NIGHT_PAL, imagery: true, globe: true,
+      water: EARTH_COLOURS.water, land: EARTH_COLOURS.land, fillOpacity: 0.22,
+      selected: EARTH_COLOURS.selected, hover: EARTH_COLOURS.hover,
+      shore: { color: EARTH_COLOURS.coast, width: 0.6, shadow: 'rgba(0,0,0,0)', shadowWidth: 0, dy: 0 },
+      line: { color: EARTH_COLOURS.line, width: 0.9, blur: 0.2 },
+      text: { color: EARTH_COLOURS.text, halo: EARTH_COLOURS.halo },
+      voyage: EARTH_COLOURS.voyage, paper: 0, vignette: 'rgba(0,0,0,0.4)',
+    },
+    'night': { palette: NIGHT_PAL, water: '#0f1420', shore: { color: '#8a99b8', width: 0.7, shadow: '#070b12', shadowWidth: 2.0, dy: 1.6 }, land: '#1b2230', fillOpacity: 0.6, selected: '#f5c518', hover: '#5a6b8c', line: { color: '#8a99b8', width: 0.6, blur: 0.2 }, text: { color: '#e6ecf7', halo: '#10151f' }, voyage: '#8fc3ef', paper: 0, vignette: 'rgba(0,0,0,0.45)' },
   };
   const applyOverlays = (s) => {
     const wrap = el.parentElement;
     if (!wrap) return;
+    let pv = wrap.querySelector('#tm-paper');
+    if (!pv) {
+      pv = document.createElement('div');
+      pv.id = 'tm-paper';
+      pv.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:5;mix-blend-mode:multiply';
+      pv.style.backgroundImage = `url("${PAPER_URI}")`;
+      wrap.appendChild(pv);
+    }
+    pv.style.opacity = String(s.paper);
     let vg = wrap.querySelector('#tm-vignette');
     if (!vg) {
       vg = document.createElement('div');
@@ -378,27 +991,480 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   const startWaves = (coast) => { coastCfg = coast; if (!reduceMotion && !waveRAF) waveRAF = requestAnimationFrame(waveTick); };
   const stopWaves = () => { coastCfg = null; if (waveRAF) { cancelAnimationFrame(waveRAF); waveRAF = null; } };
 
-  // There is one ground and the teacher does not choose it — see the MAP_STYLES note above.
-  // Kept as a function because the layers it paints arrive asynchronously (terrain glyphs,
-  // historical cities), so it has to be re-runnable rather than a one-shot at style time.
-  const currentStyleName = 'satellite';
-  const applyMapStyle = () => {
-    const s = MAP_STYLES[currentStyleName];
-    const pal = s.palette;
-    const fill = ['case',
-      ['boolean', ['feature-state', 'selected'], false], s.selected,
-      ['boolean', ['feature-state', 'hover'], false], s.hover,
-      // National colour when curated, else the per-style hash palette.
-      ['match', ['coalesce', ['get', 'Wikidata'], 'Q0'],
-        ...NATIONAL_PAIRS,
-        ['match', ['%', ['to-number', ['slice', ['coalesce', ['get', 'Wikidata'], 'Q0'], 1]], pal.length],
-          ...pal.flatMap((c, i) => [i, c]), pal[0]]]];
+  // The globe stack (sea, terminator, haze, sky, sun, moon, clouds) — held so the slider can move
+  // the light and __tmSetLayer can dim any of them.
+  let globe = null;
+  /**
+   * A year on the slider, as a moment the sun can be computed for.
+   *
+   * Midsummer noon UTC: a year alone does not say which day or hour, and any choice shows in the
+   * terminator, so it is stated here once rather than being an accident of `new Date(year, 0)` —
+   * which would put every era at midwinter midnight and light the wrong hemisphere.
+   */
+  const dateForYear = (year) => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12));
+
+  /**
+   * How lit the place you are looking at is — 1 in full sun, 0 in full night.
+   *
+   * Uses planetSpacePosition and sunDirection rather than building a vector by hand: the axis order
+   * on this globe is a known trap (MapLibre lists our axes z, y, x) and it cost 43° of arc earlier
+   * tonight. Two functions that already agree with each other are safer than a third opinion.
+   */
+  const daylightAtCentre = () => {
+    try {
+      const { lng, lat } = map.getCenter();
+      const n = planetSpacePosition(lng, lat, 0);
+      const s = sunDirection(dateForYear(state.year));
+      const dot = n[0] * s[0] + n[1] * s[1] + n[2] * s[2];
+      // Smooth across the terminator rather than snapping at the exact line.
+      return Math.max(0, Math.min(1, dot * 0.5 + 0.5));
+    } catch (e) {
+      return 1;
+    }
+  };
+
+  /**
+   * Dev-panel controls for the things this file decides: how territories are drawn, how far the map
+   * lets you zoom, and where the camera starts.
+   *
+   * The camera pair is the shape of an entrance move — set a start, set an end, press Play and watch
+   * it. The animation itself is not built; this is here so the numbers for it can be found by eye
+   * instead of guessed, which is the whole point of the panel.
+   */
+  const registerTuning = () => {
+    if (!window.__tune) return;
+
+    const paint = (layer, prop, value) => {
+      if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, value); } catch (e) { /* style still parsing */ } }
+    };
+    /**
+     * Territory names are drawn by TWO layers — the resting one and the one that appears under the
+     * pointer — and they are the same words in the same place. Anything that changes how a name
+     * looks has to change both, or hovering would swap the font out from under you.
+     *
+     * Glyph stacks are SDF-baked per font (scripts/build-glyphs.mjs), so this list is what is built,
+     * not what is installed: naming a font with no .pbf makes the labels disappear entirely.
+     */
+    // Every layer that writes a place name. Kept as one list precisely because these drifted apart:
+    // the manual markers were on a different font and case from the territories for as long as both
+    // existed. Size is NOT driven from here — applyLabelSize owns boundaries-label alone, so the
+    // region/polity size hierarchy stays.
+    const LABEL_LAYERS = ['boundaries-label', 'markers-label'];
+    const FONT_STACKS = [['Cinzel', 'Cinzel (map serif)'], ['Eagle Lake', 'Eagle Lake (calligraphy)'], ['inter', 'Inter (plain)']];
+    const labelLayout = (prop, value) => {
+      for (const layer of LABEL_LAYERS) {
+        if (map.getLayer(layer)) {
+          try { map.setLayoutProperty(layer, prop, value); } catch (e) { /* style still parsing */ }
+        }
+      }
+    };
+    const labelPaint = (prop, value) => { for (const layer of LABEL_LAYERS) paint(layer, prop, value); };
+
+    /**
+     * Plain colour. This used to build a `case` around a `highlight` feature-state and read
+     * PALETTE.highlight — but there is no PALETTE in this module (only ATLAS_PALETTE), so the
+     * control threw on every use and the border colour has never once changed. Nothing sets a
+     * `highlight` feature-state anywhere either, so the case it was protecting could not fire.
+     *
+     * The selected territory is shown by its FILL, not by its border; see territoryFillExpr.
+     */
+    const borderColour = (colour) => {
+      styleOverride['boundaries-line.line-color'] = colour;
+      ownedPaint('boundaries-line', 'line-color', colour);
+    };
+
+    const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
+
+    // The fleet arrives in a lazy chunk after this runs, so a control touched too early — or on a
+    // map whose ships failed to load — would silently do nothing. Say so instead.
+    const fleet = () => {
+      if (!voyageShips) console.warn('[tune] no fleet on this map yet');
+      return voyageShips;
+    };
+
+    /**
+     * The hover shine, which has no other way to be judged: it only exists under the pointer, so it
+     * cannot be seen on a static screen or checked from a screenshot.
+     *
+     * Plain numbers, because the glow now has its own source that is EMPTY when nothing is hovered
+     * — there is no off-state to express in the paint any more.
+     */
+    const glow = { colour: GLOW_COLOR, strength: 0.55, width: 1, blur: 6 };
+    const applyGlow = () => {
+      paint('boundaries-glow', 'line-color', glow.colour);
+      paint('boundaries-glow', 'line-opacity', glow.strength);
+      paint('boundaries-glow', 'line-width', glowWidthExpr(glow.width));
+      paint('boundaries-glow', 'line-blur', glow.blur);
+    };
+
+      // ── An army taking ground ────────────────────────────────────────────────────────────────
+      //
+      // The documentary effect: a front creeping across a country in rounded lobes, like ink
+      // spreading through paper. See advance-field.js for why it is an arrival field and not an
+      // animation — and why the front moves on √t rather than at a constant speed.
+      //
+      // Germany into Poland, September 1939, is the reference case: three axes (the western
+      // border, East Prussia in the north, Slovakia in the south) converging, which is also the
+      // case that shows off the merge — fronts that meet fuse into one shape instead of crossing.
+      const ADVANCE_CASES = {
+        'Poland 1939': {
+          year: 1939,
+          match: /^(second )?poland|polish republic/i,
+          // Where the Wehrmacht crossed, roughly: Pomerania/Silesia in the west, East Prussia in
+          // the north, and the Slovak border in the south.
+          seeds: [[15.0, 52.3], [20.5, 54.0], [19.6, 49.4]],
+        },
+      };
+      let advance = null;
+      let advanceCase = 'Poland 1939';
+
+      /** Every rendered piece of the target country, unioned by being drawn into the same mask. */
+      const advanceTarget = (test) => {
+        const parts = map.queryRenderedFeatures({ layers: ['boundaries-fill'] })
+          .filter((f) => test.test(String(f.properties?.Name ?? '')));
+        if (!parts.length) return null;
+        const coordinates = parts.flatMap((f) => (
+          f.geometry.type === 'Polygon' ? [f.geometry.coordinates]
+            : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : []
+        ));
+        return coordinates.length ? { type: 'MultiPolygon', coordinates } : null;
+      };
+
+      const advanceOptions = () => ({
+        colour: advanceColour, rimColour: advanceRim, opacity: advanceOpacity,
+        seconds: advanceSeconds, curve: advanceCurve, lobeScale: advanceLobeScale,
+        lobeAmount: advanceLobeAmount, mergeKm: advanceMerge, rimKm: advanceRimKm,
+      });
+
+      /**
+       * Jump to the year, find the country, build the field, play. Split out because the field is
+       * built once and replayed — rebuilding it per play would also reshuffle the lobes, and a
+       * shape that changes every replay cannot be judged against the one before it.
+       */
+      const runAdvance = () => {
+        const preset = ADVANCE_CASES[advanceCase];
+        if (!preset) return;
+        window.__setTimemapYear(preset.year);
+        // Tiles for the new year have to arrive before the country can be found.
+        setTimeout(() => {
+          const geometry = advanceTarget(preset.match);
+          if (!geometry) {
+            console.warn(`[tune] no territory matching ${preset.match} on screen at ${preset.year} — pan to it and try again`);
+            return;
+          }
+          if (!advance) {
+            advance = createAdvance(map, { beforeId: 'boundaries-label', ...advanceOptions() });
+            window.__tmAdvance = advance; // dev tooling + Playwright
+          } else advance.setOptions(advanceOptions());
+          if (advance.prepare(geometry, preset.seeds)) advance.play();
+        }, 700);
+      };
+
+      let advanceColour = '#b31217';
+      let advanceRim = '#4a0505';
+      let advanceOpacity = 0.85;
+      let advanceSeconds = 4;
+      let advanceCurve = 0.5;
+      let advanceLobeScale = 6;
+      let advanceLobeAmount = 45;
+      let advanceMerge = 120;
+      let advanceRimKm = 40;
+      // Shape controls change the field itself, so they need a rebuild rather than a repaint.
+      const reshape = () => { if (advance) { advance.setOptions(advanceOptions()); runAdvance(); } };
+      const restyle = () => { if (advance) advance.setOptions(advanceOptions()); };
+
+
+    tuneOff = [
+      // A territory is resting, hovered, or opened by a click. Each state gets its own colour and
+      // opacity, and each writes into the expression rather than over it — see fillOverride.
+      // "From style" leaves that state exactly as the map style designed it.
+      window.__tune.register('Territory · resting', [
+        { key: 'usePalette', label: 'Per-country colours', type: 'boolean', value: true,
+          apply: (on) => { usePalette = on; applyTerritoryFill(); } },
+        { key: 'restColour', label: 'Colour', type: 'color', value: '#5b7fa8',
+          apply: (v) => { fillColour = v; applyTerritoryFill(); } },
+        { key: 'restOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          // 0 hands the state back to the style, which is the default and is NOT "invisible" — the
+          // styles set their own base between 0.3 and 0.7. Anything above is an explicit override.
+          apply: (v) => { fillOverride.normal.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory · hover', [
+        { key: 'hoverColour', label: 'Colour', type: 'color', value: theme.hover,
+          apply: (v) => { fillOverride.hover.colour = v; applyTerritoryFill(); } },
+        { key: 'hoverOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          apply: (v) => { fillOverride.hover.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      // The state that had no controls at all: what a territory looks like once it is clicked open.
+      window.__tune.register('Territory · active', [
+        { key: 'activeColour', label: 'Colour', type: 'color', value: theme.selected,
+          apply: (v) => { fillOverride.active.colour = v; applyTerritoryFill(); } },
+        { key: 'activeOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
+          apply: (v) => { fillOverride.active.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Advance', [
+        { key: 'play', label: 'Play advance', type: 'button', apply: runAdvance },
+        { key: 'seconds', label: 'Seconds', min: 1, max: 15, step: 0.5, value: 4,
+          apply: (v) => { advanceSeconds = v; restyle(); } },
+        // 0.5 is √t, how liquid actually creeps. 1 is a constant speed — worth a look, because it
+        // is what makes hand-animated versions of this read as mechanical.
+        { key: 'curve', label: 'Slowdown (0.5 = liquid, 1 = linear)', min: 0.25, max: 1, step: 0.05, value: 0.5,
+          apply: (v) => { advanceCurve = v; restyle(); } },
+        { key: 'colour', label: 'Colour', type: 'color', value: '#b31217',
+          apply: (v) => { advanceColour = v; restyle(); } },
+        { key: 'rimColour', label: 'Leading edge', type: 'color', value: '#4a0505',
+          apply: (v) => { advanceRim = v; restyle(); } },
+        { key: 'rimKm', label: 'Leading edge depth (km)', min: 0, max: 200, step: 5, value: 40,
+          apply: (v) => { advanceRimKm = v; restyle(); } },
+        { key: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, value: 0.85,
+          apply: (v) => { advanceOpacity = v; restyle(); } },
+        { key: 'lobeAmount', label: 'Lobe depth (km)', min: 0, max: 150, step: 5, value: 45,
+          apply: (v) => { advanceLobeAmount = v; reshape(); } },
+        { key: 'lobeScale', label: 'Lobe count', min: 1, max: 20, step: 1, value: 6,
+          apply: (v) => { advanceLobeScale = v; reshape(); } },
+        { key: 'mergeKm', label: 'Front merge (km)', min: 0, max: 400, step: 10, value: 120,
+          apply: (v) => { advanceMerge = v; reshape(); } },
+        { key: 'clear', label: 'Clear', type: 'button', apply: () => advance?.clear() },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory labels', [
+        // Off by default: names follow the pointer instead of sitting where a tile fragment put
+        // them. On restores the atlas look, with the hover name scaling in place as before.
+        { key: 'resting', label: 'Names at rest', type: 'boolean', value: false,
+          apply: (on) => { restingLabels = on; applyRestingLabels(); } },
+        { key: 'font', label: 'Font', type: 'select', options: FONT_STACKS, value: 'Cinzel',
+          apply: (v) => labelLayout('text-font', [v]) },
+        { key: 'size', label: 'Size', min: 6, max: 32, step: 0.5, value: 12,
+          // Owned, not painted: the hover tween rebuilds text-size every frame from this.
+          apply: (v) => { labelBaseSize = v; applyLabelSize(); } },
+        { key: 'hoverScale', label: 'Hover scale', min: 1, max: 2.5, step: 0.05, value: 1.35,
+          apply: (v) => { labelHoverScale = v; } },
+        { key: 'hoverMs', label: 'Hover speed (ms)', min: 0, max: 800, step: 10, value: 180,
+          apply: (v) => { labelHoverMs = v; } },
+        { key: 'tracking', label: 'Letter spacing', min: 0, max: 0.4, step: 0.01, value: 0.06,
+          apply: (v) => labelLayout('text-letter-spacing', v) },
+        { key: 'caps', label: 'Small caps', type: 'boolean', value: true,
+          apply: (on) => labelLayout('text-transform', on ? 'uppercase' : 'none') },
+        // Over bright cloud a name can wash out completely — the halo is what keeps it readable,
+        // and on Earth there is a lot of white to sit on.
+        { key: 'haloWidth', label: 'Halo width', min: 0, max: 5, step: 0.25, value: 2,
+          apply: (v) => labelPaint('text-halo-width', v) },
+        { key: 'haloBlur', label: 'Halo softness', min: 0, max: 4, step: 0.25, value: 0.5,
+          apply: (v) => labelPaint('text-halo-blur', v) },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Territory borders', [
+        { key: 'lineColor', label: 'Border', type: 'color', value: '#8a99b8', apply: borderColour },
+        { key: 'lineWidth', label: 'Border width', min: 0, max: 6, step: 0.1, value: 1,
+          apply: (v) => { styleOverride['boundaries-line.line-width'] = v; ownedPaint('boundaries-line', 'line-width', v); } },
+        { key: 'lineOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
+          // Owned, not painted: applyBoundaryOpacity rewrites line-opacity on every year tick.
+          apply: (v) => { styleOverride['boundaries-line.line-opacity'] = v; lineOpacityValue = v; applyBoundaryOpacity(state.year); } },
+        { key: 'lineBlur', label: 'Border softness', min: 0, max: 4, step: 0.1, value: 0,
+          apply: (v) => { styleOverride['boundaries-line.line-blur'] = v; ownedPaint('boundaries-line', 'line-blur', v); } },
+        { key: 'labelColor', label: 'Label', type: 'color', value: '#e6ecf7',
+          apply: (v) => { styleOverride['boundaries-label.text-color'] = v; ownedPaint('boundaries-label', 'text-color', v); } },
+        { key: 'labelHalo', label: 'Label halo', type: 'color', value: '#10151f',
+          apply: (v) => { styleOverride['boundaries-label.text-halo-color'] = v; ownedPaint('boundaries-label', 'text-halo-color', v); } },
+      ], { tab: 'Map' }),
+
+      /**
+       * The hand-drawn territories, and the only part of them that is a taste call.
+       *
+       * Their POSITION is not tunable and must never be: it is traced from a scholarly atlas and
+       * lives in database/data/hand-territories.json, where a change to it arrives as a reviewable
+       * diff with a source attached. What is tunable is how loudly the edge admits it is a guess —
+       * and that has two settings, one per confidence level, because the whole point is that a
+       * low-confidence territory should look different from a medium-confidence one.
+       *
+       * "Show" exists for review rather than for teaching: turning it off is how you see which
+       * shapes on screen are ours and which are Cliopatria's.
+       */
+      window.__tune.register('Hand-drawn territories', [
+        { key: 'handShow', label: 'Show', type: 'boolean', value: true,
+          apply: (v) => {
+            for (const layer of ['hand-fill', 'hand-line']) {
+              if (map.getLayer(layer)) {
+                try { map.setLayoutProperty(layer, 'visibility', v ? 'visible' : 'none'); } catch (e) { /* parsing */ }
+              }
+            }
+          } },
+        { key: 'handEdgeColour', label: 'Edge', type: 'color', value: theme.line.color,
+          apply: (v) => { styleOverride['hand-line.line-color'] = v; ownedPaint('hand-line', 'line-color', v); } },
+        { key: 'handEdgeWidth', label: 'Edge width', min: 0, max: 4, step: 0.1, value: 1,
+          apply: (v) => { handEdge.width = v; paint('hand-line', 'line-width', handLineWidthExpr()); } },
+        { key: 'handDash', label: 'Dash length', min: 0.5, max: 8, step: 0.25, value: 2,
+          apply: (v) => { handEdge.dash = v; paint('hand-line', 'line-dasharray', handLineDash()); } },
+        { key: 'handOpacityMedium', label: 'Edge opacity · medium', min: 0, max: 1, step: 0.02, value: 0.7,
+          // Owned, not painted: applyBoundaryOpacity rewrites line-opacity on every year tick.
+          apply: (v) => { handEdge.opacityMedium = v; applyBoundaryOpacity(state.year); } },
+        { key: 'handOpacityLow', label: 'Edge opacity · low', min: 0, max: 1, step: 0.02, value: 0.42,
+          apply: (v) => { handEdge.opacityLow = v; applyBoundaryOpacity(state.year); } },
+        { key: 'handBlurMedium', label: 'Edge softness · medium', min: 0, max: 8, step: 0.2, value: 1.4,
+          apply: (v) => { handEdge.blurMedium = v; paint('hand-line', 'line-blur', handLineBlurExpr()); } },
+        { key: 'handBlurLow', label: 'Edge softness · low', min: 0, max: 8, step: 0.2, value: 3.2,
+          apply: (v) => { handEdge.blurLow = v; paint('hand-line', 'line-blur', handLineBlurExpr()); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Hover glow', [
+        { key: 'glowColour', label: 'Glow', type: 'color', value: GLOW_COLOR,
+          apply: (v) => { glow.colour = v; applyGlow(); } },
+        { key: 'glowStrength', label: 'Strength', min: 0, max: 1, step: 0.05, value: 0.55,
+          apply: (v) => { glow.strength = v; applyGlow(); } },
+        { key: 'glowWidth', label: 'Width', min: 0.2, max: 4, step: 0.1, value: 1,
+          apply: (v) => { glow.width = v; applyGlow(); } },
+        { key: 'glowBlur', label: 'Softness', min: 0, max: 20, step: 0.5, value: 6,
+          apply: (v) => { glow.blur = v; applyGlow(); } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Rounded corners', [
+        // Samples per segment through the spline. 0 leaves the raw polygon border; anything above
+        // swaps in the smoothed copy, so the two are never both drawn.
+        { key: 'smoothing', label: 'Rounding', min: 0, max: 8, step: 1, value: 0, apply: applyRounding },
+        { key: 'smoothWidth', label: 'Width', min: 0, max: 6, step: 0.1, value: theme.line.width,
+          apply: (v) => paint('boundaries-smooth', 'line-width', v) },
+        { key: 'smoothOpacity', label: 'Opacity', min: 0, max: 1, step: 0.05, value: theme.line.opacity ?? 1,
+          apply: (v) => paint('boundaries-smooth', 'line-opacity', v) },
+        { key: 'smoothColour', label: 'Colour', type: 'color', value: theme.line.color,
+          apply: (v) => paint('boundaries-smooth', 'line-color', v) },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Ground', [
+        // Real 3D relief. The Time-Map has the DEM source but has never switched terrain on, so this
+        // is the first place to see how far the earth can actually be pulled up.
+        { key: 'exaggeration', label: 'Heightmap', min: 0, max: 12, step: 0.25, value: 0,
+          apply: (v) => { try { map.setTerrain(v > 0 ? { source: 'dem', exaggeration: v } : null); } catch (e) { /* style still parsing */ } } },
+      ], { tab: 'Map' }),
+
+      window.__tune.register('Ships', [
+        // 45s a lap reads as a speedboat crossing an ocean. A voyage took months; it should feel
+        // like something you notice rather than something you watch.
+        { key: 'lapSeconds', label: 'Seconds per lap', min: 20, max: 900, step: 5, value: 45,
+          apply: (v) => fleet()?.setLapSeconds(v) },
+        { key: 'shipScale', label: 'Size', min: 0.2, max: 3, step: 0.05, value: 1,
+          apply: (v) => fleet()?.setShipScale(v) },
+        { key: 'anchored', label: 'Scale with zoom', type: 'boolean', value: true,
+          apply: (on) => fleet()?.setShipScale(undefined, on) },
+        // Dims the fleet on the night side. Scene-wide, not per ship — see setNightDim.
+        { key: 'nightDim', label: 'Night dimming', min: 0, max: 1, step: 0.05, value: 0,
+          apply: (v) => fleet()?.setNightDim(v, daylightAtCentre()) },
+        { key: 'motion', label: 'Idle rock', min: 0, max: 1, step: 0.05, value: 1,
+          apply: (v) => fleet()?.setMotion(v) },
+      ], { tab: 'Camera' }),
+
+      window.__tune.register('Framing', [
+        /**
+         * How much room to leave at the bottom, so the globe sits in what you can SEE.
+         *
+         * The time deck covers the bottom of the map, and MapLibre centres on the CONTAINER — so the
+         * earth sat low with empty sky above it and the southern hemisphere behind the deck.
+         *
+         * This shrinks the container rather than padding the transform. Padding was tried first and
+         * it broke the planet: the custom layers cut the far hemisphere using transform.cameraPosition,
+         * which padding does not move, so the sea's horizon and the drawn globe disagreed and the
+         * ocean showed as a bowl below the earth. Resizing the box moves nothing the shaders read.
+         */
+        { key: 'bottomInset', label: 'Bottom inset', type: 'number', min: 0, max: 400, step: 2, value: 0,
+          apply: (v) => {
+            const inset = Math.max(0, Number(v) || 0);
+            // Overriding the measurement. Above the top, like the automatic one — never off the
+            // bottom, which is what cost the viewport its height.
+            chromeInsetLocked = inset > 0;
+            el.style.top = `-${inset}px`;
+            el.style.height = `calc(100% + ${inset}px)`;
+            map.resize();
+          } },
+        { key: 'autoInset', label: 'Auto-centre above the deck', type: 'boolean', value: true,
+          apply: (on) => {
+            chromeInsetEnabled = on;
+            chromeInsetLocked = false;
+            if (!on) { el.style.top = '0px'; el.style.height = ''; map.resize(); } else centreForChrome();
+          } },
+      ], { tab: 'Camera' }),
+
+      /**
+       * How far the camera may lean, which is how much curvature you get.
+       *
+       * Flat-on there is no horizon in the frame and the globe reads as a disc; leaning puts the
+       * limb in shot. Pitch moves it live so it can be judged, and the two limits decide how far a
+       * teacher can push it before the far hemisphere starts folding away.
+       */
+      window.__tune.register('Tilt and turn', [
+        { key: 'pitch', label: 'Pitch', min: 0, max: 85, step: 1, value: 45,
+          apply: (v) => map.easeTo({ pitch: Number(v), duration: 0 }) },
+        { key: 'bearing', label: 'Bearing', min: -180, max: 180, step: 1, value: 0,
+          apply: (v) => map.easeTo({ bearing: Number(v), duration: 0 }) },
+        { key: 'minPitch', label: 'Min pitch', type: 'number', min: 0, max: 85, step: 1, value: 0,
+          apply: (v) => map.setMinPitch(Number(v)) },
+        { key: 'maxPitch', label: 'Max pitch', type: 'number', min: 0, max: 85, step: 1, value: 70,
+          apply: (v) => map.setMaxPitch(Number(v)) },
+      ], { tab: 'Camera' }),
+
+      window.__tune.register('Zoom limits', [
+        { key: 'minZoom', label: 'Min zoom', type: 'number', min: 0, max: 22, step: 0.1, value: map.getMinZoom(),
+          apply: (v) => map.setMinZoom(Number(v)) },
+        { key: 'maxZoom', label: 'Max zoom', type: 'number', min: 0, max: 22, step: 0.1, value: map.getMaxZoom(),
+          apply: (v) => map.setMaxZoom(Number(v)) },
+      ], { tab: 'Camera' }),
+
+      window.__tune.register('Entrance', [
+        { key: 'startLng', label: 'Start lng', type: 'number', step: 0.1, value: camera.startLng, apply: (v) => { camera.startLng = Number(v); } },
+        { key: 'startLat', label: 'Start lat', type: 'number', step: 0.1, value: camera.startLat, apply: (v) => { camera.startLat = Number(v); } },
+        { key: 'startZoom', label: 'Start zoom', min: 0, max: 8, step: 0.05, value: camera.startZoom, apply: (v) => { camera.startZoom = v; } },
+        { key: 'endLng', label: 'End lng', type: 'number', step: 0.1, value: camera.endLng, apply: (v) => { camera.endLng = Number(v); } },
+        { key: 'endLat', label: 'End lat', type: 'number', step: 0.1, value: camera.endLat, apply: (v) => { camera.endLat = Number(v); } },
+        { key: 'endZoom', label: 'End zoom', min: 0, max: 10, step: 0.05, value: camera.endZoom, apply: (v) => { camera.endZoom = v; } },
+        { key: 'seconds', label: 'Seconds', min: 0.5, max: 12, step: 0.25, value: camera.seconds, apply: (v) => { camera.seconds = v; } },
+        { key: 'jumpStart', type: 'button', label: 'Go to start', apply: () => map.jumpTo({ center: [camera.startLng, camera.startLat], zoom: camera.startZoom }) },
+        { key: 'play', type: 'button', label: 'Play entrance', apply: () => {
+          map.jumpTo({ center: [camera.startLng, camera.startLat], zoom: camera.startZoom });
+          setTimeout(() => map.flyTo({
+            center: [camera.endLng, camera.endLat], zoom: camera.endZoom, duration: camera.seconds * 1000, essential: true,
+          }), 120);
+        } },
+      ], { tab: 'Camera' }),
+
+      // The territory card is CSS rather than a layer, so its knobs write custom properties.
+      registerCardControls(),
+    ];
+  };
+  let tuneOff = [];
+  // The cloud deck (custom layer) — held so its density can be changed live.
+  let cloudLayer = null;
+  /** Cloud density 0..1; 0 hides the deck (and stops its repaint loop). */
+  window.__tmSetClouds = (v) => {
+    const opacity = Math.max(0, Math.min(1, Number(v)));
+    if (cloudLayer) cloudLayer.setOptions({ opacity });
+    try { localStorage.setItem('tm-clouds', String(opacity)); } catch (e) { /* private mode */ }
+  };
+
+  let currentStyleName = 'soft-atlas';
+  const applyMapStyle = (name) => {
+    // Migrate the retired raster 'ink-art' style → the vector 'pen-ink' Tolkien style.
+    if (name === 'ink-art' || name === 'inkart') name = 'pen-ink';
+    // An unknown style falls back rather than throwing, which is right — but it used to do it in
+    // total silence, so picking a style that was never defined here just quietly drew Soft Atlas.
+    // "Earth" did exactly that for as long as it existed only on the lesson map: the map changed to
+    // something, so it looked like a style, and there was nothing anywhere to say otherwise.
+    if (!MAP_STYLES[name]) {
+      console.warn(`[timemap] no map style "${name}" — falling back to soft-atlas. Defined: ${Object.keys(MAP_STYLES).join(', ')}`);
+    }
+    const key = MAP_STYLES[name] ? name : 'soft-atlas';
+    const s = MAP_STYLES[key];
+    currentStyleName = key;
+    try { localStorage.setItem('tm-style', key); } catch (e) { /* private mode */ }
+    // National colour when curated, else the per-style hash palette — and whatever the settings
+    // panel has overridden, which is why this is built in one place rather than inline here.
     // Satellite: the photographed ground replaces the drawn one, so every layer that paints a
     // substitute for it (land fill, sea grid, coast drop-shadow, lakes) steps aside.
     const photo = !!s.imagery;
-    const fonts = s.fonts;
     const vis = (layer, on) => { if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none'); };
+    // Both halves of the satellite ground: the base, and the close-range detail that fades in
+    // over it. Toggling only the base leaves Sentinel-2 painting over a drawn atlas.
     vis('satellite', photo);
+    vis('satellite-detail', photo);
     for (const drawn of ['land', 'coast-shadow', 'lakes', 'lake-line', 'lake-shadow']) vis(drawn, !photo);
     // The bold ink shore would fence off a real coastline; keep it as a faint guide line.
     if (map.getLayer('coast-bold')) map.setPaintProperty('coast-bold', 'line-opacity', photo ? 0.4 : 1);
@@ -477,26 +1543,39 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Famous volcanoes — shown with the mountains (ink/atlas styles).
     setVolcanoVisibility(map, !!s.mountains);
     if (map.getLayer('boundaries-fill')) {
-      map.setPaintProperty('boundaries-fill', 'fill-color', fill);
-      refreshFillOpacity();
-      lineOpacityValue = (s.line && s.line.opacity != null) ? s.line.opacity : 1;
-      applyBoundaryOpacity(state.year);
-      map.setPaintProperty('boundaries-line', 'line-color', s.line.color);
-      map.setPaintProperty('boundaries-line', 'line-width', s.line.width);
-      map.setPaintProperty('boundaries-line', 'line-blur', s.line.blur);
+      // Rebuilds colour AND opacity for all three states, honouring any panel override, so a style
+      // switch restyles the map without silently discarding what has been tuned.
+      lineOpacityValue = styleOverride['boundaries-line.line-opacity']
+        ?? ((s.line && s.line.opacity != null) ? s.line.opacity : 1);
+      applyTerritoryFill();
+      ownedPaint('boundaries-line', 'line-color', s.line.color);
+      ownedPaint('boundaries-line', 'line-width', s.line.width);
+      ownedPaint('boundaries-line', 'line-blur', s.line.blur);
       map.setLayoutProperty('boundaries-line', 'line-join', 'round');
       // When a style supplies wobbled ink borders, hide the smooth vector line and draw from those.
-      map.setLayoutProperty('boundaries-line', 'visibility', s.borderSource ? 'none' : 'visible');
-      map.setPaintProperty('boundaries-label', 'text-color', s.text.color);
-      map.setPaintProperty('boundaries-label', 'text-halo-color', s.text.halo);
-      map.setLayoutProperty('boundaries-label', 'text-font', fonts.display);
+      //
+      // Rounding owns this layer as well, and it asked first. This line used to reset it to visible
+      // on EVERY style switch, so the raw polygon border came back and drew straight over the
+      // rounded copy — corners looked sharp again and the slider looked broken, when what had
+      // actually happened was a style change. Whoever wants it hidden wins.
+      const roundedBordersOn = smoothSamples >= 1;
+      map.setLayoutProperty('boundaries-line', 'visibility', (s.borderSource || roundedBordersOn) ? 'none' : 'visible');
+      // The hand-drawn edge takes the style's border INK but none of its treatment: it keeps its own
+      // dash, blur and confidence-driven opacity in every style, and it is never hidden.
+      //
+      // Not hidden because the two things that hide a Cliopatria border replace it with another
+      // drawing of the SAME geometry — the wobbled ink tileset, or the rounded copy — and neither
+      // contains a hand-authored territory. Hiding this one would leave those territories as bare
+      // fills with no edge at all on the pen-ink style, which reads as a rendering fault.
+      ownedPaint('hand-line', 'line-color', s.line.color);
+      ownedPaint('boundaries-label', 'text-color', s.text.color);
+      ownedPaint('boundaries-label', 'text-halo-color', s.text.halo);
     }
     if (map.getLayer('markers-label')) {
       map.setPaintProperty('markers-label', 'text-color', s.text.color);
       map.setPaintProperty('markers-label', 'text-halo-color', s.text.halo);
-      map.setLayoutProperty('markers-label', 'text-font', fonts.body);
     }
-    applyVoyageStyle(map, { color: s.voyage, halo: s.text && s.text.halo, font: fonts.display });
+    applyVoyageStyle(map, { color: s.voyage, halo: s.text && s.text.halo });
     // Hand-drawn ink: several stacked strokes (per-feature varying width + bleed + broken dashes)
     // so borders read as uneven pen work rather than uniform vector lines.
     for (let i = 0; i < 6; i++) { if (map.getLayer(`ink-${i}`)) map.removeLayer(`ink-${i}`); }
@@ -523,6 +1602,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
     applyOverlays(s);
   };
+  window.__applyMapStyle = applyMapStyle;
+  // Dev tooling + Playwright: the two behaviours that only exist as a hover or a slider drag, and so
+  // cannot otherwise be driven from a test.
+  window.__tmShowGlow = showGlow;
+  window.__tmSetRounding = applyRounding;
 
   // Read-aloud (ElevenLabs): gated by the Settings sound toggle (persisted). The panel calls
   // __timemapSpeak when a territory's summary is shown; audio is cached server-side per polity.
@@ -560,188 +1644,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
   };
 
-  const createCloudSphereLayer = () => {
-    const latBands = 16;
-    const lonBands = 32;
-    const altitude = 12000;
-    const positions = [];
-    const normals = [];
-    const indices = [];
-
-    for (let latIdx = 0; latIdx <= latBands; latIdx++) {
-      const theta = Math.PI * latIdx / latBands;
-      const sinTheta = Math.sin(theta);
-      const cosTheta = Math.cos(theta);
-      const lat = 90 - theta * 180 / Math.PI;
-
-      for (let lonIdx = 0; lonIdx <= lonBands; lonIdx++) {
-        const phi = 2 * Math.PI * lonIdx / lonBands;
-        const lon = phi * 180 / Math.PI - 180;
-        const x = sinTheta * Math.cos(phi);
-        const y = cosTheta;
-        const z = sinTheta * Math.sin(phi);
-        const coord = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], altitude);
-        positions.push(coord.x, coord.y, coord.z);
-        normals.push(x, y, z);
-      }
-    }
-
-    for (let latIdx = 0; latIdx < latBands; latIdx++) {
-      for (let lonIdx = 0; lonIdx < lonBands; lonIdx++) {
-        const first = latIdx * (lonBands + 1) + lonIdx;
-        const second = first + lonBands + 1;
-        indices.push(first, second, first + 1, second, second + 1, first + 1);
-      }
-    }
-
-    return {
-      id: 'tm-clouds',
-      type: 'custom',
-      renderingMode: '3d',
-      onAdd(map, gl) {
-        const vertexShader = `#version 100
-          attribute vec3 a_position;
-          attribute vec3 a_normal;
-          uniform mat4 u_matrix;
-          varying vec3 v_normal;
-          varying vec3 v_world;
-          void main() {
-            v_normal = normalize(a_normal);
-            v_world = a_position;
-            gl_Position = u_matrix * vec4(a_position, 1.0);
-          }
-        `;
-        const fragmentShader = `#version 100
-          precision highp float;
-          varying vec3 v_normal;
-          varying vec3 v_world;
-          uniform float u_time;
-
-          float hash(vec3 p) {
-            return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453123);
-          }
-          float noise(vec3 p) {
-            vec3 i = floor(p);
-            vec3 f = fract(p);
-            f = f * f * (3.0 - 2.0 * f);
-            float n000 = hash(i + vec3(0.0, 0.0, 0.0));
-            float n100 = hash(i + vec3(1.0, 0.0, 0.0));
-            float n010 = hash(i + vec3(0.0, 1.0, 0.0));
-            float n110 = hash(i + vec3(1.0, 1.0, 0.0));
-            float n001 = hash(i + vec3(0.0, 0.0, 1.0));
-            float n101 = hash(i + vec3(1.0, 0.0, 1.0));
-            float n011 = hash(i + vec3(0.0, 1.0, 1.0));
-            float n111 = hash(i + vec3(1.0, 1.0, 1.0));
-            float nx00 = mix(n000, n100, f.x);
-            float nx10 = mix(n010, n110, f.x);
-            float nx01 = mix(n001, n101, f.x);
-            float nx11 = mix(n011, n111, f.x);
-            float nxy0 = mix(nx00, nx10, f.y);
-            float nxy1 = mix(nx01, nx11, f.y);
-            return mix(nxy0, nxy1, f.z);
-          }
-          float fbm(vec3 p) {
-            float value = 0.0;
-            float amplitude = 0.5;
-            for (int i = 0; i < 5; i++) {
-              value += amplitude * noise(p);
-              p *= 2.0;
-              amplitude *= 0.5;
-            }
-            return value;
-          }
-          void main() {
-            vec3 normal = normalize(v_normal);
-            float cloudTex = fbm(v_world * 0.00014 + vec3(u_time * 0.01));
-            float rim = pow(max(dot(normal, normalize(vec3(0.3, 0.6, 0.8))), 0.0), 2.0);
-            float coverage = smoothstep(0.35, 0.62, cloudTex + 0.2 * rim);
-            float alpha = coverage * 0.45;
-            vec3 base = mix(vec3(0.75, 0.78, 0.82), vec3(1.0), coverage);
-            gl_FragColor = vec4(base, alpha);
-          }
-        `;
-
-        const compileShader = (type, source) => {
-          const shader = gl.createShader(type);
-          gl.shaderSource(shader, source);
-          gl.compileShader(shader);
-          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            throw new Error(gl.getShaderInfoLog(shader));
-          }
-          return shader;
-        };
-        const program = gl.createProgram();
-        const vShader = compileShader(gl.VERTEX_SHADER, vertexShader);
-        const fShader = compileShader(gl.FRAGMENT_SHADER, fragmentShader);
-        gl.attachShader(program, vShader);
-        gl.attachShader(program, fShader);
-        gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error(gl.getProgramInfoLog(program));
-        }
-
-        this.program = program;
-        this.positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-        this.normalBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-
-        this.indexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
-
-        this.aPosition = gl.getAttribLocation(program, 'a_position');
-        this.aNormal = gl.getAttribLocation(program, 'a_normal');
-        this.uMatrix = gl.getUniformLocation(program, 'u_matrix');
-        this.uTime = gl.getUniformLocation(program, 'u_time');
-        this.indexCount = indices.length;
-      },
-      render(gl, args) {
-        // MapLibre v5 passes an OPTIONS OBJECT here; v4 passed the matrix itself. This layer still
-        // said `render(gl, matrix)` and handed that object straight to uniformMatrix4fv, which threw
-        // "The object must have a callable @@iterator property" on EVERY FRAME — before drawElements,
-        // so the clouds have not been drawn once since the upgrade, only logged.
-        //
-        // Read the matrix out of whichever shape arrived, and draw nothing rather than throw if it is
-        // a shape we do not recognise: an exception in a render loop costs far more than a missing
-        // decorative layer, and this one buried a real bug (the polity panel) under its noise.
-        const matrix = (Array.isArray(args) || ArrayBuffer.isView(args))
-          ? args
-          : (args?.defaultProjectionData?.mainMatrix ?? args?.modelViewProjectionMatrix ?? null);
-        if (!matrix) return;
-
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(gl.LEQUAL);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.depthMask(false);
-
-        gl.useProgram(this.program);
-        gl.uniformMatrix4fv(this.uMatrix, false, matrix);
-        gl.uniform1f(this.uTime, performance.now() * 0.001);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.enableVertexAttribArray(this.aPosition);
-        gl.vertexAttribPointer(this.aPosition, 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
-        gl.enableVertexAttribArray(this.aNormal);
-        gl.vertexAttribPointer(this.aNormal, 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
-
-        gl.depthMask(true);
-        gl.disable(gl.BLEND);
-
-        map.triggerRepaint();
-        return true;
-      },
-    };
-  };
 
   window.__timemapSpeak = (id, text) => {
     window.__timemapStopSpeak();
@@ -771,11 +1673,6 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   }
 
   map.on('load', () => {
-    // 3D ground. The DEM was already loaded for the hillshade, which only ever drew depth as a grey
-    // shadow on a flat sheet; draping the map over the same height map is what actually raises the
-    // Alps. Guarded because setTerrain throws if the style is not finished parsing, and a map
-    // without relief is worth far more than a map that failed to load.
-    try { map.setTerrain({ source: 'dem', exaggeration: RELIEF }); } catch (e) { /* style not ready */ }
     map.addLayer({
       id: 'boundaries-fill', type: 'fill', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: {
@@ -784,9 +1681,67 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'fill-opacity-transition': { duration: 150 },
       },
     });
+    // The hand-authored fill, immediately above Cliopatria's and painted from the same expression
+    // by applyTerritoryFill — same palette, same national colours, same selected/hover states.
+    // Above rather than below so that where the two overlap, what you click is what you can see.
+    map.addLayer({
+      id: 'hand-fill', type: 'fill', source: 'hand-territories',
+      paint: {
+        'fill-color': FILL_COLOR,
+        'fill-opacity': FILL_OPACITY,
+        'fill-opacity-transition': { duration: 150 },
+      },
+    });
+    map.addLayer({
+      id: 'boundaries-smooth', type: 'line', source: SMOOTH_SRC,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
+    });
+    map.addLayer({
+      id: 'boundaries-glow', type: 'line', source: 'boundaries-glow-src',
+      // The source carries the outline AND a point for the name; each layer takes its own kind.
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': GLOW_COLOR,
+        'line-width': GLOW_WIDTH,
+        'line-blur': 6,
+        // A plain number, not a feature-state case. The source is EMPTY when nothing is hovered, so
+        // there is nothing to make invisible — which also removes the trap that bit this layer
+        // first time round: MapLibre transitions only non data-driven properties, and pairing a
+        // transition with a feature-state expression made it drop the expression and fall back to
+        // fully opaque, drawing every border of every era at once.
+        'line-opacity': 0.55,
+        'line-opacity-transition': { duration: 140 },
+      },
+    });
+    // NOTE: there was a second name layer here — the hovered territory's name, drawn from the glow
+    // source so it could never be culled by collision. It is gone, because it anchored differently
+    // from the real label and so hovering visibly shifted the name sideways.
+    //
+    // Its job survives without it: the hovered name takes symbol-sort-key 0 (see refreshLabels), so
+    // it is placed FIRST and wins the collision it used to lose, and hoverLabel() grows it in place.
+    //
+    // The readout that replaced it was added here too, and that put it below the globe stack — which
+    // anchors at boundaries-label — so on the Earth style the sea was drawn over it and the name
+    // broke up wherever it crossed water. It now goes on AFTER boundaries-label, with the rest of
+    // the writing; see the layer itself, further down.
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
+    });
+    // The hand-drawn edge — dashed, blurred, and blurrier still where confidence is low. See
+    // handEdge above for why this is the one thing that does NOT match a Cliopatria border.
+    map.addLayer({
+      id: 'hand-line', type: 'line', source: 'hand-territories',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': theme.line.color,
+        'line-width': handLineWidthExpr(),
+        'line-opacity': handLineOpacityExpr(),
+        'line-blur': handLineBlurExpr(),
+        'line-dasharray': handLineDash(),
+      },
     });
     // Rivers (Natural Earth, major only) — above borders, below labels; ink styles only.
     map.addLayer({
@@ -814,11 +1769,47 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'text-padding': 6, // space labels out so dense regions de-clutter
         // Place the selected territory's label first (lowest key wins collision) so its name
         // always shows; everyone else keeps the default source-order placement.
-        'symbol-sort-key': ['case', ['get', 'sel'], 0, 1],
+        // Lowest key is placed first, so it never loses a collision. Both the OPEN territory and
+        // the one under the pointer get 0 — the hovered name winning placement is what the removed
+        // always-on-top hover layer used to guarantee.
+        'symbol-sort-key': ['case', ['get', 'sel'], 0, ['get', 'hov'], 0, 1],
       },
       // Strong halo so names stay readable over borders/fills in every style.
       // icon-translate lifts the flag a few px above the name (independent of icon-size).
-      paint: { 'text-color': '#3b3326', 'text-halo-color': '#f3ead6', 'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9] },
+      // From theme.json, not repeated here. These were the same two hex values written out twice,
+      // and when the hover-name layer (the other reader of theme.text) was removed, nothing read
+      // the theme's ink at all — leaving a group in theme.json that looked live and was not.
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9],
+      },
+    });
+    map.addLayer({
+      /**
+       * The hovered name, at the pointer, for territories whose own label is off screen.
+       *
+       * allow-overlap and ignore-placement: it is a pointer readout, not a map label. It must never
+       * lose a collision, because the one thing it exists to answer is "what am I pointing at".
+       *
+       * Offset ABOVE the cursor so the pointer does not sit on its own answer.
+       *
+       * AFTER boundaries-label, and that matters: the globe stack is inserted before that layer, so
+       * anything added earlier ends up beneath the SEA. This readout was, and on the Earth style the
+       * name you were pointing at came apart wherever it crossed water — the same failure as the
+       * territory names, from the same cause. A pointer readout is the last thing that should be
+       * occluded by scenery.
+       */
+      id: 'boundaries-cursor-label', type: 'symbol', source: 'boundaries-cursor-name',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
+        'text-size': 12, 'text-anchor': 'bottom', 'text-offset': [0, -1.1],
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5,
+      },
     });
 
     // Mountains: hand-painted glyphs repeated along curated ridge lines, varied per range
@@ -831,7 +1822,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       .then(() => addForestLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
       .then(() => addMountainLayer(map, { beforeId: 'boundaries-label', visibility: 'none', landColor: terrainLand() }))
       .then(() => addVolcanoLayer(map, { beforeId: 'boundaries-label', visibility: 'none' }))
-      .then(() => applyMapStyle());
+      .then(() => applyMapStyle(currentStyleName));
 
     // Supplemental markers for regions/peoples the dataset leaves blank (label-only, no borders).
     // A muted hollow dot + brown label distinguishes them from real (filled) polities.
@@ -843,28 +1834,69 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'circle-stroke-color': '#6b5a3e', 'circle-stroke-width': 1.4, 'circle-opacity': 0.85,
       },
     });
+    // BENEATH the territory names, and that is a placement decision rather than a stacking one.
+    //
+    // MapLibre resolves label collisions from the top of the layer stack down, so the last symbol
+    // layer added wins. With this one on top, "GERMANIA" — a hand-placed point marker, put there
+    // precisely BECAUSE the map had no Germanic territories — beat "CHATTI" and hid it. The
+    // placeholder was outranking the thing that replaced it, and only on the Chatti, because it is
+    // the one whose centroid falls near the marker.
+    //
+    // Specific beats generic on any map worth reading: a region name yields to the peoples inside
+    // it. markers-dot stays on top, so the marker is still visible and still clickable.
     map.addLayer({
       id: 'markers-label', type: 'symbol', source: 'markers',
       layout: {
         'text-field': ['get', 'name'], 'text-size': 14,
-        // Regions/peoples in flowing Eagle Lake calligraphy (the body hand of the map).
-        'text-font': ['Eagle Lake'],
+        // The SAME hand as every other name on the map. These three (Gaul, Germania, Britannia) are
+        // added by hand rather than coming from Cliopatria, and they used to be set in flowing Eagle
+        // Lake title case while their neighbours were Cinzel small caps — so "Britannia" beside
+        // "ROMAN EMPIRE" read as two maps stacked, which is exactly how Bart found it.
+        //
+        // The hierarchy survives in the one place it belongs: size. A region is 14 to a polity's 12.
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase',
         'text-offset': [0, 0.9], 'text-anchor': 'top',
-        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.02,
+        'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.06,
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
+    }, map.getLayer('boundaries-label') ? 'boundaries-label' : undefined);
+    // Weather over the globe. Reduced-motion users get the deck without the drift — and without
+    // the per-frame repaint that drives it.
+    let cloudOpacity = 0.5;
+    try {
+      const saved = parseFloat(localStorage.getItem('tm-clouds'));
+      if (Number.isFinite(saved)) cloudOpacity = Math.min(1, Math.max(0, saved));
+    } catch (e) { /* private mode */ }
+    // The real cloud field, not the procedural fallback. These assets have been sitting in
+    // public/img/map/ unused: without a fieldUrl the layer silently runs on noise, which is banded
+    // by latitude to imitate weather but has no actual weather in it. With them you get the real
+    // ITCZ, real frontal bands and real cyclones, carried along a real GFS wind field.
+    // The whole stack, not just the deck: the sea, the terminator, the haze band, the star sky, the
+    // sun and the moon come on with it. Same insertion point the cloud layer alone used, so the
+    // voyages and the ship below still anchor to CLOUD_LAYER_ID exactly as before.
+    //
+    // The date is the year on the slider, so the lit half of the planet belongs to the era being
+    // looked at rather than to whenever the page happened to load. applyYear moves it.
+    globe = addGlobeLayers(map, {
+      date: dateForYear(state.year),
+      reduceMotion,
+      beforeId: 'boundaries-label',
     });
-    map.addLayer(createCloudSphereLayer(), 'boundaries-label');
+    cloudLayer = globe.layers.clouds;
+    // Honour the density this browser last chose, which predates the shared panel and is still what
+    // __tmSetClouds writes.
+    cloudLayer?.setOptions({ opacity: cloudOpacity });
+    registerTuning();
     // Explorer voyages / trade routes (voyages.json) — sea paths, era-filtered like polities;
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
     // initial style; this lifts them above the boundary layers but keeps them BELOW the
     // tm-clouds 3D layer, whose globe-wide depth writes would otherwise cull them (see voyages.js).
-    initVoyages(map, { year: state.year, beforeId: 'tm-clouds' });
+    initVoyages(map, { year: state.year, beforeId: CLOUD_LAYER_ID });
     // The sailing tall ship (three.js custom layer) rides in its own lazy chunk — same
     // below-the-clouds placement, same era window as the routes.
     import('./voyage-ships.js')
       .then(({ addVoyageShips }) => {
-        voyageShips = addVoyageShips(map, { beforeId: 'tm-clouds' });
+        voyageShips = addVoyageShips(map, { beforeId: CLOUD_LAYER_ID });
         voyageShips.setYear(state.year);
         window.__tmShips = voyageShips; // dev tooling + Playwright
       })
@@ -873,25 +1905,49 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.on('mouseleave', 'markers-dot', () => { map.getCanvas().style.cursor = ''; });
 
     map.on('moveend', scheduleSettle);
+    map.on('moveend', scheduleSmoothBorders);
     // Border tiles load asynchronously; re-settle once they're in so labels + prefetch see them.
     map.on('sourcedata', (e) => { if (e.sourceId === 'cliopatria' && e.isSourceLoaded) scheduleSettle(); });
 
-    applyMapStyle();
+    let savedStyle = null;
+    try { savedStyle = localStorage.getItem('tm-style'); } catch (e) { /* private mode */ }
+    applyMapStyle(savedStyle || 'soft-atlas');
     applyYear(state.year);
 
-    // Pointer cursor + hover highlight over historical regions.
-    map.on('mousemove', 'boundaries-fill', (e) => {
-      map.getCanvas().style.cursor = 'pointer';
-      if (!e.features.length) return;
-      if (hoveredId !== null) setHover(hoveredId, false);
-      hoveredId = e.features[0].id;
-      setHover(hoveredId, true);
-    });
-    map.on('mouseleave', 'boundaries-fill', () => {
-      map.getCanvas().style.cursor = '';
-      if (hoveredId !== null) setHover(hoveredId, false);
-      hoveredId = null;
-    });
+    // Pointer cursor, hover highlight and the name that follows the cursor. Bound PER FILL LAYER
+    // with one shared handler, so a hand-authored territory behaves exactly as any other does under
+    // the pointer — which is most of what "renders as an ordinary territory" means in practice, and
+    // the cursor name is the newest thing it would otherwise have silently missed out on.
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      map.on('mousemove', layer, (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        if (!e.features.length) return;
+        if (e.features[0].id === hoveredId) {
+          // Same territory: the outline does not change, but the name FOLLOWS. Moving the point is a
+          // setData on two coordinates, which is why this can run on every mousemove.
+          if (cursorName) setCursorName(cursorName, e.lngLat);
+          return;
+        }
+        hoveredId = e.features[0].id;
+        const p = e.features[0].properties;
+        // Same QID resolution the click path uses — Cliopatria reuses a QID across different
+        // polities, so the name is part of the key.
+        const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
+        showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
+        // With resting labels off there is never anything to scale, so the pointer always answers.
+        // With them on, it answers only when the territory's own name is not already on screen.
+        const label = p.Name ?? null;
+        const needed = label && (!restingLabels || !restingLabelOnScreen(label));
+        setCursorName(needed ? label : null, e.lngLat);
+      });
+      map.on('mouseleave', layer, () => {
+        map.getCanvas().style.cursor = '';
+        hoveredId = null;
+        showGlow(null);
+        setCursorName(null);
+      });
+    }
 
     state.ready = true;
     sync();
@@ -902,7 +1958,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const box = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
     const marker = map.queryRenderedFeatures(box, { layers: ['markers-dot'] })[0];
     if (marker) {
-      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+      if (selectedId !== null) { clearSelection(); refreshLabels(); }
       const p = marker.properties;
       state.selectedRegion = p.id;
       sync();
@@ -921,7 +1977,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Voyage routes next (wide invisible hit line): open the panel via the voyage's QID.
     const voyage = map.getLayer('voyage-hit') && map.queryRenderedFeatures(box, { layers: ['voyage-hit'] })[0];
     if (voyage) {
-      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+      if (selectedId !== null) { clearSelection(); refreshLabels(); }
       const p = voyage.properties;
       state.selectedRegion = p.qid;
       sync();
@@ -930,11 +1986,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
 
     // Identify the clicked polity client-side from the rendered (era-filtered) features.
-    const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0];
+    // Both sources, in render order — the hand-authored layer sits above Cliopatria, so where the
+    // two overlap the hand-drawn one wins the click, which is what you see and so what you expect.
+    const hit = map.queryRenderedFeatures(e.point, {
+      layers: TERRITORY_FILL_LAYERS.filter((l) => map.getLayer(l)),
+    })[0];
+    const hand = !!hit?.properties?.hand;
 
-    if (selectedId !== null) setSelected(selectedId, false);
+    clearSelection();
     selectedId = hit ? hit.id : null;
-    if (selectedId !== null) setSelected(selectedId, true);
+    selectedHand = hand;
+    if (selectedId !== null) setSelected(selectedId, true, hand);
     refreshLabels(); // re-rank labels so the newly-selected territory's name wins collision
 
     const tileQid = hit ? hit.properties.Wikidata : null;
@@ -942,8 +2004,42 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const qid = tileQid ? QID_FOR_NAME.get(`${tileQid}|${name}`) || tileQid : null;
     state.selectedRegion = qid;
     sync();
+
+    // Run the light around the border you just clicked — the voyage's landfall draw-on, borrowed.
+    // The OUTLINE only: a territory announcing itself by tracing its own edge says where it is
+    // without hiding what is inside it, which is the whole reason the fill no longer reacts.
+    borderSweep?.cancel();
+    borderSweep = hit
+      ? sweepBorder(map, {
+        id: 'polity-sweep',
+        // Seams split out here too. The click sweep runs its light around the SAME tile-clipped
+        // geometry the hover glow does, so it had the same straight line through the country — it
+        // was just harder to catch, being a two-second gesture rather than a state you can sit in.
+        lines: outlineOf(hit.geometry).flatMap((ring) => withoutSeams(ring)).filter((r) => r.length >= 4),
+        // No trail: this is a gesture, not a layer. It clears itself up when it finishes.
+        durationMs: 2000,
+        beforeId: map.getLayer('boundaries-label') ? 'boundaries-label' : undefined,
+      })
+      : null;
+
     // QID drives enrichment (Cliopatria carries it natively); pass it as both id and qid.
-    window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: qid, name, qid } }));
+    //
+    // A hand-authored territory carries three things Cliopatria's cannot. Its DATES come from the
+    // feature rather than from the enrichment endpoint, because the endpoint reads Cliopatria's own
+    // era table and would answer "?" for a polity that is not in it. Its PROVENANCE comes from the
+    // authored record — deliberately not from feature properties, which MapLibre would have handed
+    // back as a JSON string. And `hand` tells the panel to show both.
+    window.dispatchEvent(new CustomEvent('polity-selected', {
+      detail: hand
+        ? {
+          id: qid, name, qid, hand: true,
+          territoryId: hit.properties.id,
+          inception: Number(hit.properties.FromYear),
+          dissolution: Number(hit.properties.ToYear),
+          provenance: provenanceFor(hit.properties.id),
+        }
+        : { id: qid, name, qid },
+    }));
   });
 
   // Called by the Alpine slider on input — continuous, no fetch.
@@ -960,6 +2056,24 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   el._tmMap = map;
   window.__tmMap = map; // for debugging + Playwright assertions
+
+  /**
+   * Let the card put the map back the way it was when it closes.
+   *
+   * Clicking a territory does three things beyond opening the panel: it sets a MapLibre
+   * feature-state, it re-ranks the labels so the chosen name wins its collisions, and it publishes
+   * the selection on __portal. Closing the card used to undo NONE of them, so the territory stayed
+   * lit with nothing on screen explaining why — a highlight with no card reads as a stuck map.
+   *
+   * Exported rather than reachable, because selectedId, setSelected and refreshLabels are closure
+   * state in here and a panel has no business knowing any of it. This is the same shape as clicking
+   * empty sea, which is the other way a selection ends.
+   */
+  window.__timemapClearSelection = () => {
+    if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+    state.selectedRegion = null;
+    sync();
+  };
 
   return map;
 };

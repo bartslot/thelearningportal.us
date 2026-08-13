@@ -1,0 +1,128 @@
+/**
+ * brand-kit.css — the History Portal information-card design, as tokens.
+ *
+ * SYNCED FROM FIGMA, NOT FETCHED FROM IT.
+ *   https://www.figma.com/design/PrVD4qMyoTtBvF7UV7Yhej/History-Portal?node-id=1462-1886
+ *
+ * The Figma file is upstream and it is where design decisions are MADE. This file is where they
+ * LAND, and it is what code reads. That split is deliberate: a build that calls Figma cannot run in
+ * CI, cannot run on a machine that is not signed in, and breaks the day a node id changes. Re-sync
+ * by hand when the design moves — see .claude/skills/history-portal-ui/SKILL.md.
+ *
+ * These sit ALONGSIDE the DaisyUI `learningportal` theme, they do not replace it. Component chrome
+ * still uses DaisyUI semantic classes; these are the card-specific values DaisyUI has no opinion
+ * about — the hairlines, the fade height, the label tracking.
+ */
+
+@theme {
+  /* ── Surfaces ─────────────────────────────────────────────────────────────────────────────── */
+  /* The card sits on the map, so it is darker than the app chrome — and OPAQUE, which is what the
+     Figma frame is. Legibility at rest is then a property of the card rather than of whatever the
+     map happens to be showing: the Sahara at noon and open ocean read identically behind it. */
+  --color-card-surface: #08101e;
+  --color-card-surface-raised: #121b2c;  /* the active tab, the button rail */
+
+  /* SUBTLE BREAKS OF CONTENT. Every division in this design is a hairline at low opacity, never a
+     box and never a shadow. If a separator is visible as a line rather than felt as a change, it is
+     too strong. */
+  --color-card-hairline: rgb(255 255 255 / 0.07);
+
+  /* ── Text ─────────────────────────────────────────────────────────────────────────────────── */
+  /* TWO text colours on a card, not three. White says something, muted names something.
+   *
+   * The body was #c7d5e3 — Figma's `Menu` variable, which is a real variable but is not what this
+   * frame uses: node 1462:2018 is plain white, and Bart settled it ("goes white. follow figma").
+   * `Menu` still exists upstream for the surfaces that do read in it; it is simply not this card.
+   *
+   * Title and body therefore hold the same value, and that is deliberate rather than a duplicate to
+   * tidy away: they are different jobs, and folding the body into --color-card-title would say the
+   * copy is a heading. If the two ever need to diverge again, there is a name to move. */
+  --color-card-title: #ffffff;
+  --color-card-body: #ffffff;
+  --color-card-muted: #7c8b9d;       /* inactive tabs, footnotes, LINKS */
+
+  /* NO ACCENT ON THE CARD. There was an amber one here; Bart removed it while the card was being
+   * built: "it's white now — we shouldn't put so much colour in our UI while our footage is already
+   * very colourful", and then "goes white, follow figma" for the body.
+   *
+   * This is Apple's guidance taken one step further than I took it. Our content layer is a
+   * photographed planet: colourful, moving, a different colour every year and every map style. The
+   * HIG answer is monochromatic chrome plus one well-differentiated accent — and over footage this
+   * rich, the accent is the thing to drop, not the thing to keep. The era is white and underlined.
+   * https://developer.apple.com/design/human-interface-guidelines/color
+   *
+   * Affordance is carried by form, not colour, and that outlives taste: a colour-only affordance is
+   * invisible to a colour-blind teacher and invisible over a bright map. The two era dates scrub the
+   * timeline, and what says so is the underline.
+   *
+   * Amber still means something on the MAP (selection, hover glow). It means nothing on a card. */
+
+  /* The one primary action — a white pill reading in the card's own deep navy. */
+  --color-card-action: #ffffff;
+  --color-card-action-label: #18293f;
+
+  /* ── The small-caps label ─────────────────────────────────────────────────────────────────── */
+  /* Figma: LABEL_SMALL_UI and LABEL_BIGGER. Inter SemiBold, 0.5 letter-spacing, uppercase. Used for
+     "ROMAN REPUBLIC", "READ MORE ON", "SOMETHING NOT RIGHT?" — every piece of text that labels
+     rather than speaks. */
+  --text-card-label-sm: 0.5rem;      /* 8px  */
+  --text-card-label: 0.6875rem;      /* 11px */
+  --tracking-card-label: 0.5px;
+  --font-weight-card-label: 600;
+
+  /* ── Rhythm ───────────────────────────────────────────────────────────────────────────────── */
+  --radius-card: 0.75rem;
+  --radius-card-pill: 9999px;        /* the Create Lesson button */
+  --spacing-card-gutter: 1.25rem;
+
+  /* The body copy FADES rather than being cut. A hard clip says the text ended; a fade says there
+     is more and you can scroll to it. This is the height of that fade. */
+  --card-fade-height: 3.5rem;
+
+  /* The Figma frame's own geometry. The body is 320 tall whatever is in it, so everything below it
+     sits at the same height on every territory.
+
+     Referenced as `style="width: var(--card-width)"`, NOT as a `w-card` utility: neither name is in
+     a Tailwind v4 theme namespace, so no utility is generated and `class="w-card"` silently styles
+     nothing — the panel loses its width with no error anywhere. */
+  --card-width: 19.375rem;      /* 310px */
+  --card-body-height: 20rem;    /* 320px */
+}
+
+/**
+ * MUST stay inside @layer components — the same trap `.form-control` fell into in app.css.
+ *
+ * This file is imported unlayered, and unlayered CSS outranks every Tailwind layer. Left at top
+ * level, `.lp-card-label` sets a colour no utility can beat: `class="lp-card-label text-card-title"`
+ * computes MUTED, so the era and both footer links silently render grey. Inside a layer, utilities
+ * win, which is what a class carrying a default colour has to allow.
+ */
+@layer components {
+  /**
+   * The fade. Applied to the scrolling body of an information card.
+   *
+   * mask-image rather than a gradient overlay, because an overlay has to know the colour behind it —
+   * and this card sits on a map whose colour changes with the year, the style and the time of day.
+   *
+   * The fade means "there is more", so it is applied only while there IS more: a card scrolled to
+   * its last line drops the class, or the final line would sit permanently half-dissolved and the
+   * fade would come to mean nothing.
+   */
+  .lp-card-fade {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--card-fade-height)), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--card-fade-height)), transparent 100%);
+  }
+
+  /** The label hand: anything that names a thing rather than saying it. */
+  .lp-card-label {
+    font-size: var(--text-card-label);
+    font-weight: var(--font-weight-card-label);
+    letter-spacing: var(--tracking-card-label);
+    text-transform: uppercase;
+    color: var(--color-card-muted);
+  }
+
+  .lp-card-label-sm {
+    font-size: var(--text-card-label-sm);
+  }
+}

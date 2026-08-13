@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* The information-card design language, synced from Figma. See .claude/skills/history-portal-ui. */
+@import './brand-kit.css';
 @plugin "daisyui";
 
 [x-cloak] { display: none !important; }
@@ -482,11 +484,18 @@
     pointer-events: none;
     border-radius: inherit;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-    opacity: 0.04;
+    /* TILE IT 1:1. This SVG carries a viewBox and no width/height, so it has no intrinsic size —
+       with background-size unset it STRETCHES to the element instead of repeating. On a 1200px
+       player that scaled a 256-unit noise field about five times, turning grain into soft mottling.
+       Its sibling .lp-grain-poster had the size and repeat all along and looked right; this one
+       never did, which is the whole difference. One noise texel, one CSS pixel. */
+    background-repeat: repeat;
+    background-size: var(--lp-grain-size, 256px) var(--lp-grain-size, 256px);
+    opacity: var(--lp-grain-opacity, 0.04);
     mix-blend-mode: overlay;
     z-index: 1;
 }
-.lp-grain-heavy::after { opacity: 0.07; }
+.lp-grain-heavy::after { opacity: calc(var(--lp-grain-opacity, 0.04) * 1.75); }
 
 /* ─── Cinematic poster grain (animated, heavy — for lesson card images) ── */
 @keyframes poster-grain {
@@ -1334,6 +1343,76 @@
 
 .lesson-map-tag .maplibregl-popup-tip {
     display: none;   /* drop the white pointer triangle */
+}
+
+/* ─── Map credit ─────────────────────────────────────────────────────────
+   The attribution is a licence obligation (ODbL, CC-BY) and it was switched off because the
+   default control lays the credit out as ONE LINE, which on a full-bleed globe is a white strip
+   running across the bottom of the planet and over the southern labels.
+
+   So it becomes a mark you open, and what opens is a small card: a width cap and a line wrap, which
+   is all it ever needed. Dark like the rest of the map chrome rather than MapLibre's white pill.
+
+   EVERY rule here is qualified by .maplibregl-map, and only for that reason: maplibre-gl.css is a
+   JS import, so it lands AFTER this file, and any tie on specificity goes to MapLibre. The z-index
+   below was written unqualified first and did nothing at all. */
+
+/* The time deck is z-10 and the map is its sibling, so the credit opens UNDER the deck and loses
+   half its text — which is not "visible credit" in any sense a licence would accept. Above the
+   deck, below the settings cog (z-30). */
+.maplibregl-map .maplibregl-ctrl-bottom-left {
+    z-index: 21;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
+    position: relative;
+    background: none;         /* the card carries its own; an empty pill behind the ⓘ is just a dot */
+    padding: 0;
+}
+
+/* MapLibre draws the mark TWICE — once as the button's background-image and once more as this
+   pseudo-element, a filled white ⓘ. That second one is the pale disc; it has to go, or it sits on
+   top of whatever the button is given. */
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact::after {
+    display: none;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    /* Grows UPWARD off the mark. The control sits on the bottom edge, so MapLibre's own downward
+       flow runs it straight off the end of the map. */
+    position: absolute;
+    bottom: 30px;
+    left: 0;
+    width: 17rem;
+    white-space: normal;      /* MapLibre keeps it on one line; that line IS the strip */
+    line-height: 1.45;
+    padding: 8px 11px;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.9);   /* base-100 navy, as the colour slider and the deck */
+    color: rgba(243, 234, 214, 0.8);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner a {
+    color: rgba(243, 234, 214, 0.95);
+}
+
+/* The mark itself: the app's own icon rather than MapLibre's filled white glyph, which is a bright
+   dot on a night map. Heroicons outline information-circle, 24×24, stroke 1.5, in parchment ink.
+   Inverting MapLibre's was the obvious first move and it is a dead end — the disc goes white and
+   takes the glyph with it. */
+.maplibregl-map .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button,
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+    background-color: transparent;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f3ead6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z'/%3E%3C/svg%3E");
+    background-size: 20px 20px;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.5;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button:hover {
+    opacity: 0.9;
 }
 
 /* ─── Quiz overlay animation ─────────────────────────────────────────────

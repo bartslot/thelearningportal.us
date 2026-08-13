@@ -1413,6 +1413,7 @@
                     { k: 'objects', label: @js(__('Object list')) },
                     { k: 'rulers',  label: @js(__('Rulers')) },
                     { k: 'notes',   label: @js(__('Internal notes')) },
+                    { k: 'layers',  label: @js(__('Globe layers')) },
                 ]" :key="item.k">
                     <button type="button"
                             @click="(item.k === 'scenes' ? $store.view.toggleScenes() : $store.view.toggle(item.k)); viewOpen = false"
@@ -2021,6 +2022,123 @@
                   placeholder="{{ __('Private notes for this lesson. Only you can see these.') }}"
                   class="w-full resize-none border-0 bg-transparent p-3 text-sm text-slate-200 focus:outline-none"></textarea>
     </div>
+
+    @php
+        /**
+         * The rows the panel shows. Keys only — the option each key maps to (`strength`,
+         * `nightDarkness`, `opacity`, `brightness`, `reliefPower`) lives in
+         * resources/js/timemap/layer-controls.js and is asserted there. Blade owns the words,
+         * JavaScript owns the wiring, and `key` is the whole contract between them; neither has to
+         * know the other's half.
+         *
+         * A layer whose branch has not merged is simply absent from this list — no stub rows.
+         * Relief ships OFF: at 8192x4096 it is 171 MiB resident against a 96 MiB budget, which is
+         * why asset-budget.json carries it as optional rather than as part of the map surface.
+         */
+        $globeLayerRows = [
+            ['key' => 'starfield',  'label' => __('Stars'),         'default' => 0.5,  'max' => 1],
+            ['key' => 'sun',        'label' => __('Sun'),           'default' => 1,    'max' => 1],
+            ['key' => 'moon',       'label' => __('Moon'),          'default' => 1,    'max' => 1],
+            ['key' => 'daylight',   'label' => __('Day and night'), 'default' => 0.85, 'max' => 1],
+            ['key' => 'atmosphere', 'label' => __('Atmosphere'),    'default' => 1,    'max' => 1],
+            ['key' => 'clouds',     'label' => __('Clouds'),        'default' => 1,    'max' => 1],
+            ['key' => 'ocean',      'label' => __('Ocean'),         'default' => 1,    'max' => 1],
+            ['key' => 'relief',     'label' => __('Relief'),        'default' => 0,    'max' => 2],
+        ];
+        $globeReferenceRow = ['key' => 'reference', 'label' => __('NASA reference'), 'default' => 0, 'max' => 1];
+    @endphp
+
+    {{-- Globe layers — a floating tool window, draggable over the scene.
+
+         A DOCK WOULD DEFEAT THE PANEL. Its job is comparing the render against the NASA photograph,
+         and the globe is in the middle of the canvas; a panel pinned to an edge cannot be moved off
+         the thing you are trying to look at. Hence <x-ui.floating-window>, which clamps so it can
+         never be lost — the failure that got the old floating Format inspector removed from this
+         screen. See the note above that panel, and floating-window.test.js.
+
+         The reference row is the point of it, not a garnish: it fades the photograph in over the
+         render so the two can be compared directly. "The night side is too bright" is an argument;
+         a cross-fade to the frame it is being measured against is not.
+
+         Room is deliberately left for the animation-track UI, which is Bart's own work — it can be
+         a second floating window and nothing here assumes it is absent.
+
+         The slider idiom is the one already working in time-map.blade.php (tm-color-strength):
+         x-model.number on a DaisyUI range, restored in init() rather than x-init because Alpine
+         compiles an attribute as the right-hand side of an assignment, so a `try` statement there
+         is a syntax error and the whole expression is silently dropped. The try/catch stays
+         regardless — localStorage throws outright in a browser that blocks storage. --}}
+    <x-ui.floating-window name="layers" :title="__('Globe layers')"
+                          show="$store.view.layers" on-close="$store.view.hide('layers')">
+    <div x-data="{
+             rows: @js($globeLayerRows),
+             reference: @js($globeReferenceRow),
+             state: {},
+             init() {
+                 const fallback = {};
+                 for (const row of [...this.rows, this.reference]) {
+                     fallback[row.key] = { visible: row.default > 0, value: row.default };
+                 }
+                 this.state = fallback;
+                 try {
+                     const saved = JSON.parse(localStorage.getItem('tm-layers') || '{}');
+                     for (const [key, entry] of Object.entries(saved)) {
+                         if (!this.state[key] || !entry || typeof entry !== 'object') continue;
+                         const v = entry.value;
+                         this.state[key] = {
+                             visible: entry.visible === true,
+                             value: typeof v === 'number' && Number.isFinite(v) ? v : this.state[key].value,
+                         };
+                     }
+                 } catch (e) {}
+                 this.$nextTick(() => this.pushAll());
+             },
+             save() {
+                 try { localStorage.setItem('tm-layers', JSON.stringify(this.state)); } catch (e) {}
+             },
+             push(key) {
+                 const row = [...this.rows, this.reference].find((r) => r.key === key);
+                 if (!row) return;
+                 const s = this.state[key];
+                 const value = s.visible ? Number(s.value) : 0;
+                 window.__tmSetLayer?.(key, Number.isFinite(value) ? value : 0);
+                 this.save();
+             },
+             pushAll() { for (const key of Object.keys(this.state)) this.push(key); },
+         }">
+        <div class="max-h-72 overflow-y-auto px-3 py-2">
+            <template x-for="row in rows" :key="row.key">
+                <div class="flex items-center gap-2 py-1.5">
+                    <input type="checkbox" class="toggle toggle-xs toggle-primary shrink-0"
+                           x-model="state[row.key].visible" @change="push(row.key)"
+                           :aria-label="row.label">
+                    <span class="w-24 shrink-0 truncate text-xs text-slate-300" x-text="row.label"></span>
+                    <input type="range" min="0" :max="row.max" step="0.05"
+                           class="range range-xs range-primary grow"
+                           x-model.number="state[row.key].value"
+                           :disabled="!state[row.key].visible"
+                           @input="push(row.key)"
+                           :aria-label="row.label + ' — {{ __('opacity') }}'">
+                </div>
+            </template>
+
+            <div class="my-2 border-t border-slate-700/60"></div>
+
+            <div class="flex items-center gap-2 py-1.5">
+                <input type="checkbox" class="toggle toggle-xs toggle-warning shrink-0"
+                       x-model="state[reference.key].visible" @change="push(reference.key)"
+                       :aria-label="reference.label">
+                <span class="w-24 shrink-0 truncate text-xs text-amber-300" x-text="reference.label"></span>
+                <input type="range" min="0" :max="reference.max" step="0.05"
+                       class="range range-xs range-warning grow"
+                       x-model.number="state[reference.key].value"
+                       :disabled="!state[reference.key].visible"
+                       @input="push(reference.key)"
+                       :aria-label="reference.label + ' — {{ __('opacity') }}'">
+            </div>
+        </div>
+    </div>
+    </x-ui.floating-window>
 
     {{-- Scene rail (vertical, left edge) --}}
     <x-lesson.timeline :scenes="$this->scenes" :selected-scene-id="$selectedSceneId" editable />

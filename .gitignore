@@ -66,6 +66,10 @@ NUL
 # Playwright artifacts
 tests/playwright/results/
 tests/playwright/report/
+
+# Globe-layer harness output: an esbuild bundle and whatever PNGs the last run wrote
+/tools/sun-harness/.build/
+/tools/sun-harness/shots/
 .env.*
 .env.bak*
 
@@ -76,3 +80,9 @@ tests/playwright/report/
 # Agent skill packs installed by `npx skills add` (e.g. Stripe's own docs). Tooling for whoever
 # installed them, not project source, and re-installable in one command.
 /.agents
+# harness build output
+harness/*/.build/
+
+# python bytecode from the bake scripts
+scripts/__pycache__/
+harness/**/__pycache__/

@@ -1,0 +1,255 @@
+{
+    "active": "Standard",
+    "presets": {
+        "Standard": {
+            "Film grain": {
+                "opacity": 0.04,
+                "size": 256
+            },
+            "Scratch CSS": {
+                "css": ""
+            },
+            "Ocean": {
+                "shoreSoftnessKm": 19.5,
+                "roughness": 0.95,
+                "strength": 0.48,
+                "windPatch": 0.6,
+                "windScale": 14,
+                "water": 1,
+                "scatter": "#0d1323",
+                "opacity": 1
+            },
+            "Clouds": {
+                "opacity": 1,
+                "windAmount": 0.2,
+                "windScale": 0.06,
+                "windRate": 0.05,
+                "cloudShadow": 0.5
+            },
+            "Sky and light": {
+                "nightDarkness": 0.965,
+                "twilightColour": "#9e5229",
+                "twilightCool": "#1a2647",
+                "twilightStrength": 0.55,
+                "atmosphere": 1.25,
+                "starfield": 0.5,
+                "sun": 1,
+                "moon": 1
+            },
+            "Territory \u00b7 resting": {
+                "usePalette": true,
+                "restColour": "#5b7fa8",
+                "restOpacity": 0
+            },
+            "Territory \u00b7 hover": {
+                "hoverColour": "#ecd9a0",
+                "hoverOpacity": 0
+            },
+            "Territory \u00b7 active": {
+                "activeColour": "#f5c518",
+                "activeOpacity": 0
+            },
+            "Advance": {
+                "seconds": 4,
+                "curve": 0.5,
+                "colour": "#b31217",
+                "rimColour": "#4a0505",
+                "rimKm": 40,
+                "opacity": 0.85,
+                "lobeAmount": 45,
+                "lobeScale": 6,
+                "mergeKm": 120
+            },
+            "Territory labels": {
+                "font": "Cinzel",
+                "size": 12,
+                "hoverScale": 1.35,
+                "hoverMs": 180,
+                "tracking": 0.06,
+                "caps": true,
+                "haloWidth": 2,
+                "haloBlur": 0.5
+            },
+            "Territory borders": {
+                "lineColor": "#8a99b8",
+                "lineWidth": 1,
+                "lineOpacity": 1,
+                "lineBlur": 0,
+                "labelColor": "#e6ecf7",
+                "labelHalo": "#10151f"
+            },
+            "Hover glow": {
+                "glowColour": "#f59e0b",
+                "glowStrength": 0.55,
+                "glowWidth": 1,
+                "glowBlur": 6
+            },
+            "Rounded corners": {
+                "smoothing": 0,
+                "smoothWidth": 0.4,
+                "smoothOpacity": 0.7,
+                "smoothColour": "#000"
+            },
+            "Ground": {
+                "exaggeration": 0
+            },
+            "Ships": {
+                "lapSeconds": 45,
+                "shipScale": 1,
+                "anchored": true,
+                "nightDim": 0,
+                "motion": 1
+            },
+            "Framing": {
+                "bottomInset": 0,
+                "autoInset": true
+            },
+            "Tilt and turn": {
+                "pitch": 45,
+                "bearing": 0,
+                "minPitch": 0,
+                "maxPitch": 70
+            },
+            "Zoom limits": {
+                "minZoom": -2,
+                "maxZoom": 7
+            },
+            "Entrance": {
+                "startLng": 0,
+                "startLat": 20,
+                "startZoom": 0.4,
+                "endLng": 8.23,
+                "endLat": 46.8,
+                "endZoom": 4,
+                "seconds": 3.5
+            }
+        },
+        "Dark ocean": {
+            "Film grain": {
+                "opacity": 0.04,
+                "size": 256
+            },
+            "Scratch CSS": {
+                "css": null
+            },
+            "Presets": {
+                "active": "(none saved)",
+                "name": "Dark ocean"
+            },
+            "Ocean": {
+                "shoreSoftnessKm": 19.5,
+                "roughness": 0.95,
+                "strength": 0.48,
+                "windPatch": 0.6,
+                "windScale": 14,
+                "water": 1,
+                "scatter": "#0d1323",
+                "opacity": 1
+            },
+            "Clouds": {
+                "opacity": 1,
+                "windAmount": 0.2,
+                "windScale": 0.06,
+                "windRate": 0.05,
+                "cloudShadow": 0.5
+            },
+            "Sky and light": {
+                "nightDarkness": 0.965,
+                "twilightColour": "#9e5229",
+                "twilightCool": "#1a2647",
+                "twilightStrength": 0.55,
+                "atmosphere": 1.25,
+                "starfield": 0.5,
+                "sun": 1,
+                "moon": 1
+            },
+            "Territory \u00b7 resting": {
+                "usePalette": true,
+                "restColour": "#5b7fa8",
+                "restOpacity": 0
+            },
+            "Territory \u00b7 hover": {
+                "hoverColour": "#ecd9a0",
+                "hoverOpacity": 0
+            },
+            "Territory \u00b7 active": {
+                "activeColour": "#f5c518",
+                "activeOpacity": 0
+            },
+            "Advance": {
+                "seconds": 4,
+                "curve": 0.5,
+                "colour": "#b31217",
+                "rimColour": "#4a0505",
+                "rimKm": 40,
+                "opacity": 0.85,
+                "lobeAmount": 45,
+                "lobeScale": 6,
+                "mergeKm": 120
+            },
+            "Territory labels": {
+                "font": "inter",
+                "size": 12,
+                "hoverScale": 1.35,
+                "hoverMs": 180,
+                "tracking": 0.06,
+                "caps": true,
+                "haloWidth": 2,
+                "haloBlur": 0.5
+            },
+            "Territory borders": {
+                "lineColor": "#8a99b8",
+                "lineWidth": 1,
+                "lineOpacity": 1,
+                "lineBlur": 0,
+                "labelColor": "#e6ecf7",
+                "labelHalo": "#10151f"
+            },
+            "Hover glow": {
+                "glowColour": "#f59e0b",
+                "glowStrength": 0.55,
+                "glowWidth": 1,
+                "glowBlur": 6
+            },
+            "Rounded corners": {
+                "smoothing": 0,
+                "smoothWidth": 0.4,
+                "smoothOpacity": 0.7,
+                "smoothColour": "#000"
+            },
+            "Ground": {
+                "exaggeration": 0
+            },
+            "Ships": {
+                "lapSeconds": 45,
+                "shipScale": 1,
+                "anchored": true,
+                "nightDim": 0,
+                "motion": 1
+            },
+            "Framing": {
+                "bottomInset": 0,
+                "autoInset": true
+            },
+            "Tilt and turn": {
+                "pitch": 45,
+                "bearing": 0,
+                "minPitch": 0,
+                "maxPitch": 70
+            },
+            "Zoom limits": {
+                "minZoom": -2,
+                "maxZoom": 7
+            },
+            "Entrance": {
+                "startLng": 0,
+                "startLat": 20,
+                "startZoom": 0.4,
+                "endLng": 8.23,
+                "endLat": 46.8,
+                "endZoom": 4,
+                "seconds": 3.5
+            }
+        }
+    }
+}

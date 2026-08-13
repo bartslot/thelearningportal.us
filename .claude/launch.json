@@ -16,6 +16,48 @@
         "PHP_INI_SCAN_DIR=$PWD/build/php-ini php artisan serve --host=127.0.0.1 --port=8000"
       ],
       "port": 8000
+    },
+    {
+      "//": "The release candidate: polishing-1 + map-integration merged, for review before anything reaches main. Its own port because :8000 is the shared checkout and :8021 is the map-integration worktree — three trees, three ports, and a curl against the wrong one returns a confident 200 from somebody else's code.",
+      "name": "serve-release-candidate",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "serve", "--port=8030"],
+      "port": 8030
+    },
+    {
+      "//": "This worktree's own app server. NOT :8000 above — that belongs to whichever session is running `composer dev` in the shared checkout, and attaching there renders THAT tree's code while looking exactly like success. 8021 rather than 8010 because 8010 was already answering when this was set up; with eight sessions running, assume every obvious port is taken and check. Set APP_URL to match. Needs `serve-vite` below for assets.",
+      "name": "serve-worktree",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "serve", "--port=8021"],
+      "port": 8021
+    },
+    {
+      "//": "Vite for the worktree app server above, on a port clear of the shared checkout's :5173 and of the other sessions' harnesses. NB: it caches transforms hard — after editing a module that app.js imports, a reload can still serve the old one, and the symptom is a global that is `undefined` while the source plainly defines it. Restart it with --force rather than hunting the bug.",
+      "name": "serve-vite",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5185", "--strictPort"],
+      "port": 5185
+    },
+    {
+      "//": "The globe lighting measurement harness (resources/js/timemap/__harness__). Standalone Vite, nothing to do with the Laravel app — it serves one page plus public/, where the relief map and cloud fields live. On 5198 rather than 5199: the tile-pyramid harness below claimed 5199 first, and two harnesses on one port is a race that presents as a blank page.",
+      "name": "globe-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.harness.config.js"],
+      "port": 5198
+    },
+    {
+      "//": "Development only, for measuring the tile pyramid — see resources/js/timemap/tiles/__harness__. A bare Vite dev server on its own port, so it never races the app's :5173 that other sessions are using.",
+      "name": "tiled-lod-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
+      "port": 5199
+    },
+    {
+      "//": "Standalone globe-layer harness: esbuild bundle plus the baked ocean fields, no Laravel involved. Exists because the ocean layer cannot be judged from a screenshot — it is measured with gl.readPixels from inside a render pass. Port 5183 keeps it clear of the two Vite harnesses above.",
+      "name": "ocean-harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["harness/ocean/serve.mjs"],
+      "port": 5183
     }
   ]
 }

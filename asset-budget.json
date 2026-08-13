@@ -1,0 +1,58 @@
+{
+  "//": "Texture budgets per surface. TWO ceilings, because they fail differently.",
+  "//transfer": "Bytes on the wire. Binds on school wifi. What a file size tells you.",
+  "//vram": "Bytes resident once decoded. Binds on a school Chromebook, and is the one that actually breaks things: an <img> upload is RGBA8 whatever the file said, so a 4 MB compressed asset can be 64 MB resident. A budget stated only in transfer bytes cannot see that.",
+  "//maxDimension": "Hard ceiling on any single texture edge. Above a device's MAX_TEXTURE_SIZE a texture does not degrade, it fails to bind — a black sky, not a softer one. Commonly 4096 on low-end Chromebooks, so 8192 is already optimistic and needs the runtime check plus a real fallback tier.",
+
+  "maxDimension": 8192,
+  "mipmapOverhead": 1.3333333,
+
+  "surfaces": {
+    "timemap": {
+      "description": "A teacher's research tool. The fleet's primary and only default surface.",
+      "transferBytes": 8388608,
+      "vramBytes": 100663296,
+      "maxSingleAssetTransferBytes": 4194304,
+      "//cloud-patches": "The cloud deck's detail source: six MODIS patches at 611 m per texel, tiled stochastically. Each is a 4x4 block of z8 tiles covering the same 626 km of sky one z6 tile did, so 3072x2048 is sixteen times the texels over identical ground — 32 MiB resident with mipmaps, against 2 MiB at z6. That is the single largest texture on this surface and it is bought deliberately: Bart's verdict on the coarse version was 'this is not HQ clouds', and at 2446 m per texel the deck was four times coarser than the ground beneath it.",
+      "//cloud-patches-ceiling": "z8 is the LAST step a single baked atlas can take. z9 would be 306 m per texel, 2048 per patch, a 6144x4096 atlas at 128 MiB resident — over this surface's entire 96 MiB ceiling on its own, before the field, the wind, the Milky Way or the moon. Past z8 the answer is not a bigger bake, it is streaming only the sky being looked at.",
+      "//cloud-field": "clouds-field.webp stays alongside it and is NOT redundant. It is the real global DISTRIBUTION of cloud at 19.5 km per texel; the atlas is placeless detail. The deck needs both — the atlas alone puts cloud on 74% of the disc against a true 26%.",
+      "assets": [
+        "public/img/map/clouds-field.webp",
+        "public/img/map/cloud-patches.webp",
+        "public/img/map/wind-field.png",
+        "public/img/map/milkyway.jpg",
+        "public/img/map/moon.jpg"
+      ]
+    },
+    "lesson-map": {
+      "description": "Zero by default. Opt-in per lesson via dynamic import, so a lesson that does not ask pays nothing. This surface had ~1 MB of glyph chunks and three tilesets removed for cold-load time; it does not get spent back.",
+      "transferBytes": 1572864,
+      "vramBytes": 33554432,
+      "maxSingleAssetTransferBytes": 1048576,
+      "assets": []
+    },
+    "landing-hero": {
+      "description": "First paint. Loaded after paint, never blocking.",
+      "transferBytes": 1048576,
+      "vramBytes": 16777216,
+      "maxSingleAssetTransferBytes": 1048576,
+      "assets": []
+    }
+  },
+
+  "optional": {
+    "//": "Reachable but not loaded by default, so outside the surface totals. Listed so the dimension rule still applies and so nothing is silently untracked.",
+    "//relief": "earth-normal-8192.webp arrived with `realistic-earth` and is OPTIONAL for a measured reason, not because nobody got round to declaring it. At 8192x4096 it is 128 MiB resident before mipmaps and 171 MiB with them, against a 96 MiB surface ceiling — so it cannot be a default-on layer at this size, whatever the 3.6 MiB file size suggests. It is exactly the case the vram ceiling above exists to catch. Today only the measurement harness loads it (`daylight.js` defaults reliefUrl to null and nothing in the app sets it), and the layers panel ships its relief toggle OFF for the same reason. Moving it into `timemap` needs a smaller bake or a quality tier that picks one, not an edit to this list.",
+    "assets": [
+      "public/img/map/city-lights.png",
+      "public/img/map/earth-normal-8192.webp"
+    ]
+  },
+
+  "scan": {
+    "//": "A budget only sees what it is told about. Without this, a texture nobody declares passes silently — the same shape as every other bug this programme has produced: correct for the reader who added it, invisible to everyone downstream. So the directories are scanned and anything undeclared FAILS. Declaring an asset is then a deliberate act with a surface attached, rather than the default being untracked.",
+    "//later": "The honest version derives the asset list from the code that loads it. That waits until the tile pyramid stops the asset set moving; this is the cheap 80% that needs only a directory listing.",
+    "directories": ["public/img/map"],
+    "extensions": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".ktx2", ".basis"]
+  }
+}
