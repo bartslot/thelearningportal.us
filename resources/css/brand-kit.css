@@ -126,3 +126,46 @@
     font-size: var(--text-card-label-sm);
   }
 }
+
+/* ── A territory becoming its successor ──────────────────────────────────────────────────────
+   Scrubbing the year can replace the polity under the selection — Kingdom of Italy becomes
+   Republic of Italy, the Dutch Republic becomes the Batavian Republic. The card used to swap its
+   own contents in place, which reads as a glitch rather than as history: you are mid-sentence and
+   the sentence changes.
+
+   So the new name arrives FROM THE RIGHT, the way the timeline runs. The direction is the whole
+   message — this did not replace what you were reading, it came after it.
+
+   easeOut, per the house rule for reveals: fast at the start so the change registers immediately,
+   settling rather than arriving. Both animations respect prefers-reduced-motion, where the change
+   still needs to be legible but must not slide. */
+@keyframes lp-succession-slide {
+  from { opacity: 0; transform: translateX(1.25rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes lp-succession-note {
+  0%   { opacity: 0; transform: translateX(1.5rem); }
+  12%  { opacity: 1; transform: translateX(0); }
+  78%  { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(0); }
+}
+
+.lp-succession-in {
+  animation: lp-succession-slide 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Runs once and leaves: the banner is an event, not a field. Alpine drops it from the DOM when
+   succeededFrom clears, so the tail of this keyframe and that timeout are deliberately the same
+   gesture seen from two sides. */
+.lp-succession {
+  animation: lp-succession-note 4200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-succession-in,
+  .lp-succession {
+    animation: none;
+  }
+  .lp-succession { opacity: 1; }
+}

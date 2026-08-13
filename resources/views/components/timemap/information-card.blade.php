@@ -58,6 +58,16 @@
            {{-- The year is read at the CLICK, not here: the teacher may scrub the slider before
                 they finish typing, and what they are reporting is what was on screen when they
                 decided something was wrong. --}}
+           {{-- The name this territory replaced, when the year moved it on rather than you
+                clicking something new. Cleared once the slide has played. --}}
+           succeededFrom: null,
+           successionKey: 0,
+           noteSuccession(from) {
+               this.succeededFrom = from || null;
+               this.successionKey++;
+               clearTimeout(this._successionTimer);
+               this._successionTimer = setTimeout(() => { this.succeededFrom = null }, 4200);
+           },
            report() {
                if (!this.reportContext) return;
                window.dispatchEvent(new CustomEvent('timemap-report-requested', { detail: {
@@ -86,6 +96,8 @@
        x-on:polity-selected.window="
             window.__timemapStopSpeak && window.__timemapStopSpeak();
             if (!$event.detail.id) { polity = null; loading = false; reportContext = null; provenance = null; return; }
+            if ($event.detail.succeeded) noteSuccession($event.detail.previousName);
+            else { succeededFrom = null; }
             tab = 'summary'; selected = []; lead = null;
             provenance = $event.detail.provenance || null;
             sourcesOpen = false;
@@ -150,8 +162,27 @@
     <template x-if="polity">
         <div class="flex min-h-0 flex-col">
 
+            {{-- ── It became something else ─────────────────────────────────────────────────
+                 Shown only when the YEAR moved the selection on, never when you clicked. The card
+                 would otherwise swap its own contents silently, which reads as a bug: you are
+                 looking at Kingdom of Italy, you nudge the slider, and the words change under you.
+                 The slide is the point — it says the country continued and its government did not.
+                 Announced politely so a screen reader gets the change too. --}}
+            <template x-if="succeededFrom">
+                <div class="shrink-0 overflow-hidden px-4 pt-4" role="status" aria-live="polite">
+                    <div class="lp-succession flex items-center gap-2 rounded-card-pill bg-card-hairline/40 px-3 py-1.5"
+                         :key="successionKey">
+                        <x-icons.chevron-right class="h-3.5 w-3.5 shrink-0 text-card-muted" />
+                        <span class="lp-card-label lp-card-label-sm min-w-0 truncate text-card-muted"
+                              x-text="succeededFrom"></span>
+                        <span class="lp-card-label lp-card-label-sm shrink-0 text-card-title">{{ __('became') }}</span>
+                    </div>
+                </div>
+            </template>
+
             {{-- ── Header: flag, title, era, close ──────────────────────────────────────────── --}}
-            <div class="flex shrink-0 items-center justify-between gap-3 px-4 pb-4 pt-6">
+            <div class="flex shrink-0 items-center justify-between gap-3 px-4 pb-4 pt-6"
+                 :class="succeededFrom && 'lp-succession-in'" :key="successionKey">
                 <div class="flex min-w-0 items-center gap-3">
                     {{-- A flag only. The design carries no photograph here, and the 144px Wikipedia
                          image the old panel showed pushed everything below it off a laptop screen.

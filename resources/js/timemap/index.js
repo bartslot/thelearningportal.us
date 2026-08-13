@@ -785,6 +785,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     smoothPending = setTimeout(() => { smoothPending = null; rebuildSmoothBorders(); }, 120);
   };
   let selectedId = null;
+  // Where you clicked, in world coordinates. A polity id is only true for one era; the point you
+  // put your finger on is true for all of them, so that is what the selection is anchored to.
+  let selectedLngLat = null;
+  let selectedLabel = null;
+  let successionTimer = null;
   /** Which source the open territory came from, so its highlight is cleared off the right one. */
   let selectedHand = false;
   const clearSelection = () => {
@@ -2189,6 +2194,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
     clearSelection();
     selectedId = hit ? hit.id : null;
+    selectedLngLat = hit ? e.lngLat : null;
+    selectedLabel = hit ? hit.properties?.Name ?? null : null;
     selectedHand = hand;
     if (selectedId !== null) setSelected(selectedId, true, hand);
     refreshLabels(); // re-rank labels so the newly-selected territory's name wins collision
@@ -2236,12 +2243,60 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }));
   });
 
+  /**
+   * A COUNTRY OUTLIVES ITS GOVERNMENTS.
+   *
+   * Scrub from 1945 with Italy open and Cliopatria swaps Kingdom of Italy for Republic of Italy —
+   * a different polity, a different feature id — so the selection was dropped and the card emptied.
+   * Nobody deselected anything. The map did it, silently, at the exact moment the thing you were
+   * reading about became the most interesting.
+   *
+   * The Netherlands does it twice (Dutch Republic, Batavian Republic, Kingdom of the Netherlands),
+   * and every revolution and unification in the dataset does it once. So the selection follows the
+   * PLACE: whatever governs the point you clicked is what stays selected, and the card is told this
+   * was a succession rather than a fresh click, so it can show the change instead of swapping its
+   * own contents behind your back.
+   */
+  const reselectAtPoint = () => {
+    if (selectedId === null || !selectedLngLat) return;
+    const point = map.project(selectedLngLat);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+
+    const layers = TERRITORY_FILL_LAYERS.filter((l) => map.getLayer(l));
+    if (!layers.length) return;
+    const hit = map.queryRenderedFeatures(point, { layers })[0];
+    // Nothing governs this spot in the new year. Leave the card alone rather than blanking it:
+    // scrubbing across a gap in the record is not the same as deselecting.
+    if (!hit || hit.id === selectedId) return;
+
+    const previous = selectedLabel;
+    setSelected(selectedId, false);
+    selectedId = hit.id;
+    setSelected(selectedId, true);
+
+    const name = hit.properties?.Name ?? null;
+    const tileQid = hit.properties?.Wikidata ?? null;
+    const qid = tileQid ? QID_FOR_NAME.get(`${tileQid}|${name}`) || tileQid : null;
+    selectedLabel = name;
+    state.selectedRegion = qid;
+    refreshLabels();
+    sync();
+
+    window.dispatchEvent(new CustomEvent('polity-selected', {
+      detail: { id: qid, name, qid, succeeded: true, previousName: previous },
+    }));
+  };
+
   // Called by the Alpine slider on input — continuous, no fetch.
   el._setYear = (year) => {
     state.year = year;
     wire.year = year;
     applyYear(year);
     sync();
+    // Debounced: _setYear fires on every frame of a slider drag, and the tiles for the new era
+    // have to arrive before there is anything to re-resolve against.
+    clearTimeout(successionTimer);
+    successionTimer = setTimeout(reselectAtPoint, 320);
     return formatReadout(year);
   };
 
