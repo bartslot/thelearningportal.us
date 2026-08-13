@@ -16,6 +16,9 @@ class EnrichPolitiesTest extends TestCase
     use RefreshDatabase;
     use SeedsCorpusFixtures;
 
+    /** The PNG signature, so a fixture standing in for Commons looks like what Commons returns. */
+    private const PNG_BYTES = "\x89PNG\r\n\x1a\n";
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -91,6 +94,51 @@ class EnrichPolitiesTest extends TestCase
         $this->assertNull($data['summary']);
     }
 
+    /**
+     * A flag_path is a promise that a file is there. Commons does not always keep its half.
+     *
+     * The path used to be written from the presence of a Commons FILENAME, before the download was
+     * attempted and regardless of what came back — so an error page, an empty body or a 404 still
+     * left the column pointing at a PNG nobody wrote. 581 polities carried one; every information
+     * card asked for it, got nothing, and drew a broken image.
+     *
+     * Commons answers 200 with an HTML error page often enough that the status alone proves
+     * nothing, which is why this fakes a 200 rather than a failure.
+     */
+    public function test_a_flag_that_does_not_arrive_as_a_png_is_not_claimed(): void
+    {
+        $this->seedBoundary(
+            ['polity_id' => 'kingdom-of-belgium', 'name' => 'Kingdom of Belgium', 'valid_from' => 1831, 'valid_to' => 3000],
+            2.5, 49.5, 6.4, 51.5
+        );
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'www.wikidata.org/w/api.php*' => Http::response(['search' => [['id' => 'Q31', 'label' => 'Belgium']]]),
+            'www.wikidata.org/wiki/Special:EntityData/Q31.json' => Http::response([
+                'entities' => ['Q31' => [
+                    'claims' => ['P41' => [['mainsnak' => ['datavalue' => ['value' => 'Flag of Belgium.svg']]]]],
+                    'sitelinks' => ['enwiki' => ['title' => 'Belgium']],
+                ]],
+            ]),
+            'en.wikipedia.org/api/rest_v1/page/summary/*' => Http::response([
+                'extract' => 'Belgium is a country in Western Europe.',
+                'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Belgium']],
+            ]),
+            // 200, but an error page rather than an image — exactly the shape that produced the 581.
+            'commons.wikimedia.org/*' => Http::response('<!DOCTYPE html><html>Not found</html>', 200),
+        ]);
+
+        $this->artisan('timemap:enrich-polities')->assertExitCode(0);
+
+        $belgium = DB::connection('pgsql_corpus')->table('public.polities')->where('polity_id', 'kingdom-of-belgium')->first();
+
+        // The rest of the enrichment still lands — a missing flag is not a failed polity.
+        $this->assertSame('Q31', $belgium->wikidata_id);
+        $this->assertNull($belgium->flag_path, 'flag_path was claimed for a response that was not a PNG');
+        $this->assertFileDoesNotExist(public_path('flags/kingdom-of-belgium.png'));
+    }
+
     public function test_command_enriches_each_boundary_polity(): void
     {
         $this->seedBoundary(
@@ -117,7 +165,10 @@ class EnrichPolitiesTest extends TestCase
                 'extract' => 'Belgium is a country in Western Europe.',
                 'content_urls' => ['desktop' => ['page' => 'https://en.wikipedia.org/wiki/Belgium']],
             ]),
-            'commons.wikimedia.org/*' => Http::response('PNGBYTES', 200, ['Content-Type' => 'image/png']),
+            // A real PNG signature, not the string 'PNGBYTES' it used to be. The command now checks
+            // the bytes before it claims a flag_path, so a fixture that is not a PNG exercises the
+            // rejection path instead of the happy one — see the test below, which does that on purpose.
+            'commons.wikimedia.org/*' => Http::response(self::PNG_BYTES, 200, ['Content-Type' => 'image/png']),
         ]);
 
         $this->artisan('timemap:enrich-polities')->assertExitCode(0);

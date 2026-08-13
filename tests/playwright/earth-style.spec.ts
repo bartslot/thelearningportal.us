@@ -32,9 +32,9 @@ test('picking Earth adds the globe layers to the map', async ({ page }) => {
   await page.goto(`/teacher/lessons/${LESSON}/wizard?step=4`);
   await page.waitForFunction(() => (window as any).__lessonMap?.isStyleLoaded?.() === true, null, { timeout: 120_000 });
 
-  // The lesson is already on Earth, so this asserts the LOAD path — the one a teacher opening a
-  // finished lesson actually takes. Switching style live is a separate path and gets its own test
-  // below, because the two behave differently and only one of them worked first time.
+  // No style is picked first, because there is nothing to pick. The five drawn atlases and the
+  // swatch picker were removed; the lesson map has one ground and it is the Earth, so the globe
+  // must be there on the load path every teacher takes, with no action to trigger it.
 
   // The seven, by the ids their own modules export. Waiting on the ids rather than on a pixel means
   // a layer that loads but draws nothing still fails here, which is the honest bar for "wired".
@@ -53,7 +53,19 @@ test('picking Earth adds the globe layers to the map', async ({ page }) => {
   await page.screenshot({ path: 'tests/playwright/earth-style.png', fullPage: false });
 });
 
-test('switching to Earth live also brings the layers in', async ({ page }) => {
+/**
+ * There is no way left to switch the globe off.
+ *
+ * This replaces "switching to Earth live also brings the layers in", which clicked Night and then
+ * Earth on the swatch picker. Both the picker and setLessonMapStyle are gone, so that test was
+ * asserting a control nobody can reach.
+ *
+ * What is worth keeping is the other half of the same guarantee. The load path is covered above;
+ * this covers the thing that would quietly undo it — a style gate creeping back in and stripping
+ * the layers on some later redraw. So it provokes the redraws (a year change, a resize) and
+ * insists the seven are still attached afterwards.
+ */
+test('the globe survives the redraws that used to switch it off', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -64,10 +76,17 @@ test('switching to Earth live also brings the layers in', async ({ page }) => {
   const tmLayers = () => page.evaluate(() =>
     (window as any).__GLOBE_IDS.filter((id: string) => !!(window as any).__lessonMap.getLayer(id)).length);
 
-  // By action, not label — the swatch's alt text joins the button's accessible name.
-  await page.locator(`button[wire\\:click="setLessonMapStyle('night')"]`).click();
-  await expect.poll(tmLayers, { timeout: 30_000, intervals: [1000] }).toBe(0);
+  await expect.poll(tmLayers, { timeout: 90_000, intervals: [2000] }).toBe(7);
 
-  await page.locator(`button[wire\\:click="setLessonMapStyle('earth')"]`).click();
-  await expect.poll(tmLayers, { timeout: 60_000, intervals: [2000] }).toBe(7);
+  // A year change re-runs the filters and the late-layer paint; a resize re-runs the style pass.
+  // Both are the moments a reintroduced gate would fire on.
+  await page.evaluate(() => (window as any).__lessonMap?.setYear?.(1500));
+  await page.waitForTimeout(3000);
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.waitForTimeout(3000);
+
+  expect(await tmLayers()).toBe(7);
+
+  // And no teacher-facing control exists that could take them away.
+  await expect(page.locator('[wire\\:click^="setLessonMapStyle"]')).toHaveCount(0);
 });
