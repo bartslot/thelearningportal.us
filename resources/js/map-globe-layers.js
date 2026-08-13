@@ -72,6 +72,45 @@ const STACK = [
 ]
 
 /**
+ * Where the stack goes: under everything that is writing.
+ *
+ * MapLibre's addLayer appends to the TOP when it is handed no anchor, so a caller that passes no
+ * `beforeId` — or names a layer that has not been added yet — gets the SEA painted over every label
+ * on the map. That failure does not look like a draw-order bug when you meet it: the half of each
+ * name that crosses water is erased and the half over land survives, so it reads as a font or a
+ * glyph problem. It was reported that way ("Constantinople" cut in two at the Bosphorus), and it
+ * stayed unexplained through a search of the layer order on the OTHER map — the Time-Map, which
+ * does pass an anchor and whose order was right all along.
+ *
+ * So a missing anchor resolves to the first layer that draws TEXT, never to the top. Text is the
+ * thing that has to survive. Icon-only symbol layers — the tree, mountain and volcano glyphs — are
+ * scenery lying on the ground, and belong under the sea with the rest of the ground.
+ *
+ * A `beforeId` that was asked for and is not there is a caller bug rather than a taste call, so it
+ * says so. Passing none at all is not: "under the writing" is the right default.
+ *
+ * @param {object} map
+ * @param {string} [beforeId]
+ * @returns {string|undefined} the id to insert before, or undefined for the top
+ */
+export const globeAnchorId = (map, beforeId) => {
+  if (beforeId && map.getLayer(beforeId)) return beforeId
+
+  let firstText
+  try {
+    firstText = (map.getStyle()?.layers ?? [])
+      .find((layer) => layer.type === 'symbol' && layer.layout?.['text-field'] != null)?.id
+  } catch (_) { /* style not readable yet — the warning below still names the problem */ }
+
+  if (beforeId) {
+    console.warn(`[globe-layers] "${beforeId}" is not on this map; ${firstText
+      ? `anchoring under "${firstText}" so the labels stay readable`
+      : 'and nothing on it draws text, so the stack goes on top'}`)
+  }
+  return firstText
+}
+
+/**
  * Add every globe layer to `map` and hand the panel a way to drive them.
  *
  * @param {object}  map                   a live MapLibre map
@@ -79,7 +118,8 @@ const STACK = [
  * @param {Date}    [opts.date]           when the scene is set — decides where the sun is, so it
  *                                        decides which half of the planet is in daylight
  * @param {boolean} [opts.reduceMotion]   drop the per-frame drift (and the repaint that drives it)
- * @param {string}  [opts.beforeId]       insert beneath this layer, e.g. to keep labels on top
+ * @param {string}  [opts.beforeId]       insert beneath this layer. Omitted, the stack still goes
+ *                                        under the first layer that draws text — see globeAnchorId.
  * @returns {{layers: object, remove: function}} teardown included: a style change replaces the map,
  *          and a setter left pointing at a dead GL context is how the panel starts throwing.
  */
@@ -124,11 +164,13 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
   }
 
   const layers = {}
+  // Resolved ONCE, before anything is added: every layer inserts just below the same anchor, which
+  // is what keeps STACK's own back-to-front order intact underneath it.
+  const anchor = globeAnchorId(map, beforeId)
   for (const [key, id, create] of STACK) {
     if (map.getLayer(id)) map.removeLayer(id)
     const layer = create(options[key])
-    // beforeId only applies where it exists; MapLibre throws on an unknown id rather than ignoring it.
-    map.addLayer(layer, beforeId && map.getLayer(beforeId) ? beforeId : undefined)
+    map.addLayer(layer, anchor)
     layers[key] = layer
   }
 

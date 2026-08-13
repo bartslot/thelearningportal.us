@@ -153,17 +153,58 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // crisply, and the terrain/label/line sizes interpolate up to z7 so the map gains detail as you
     // zoom. Zoom-out stays open so other continents/markers come into view.
     maxZoom: 7,
-    // OFF FOR NOW, at Bart's request — the strip sat across the bottom of the globe and over the
-    // labels near the south of the frame.
-    //
-    // IT HAS TO COME BACK BEFORE THIS SHIPS. OpenStreetMap's licence (ODbL) and Cliopatria's CC-BY
-    // both REQUIRE visible credit, and the satellite imagery is NASA GIBS and Sentinel. The fix is
-    // to move it somewhere it does not fight the map — behind the settings icon, or in an About
-    // panel — not to leave it out. The text, so it is not lost:
-    //   Borders © Cliopatria / Seshat (CC-BY 4.0) · Land © OpenStreetMap (CC0)
-    //   Imagery: NASA EOSDIS GIBS · Sentinel-2 cloudless (2020) by EOX IT Services GmbH
+    // Off HERE so it is not auto-placed bottom-right on top of the colour slider; it is added just
+    // below instead, collapsed and in the corner. See addControl.
     attributionControl: false,
   });
+
+  /**
+   * The credit, back — as a mark you open, not a strip across the globe.
+   *
+   * It was switched off because the expanded strip ran along the bottom of the frame and over the
+   * southern labels. That could not stand: OpenStreetMap's ODbL and Cliopatria's CC-BY both REQUIRE
+   * visible credit, and the ground is NASA GIBS and Sentinel imagery. So this is MapLibre's own
+   * control in `compact` mode — a single ⓘ in the corner that opens the full text on click, which
+   * is the form the OSM attribution guidelines exist to allow on a map with no room for a strip.
+   *
+   * MapLibre's control, rather than a hand-written line in the blade, because it collects each
+   * source's own `attribution` field: add a source tomorrow and its credit appears by itself. Only
+   * the two that carry no attribution of their own are named here. The imagery lines are NOT
+   * repeated — map-imagery.js already declares them on the raster sources.
+   *
+   * Bottom-LEFT: bottom-right is the colour slider and the dev flask, top-right is the settings cog.
+   */
+  map.addControl(new maplibregl.AttributionControl({
+    compact: true,
+    customAttribution: [
+      'Borders © Cliopatria / Seshat (CC-BY 4.0)',
+      'Land © OpenStreetMap (CC0)',
+    ],
+  }), 'bottom-left');
+
+  /**
+   * Start closed, and stay closed until someone asks.
+   *
+   * `compact: true` gets you the ⓘ, but MapLibre still OPENS the panel the moment the control is
+   * added and again on every resize — it only closes on the first drag. This map resizes constantly
+   * (a ResizeObserver drives it, see below), so without this the credit reopens itself over the
+   * globe again and again, which is the behaviour that got the whole control switched off.
+   *
+   * `.maplibregl-*` class names are MapLibre's documented styling surface, so reading them here is
+   * no more coupled than the CSS in app.css that dresses the same element.
+   */
+  let openedByTeacher = false;
+  const attributionEl = el.querySelector('.maplibregl-ctrl-attrib');
+  const closeAttribution = () => {
+    if (openedByTeacher) return;
+    attributionEl?.classList.remove('maplibregl-compact-show');
+    attributionEl?.removeAttribute('open');
+  };
+  closeAttribution();
+  // After MapLibre's own resize handler, which is registered in its onAdd and so runs first.
+  map.on('resize', closeAttribution);
+  // Once it has been opened on purpose it stays open — a resize must not shut it under the teacher.
+  attributionEl?.addEventListener('click', () => { openedByTeacher = true; });
 
   // Exposed for dev tooling and the Playwright spec (layer/feature introspection).
   window.__tmMap = map;
@@ -1516,27 +1557,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     //
     // Its job survives without it: the hovered name takes symbol-sort-key 0 (see refreshLabels), so
     // it is placed FIRST and wins the collision it used to lose, and hoverLabel() grows it in place.
-    map.addLayer({
-      /**
-       * The hovered name, at the pointer, for territories whose own label is off screen.
-       *
-       * allow-overlap and ignore-placement: it is a pointer readout, not a map label. It must never
-       * lose a collision, because the one thing it exists to answer is "what am I pointing at".
-       *
-       * Offset ABOVE the cursor so the pointer does not sit on its own answer.
-       */
-      id: 'boundaries-cursor-label', type: 'symbol', source: 'boundaries-cursor-name',
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
-        'text-size': 12, 'text-anchor': 'bottom', 'text-offset': [0, -1.1],
-        'text-allow-overlap': true, 'text-ignore-placement': true,
-      },
-      paint: {
-        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
-        'text-halo-width': 2, 'text-halo-blur': 0.5,
-      },
-    });
+    //
+    // The readout that replaced it was added here too, and that put it below the globe stack — which
+    // anchors at boundaries-label — so on the Earth style the sea was drawn over it and the name
+    // broke up wherever it crossed water. It now goes on AFTER boundaries-label, with the rest of
+    // the writing; see the layer itself, further down.
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
@@ -1580,6 +1605,33 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       paint: {
         'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
         'text-halo-width': 2, 'text-halo-blur': 0.5, 'icon-translate': [0, -9],
+      },
+    });
+    map.addLayer({
+      /**
+       * The hovered name, at the pointer, for territories whose own label is off screen.
+       *
+       * allow-overlap and ignore-placement: it is a pointer readout, not a map label. It must never
+       * lose a collision, because the one thing it exists to answer is "what am I pointing at".
+       *
+       * Offset ABOVE the cursor so the pointer does not sit on its own answer.
+       *
+       * AFTER boundaries-label, and that matters: the globe stack is inserted before that layer, so
+       * anything added earlier ends up beneath the SEA. This readout was, and on the Earth style the
+       * name you were pointing at came apart wherever it crossed water — the same failure as the
+       * territory names, from the same cause. A pointer readout is the last thing that should be
+       * occluded by scenery.
+       */
+      id: 'boundaries-cursor-label', type: 'symbol', source: 'boundaries-cursor-name',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Cinzel'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.06,
+        'text-size': 12, 'text-anchor': 'bottom', 'text-offset': [0, -1.1],
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': theme.text.color, 'text-halo-color': theme.text.halo,
+        'text-halo-width': 2, 'text-halo-blur': 0.5,
       },
     });
 
