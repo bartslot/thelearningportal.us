@@ -190,6 +190,10 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     customAttribution: [
       'Borders © Cliopatria / Seshat (CC-BY 4.0)',
       'Land © OpenStreetMap (CC0)',
+      // The cloud deck is named here for the same reason as the two above: it is a baked atlas a
+      // custom layer samples, not a MapLibre source, so there is no `attribution` field for the
+      // control to collect. The full sentence GIBS asks for is in docs/credits.md.
+      'Cloud: NASA EOSDIS GIBS (MODIS)',
     ],
   }), 'bottom-left');
 

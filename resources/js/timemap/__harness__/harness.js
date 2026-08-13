@@ -34,6 +34,9 @@ const RELIEF_URL = '/img/map/earth-normal-8192.webp'
 const RELIEF_WIDTH = 8192
 const FIELD_URL = '/img/map/clouds-field.webp'
 const WIND_URL = '/img/map/wind-field.png'
+// The tiled source. `?patches=0` drops back to the whole-planet field, which is how the two are
+// compared: the same measurements, the same camera, one asset different.
+const PATCH_URL = '/img/map/cloud-patches.webp'
 const BACKGROUND = '#8a8a8a'
 
 const params = new URLSearchParams(location.search)
@@ -82,20 +85,34 @@ const map = new maplibregl.Map({
   attributionControl: false,
 })
 
+const patchUrl = params.get('patches') === '0' ? null : PATCH_URL
+
 const daylight = createDaylightLayer({
   sun: sunFor(-3.1, 0),
   reliefUrl: RELIEF_URL,
   reliefWidth: RELIEF_WIDTH,
   fieldUrl: FIELD_URL,
+  patchUrl,
   windUrl: WIND_URL,
   animate: false,          // a frozen clock, so two captures are comparable
 })
 const clouds = createCloudLayer({
   sun: sunFor(-3.1, 0),
   fieldUrl: FIELD_URL,
+  patchUrl,
   windUrl: WIND_URL,
   animate: false,
 })
+
+/**
+ * The layers' own defaults, captured at construction.
+ *
+ * getOptions returns CURRENT state, and every measurement below drives these layers through
+ * setOptions to isolate one term at a time — so asking later returns whatever the last frame
+ * happened to set, which is usually zero. Read once, here, while they are still the defaults.
+ * This has now cost two separate measurements that came back 0.000 and looked like a clean pass.
+ */
+const SHIPPED = { daylight: daylight.getOptions(), clouds: clouds.getOptions() }
 
 /**
  * The haze band, for the night-limb measurement. Its own sun, set per capture, so the limb under
@@ -507,6 +524,23 @@ const measurements = async () => {
 
   const scale = metresPerPixelAt(...HIMALAYA)
   report.screen = { metresPerPixel: Math.round(scale) }
+
+  /**
+   * The same shadow at the SHIPPED setting, so the number that was reasoned about can be checked.
+   *
+   * cloudShadow came down from 0.5 to 0.38 on the arithmetic 0.5 x 40.91 / 53.86 — restoring the
+   * shading that was approved against the old blurred field, now that the sharper source drives the
+   * same dial 32% harder. That arithmetic assumes the response is LINEAR in the dial, which is an
+   * assumption about the shader and not a fact about it, so it is measured rather than trusted.
+   */
+  const shippedShadow = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: SHIPPED.daylight.cloudShadow, sun: lowSun },
+    clouds: { opacity: 0, sun: lowSun },
+  })
+  report.cloudShadowAtShipped = {
+    setting: SHIPPED.daylight.cloudShadow,
+    strength: round(differenceOver(shadowOff, shippedShadow, boxAround(shadowOff, ...HIMALAYA, 60)).mean, 2),
+  }
 
   report.cloudShadow = {
     strength: round(differenceOver(shadowOff, shadowOn, boxAround(shadowOff, ...HIMALAYA, 60)).mean, 2),
@@ -967,6 +1001,528 @@ const limbProfile = async () => {
   }
 }
 
+/**
+ * Whether the cloud deck repeats — the acceptance test for the tiled source, measured.
+ *
+ * The deck is built from six patches of real cloud, 626 km each, laid across the whole planet. Laid
+ * down on a plain grid that repeats every 626 km, and a visible repeat over open ocean is a worse
+ * artefact than the blur it replaces. So "is the repeat invisible" is the question the whole change
+ * turns on, and it is not one to answer by looking: a periodicity the eye only half-notices is
+ * exactly the kind of thing that gets argued about instead of measured.
+ *
+ * WHAT THIS READS. The deck alone, as the difference between a frame with it and a frame without —
+ * so the ground, the terminator and the lighting gradient all cancel and what is left is cloud. Then
+ * its autocorrelation along each axis. A repeat at period P puts a peak at lag P; a stochastic
+ * tiling has nothing anywhere but the origin. The number reported is the WORST sidelobe outside a
+ * small exclusion around zero, which is the strongest periodicity present at any scale.
+ *
+ * Zero-mean and unit-norm, or this measures the brightness gradient across the globe rather than the
+ * clouds on it — the same trap bestShift above documents.
+ */
+/**
+ * Zoom 3, not the close view. A repeat can only be SEEN where several tiles are on screen at once:
+ * closer in, less than one patch fills the window and there is nothing to repeat against, so a
+ * measurement there would pass for want of anything to find. At z3 a pixel covers about 6 km and the
+ * 300 px window spans roughly 1,800 km — near three patches side by side, which is where a plain
+ * tiling would announce itself.
+ */
+const cloudRepeat = async ({ lng = -20, lat = 53, zoom = 3, half = 150 } = {}) => {
+  const sun = sunFor(lng - 40, 20)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  // Advection off: the flow-map cross-fade blurs the field along the wind, which would soften a
+  // real repeat and flatter the result. The source is judged as it is, not as the wind leaves it.
+  const bare = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun }, clouds: { opacity: 0, sun, windAmount: 0 },
+  })
+  const decked = await frameWith({
+    daylight: { reliefPower: 0, cloudShadow: 0, sun }, clouds: { opacity: 1, sun, windAmount: 0 },
+  })
+
+  const mask = differenceImage(bare, decked)
+  const centre = pixelAt(lng, lat)
+
+  /** Rows or columns through the box, as arrays of samples. */
+  const lines = (alongX) => {
+    const out = []
+    for (let a = -half; a <= half; a += 2) {
+      const line = []
+      for (let b = -half; b <= half; b++) {
+        const px = alongX ? centre.x + b : centre.x + a
+        const py = alongX ? centre.y + a : centre.y + b
+        if (px < 0 || py < 0 || px >= bare.width || py >= bare.height) { line.length = 0; break }
+        line.push(mask[py * bare.width + px])
+      }
+      if (line.length) out.push(line)
+    }
+    return out
+  }
+
+  /** Mean autocorrelation over a set of lines, as an array indexed by lag. */
+  const autocorrelation = (set, maxLag) => {
+    const total = new Float64Array(maxLag + 1)
+    let counted = 0
+    for (const line of set) {
+      const mean = line.reduce((s, v) => s + v, 0) / line.length
+      const centred = line.map((v) => v - mean)
+      const energy = centred.reduce((s, v) => s + v * v, 0)
+      // A line with no variation has no autocorrelation, and dividing by its zero energy would
+      // return NaN — or worse, a 1 that reads as a perfect repeat.
+      if (energy < 1e-6) continue
+      for (let lag = 0; lag <= maxLag; lag++) {
+        let sum = 0
+        for (let i = 0; i + lag < centred.length; i++) sum += centred[i] * centred[i + lag]
+        total[lag] += sum / energy
+      }
+      counted++
+    }
+    if (!counted) throw new Error('no cloud variation in the sample box — nothing here is a result')
+    return Array.from(total, (v) => v / counted)
+  }
+
+  const MAX_LAG = 120
+  // Below this lag the curve is still the central peak coming down, not a repeat.
+  const EXCLUDE = 6
+
+  const report = {}
+  for (const [name, alongX] of [['east', true], ['north', false]]) {
+    const curve = autocorrelation(lines(alongX), MAX_LAG)
+
+    /**
+     * PROMINENCE, not the raw correlation — and the difference is the whole measurement.
+     *
+     * The first version of this took the largest correlation outside a small exclusion around zero,
+     * and it could not tell the two cases apart: a plain repeating tiling scored 0.36 on one axis
+     * and 0.11 on the other, while the stochastic one scored 0.24 and 0.27. The stochastic figures
+     * were HIGHER on one axis than the artefact they were supposed to be ruling out.
+     *
+     * Nothing was wrong with the render. Cloud features here are hundreds of kilometres across, so
+     * the central peak is wide and decays slowly, and at any lag near it the raw correlation is
+     * mostly that shoulder. It swamped the thing being looked for. Pushing the exclusion out past
+     * the shoulder does not work either: the repeat sits at 167 km, INSIDE the width of one cloud.
+     *
+     * What actually distinguishes them is the SHAPE. An aperiodic field's autocorrelation falls and
+     * stays fallen. A repeat makes it come back up. So this measures how far the curve rises above
+     * its own running minimum — zero for any monotone decay, whatever height it decays from, and
+     * positive only where something recurs.
+     */
+    /**
+     * AT A LOCAL MAXIMUM ONLY, and that qualification is not a refinement — without it this reads
+     * the wrong thing entirely.
+     *
+     * A finite window's autocorrelation dips below zero and then relaxes back toward it, so a rise
+     * from that trough to the window's edge is ordinary and means nothing. Measured on a source with
+     * no repeat in it, the metric picked lag 120 — the last lag searched — where the correlation was
+     * 0.0105, having climbed from -0.099. It reported 0.11 against a 0.15 limit and looked like a
+     * result that had nearly failed. It was the curve coming home.
+     *
+     * A repeat is a BUMP: the curve rises and then falls again. So a candidate has to turn over, and
+     * the window edge cannot be a peak — the same reasoning bestShift already applies with its
+     * `interior` flag, for the same reason.
+     */
+    let worst = { lag: 0, value: 0, at: 0 }
+    let floor = curve[EXCLUDE]
+    for (let lag = EXCLUDE; lag < MAX_LAG; lag++) {
+      if (curve[lag] < floor) floor = curve[lag]
+      const turnsOver = lag > EXCLUDE && curve[lag] >= curve[lag - 1] && curve[lag] >= curve[lag + 1]
+      if (!turnsOver) continue
+      const rise = curve[lag] - floor
+      if (rise > worst.value) worst = { lag, value: round(rise, 4), at: round(curve[lag], 4) }
+    }
+    report[name] = {
+      recurrence: worst.value,
+      atLagPx: worst.lag,
+      correlationThere: worst.at,
+      // Kept so a suspicious number can be looked at rather than taken on trust.
+      curve: curve.filter((_, i) => i % 6 === 0).map((v) => round(v, 3)),
+    }
+  }
+
+  report.metresPerPixel = Math.round(metresPerPixelAt(lng, lat))
+  report.where = { lng, lat, zoom }
+  return report
+}
+
+/**
+ * What each of the deck's four lighting terms actually does, separately.
+ *
+ * All four are zero-is-off, so every one of them can be turned on alone against a common baseline
+ * and its effect read directly. That is the whole reason they are built that way: "the clouds look
+ * better" is not a result, and a lighting model assembled all at once cannot be taken apart again.
+ *
+ * TWO OF THESE ARE PHYSICS CLAIMS rather than "does something happen", and they are the ones worth
+ * measuring:
+ *
+ *  - Beer-Powder says thick cloud is BRIGHTER than thin, because cloud is dominated by multiple
+ *    scattering. That is the opposite of a solid, and it is exactly what a Lambert term on the same
+ *    normal would fail: under Lambert, brightness depends on the angle and not at all on the
+ *    thickness. So the test is the RATIO of lit to unlit binned by thickness — flat under Lambert,
+ *    rising under Beer-Powder.
+ *  - Forward scattering says the rim of a backlit cloud is brighter than its lit face. So the light
+ *    it adds must be larger on the side of the frame the sun is behind, and nearly absent opposite.
+ *    A term that brightened everything equally would be a fog pass wearing its name.
+ */
+const cloudLighting = async ({ lng = -20, lat = 20, zoom = 3, half = 130 } = {}) => {
+  /**
+   * The shipped strengths, read BEFORE anything here touches the layer.
+   *
+   * getOptions returns current state, not defaults, and every frame below sets the terms to zero to
+   * get its baseline — so reading it further down returns the zeros this function itself just wrote,
+   * and every measurement comes back 0.000 looking like a lighting model that does nothing. It did
+   * exactly that once. The numbers have to be captured while they are still the layer's own.
+   */
+  const shipped = SHIPPED.clouds
+
+  // The sun off to the WEST and low, so one side of the frame is backlit and the other is not —
+  // which is what makes the forward-scattering asymmetry readable in a single frame.
+  const sun = sunFor(lng - 78, 5)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const OFF = {
+    cloudRelief: 0, cloudDepth: 0, powder: 0, forward: 0, selfShadow: 0, windAmount: 0, sun,
+  }
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+
+  const noDeck = await frameWith({ daylight: ground, clouds: { ...OFF, opacity: 0 } })
+  const flat = await frameWith({ daylight: ground, clouds: { ...OFF, opacity: 1 } })
+
+  const term = async (overrides) =>
+    frameWith({ daylight: ground, clouds: { ...OFF, opacity: 1, ...overrides } })
+
+  // THE SHIPPED VALUES, read off the layer rather than repeated here. A measurement of numbers that
+  // only exist in the harness tells you about the harness.
+  const shaped = await term({ cloudRelief: shipped.cloudRelief })
+  const beer = await term({ cloudDepth: shipped.cloudDepth, powder: shipped.powder })
+  const silver = await term({ forward: shipped.forward, forwardG: shipped.forwardG })
+  const shadowed = await term({
+    selfShadow: shipped.selfShadow, selfShadowStep: shipped.selfShadowStep,
+  })
+
+  const box = boxAround(noDeck, lng, lat, half)
+
+  /** How much light the deck put here, with the lighting off. Stands in for thickness. */
+  const thicknessAt = (i) => luma(flat.pixels, i) - luma(noDeck.pixels, i)
+  const deckLight = (frame, i) => luma(frame.pixels, i) - luma(noDeck.pixels, i)
+
+  const withCloud = box.filter((i) => thicknessAt(i) > 4)
+  if (withCloud.length < 200) {
+    throw new Error(`only ${withCloud.length} pixels here carry cloud — nothing can be read from that`)
+  }
+
+  const mean = (values) => values.reduce((a, b) => a + b, 0) / Math.max(1, values.length)
+  const meanChange = (frame) => round(mean(withCloud.map((i) => deckLight(frame, i) - thicknessAt(i))), 3)
+  const spread = (frame) => {
+    const values = withCloud.map((i) => deckLight(frame, i))
+    const m = mean(values)
+    return round(Math.sqrt(mean(values.map((v) => (v - m) ** 2))), 3)
+  }
+
+  // Thin edges against thick centres, by the deck's own thickness proxy.
+  const sorted = [...withCloud].sort((a, b) => thicknessAt(a) - thicknessAt(b))
+  const thin = sorted.slice(0, Math.floor(sorted.length * 0.25))
+  const thick = sorted.slice(Math.floor(sorted.length * 0.75))
+  /** Lit over unlit. 1 means the term did nothing to this bin. */
+  const ratio = (frame, bin) =>
+    round(mean(bin.map((i) => deckLight(frame, i))) / Math.max(0.01, mean(bin.map(thicknessAt))), 4)
+
+  /**
+   * Forward scattering has to be tested by moving the SUN, not by looking at a different part of
+   * the frame — and the first version of this got that wrong and reported a 16% asymmetry that
+   * looked like a weak effect rather than a wrong measurement.
+   *
+   * The scattering angle is between the light's direction and the eye's. At globe distance the eye
+   * direction is nearly the same everywhere on the disc, so the angle barely varies across a frame:
+   * it is fixed by where the sun is relative to the CAMERA. Sun behind the camera and every pixel
+   * is front-lit; sun beyond the planet and every pixel is backlit. Splitting one frame in half
+   * therefore measures almost nothing, whatever the term is doing.
+   *
+   * So: the same box, the same deck, the sun walked from in front of the camera to behind the
+   * planet, and the light the term adds at each step. A sweep rather than two points, because where
+   * it PEAKS is the question — the geometry that scatters hardest forward is also the geometry that
+   * is in shadow, and only a curve shows where those two meet.
+   *
+   * THE SAME PIXELS AT EVERY SUN. Coverage does not depend on the sun, so the cloudy pixels are
+   * chosen once and reused. Selecting them per sun position instead is what made the first attempt
+   * return nothing at all for the backlit case: with the sun beyond the limb the deck is on the
+   * night side and too dim to pass a brightness threshold, so the measurement discarded exactly the
+   * geometry it was built to look at and reported null.
+   */
+  const forwardAt = async (sunLngOffset) => {
+    const movedSun = sunFor(lng + sunLngOffset, 5)
+    const base = await frameWith({
+      daylight: { ...ground, sun: movedSun },
+      clouds: { ...OFF, opacity: 1, sun: movedSun },
+    })
+    const lit = await frameWith({
+      daylight: { ...ground, sun: movedSun },
+      clouds: { ...OFF, opacity: 1, sun: movedSun, forward: shipped.forward, forwardG: shipped.forwardG },
+    })
+    return round(mean(withCloud.map((i) => luma(lit.pixels, i) - luma(base.pixels, i))), 3)
+  }
+
+  const sweepForward = async (degrees) => {
+    const out = {}
+    for (const deg of degrees) out[deg] = await forwardAt(deg)
+    return out
+  }
+
+  return {
+    samples: withCloud.length,
+    // 1. The normal. Shading by the difference from the sphere adds structure without moving the
+    //    mean much — the same signature the ground's relief has.
+    shape: { meanChange: meanChange(shaped), spread: spread(shaped), flatSpread: spread(flat) },
+    // 2. Beer-Powder. The discriminating number is thin vs thick: equal would be Lambert.
+    beerPowder: {
+      meanChange: meanChange(beer),
+      thinRatio: ratio(beer, thin),
+      thickRatio: ratio(beer, thick),
+      flatThinRatio: ratio(flat, thin),
+      flatThickRatio: ratio(flat, thick),
+    },
+    // 3. Forward scattering. The sun walked round the planet, in degrees from the camera.
+    forward: {
+      meanChange: meanChange(silver),
+      // Sequential, not Promise.all: every one of these drives the SAME two layers through
+      // setOptions and then captures, so running them together would interleave the settings and
+      // read frames belonging to whichever call happened to write last.
+      bySunAngle: await sweepForward([0, 30, 60, 90, 110, 130, 160]),
+    },
+    // 4. Self-shadow. One extra read; it can only take light away.
+    selfShadow: { meanChange: meanChange(shadowed) },
+    where: { lng, lat, zoom, sunLng: lng - 78 },
+  }
+}
+
+/**
+ * How much of the PLANET the deck covers, at globe zoom — the number behind "it looks overcast".
+ *
+ * Map works photographed a globe that had gone near-continuous grey-white from limb to limb, with
+ * the sea barely visible and the Sahara washed out. The cause is structural rather than a dial:
+ * every patch was harvested over open ocean in cloudy latitudes, so tiled uniformly the atlas's own
+ * cloud fraction BECOMES the planet's. Real Earth is roughly two-thirds covered but distributed —
+ * the subtropical highs, the deserts and the continental interiors are genuinely clear, and those
+ * clear regions are most of what makes a globe read as a globe.
+ *
+ * So the reading is taken across the whole visible disc, and the reference is the whole-planet field
+ * the deck used to draw: that field IS the real distribution, at a resolution too coarse to be
+ * texture but exactly right as a mask. Matching its cloud fraction is the target, not zero.
+ */
+const cloudCover = async ({ zoom = 1.6 } = {}) => {
+  const sun = sunFor(-20, 10)
+  map.jumpTo({ center: [-20, 15], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const bare = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+
+  /** Cloud fraction over the disc, for whichever sources are switched on. */
+  const fractionWith = async (clouds) => {
+    const frame = await frameWith({ daylight: ground, clouds: { opacity: 1, sun, ...clouds } })
+    let disc = 0
+    let covered = 0
+    for (let k = 0; k < bare.width * bare.height; k++) {
+      // The planet, not the void around it: the harness paints a known grey behind the globe and
+      // black outside it, so anything above a floor is surface.
+      if (luma(bare.pixels, k * 4) < 20) continue
+      disc++
+      if (luma(frame.pixels, k * 4) - luma(bare.pixels, k * 4) > 12) covered++
+    }
+    return { covered: round(covered / Math.max(1, disc), 4), disc }
+  }
+
+  // The old whole-planet field alone — the real distribution, and the target to match.
+  const field = await fractionWith({ patchUrl: null, windAmount: 0 })
+  // Whatever the deck actually ships with.
+  const shipped = await fractionWith({ patchUrl: PATCH_URL, windAmount: 0 })
+
+  return {
+    wholePlanetField: field.covered,
+    shipped: shipped.covered,
+    // Above 1 means the tiled source has put more cloud on the planet than the real distribution
+    // has. It is the number that says "overcast" without anyone having to look.
+    ratio: round(shipped.covered / Math.max(1e-4, field.covered), 3),
+    discPixels: field.disc,
+  }
+}
+
+/**
+ * Whether the tiling's cell boundaries are VISIBLE — which is a different question from whether it
+ * repeats, and the autocorrelation above cannot answer it.
+ *
+ * Map works photographed hard straight-edged triangles across the mid-Atlantic on a build whose
+ * recurrence measured 0.028. Both readings were true. Autocorrelation finds PERIOD, and a grid whose
+ * every cell draws a different window at a different angle genuinely has none — but two neighbouring
+ * cells landing on cloud of different density still meet along a straight line, and the eye finds a
+ * straight line instantly at any contrast. Non-repeating and seamless are separate properties and
+ * need separate instruments.
+ *
+ * So: the lattice is recomputed here in JS, exactly as the shader lays it out, every sampled pixel
+ * is classified as ON a triangle edge or INSIDE a cell, and the pixel-to-pixel energy of the two
+ * sets is compared. A continuous blend puts no more energy on the boundaries than anywhere else and
+ * reads about 1.0. A discontinuity is a step function along a line, and there is nowhere for it to
+ * hide in this ratio.
+ */
+const cloudSeams = async ({ lng = -25, lat = 40, zoom = 4, half = 130, tiles = 144 } = {}) => {
+  const sun = sunFor(lng - 40, 25)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const clear = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+  // Advection off and the clock frozen, so the lattice computed here is the lattice drawn there.
+  // patchUrl set EXPLICITLY, not inherited. It is the difference between the two frames below, and
+  // leaving it to whatever the last measurement happened to set made this instrument's own null
+  // reading drift between 1.009 and 1.065 depending on which other measurements had run first — a
+  // number that moves with the order of the suite is not a measurement.
+  const deck = await frameWith({
+    daylight: ground,
+    clouds: { opacity: 1, sun, windAmount: 0, animate: false, patchUrl: PATCH_URL },
+  })
+
+  // THE NULL. The same lattice classification against a deck drawn with no lattice in it at all —
+  // the whole-planet field alone. There is nothing there for the boundaries to cut, so an unbiased
+  // instrument must read 1.0, and whatever it reads instead is its own bias and has to be divided
+  // out. Without this the ratio cannot distinguish a seam from a property of where the bands fall.
+  const flat = await frameWith({
+    daylight: ground,
+    clouds: { opacity: 1, sun, windAmount: 0, animate: false, patchUrl: null },
+  })
+
+  const mask = differenceImage(clear, deck)
+  const flatMask = differenceImage(clear, flat)
+  const canvas = map.getCanvas()
+  const scaleX = canvas.width / canvas.clientWidth
+  const scaleY = canvas.height / canvas.clientHeight
+  const centre = pixelAt(lng, lat)
+
+  /** How close a point is to the nearest edge of its triangle, 0 on an edge. */
+  const edgeDistance = (lngDeg, latDeg) => {
+    // equirectUV, from planet-mesh.js. Drift is zero because the clock is frozen.
+    const u = lngDeg / 360 + 0.5
+    const v = 0.5 - latDeg / 180
+    const lattice = { x: u * tiles, y: v * tiles * 0.5 }
+    // The same skew the shader applies: x depends on x alone, which is what makes the antimeridian
+    // wrap survive.
+    const sx = lattice.x - 0.57735027 * lattice.y
+    const sy = 1.15470054 * lattice.y
+    const fx = sx - Math.floor(sx)
+    const fy = sy - Math.floor(sy)
+    const bary = fx + fy < 1
+      ? [1 - fx - fy, fy, fx]
+      : [fx + fy - 1, 1 - fy, 1 - fx]
+    const sorted = [...bary].sort((a, b) => a - b)
+    // The smallest says how close to an edge; the SECOND smallest says how far from a vertex.
+    return { toEdge: sorted[0], toVertex: sorted[1] }
+  }
+
+  /**
+   * NEAR AN EDGE IS NOT ENOUGH — it has to be near an edge and AWAY FROM A VERTEX.
+   *
+   * The first version of this classified purely on the smallest barycentric coordinate, and that set
+   * contains the triangle's corners as well as its edges. Those are opposite cases: at a corner ONE
+   * exemplar has almost all the weight and the field carries a single patch at full detail, while at
+   * the centroid three are mixed and the result is intrinsically smoother. So the ratio came out
+   * above 1 whether or not anything was wrong, and it moved when the coverage distribution changed
+   * for reasons that had nothing to do with seams. It read 1.06 after a real fix and 1.20 after an
+   * unrelated one, which is a measurement telling a story about itself.
+   *
+   * An edge MIDPOINT is where exactly two exemplars meet at comparable weight, and that is the only
+   * place a discontinuity between them can show. Requiring the second-smallest coordinate to be
+   * large keeps the corners out.
+   */
+  const ON_EDGE = 0.06
+  const AWAY_FROM_VERTEX = 0.28
+  const INSIDE = 0.22
+
+  const energyOf = (want, image = mask) => {
+    let total = 0
+    let count = 0
+    for (let py = centre.y - half; py <= centre.y + half; py++) {
+      for (let px = centre.x - half; px < centre.x + half; px++) {
+        if (px < 1 || py < 1 || px + 1 >= clear.width || py >= clear.height) continue
+        const point = map.unproject([px / scaleX, canvas.clientHeight - py / scaleY])
+        if (!Number.isFinite(point.lng) || !Number.isFinite(point.lat)) continue
+        const { toEdge, toVertex } = edgeDistance(point.lng, point.lat)
+        const onEdge = toEdge <= ON_EDGE && toVertex >= AWAY_FROM_VERTEX
+        const inside = toEdge >= INSIDE
+        if (want === 'edge' ? !onEdge : !inside) continue
+        const k = py * clear.width + px
+        // Both axes, because a lattice edge can run any direction and a one-axis difference is
+        // blind to a seam parallel to it.
+        total += Math.abs(image[k + 1] - image[k]) + Math.abs(image[k + clear.width] - image[k])
+        count++
+      }
+    }
+    return { energy: count ? total / count : 0, count }
+  }
+
+  const edge = energyOf('edge')
+  const inside = energyOf('inside')
+  if (edge.count < 300 || inside.count < 300) {
+    throw new Error(
+      `only ${edge.count} edge and ${inside.count} interior pixels — the lattice reconstruction is `
+      + 'not landing on the frame, so this ratio would be meaningless',
+    )
+  }
+
+  const nullEdge = energyOf('edge', flatMask)
+  const nullInside = energyOf('inside', flatMask)
+  const raw = edge.energy / Math.max(1e-6, inside.energy)
+  const bias = nullEdge.energy / Math.max(1e-6, nullInside.energy)
+
+  return {
+    // The reading that matters: the raw ratio with the instrument's own bias divided out. 1.0 means
+    // the boundaries carry no more energy than anywhere else, which is what a continuous blend looks
+    // like. Above that is a seam.
+    seamRatio: round(raw / Math.max(1e-6, bias), 4),
+    rawRatio: round(raw, 4),
+    // What the same bands read on a deck with no lattice in it. Any departure from 1.0 here is the
+    // measurement, not the render.
+    nullRatio: round(bias, 4),
+    onEdge: round(edge.energy, 3),
+    inside: round(inside.energy, 3),
+    edgePixels: edge.count,
+    insidePixels: inside.count,
+    where: { lng, lat, zoom, tiles },
+  }
+}
+
+/**
+ * What the wind advection costs the deck in sharpness, per setting.
+ *
+ * windAmount and windScale DEFORM the field; the drift rotates it. They are separate knobs and the
+ * distinction matters here, because slowing the drift does nothing at all about deformation — which
+ * is the thing that was actually reported as "trippy and fake" and was misread as the procedural
+ * noise being too strong.
+ *
+ * The measurement is pixel-scale structure, not mean brightness: smearing a field along a flow does
+ * not change how much cloud there is, only how sharp its edges are, and a mean is blind to that. It
+ * is the same reason the relief work had to stop measuring amplitude and start measuring detail.
+ *
+ * This matters more now than it did. The source is eight times finer than the field these settings
+ * were chosen against, so there is far more fine structure available for the advection to destroy.
+ */
+const cloudWind = async ({ lng = -20, lat = 40, zoom = 4, half = 120 } = {}) => {
+  const sun = sunFor(lng - 30, 20)
+  map.jumpTo({ center: [lng, lat], zoom, bearing: 0, pitch: 0 })
+  await capture()
+
+  const ground = { reliefPower: 0, cloudShadow: 0, sun }
+  const clear = await frameWith({ daylight: ground, clouds: { opacity: 0, sun } })
+  const centre = pixelAt(lng, lat)
+
+  const out = {}
+  for (const windAmount of [0, 0.1, 0.2, 0.35, 0.6, 1]) {
+    const frame = await frameWith({
+      daylight: ground, clouds: { opacity: 1, sun, windAmount, animate: true },
+    })
+    out[windAmount] = round(detailOver(differenceImage(clear, frame), clear, centre, half), 3)
+  }
+  return { detailByWindAmount: out, where: { lng, lat, zoom } }
+}
+
 /** A coarse slice through the middle of the frame, so the scene's shape can be read rather than assumed. */
 const rowSlice = async () => {
   const frame = await capture()
@@ -983,6 +1539,11 @@ const rowSlice = async () => {
 // Driven from the browser tools as well as by eye.
 window.__rowSlice = rowSlice
 window.__limbProfile = limbProfile
+window.__cloudRepeat = cloudRepeat
+window.__cloudLighting = cloudLighting
+window.__cloudWind = cloudWind
+window.__cloudSeams = cloudSeams
+window.__cloudCover = cloudCover
 window.__map = map
 window.__daylight = daylight
 window.__clouds = clouds
