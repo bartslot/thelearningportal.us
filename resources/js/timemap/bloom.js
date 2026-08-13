@@ -173,8 +173,68 @@ void main() {
   gl_FragColor = vec4(texture2D(u_bloom, v_uv).rgb * u_strength, 0.0);
 }`
 
+/**
+ * COLOUR GRADE — the frame itself, not the light added to it.
+ *
+ * The composite above can only ADD (ONE/ONE, alpha 0), which is right for glare and useless for
+ * grading: nothing additive can take saturation out. So this redraws the captured frame over
+ * itself with blending off, and the bloom then lands on top of the graded picture.
+ *
+ * Luma is Rec. 709, not a flat average — a flat average turns a blue ocean and a red border into
+ * the same grey, and the whole point of desaturating a history map is that the LAND still reads.
+ *
+ * Hue rotation is the standard YIQ-space rotation, which is a matrix on the chroma pair and leaves
+ * luma untouched: rotating hue must not change how bright anything is.
+ *
+ * Alpha is passed through rather than forced to 1. The globe leaves parts of the canvas
+ * transparent and the page shows through them; writing 1 here would paint those black.
+ */
+const gradeFragmentSource = () => `precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_scene;
+uniform float u_saturation;
+uniform float u_hue;          // radians
+uniform float u_exposure;
+uniform float u_contrast;
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+void main() {
+  vec4 texel = texture2D(u_scene, v_uv);
+  vec3 colour = texel.rgb * u_exposure;
+
+  if (abs(u_hue) > 0.0001) {
+    float c = cos(u_hue);
+    float s = sin(u_hue);
+    // YIQ chroma rotation, folded into a single RGB matrix.
+    mat3 rot = mat3(
+      0.299 + 0.701 * c + 0.168 * s, 0.587 - 0.587 * c + 0.330 * s, 0.114 - 0.114 * c - 0.497 * s,
+      0.299 - 0.299 * c - 0.328 * s, 0.587 + 0.413 * c + 0.035 * s, 0.114 - 0.114 * c + 0.292 * s,
+      0.299 - 0.300 * c + 1.250 * s, 0.587 - 0.588 * c - 1.050 * s, 0.114 + 0.886 * c - 0.203 * s);
+    colour = clamp(rot * colour, 0.0, 1.0);
+  }
+
+  float luma = dot(colour, LUMA);
+  colour = mix(vec3(luma), colour, u_saturation);
+  // Pivot on mid grey so contrast does not double as a brightness control.
+  colour = clamp((colour - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+
+  gl_FragColor = vec4(colour, texel.a);
+}`
+
 /** How deep the chain goes. Exported so a test can assert the pass count rather than guess it. */
 export const BLOOM_LEVELS = LEVELS
+
+/** Grade values that mean "leave the picture alone", so the pass can be skipped entirely. */
+export const GRADE_IDENTITY = { saturation: 1, hue: 0, exposure: 1, contrast: 1 }
+
+/** True when any grade dial has moved off its neutral value. */
+export const gradeIsActive = (g) => (
+  Math.abs((g?.saturation ?? 1) - 1) > 0.001
+  || Math.abs(g?.hue ?? 0) > 0.001
+  || Math.abs((g?.exposure ?? 1) - 1) > 0.001
+  || Math.abs((g?.contrast ?? 1) - 1) > 0.001
+)
 
 /**
  * @param {object} opts
@@ -190,6 +250,7 @@ export const createBloomLayer = ({
   knee = 0.12,
   radius = 1.0,
   chromatic = true,
+  ...grade
 } = {}) => {
   let map = null
   let gl = null
@@ -198,7 +259,7 @@ export const createBloomLayer = ({
   let scene = null          // a copy of MapLibre's frame; no framebuffer, only ever copied into
   let chain = null          // LEVELS targets, largest first
   let allocatedFor = null
-  let state = { strength, threshold, knee, radius, chromatic }
+  let state = { strength, threshold, knee, radius, chromatic, ...GRADE_IDENTITY, ...grade }
 
   const buildPrograms = () => {
     const compile = (fragment, label, uniformNames) => {
@@ -212,6 +273,7 @@ export const createBloomLayer = ({
       down: compile(downsampleFragmentSource(), 'tm-bloom-down', ['source', 'texel']),
       up: compile(upsampleFragmentSource(), 'tm-bloom-up', ['source', 'texel', 'radius', 'tint']),
       composite: compile(compositeFragmentSource(), 'tm-bloom-composite', ['bloom', 'strength']),
+      grade: compile(gradeFragmentSource(), 'tm-grade', ['scene', 'saturation', 'hue', 'exposure', 'contrast']),
     }
   }
 
@@ -255,7 +317,9 @@ export const createBloomLayer = ({
     },
 
     render() {
-      if (!quad || state.strength <= 0) return
+      // The grade runs on its own: strength 0 means "no glare", not "no post-processing".
+      const grading = gradeIsActive(state)
+      if (!quad || (state.strength <= 0 && !grading)) return
       const canvas = map.getCanvas()
       const width = Math.max(1, canvas.width)
       const height = Math.max(1, canvas.height)
@@ -273,6 +337,27 @@ export const createBloomLayer = ({
       gl.disable(gl.DEPTH_TEST)
       gl.disable(gl.BLEND)          // the chain overwrites; only the upsamples and composite add
       gl.depthMask(false)
+
+      // ── Grade the frame in place ───────────────────────────────────────────────────────────
+      // Straight back onto the default framebuffer with blending off, so this REPLACES the picture
+      // rather than adding to it. Then re-grab it, so the bright pass measures the graded frame:
+      // otherwise desaturating to grey would still bloom in colour, which looks like a bug.
+      if (grading) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+        gl.viewport(0, 0, width, height)
+        gl.useProgram(programs.grade.program)
+        bindTextureUnit(gl, 0, scene.texture, programs.grade.scene)
+        if (programs.grade.saturation) gl.uniform1f(programs.grade.saturation, state.saturation)
+        if (programs.grade.hue) gl.uniform1f(programs.grade.hue, state.hue)
+        if (programs.grade.exposure) gl.uniform1f(programs.grade.exposure, state.exposure)
+        if (programs.grade.contrast) gl.uniform1f(programs.grade.contrast, state.contrast)
+        drawScreenQuad(gl, quad, programs.grade.corner)
+
+        gl.bindTexture(gl.TEXTURE_2D, scene.texture)
+        gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, width, height, 0)
+      }
+
+      if (state.strength <= 0) { restoreGlState(gl, saved); return }
 
       // ── Bright pass, into the top of the chain ─────────────────────────────────────────────
       beginPass(gl, chain[0], programs.bright.program)

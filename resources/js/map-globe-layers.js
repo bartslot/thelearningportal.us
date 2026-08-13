@@ -440,6 +440,31 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       { key: 'chromatic', label: 'Warm at the edges', type: 'boolean', value: true,
         apply: (v) => set('bloom', { chromatic: v }) },
     ], { tab: 'Earth' }),
+
+    /**
+     * COLOUR GRADE — the whole frame, after everything else has drawn.
+     *
+     * This is the one place where a value can change how the map LOOKS without changing what any
+     * layer is doing, which is what makes it worth having: an archive-footage look for a 1939
+     * lesson is Saturation 0 and a little Contrast, not a second set of layer colours to maintain.
+     *
+     * It runs in the same pass as the glare, so it costs one extra full-screen draw and only when
+     * a dial has actually moved — at the neutral values the pass skips itself entirely.
+     */
+    window.__tune?.register('Colour grade', [
+      // 0 is greyscale. Above 1 is still useful: the Blue Marble imagery is deliberately flat and
+      // 1.2 puts the ocean back without touching any layer's paint.
+      { key: 'saturation', label: 'Saturation (0 = greyscale)', min: 0, max: 2, step: 0.01, value: 1,
+        apply: (v) => set('bloom', { saturation: v }) },
+      // Degrees in the panel, radians in the shader — nobody reasons about hue in radians.
+      { key: 'hue', label: 'Hue shift', min: -180, max: 180, step: 1, value: 0, unit: '°',
+        apply: (v) => set('bloom', { hue: (v * Math.PI) / 180 }) },
+      { key: 'exposure', label: 'Exposure', min: 0.2, max: 2.5, step: 0.01, value: 1,
+        apply: (v) => set('bloom', { exposure: v }) },
+      // Pivots on mid grey, so this does not double as a brightness slider.
+      { key: 'contrast', label: 'Contrast', min: 0.5, max: 2, step: 0.01, value: 1,
+        apply: (v) => set('bloom', { contrast: v }) },
+    ], { tab: 'Earth' }),
   ]
 
   return {

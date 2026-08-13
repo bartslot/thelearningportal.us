@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createBloomLayer, BLOOM_LAYER_ID, BLOOM_LEVELS } from '../bloom.js'
+import { createBloomLayer, BLOOM_LAYER_ID, BLOOM_LEVELS, GRADE_IDENTITY, gradeIsActive } from '../bloom.js'
 
 /**
  * The bloom pass is not a globe overlay, so it is not in `globe-layers.test.js`.
@@ -14,7 +14,7 @@ import { createBloomLayer, BLOOM_LAYER_ID, BLOOM_LEVELS } from '../bloom.js'
 const glStub = ({ webgl2 = true } = {}) => {
   const calls = {
     deleteProgram: 0, deleteBuffer: 0, deleteTexture: 0, deleteFramebuffer: 0,
-    drawArrays: 0, texImage2D: 0, bindFramebuffer: [], viewport: [], blendFunc: [],
+    drawArrays: 0, texImage2D: 0, copyTexImage2D: 0, bindFramebuffer: [], viewport: [], blendFunc: [],
   }
   const state = { framebuffer: 'maplibre-fbo', viewport: [0, 0, 1280, 720] }
   const gl = {
@@ -40,7 +40,7 @@ const glStub = ({ webgl2 = true } = {}) => {
     createTexture: () => ({}), bindTexture: () => {}, activeTexture: () => {},
     texParameteri: () => {},
     texImage2D: () => { calls.texImage2D++ },
-    copyTexImage2D: () => {},
+    copyTexImage2D: () => { calls.copyTexImage2D++ },
     createFramebuffer: () => ({}),
     bindFramebuffer: (_t, fb) => { calls.bindFramebuffer.push(fb); state.framebuffer = fb },
     framebufferTexture2D: () => {},
@@ -192,7 +192,7 @@ describe('the bloom layer', () => {
     layer.onAdd(mapStub(), gl)
     layer.render(gl, v5Args())
     layer.onRemove()
-    expect(calls.deleteProgram).toBe(4)                  // bright, down, up, composite
+    expect(calls.deleteProgram).toBe(5)                  // bright, down, up, composite, grade
     expect(calls.deleteBuffer).toBe(1)
     expect(calls.deleteTexture).toBe(BLOOM_LEVELS + 1)   // the chain, plus the scene grab
     // The scene grab has no framebuffer: it is only ever copied INTO, by copyTexImage2D.
@@ -211,5 +211,44 @@ describe('the bloom layer', () => {
     layer.setOptions({ strength: 0.4 })
     expect(map.triggerRepaint).toHaveBeenCalled()
     expect(layer.getOptions().strength).toBe(0.4)
+  })
+})
+
+/**
+ * THE GRADE. Its whole reason to exist is that the composite pass cannot do it: that pass blends
+ * ONE/ONE, and nothing additive can take saturation OUT of a picture. So these assert the grade
+ * draws separately, and — the part that actually costs something — that it does not draw at all
+ * while every dial is neutral.
+ */
+describe('the colour grade', () => {
+  it('is inactive at neutral values, so the pass can skip itself', () => {
+    expect(gradeIsActive(GRADE_IDENTITY)).toBe(false)
+    expect(gradeIsActive({})).toBe(false)
+  })
+
+  it('is active as soon as any one dial moves', () => {
+    expect(gradeIsActive({ ...GRADE_IDENTITY, saturation: 0 })).toBe(true)
+    expect(gradeIsActive({ ...GRADE_IDENTITY, hue: 0.5 })).toBe(true)
+    expect(gradeIsActive({ ...GRADE_IDENTITY, exposure: 1.4 })).toBe(true)
+    expect(gradeIsActive({ ...GRADE_IDENTITY, contrast: 1.2 })).toBe(true)
+  })
+
+  it('still renders with the glare switched off, because a grade is not glare', () => {
+    const { gl, calls } = glStub()
+    const layer = createBloomLayer({ strength: 0, saturation: 0 })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    // Two grabs: the frame, then the graded frame re-read so the bright pass would measure it.
+    expect(calls.copyTexImage2D).toBeGreaterThan(0)
+    layer.onRemove()
+  })
+
+  it('draws nothing when the glare is off and the grade is neutral', () => {
+    const { gl, calls } = glStub()
+    const layer = createBloomLayer({ strength: 0 })
+    layer.onAdd(mapStub(), gl)
+    layer.render(gl, v5Args())
+    expect(calls.copyTexImage2D ?? 0).toBe(0)
+    layer.onRemove()
   })
 })

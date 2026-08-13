@@ -1178,24 +1178,73 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'Poland 1939': {
           year: 1939,
           match: /^(second )?poland|polish republic/i,
+          // WHERE TO LOOK. The front is found with queryRenderedFeatures, which only ever sees the
+          // viewport — so a preset that sets the year but not the camera plays only if you happened
+          // to already be over the country. Everywhere else the button did nothing at all.
+          camera: { center: [19.4, 52.1], zoom: 4.4 },
           // Where the Wehrmacht crossed, roughly: Pomerania/Silesia in the west, East Prussia in
           // the north, and the Slovak border in the south.
           seeds: [[15.0, 52.3], [20.5, 54.0], [19.6, 49.4]],
         },
       };
+      // ~5s of retries at 400ms. The year and the camera both change before the query, and tiles
+      // arrive when they arrive — the old single 700ms guess was the whole bug on a slow load.
+      const ADVANCE_TRIES = 12;
       let advance = null;
       let advanceCase = 'Poland 1939';
 
-      /** Every rendered piece of the target country, unioned by being drawn into the same mask. */
+      const ringsOf = (f) => (
+        f.geometry.type === 'Polygon' ? [f.geometry.coordinates]
+          : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : []
+      );
+
+      /**
+       * Every rendered piece of the target country, unioned by being drawn into the same mask.
+       *
+       * The preset names a country, but Cliopatria's names cannot be relied on: there is no Poland
+       * at all in 1939, and it still calls Bulgaria a Principality in 1940. A button whose only
+       * behaviour is to do nothing when the data disagrees with its label is not a control — so the
+       * named match is a preference, not a requirement. Failing that it plays on the territory you
+       * have open, and failing that on the biggest one in view, which always exists.
+       */
       const advanceTarget = (test) => {
-        const parts = map.queryRenderedFeatures({ layers: ['boundaries-fill'] })
-          .filter((f) => test.test(String(f.properties?.Name ?? '')));
-        if (!parts.length) return null;
-        const coordinates = parts.flatMap((f) => (
-          f.geometry.type === 'Polygon' ? [f.geometry.coordinates]
-            : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : []
-        ));
-        return coordinates.length ? { type: 'MultiPolygon', coordinates } : null;
+        const rendered = map.queryRenderedFeatures({ layers: ['boundaries-fill'] });
+        if (!rendered.length) return null;
+
+        const union = (parts) => {
+          const coordinates = parts.flatMap(ringsOf);
+          return coordinates.length ? { type: 'MultiPolygon', coordinates } : null;
+        };
+
+        const named = test ? rendered.filter((f) => test.test(String(f.properties?.Name ?? ''))) : [];
+        if (named.length) return { geometry: union(named), named: true };
+
+        // Biggest by ring count is a crude proxy for area, and the right kind of crude: it costs
+        // nothing and only has to pick something worth watching a front cross.
+        const byPolity = new Map();
+        for (const f of rendered) {
+          const key = f.id ?? f.properties?.Name;
+          byPolity.set(key, [...(byPolity.get(key) ?? []), f]);
+        }
+        const biggest = [...byPolity.values()]
+          .sort((a, b) => b.flatMap(ringsOf).length - a.flatMap(ringsOf).length)[0];
+        const geometry = biggest ? union(biggest) : null;
+        return geometry ? { geometry, named: false, label: biggest[0]?.properties?.Name } : null;
+      };
+
+      /** Three entry points on the western edge, for a target the preset did not choose. */
+      const seedsFor = (geometry) => {
+        let west = 180; let east = -180; let south = 90; let north = -90;
+        for (const rings of geometry.coordinates) {
+          for (const [lng, lat] of rings[0] ?? []) {
+            if (lng < west) west = lng; if (lng > east) east = lng;
+            if (lat < south) south = lat; if (lat > north) north = lat;
+          }
+        }
+        const inset = (east - west) * 0.12;
+        return [[west + inset, south + (north - south) * 0.25],
+          [west + inset, (south + north) / 2],
+          [west + inset, south + (north - south) * 0.75]];
       };
 
       const advanceOptions = () => ({
@@ -1213,19 +1262,30 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         const preset = ADVANCE_CASES[advanceCase];
         if (!preset) return;
         window.__setTimemapYear(preset.year);
-        // Tiles for the new year have to arrive before the country can be found.
-        setTimeout(() => {
-          const geometry = advanceTarget(preset.match);
-          if (!geometry) {
-            console.warn(`[tune] no territory matching ${preset.match} on screen at ${preset.year} — pan to it and try again`);
+        if (preset.camera) map.jumpTo(preset.camera);
+
+        // Keep asking until the tiles for the new year and view have arrived, instead of guessing
+        // how long that takes.
+        let tries = 0;
+        const attempt = () => {
+          const hit = advanceTarget(preset.match);
+          if (!hit) {
+            if (++tries < ADVANCE_TRIES) { setTimeout(attempt, 400); return; }
+            console.warn(`[tune] nothing on screen to advance across at ${preset.year}`);
             return;
           }
+          const { geometry, named, label } = hit;
+          // Preset seeds are placed against the country the preset names. On a fallback target they
+          // would land in the sea, so the entry points are derived from the shape instead.
+          const seeds = named ? preset.seeds : seedsFor(geometry);
+          if (!named) console.info(`[tune] no ${preset.match} at ${preset.year} — advancing across ${label} instead`);
           if (!advance) {
             advance = createAdvance(map, { beforeId: 'boundaries-label', ...advanceOptions() });
             window.__tmAdvance = advance; // dev tooling + Playwright
           } else advance.setOptions(advanceOptions());
-          if (advance.prepare(geometry, preset.seeds)) advance.play();
-        }, 700);
+          if (advance.prepare(geometry, seeds)) advance.play();
+        };
+        setTimeout(attempt, 400);
       };
 
       let advanceColour = '#b31217';
