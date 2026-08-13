@@ -1,0 +1,407 @@
+{
+  "_note": "Hand-authored territories for the Time-Map — the supplementary layer, NOT Cliopatria.",
+  "_why": [
+    "Cliopatria has no Cherusci, Chatti, Marcomanni, Alemanni or Quadi at all, and its earliest",
+    "Germanic polity is the Goths at 30 CE. So a lesson on Teutoburg Forest (9 CE) or the",
+    "Marcomannic Wars (166-180 CE) has nothing to shade. This file is what fills that gap.",
+    "It is deliberately a SEPARATE source from Cliopatria: a Cliopatria refresh can never",
+    "overwrite hand-drawn work, and hand-drawn work is never mistaken for theirs."
+  ],
+  "_how_to_add_one": "Read .claude/skills/timemap-territory-data/SKILL.md first. Three independent sources, graded, disagreements written down, geometry drawn from the highest grade, confidence set honestly.",
+  "_the_audit_is_quiet_here_and_that_is_not_the_same_as_clean": [
+    "`php artisan timemap:audit-polity-qids` covers this file, and it passes. Do not read that as",
+    "these five QIDs having been checked against their items' dates: NONE of Q268307, Q164076,",
+    "Q209851, Q155085 or Q308885 carries an inception or dissolution on Wikidata, and the audit",
+    "skips an item with no dates because there is nothing there to contradict.",
+    "",
+    "So the check is real and it does fire - point one of these at the wrong item and it says so -",
+    "but on this set it is currently vacuous. The QIDs were verified by hand instead: every one of",
+    "the five is described on Wikidata as an ancient Germanic people, not a modern homonym."
+  ],
+  "_shape": [
+    "A territory is NOT stored as a polygon. It is stored as the SPINE its highest-graded source",
+    "actually publishes, plus a soft radius around it — see resources/js/timemap/hand-territories.js.",
+    "That is not a storage trick, it is the honest shape of the evidence: the Barrington Atlas does",
+    "not draw a border for a Roman-era people, it prints the name ACROSS the region. Storing a",
+    "polygon would launder Talbert's label placement into a frontier nobody ever claimed. Storing",
+    "the line he actually drew, and deriving a soft blob from it by one stated rule, keeps the",
+    "claim exactly as strong as the evidence."
+  ],
+  "version": 1,
+
+  "territories": [
+    {
+      "id": "cherusci",
+      "name": "Cherusci",
+      "qid": "Q268307",
+      "from": -30,
+      "to": 300,
+      "shape": {
+        "spine": [
+          [9.179779286914936, 52.267083561476284],
+          [9.305414828022947, 52.268511238079725],
+          [9.383937041215347, 52.267083561476284],
+          [9.448182488372765, 52.267083561476284],
+          [9.52813237816855, 52.267083561476284],
+          [9.609509944568003, 52.26565588487267],
+          [9.67232771512181, 52.26565588487267],
+          [9.76369901774575, 52.26565588487267]
+        ],
+        "radius_km": 110,
+        "radius_note": "The middle Weser basin around the label, out to the Teutoburg ridge in the west and the northern Harz in the south-east. It deliberately stops short of the Elbe, which several sources reach — see the disagreements."
+      },
+      "provenance": {
+        "summary": "Roughly right, edges guessed. The scholarly atlas prints the name across the middle Weser but draws no border, so the position is solid and the extent is ours.",
+        "confidence": "medium",
+        "chosen_source": "barrington-awmc",
+        "method": "Position traced from the Barrington Atlas label linework as published by AWMC/Pleiades. Extent approximated as a soft radius around that line — no source draws an edge here, so neither do we.",
+        "drawn_by": "Claude (Opus 5) for The Learning Portal, 12 August 2026",
+        "sources": [
+          {
+            "key": "barrington-awmc",
+            "title": "Barrington Atlas of the Greek and Roman World, ed. R. Talbert (Princeton UP), georeferenced by the Ancient World Mapping Center",
+            "url": "https://pleiades.stoa.org/places/98939",
+            "grade": "A",
+            "year": 2000,
+            "note": "Map 10 F4. Gives the exact line the name is printed along, dated 30 BCE - 300 CE. It prints a name, not a border."
+          },
+          {
+            "key": "tacitus",
+            "title": "Tacitus, Germania 36 and Annals 1.60 (via the PHI Latin corpus)",
+            "url": "http://latin.packhum.org/loc/1351/5/59/62-70",
+            "grade": "A",
+            "year": 98,
+            "note": "A primary source, and propaganda: Tacitus never went to Germania and wrote partly to shame Rome. He gives neighbours, not distances - Chatti to the south-west, Chauci to the north."
+          },
+          {
+            "key": "euratlas",
+            "title": "Euratlas Periodis, Europe in the year 1 (C. Nussli)",
+            "url": "https://www.euratlas.net/history/europe/1/index.html",
+            "grade": "B",
+            "year": 2010,
+            "note": "A specialist historical-GIS project with a published bibliography. Maps the Cherusci at 1 CE as a bounded political entity."
+          },
+          {
+            "key": "wikipedia",
+            "title": "Wikipedia, 'Cherusci', with the Commons map 'Lower Rhine 10BC.png'",
+            "url": "https://en.wikipedia.org/wiki/Cherusci",
+            "grade": "D",
+            "year": 2025,
+            "note": "The map on the article is credited 'own work' with no source in its file description, which is what puts it at D. Its text is well referenced; its map is not."
+          }
+        ],
+        "disagreements": [
+          {
+            "source": "euratlas",
+            "says": "Draws the Cherusci with a hard political border. The Barrington Atlas draws none at all. A crisp frontier here is a claim nobody can support - Germanic peoples had no surveyed borders."
+          },
+          {
+            "source": "tacitus",
+            "says": "Implies the Cherusci reached east towards the Elbe and the Suebi beyond it. Our shape stops well short of the Elbe, so we are drawing them smaller than the written record allows."
+          },
+          {
+            "source": "wikipedia",
+            "says": "Places them 'around the middle of the Weser' and stretching towards the Elbe - the same eastward reach we left out."
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "chatti",
+      "name": "Chatti",
+      "qid": "Q164076",
+      "from": -30,
+      "to": 300,
+      "shape": {
+        "spine": [
+          [8.381212344516712, 50.59658494521722],
+          [8.521124651659477, 50.69652230746209],
+          [8.623917367111403, 50.77647219725793],
+          [8.753652521243907, 50.86987099894725],
+          [8.864297458015017, 50.95374699940277],
+          [9.04989541646978, 51.08580708522635]
+        ],
+        "radius_km": 85,
+        "radius_note": "The Hessian uplands the label runs through - the Eder, Fulda and Lahn valleys between the Wetterau and the Kassel basin. Smaller than the others because the label itself is drawn across a compact upland, not a plain."
+      },
+      "provenance": {
+        "summary": "The firmest of this set. The atlas line, the Roman writers and the modern maps all put the Chatti in the same place - what is now Hesse.",
+        "confidence": "medium",
+        "chosen_source": "barrington-awmc",
+        "method": "Position traced from the Barrington Atlas label linework as published by AWMC/Pleiades. Extent approximated as a soft radius around that line.",
+        "drawn_by": "Claude (Opus 5) for The Learning Portal, 12 August 2026",
+        "sources": [
+          {
+            "key": "barrington-awmc",
+            "title": "Barrington Atlas of the Greek and Roman World, ed. R. Talbert (Princeton UP), georeferenced by the Ancient World Mapping Center",
+            "url": "https://pleiades.stoa.org/places/108885",
+            "grade": "A",
+            "year": 2000,
+            "note": "Map 11 I2. The label runs south-west to north-east across Hesse, dated 30 BCE - 300 CE."
+          },
+          {
+            "key": "tacitus",
+            "title": "Tacitus, Germania 30-31 and 36 (via the PHI Latin corpus)",
+            "url": "http://latin.packhum.org/loc/1351/2/35/359-365",
+            "grade": "A",
+            "year": 98,
+            "note": "A primary source, and propaganda. Puts the Chatti where the Hercynian forest begins, on higher and harder ground than their neighbours - which matches the uplands the atlas label crosses."
+          },
+          {
+            "key": "euratlas",
+            "title": "Euratlas Periodis, Europe in the year 1 (C. Nussli)",
+            "url": "https://www.euratlas.net/history/europe/1/index.html",
+            "grade": "B",
+            "year": 2010,
+            "note": "Maps the Chatti at 1 CE as a bounded political entity in the same region."
+          },
+          {
+            "key": "wikipedia",
+            "title": "Wikipedia, 'Chatti'",
+            "url": "https://en.wikipedia.org/wiki/Chatti",
+            "grade": "C",
+            "year": 2025,
+            "note": "'A region approximately corresponding to the modern German state of Hesse' - well referenced text, and it agrees with the atlas."
+          }
+        ],
+        "disagreements": [
+          {
+            "source": "barrington-awmc",
+            "says": "The Pleiades record's own summary describes the Chatti homeland as 'the valley of the Weser River'. The Eder and Fulda do drain into the Weser system, but the peoples' heartland is the Hessian uplands, not the Weser valley proper. We follow the atlas LINE, not that sentence."
+          },
+          {
+            "source": "euratlas",
+            "says": "Draws a hard political border. The atlas draws none."
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "marcomanni",
+      "name": "Marcomanni",
+      "qid": "Q209851",
+      "from": -9,
+      "to": 300,
+      "date_note": "The atlas dates its label 30 BCE - 300 CE, but the shape it marks is BOHEMIA, and the Marcomanni only moved into Bohemia under Maroboduus around 9 BCE. Dating a Bohemian shape to 30 BCE would put the people somewhere they were not yet, so the start is the migration, not the label.",
+      "shape": {
+        "spine": [
+          [13.571490978850932, 50.51861793959273],
+          [13.876061987597211, 50.48245013230428],
+          [14.0683224368683, 50.459607306648195],
+          [14.26248645494394, 50.43486091218767],
+          [14.449036197800922, 50.40821094892232],
+          [14.656525197509382, 50.36633243521959],
+          [14.86020705960857, 50.328261059126305],
+          [15.04866037127016, 50.286382545423805],
+          [15.254245802174012, 50.2387933253072],
+          [15.456024095468365, 50.18549339877649]
+        ],
+        "radius_km": 90,
+        "radius_note": "The Bohemian basin the label crosses. Note the label runs along the NORTHERN rim of that basin, so a symmetric radius around it reaches over the Ore Mountains into Saxony and stops short of southern Bohemia. Both edges are wrong in the same way and by the same amount, which is what one honest rule costs; neither is a frontier."
+      },
+      "provenance": {
+        "summary": "Good for the Marcomannic Wars, wrong if you scrub back before 9 BCE. This is their Bohemian homeland - before that they lived further west and we do not draw them there.",
+        "confidence": "medium",
+        "chosen_source": "barrington-awmc",
+        "method": "Position traced from the Barrington Atlas label linework as published by AWMC/Pleiades. Extent approximated as a soft radius around that line, checked against the Bohemian basin the label sits in.",
+        "drawn_by": "Claude (Opus 5) for The Learning Portal, 12 August 2026",
+        "sources": [
+          {
+            "key": "barrington-awmc",
+            "title": "Barrington Atlas of the Greek and Roman World, ed. R. Talbert (Princeton UP), georeferenced by the Ancient World Mapping Center",
+            "url": "https://pleiades.stoa.org/places/118831",
+            "grade": "A",
+            "year": 2000,
+            "note": "Map 12 G2. The label runs north-west to south-east across northern Bohemia."
+          },
+          {
+            "key": "tacitus",
+            "title": "Tacitus, Germania 42 (via the PHI Latin corpus)",
+            "url": "http://latin.packhum.org/loc/1351/2/39/260-268#42",
+            "grade": "A",
+            "year": 98,
+            "note": "A primary source, and propaganda. Names the Marcomanni and Quadi as the front rank facing the Danube, and says the Marcomanni took their land by driving out the Boii."
+          },
+          {
+            "key": "tir-m33",
+            "title": "Tabula Imperii Romani M33: Castra Regina - Vindobona - Carnuntum",
+            "url": "http://www.worldcat.org/oclc/311333372",
+            "grade": "A",
+            "year": 1986,
+            "note": "The scholarly atlas sheet for this stretch of the Danube frontier, pp. 55-58. Cited by Pleiades for this people; consulted through that citation rather than the sheet itself."
+          },
+          {
+            "key": "wikipedia",
+            "title": "Wikipedia, 'Marcomanni'",
+            "url": "https://en.wikipedia.org/wiki/Marcomanni",
+            "grade": "C",
+            "year": 2025,
+            "note": "Well referenced text: originally near the central Elbe and Saale or in Franconia, moving to Bohemia after a defeat around 9 BCE."
+          }
+        ],
+        "disagreements": [
+          {
+            "source": "wikipedia",
+            "says": "Puts their ORIGINAL home near the central Elbe and Saale, or possibly Franconia - hundreds of kilometres west of where we draw them. That is a disagreement about the date, not the place: we draw the Bohemia they moved to, and start the shape at the move."
+          },
+          {
+            "source": "barrington-awmc",
+            "says": "Dates its label from 30 BCE, twenty years before the migration it marks. We start at 9 BCE instead."
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "suebi-elbe",
+      "name": "Suebi",
+      "qid": "Q155085",
+      "from": -330,
+      "to": 400,
+      "shape": {
+        "spine": [
+          [10.994832142162466, 53.10370205112616],
+          [11.297023689902744, 52.85385864551398],
+          [11.534969790485775, 52.658742843035895],
+          [11.751500742016333, 52.45648865754032],
+          [12.001344147628515, 52.20902471293397],
+          [12.208971949229067, 52.01315739735486],
+          [12.393380177180916, 51.83469782191759],
+          [12.631326277763947, 51.638392288936586],
+          [12.827631810744947, 51.471830018528465],
+          [13.012040038696796, 51.317165053149495],
+          [13.220242876706948, 51.10301356262477]
+        ],
+        "radius_km": 140,
+        "radius_note": "The middle Elbe corridor the label follows. Wider than the others because the label itself is 250 km long, and still far smaller than anything Tacitus describes."
+      },
+      "provenance": {
+        "summary": "Treat this one with caution. 'Suebi' was an umbrella for many peoples spread over half of Germania, so no single shape is right. This is their Elbe homeland only - it is where the name starts, not where the Suebi were.",
+        "confidence": "low",
+        "chosen_source": "barrington-awmc",
+        "method": "Position traced from the Barrington Atlas label linework as published by AWMC/Pleiades. Extent approximated as a soft radius around that line. The shape is knowingly narrower than the sources allow, because the alternative - shading half of Europe - would be more misleading, not less.",
+        "drawn_by": "Claude (Opus 5) for The Learning Portal, 12 August 2026",
+        "sources": [
+          {
+            "key": "barrington-awmc",
+            "title": "Barrington Atlas of the Greek and Roman World, ed. R. Talbert (Princeton UP), georeferenced by the Ancient World Mapping Center",
+            "url": "https://pleiades.stoa.org/places/99040",
+            "grade": "A",
+            "year": 2000,
+            "note": "Map 10 H3. The label runs 250 km down the middle Elbe, from Mecklenburg to Saxony, dated 330 BCE - 640 CE."
+          },
+          {
+            "key": "tacitus",
+            "title": "Tacitus, Germania 38-45 (via the PHI Latin corpus)",
+            "url": "http://latin.packhum.org/loc/1351/2/39/260-268",
+            "grade": "A",
+            "year": 98,
+            "note": "A primary source, and propaganda. Treats Suebi as a category rather than a people: he says they hold the greater part of Germania and then lists a dozen separate peoples inside it."
+          },
+          {
+            "key": "caesar",
+            "title": "Caesar, Bellum Gallicum 1 and 4 - Ariovistus and the Suebi on the Rhine, 58 BCE",
+            "url": "https://en.wikipedia.org/wiki/Suebi",
+            "grade": "A",
+            "year": -51,
+            "note": "A primary source. Caesar's Suebi are on the RHINE, some 500 km west of the Elbe homeland - consulted through the Wikipedia article's citations rather than the Latin text."
+          },
+          {
+            "key": "euratlas",
+            "title": "Euratlas Periodis, Europe in the year 1 (C. Nussli)",
+            "url": "https://www.euratlas.net/history/europe/1/index.html",
+            "grade": "B",
+            "year": 2010,
+            "note": "Maps Suebi at 1 CE as a bounded political entity, alongside separate entities for Cherusci, Chatti and Quadi."
+          }
+        ],
+        "disagreements": [
+          {
+            "source": "tacitus",
+            "says": "Says the Suebi hold the greater part of Germania - many times the area we shade. Following him would mean colouring in most of central Europe under one name, which is worse history, not better."
+          },
+          {
+            "source": "caesar",
+            "says": "Meets Suebi on the Rhine in 58 BCE, roughly 500 km west of anything we draw. Our shape would show nothing at all where Caesar actually fought them."
+          },
+          {
+            "source": "barrington-awmc",
+            "says": "Dates the label to 640 CE. We stop at 400, because by then the name has moved to entirely different people in Iberia - Cliopatria already carries that Kingdom of the Suebi (Q1048918) as a separate territory from 414."
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "quadi",
+      "name": "Quadi",
+      "qid": "Q308885",
+      "from": -30,
+      "to": 400,
+      "shape": {
+        "spine": [
+          [16.847541814656722, 48.9466577607958],
+          [17.124154156584495, 48.88122258313547],
+          [17.350202952138375, 48.83660768927598],
+          [17.579226073949542, 48.79199279541683],
+          [17.867735720906467, 48.73548059652836]
+        ],
+        "radius_km": 65,
+        "radius_note": "The March and lower Vah valleys the label follows. Tighter than the others, and the number was chosen by the Danube rather than by taste: the river is a real southern edge here - it is the Roman frontier - so the radius is the largest one that keeps the shape north of it at Bratislava."
+      },
+      "provenance": {
+        "summary": "The Marcomanni's neighbours and allies in the wars against Marcus Aurelius. Position is solid, extent is ours, and the Danube to the south is a genuine edge rather than a guessed one.",
+        "confidence": "medium",
+        "chosen_source": "barrington-awmc",
+        "method": "Position traced from the Barrington Atlas label linework as published by AWMC/Pleiades. Extent approximated as a soft radius around that line, kept north of the Danube.",
+        "drawn_by": "Claude (Opus 5) for The Learning Portal, 12 August 2026",
+        "sources": [
+          {
+            "key": "barrington-awmc",
+            "title": "Barrington Atlas of the Greek and Roman World, ed. R. Talbert (Princeton UP), georeferenced by the Ancient World Mapping Center",
+            "url": "https://pleiades.stoa.org/places/128501",
+            "grade": "A",
+            "year": 2000,
+            "note": "Map 13 B4. The label runs west to east along the March, dated 30 BCE - 640 CE."
+          },
+          {
+            "key": "tacitus",
+            "title": "Tacitus, Germania 42 and Annals 2.63 (via the PHI Latin corpus)",
+            "url": "http://latin.packhum.org/loc/1351/2/39/260-268#41",
+            "grade": "A",
+            "year": 98,
+            "note": "A primary source, and propaganda. Pairs the Quadi with the Marcomanni as the peoples facing the Danube frontier."
+          },
+          {
+            "key": "tir-m33",
+            "title": "Tabula Imperii Romani M33: Castra Regina - Vindobona - Carnuntum",
+            "url": "http://www.worldcat.org/oclc/311333372",
+            "grade": "A",
+            "year": 1986,
+            "note": "The scholarly atlas sheet for this stretch of the Danube frontier, pp. 69-71. Cited by Pleiades for this people; consulted through that citation rather than the sheet itself."
+          },
+          {
+            "key": "euratlas",
+            "title": "Euratlas Periodis, Europe in the year 1 (C. Nussli)",
+            "url": "https://www.euratlas.net/history/europe/1/index.html",
+            "grade": "B",
+            "year": 2010,
+            "note": "Maps the Quadi at 1 CE as a bounded political entity in the same region."
+          }
+        ],
+        "disagreements": [
+          {
+            "source": "barrington-awmc",
+            "says": "Dates the label to 640 CE, long after the Quadi disappear from the record. We stop at 400, around their move west with the Vandals and Alans."
+          },
+          {
+            "source": "euratlas",
+            "says": "Draws a hard political border. The atlas draws none."
+          }
+        ]
+      }
+    }
+  ]
+}

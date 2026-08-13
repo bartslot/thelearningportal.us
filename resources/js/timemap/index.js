@@ -7,6 +7,10 @@ import { addForestLayer } from '../map-forests.js';
 import { addScatterLayer } from '../map-scatter.js';
 import { addVolcanoLayer, setVolcanoVisibility } from '../map-volcanoes.js';
 import supplementalMarkers from './markers.json';
+// Territories we drew ourselves, where Cliopatria has nothing. A separate source on purpose: an
+// upstream refresh can never overwrite hand-drawn work, and hand-drawn work is never mistaken for
+// theirs. Everything below treats it as an ordinary territory.
+import { handTerritories, provenanceFor } from './hand-territories.js';
 import theme from './theme.json';
 import qidOverrides from '../../../database/data/cliopatria-qid-overrides.json';
 import { voyageStyleSources, voyageStyleLayers, initVoyages, applyVoyageYear, applyVoyageStyle, smooth } from './voyages.js';
@@ -82,6 +86,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         // True coastline (NE 50m, light-simplified) for the bold shore line + its southern drop-shadow.
         coastline: { type: 'geojson', data: `${location.origin}/timemap/coastline.geojson` },
         cliopatria: { type: 'vector', tiles: [`${location.origin}/cliopatria-tiles/{z}/{x}/{y}.pbf`], maxzoom: 4, promoteId: { boundaries: 'Wikidata' } },
+        // The hand-authored supplement. Its features carry Cliopatria's own property names
+        // (Name/Wikidata/FromYear/ToYear/Type), which is what lets the year filter, the colour
+        // palette, the label pass and the click path take it without a single special case.
+        // promoteId is our stable id rather than the QID: two territories could one day share a
+        // Wikidata item, and feature-state keyed on a shared id selects both.
+        'hand-territories': { type: 'geojson', data: handTerritories(), promoteId: 'id' },
         // Explorer voyage routes (curated GeoJSON, baked at import time from voyages.json).
         // Rounded borders: filled in from what is on screen, empty until the control asks for it.
         'boundaries-smooth': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
@@ -313,6 +323,49 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
 
   const GLOW_WIDTH = glowWidthExpr(1);
 
+  /**
+   * THE ONE PLACE A HAND-DRAWN TERRITORY IS ALLOWED TO LOOK DIFFERENT: its edge.
+   *
+   * Everything else about it is an ordinary territory — same fill, same palette, same hover, same
+   * click, same label. A lesson cannot tell the difference and has no business trying.
+   *
+   * But a border is a claim, and these have none. The Barrington Atlas does not draw a frontier for
+   * a Roman-era people; it prints the name across a region. Drawing that as a crisp line would tell
+   * a pupil we know exactly where the Cherusci stopped, which nobody does and nobody ever did.
+   *
+   * So the edge is dashed and blurred, and HOW blurred is driven by the recorded confidence — a
+   * `low` territory (Suebi, which was an umbrella for peoples spread over half of Germania) reads
+   * as a wash with barely an edge at all. That is the map saying out loud what the panel says in
+   * words, without a teacher having to open it.
+   */
+  const byConfidence = (low, medium) => ['match', ['get', 'confidence'], 'low', low, medium];
+
+  /**
+   * The edge's numbers, OWNED here rather than written into the paint.
+   *
+   * The same trap the territory fill fell into: applyMapStyle repaints this layer's colour on every
+   * style switch and applyBoundaryOpacity rewrites its opacity on every year tick, so a settings
+   * control that called setPaintProperty would work for a moment and then be silently wiped by an
+   * unrelated action. The expressions are BUILT from these, so there is nothing to overwrite.
+   */
+  const handEdge = {
+    opacityLow: 0.42, opacityMedium: 0.7,
+    blurLow: 3.2, blurMedium: 1.4,
+    width: 1, dash: 2,
+  };
+  const handLineOpacityExpr = () => byConfidence(handEdge.opacityLow, handEdge.opacityMedium);
+  const handLineBlurExpr = () => byConfidence(handEdge.blurLow, handEdge.blurMedium);
+  const handLineDash = () => [handEdge.dash, handEdge.dash * 1.25];
+  /**
+   * Softer than a Cliopatria border at every zoom, and never crisp.
+   *
+   * The width scale multiplies the STOPS, not the whole expression: MapLibre allows a `zoom`
+   * expression only at the top level, so `['*', expr, scale]` is rejected outright and the throw is
+   * swallowed by paint(). That is the bug that made all four hover-glow controls look dead.
+   */
+  const handLineWidthExpr = () => ['interpolate', ['linear'], ['zoom'],
+    ...[[0, 0.8], [4, 1.4], [8, 2.2]].flatMap(([z, w]) => [z, w * handEdge.width])];
+
   // Cliopatria polities valid at `year`: Type=POLITY, skip composite/alliance extents (names in
   // parentheses overlap their members), within the feature's FromYear..ToYear lifespan.
   const polityFilter = (year) => ['all',
@@ -401,10 +454,21 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       fillOverride.normal.opacity ?? base];
   };
 
+  /**
+   * Every layer that fills a territory. Cliopatria's and our own, in one list, because the whole
+   * claim of the hand-authored layer is that nothing downstream treats it differently — and the
+   * only way that stays true is if there is no second place to forget to update.
+   */
+  const TERRITORY_FILL_LAYERS = ['boundaries-fill', 'hand-fill'];
+
   /** The one way to repaint the territories. Everything that changes a fill value ends up here. */
   const applyTerritoryFill = () => {
     if (!map.getLayer('boundaries-fill')) return;
-    try { map.setPaintProperty('boundaries-fill', 'fill-color', territoryFillExpr()); } catch (e) { /* parsing */ }
+    const expr = territoryFillExpr();
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      try { map.setPaintProperty(layer, 'fill-color', expr); } catch (e) { /* parsing */ }
+    }
     refreshFillOpacity();
     applyBoundaryOpacity(state.year);
   };
@@ -424,9 +488,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let fadeMode = false;
   const applyBoundaryOpacity = (year) => {
     if (!map.getLayer('boundaries-fill')) return;
-    map.setPaintProperty('boundaries-fill', 'fill-opacity', fadeMode ? fillFadeExpr(year) : fillOpacityCase);
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      map.setPaintProperty(layer, 'fill-opacity', fadeMode ? fillFadeExpr(year) : fillOpacityCase);
+    }
     if (map.getLayer('boundaries-line')) {
       map.setPaintProperty('boundaries-line', 'line-opacity', fadeMode ? lineFadeExpr(year) : lineOpacityValue);
+    }
+    // The hand-drawn edge keeps its own confidence-driven opacity — it is not the style's border,
+    // it is a statement about how much we know — but it still fades with the year like everything
+    // else, or a played timeline would leave it hard against neighbours easing in and out.
+    if (map.getLayer('hand-line')) {
+      map.setPaintProperty('hand-line', 'line-opacity',
+        fadeMode ? ['*', handLineOpacityExpr(), fadeFactor(year)] : handLineOpacityExpr());
     }
   };
   // Wobbled ink-border lines (pre-filtered to POLITY at build time) carry only FromYear/ToYear.
@@ -447,6 +521,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     if (!map.getLayer('boundaries-fill')) return;
     map.setFilter('boundaries-fill', polityFilter(year));
     map.setFilter('boundaries-line', polityFilter(year));
+    // The SAME filter, not a parallel one. The hand-authored features carry Cliopatria's property
+    // names precisely so the year slider needs no second implementation to drift out of step with
+    // the first — see hand-territories.js.
+    for (const layer of ['hand-fill', 'hand-line']) {
+      if (map.getLayer(layer)) map.setFilter(layer, polityFilter(year));
+    }
     // NO era filter on the hover glow. It used to need one, when it drew from the Cliopatria vector
     // source and its features carried Type/Name/FromYear/ToYear like everything else. It now has its
     // own GeoJSON source that is EMPTY unless something is hovered, and those features carry no
@@ -516,7 +596,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const src = map.getSource('labels');
     if (!src || !map.getLayer('boundaries-fill')) return;
     const best = new Map(); // qid -> { area, c, name }
-    for (const f of map.queryRenderedFeatures({ layers: ['boundaries-fill'] })) {
+    const layers = TERRITORY_FILL_LAYERS.filter((l) => map.getLayer(l));
+    for (const f of map.queryRenderedFeatures({ layers })) {
       const name = f.properties.Name;
       if (name == null) continue;
       const id = String(f.properties.Wikidata);
@@ -630,6 +711,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     smoothPending = setTimeout(() => { smoothPending = null; rebuildSmoothBorders(); }, 120);
   };
   let selectedId = null;
+  /** Which source the open territory came from, so its highlight is cleared off the right one. */
+  let selectedHand = false;
+  const clearSelection = () => {
+    if (selectedId === null) return;
+    setSelected(selectedId, false, selectedHand);
+    selectedId = null;
+    selectedHand = false;
+  };
   let voyageShips = null; // set once the lazy three.js ships chunk loads
   /**
    * Light the outline under the pointer.
@@ -783,7 +872,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // So there is ONE name layer, always, and hovering only makes it bigger. Nothing moves.
     hoverLabel(name);
   };
-  const setSelected = (id, on) => map.setFeatureState({ source: 'cliopatria', sourceLayer: 'boundaries', id }, { selected: on });
+  /**
+   * The open territory's `selected` feature-state, on whichever source it came from.
+   *
+   * `hand` rather than a lookup, because feature ids are not unique ACROSS sources — Cliopatria
+   * keys on the QID and the hand layer on its own slug — and setting the state on the wrong source
+   * is silent: MapLibre accepts an id that matches nothing and simply never lights anything up.
+   */
+  const setSelected = (id, on, hand = false) => map.setFeatureState(
+    hand ? { source: 'hand-territories', id } : { source: 'cliopatria', sourceLayer: 'boundaries', id },
+    { selected: on },
+  );
 
   // ---- Map styles: switched live from the palette dropdown (window.__applyMapStyle). ----
   const ATLAS_PAL = theme.palette;
@@ -1166,6 +1265,44 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { styleOverride['boundaries-label.text-halo-color'] = v; ownedPaint('boundaries-label', 'text-halo-color', v); } },
       ], { tab: 'Map' }),
 
+      /**
+       * The hand-drawn territories, and the only part of them that is a taste call.
+       *
+       * Their POSITION is not tunable and must never be: it is traced from a scholarly atlas and
+       * lives in database/data/hand-territories.json, where a change to it arrives as a reviewable
+       * diff with a source attached. What is tunable is how loudly the edge admits it is a guess —
+       * and that has two settings, one per confidence level, because the whole point is that a
+       * low-confidence territory should look different from a medium-confidence one.
+       *
+       * "Show" exists for review rather than for teaching: turning it off is how you see which
+       * shapes on screen are ours and which are Cliopatria's.
+       */
+      window.__tune.register('Hand-drawn territories', [
+        { key: 'handShow', label: 'Show', type: 'boolean', value: true,
+          apply: (v) => {
+            for (const layer of ['hand-fill', 'hand-line']) {
+              if (map.getLayer(layer)) {
+                try { map.setLayoutProperty(layer, 'visibility', v ? 'visible' : 'none'); } catch (e) { /* parsing */ }
+              }
+            }
+          } },
+        { key: 'handEdgeColour', label: 'Edge', type: 'color', value: theme.line.color,
+          apply: (v) => { styleOverride['hand-line.line-color'] = v; ownedPaint('hand-line', 'line-color', v); } },
+        { key: 'handEdgeWidth', label: 'Edge width', min: 0, max: 4, step: 0.1, value: 1,
+          apply: (v) => { handEdge.width = v; paint('hand-line', 'line-width', handLineWidthExpr()); } },
+        { key: 'handDash', label: 'Dash length', min: 0.5, max: 8, step: 0.25, value: 2,
+          apply: (v) => { handEdge.dash = v; paint('hand-line', 'line-dasharray', handLineDash()); } },
+        { key: 'handOpacityMedium', label: 'Edge opacity · medium', min: 0, max: 1, step: 0.02, value: 0.7,
+          // Owned, not painted: applyBoundaryOpacity rewrites line-opacity on every year tick.
+          apply: (v) => { handEdge.opacityMedium = v; applyBoundaryOpacity(state.year); } },
+        { key: 'handOpacityLow', label: 'Edge opacity · low', min: 0, max: 1, step: 0.02, value: 0.42,
+          apply: (v) => { handEdge.opacityLow = v; applyBoundaryOpacity(state.year); } },
+        { key: 'handBlurMedium', label: 'Edge softness · medium', min: 0, max: 8, step: 0.2, value: 1.4,
+          apply: (v) => { handEdge.blurMedium = v; paint('hand-line', 'line-blur', handLineBlurExpr()); } },
+        { key: 'handBlurLow', label: 'Edge softness · low', min: 0, max: 8, step: 0.2, value: 3.2,
+          apply: (v) => { handEdge.blurLow = v; paint('hand-line', 'line-blur', handLineBlurExpr()); } },
+      ], { tab: 'Map' }),
+
       window.__tune.register('Hover glow', [
         { key: 'glowColour', label: 'Glow', type: 'color', value: GLOW_COLOR,
           apply: (v) => { glow.colour = v; applyGlow(); } },
@@ -1415,6 +1552,14 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       // actually happened was a style change. Whoever wants it hidden wins.
       const roundedBordersOn = smoothSamples >= 1;
       map.setLayoutProperty('boundaries-line', 'visibility', (s.borderSource || roundedBordersOn) ? 'none' : 'visible');
+      // The hand-drawn edge takes the style's border INK but none of its treatment: it keeps its own
+      // dash, blur and confidence-driven opacity in every style, and it is never hidden.
+      //
+      // Not hidden because the two things that hide a Cliopatria border replace it with another
+      // drawing of the SAME geometry — the wobbled ink tileset, or the rounded copy — and neither
+      // contains a hand-authored territory. Hiding this one would leave those territories as bare
+      // fills with no edge at all on the pen-ink style, which reads as a rendering fault.
+      ownedPaint('hand-line', 'line-color', s.line.color);
       ownedPaint('boundaries-label', 'text-color', s.text.color);
       ownedPaint('boundaries-label', 'text-halo-color', s.text.halo);
     }
@@ -1528,6 +1673,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'fill-opacity-transition': { duration: 150 },
       },
     });
+    // The hand-authored fill, immediately above Cliopatria's and painted from the same expression
+    // by applyTerritoryFill — same palette, same national colours, same selected/hover states.
+    // Above rather than below so that where the two overlap, what you click is what you can see.
+    map.addLayer({
+      id: 'hand-fill', type: 'fill', source: 'hand-territories',
+      paint: {
+        'fill-color': FILL_COLOR,
+        'fill-opacity': FILL_OPACITY,
+        'fill-opacity-transition': { duration: 150 },
+      },
+    });
     map.addLayer({
       id: 'boundaries-smooth', type: 'line', source: SMOOTH_SRC,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1565,6 +1721,19 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     map.addLayer({
       id: 'boundaries-line', type: 'line', source: 'cliopatria', 'source-layer': 'boundaries',
       paint: { 'line-color': theme.line.color, 'line-width': theme.line.width, 'line-opacity': theme.line.opacity },
+    });
+    // The hand-drawn edge — dashed, blurred, and blurrier still where confidence is low. See
+    // handEdge above for why this is the one thing that does NOT match a Cliopatria border.
+    map.addLayer({
+      id: 'hand-line', type: 'line', source: 'hand-territories',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': theme.line.color,
+        'line-width': handLineWidthExpr(),
+        'line-opacity': handLineOpacityExpr(),
+        'line-blur': handLineBlurExpr(),
+        'line-dasharray': handLineDash(),
+      },
     });
     // Rivers (Natural Earth, major only) — above borders, below labels; ink styles only.
     map.addLayer({
@@ -1657,6 +1826,16 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'circle-stroke-color': '#6b5a3e', 'circle-stroke-width': 1.4, 'circle-opacity': 0.85,
       },
     });
+    // BENEATH the territory names, and that is a placement decision rather than a stacking one.
+    //
+    // MapLibre resolves label collisions from the top of the layer stack down, so the last symbol
+    // layer added wins. With this one on top, "GERMANIA" — a hand-placed point marker, put there
+    // precisely BECAUSE the map had no Germanic territories — beat "CHATTI" and hid it. The
+    // placeholder was outranking the thing that replaced it, and only on the Chatti, because it is
+    // the one whose centroid falls near the marker.
+    //
+    // Specific beats generic on any map worth reading: a region name yields to the peoples inside
+    // it. markers-dot stays on top, so the marker is still visible and still clickable.
     map.addLayer({
       id: 'markers-label', type: 'symbol', source: 'markers',
       layout: {
@@ -1672,7 +1851,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
         'text-allow-overlap': false, 'text-optional': true, 'text-letter-spacing': 0.06,
       },
       paint: { 'text-color': '#6b5a3e', 'text-halo-color': '#f3ead6', 'text-halo-width': 1.2 },
-    });
+    }, map.getLayer('boundaries-label') ? 'boundaries-label' : undefined);
     // Weather over the globe. Reduced-motion users get the deck without the drift — and without
     // the per-frame repaint that drives it.
     let cloudOpacity = 0.5;
@@ -1727,34 +1906,40 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     applyMapStyle(savedStyle || 'soft-atlas');
     applyYear(state.year);
 
-    // Pointer cursor + hover highlight over historical regions.
-    map.on('mousemove', 'boundaries-fill', (e) => {
-      map.getCanvas().style.cursor = 'pointer';
-      if (!e.features.length) return;
-      if (e.features[0].id === hoveredId) {
-        // Same territory: the outline does not change, but the name FOLLOWS. Moving the point is a
-        // setData on two coordinates, which is why this can run on every mousemove.
-        if (cursorName) setCursorName(cursorName, e.lngLat);
-        return;
-      }
-      hoveredId = e.features[0].id;
-      const p = e.features[0].properties;
-      // Same QID resolution the click path uses — Cliopatria reuses a QID across different polities,
-      // so the name is part of the key.
-      const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
-      showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
-      // With resting labels off there is never anything to scale, so the pointer always answers.
-      // With them on, it answers only when the territory's own name is not already on screen.
-      const label = p.Name ?? null;
-      const needed = label && (!restingLabels || !restingLabelOnScreen(label));
-      setCursorName(needed ? label : null, e.lngLat);
-    });
-    map.on('mouseleave', 'boundaries-fill', () => {
-      map.getCanvas().style.cursor = '';
-      hoveredId = null;
-      showGlow(null);
-      setCursorName(null);
-    });
+    // Pointer cursor, hover highlight and the name that follows the cursor. Bound PER FILL LAYER
+    // with one shared handler, so a hand-authored territory behaves exactly as any other does under
+    // the pointer — which is most of what "renders as an ordinary territory" means in practice, and
+    // the cursor name is the newest thing it would otherwise have silently missed out on.
+    for (const layer of TERRITORY_FILL_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      map.on('mousemove', layer, (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        if (!e.features.length) return;
+        if (e.features[0].id === hoveredId) {
+          // Same territory: the outline does not change, but the name FOLLOWS. Moving the point is a
+          // setData on two coordinates, which is why this can run on every mousemove.
+          if (cursorName) setCursorName(cursorName, e.lngLat);
+          return;
+        }
+        hoveredId = e.features[0].id;
+        const p = e.features[0].properties;
+        // Same QID resolution the click path uses — Cliopatria reuses a QID across different
+        // polities, so the name is part of the key.
+        const hoverQid = p.Wikidata ? (QID_FOR_NAME.get(`${p.Wikidata}|${p.Name}`) || p.Wikidata) : null;
+        showGlow(e.features[0].geometry, p.Name ?? null, hoverQid);
+        // With resting labels off there is never anything to scale, so the pointer always answers.
+        // With them on, it answers only when the territory's own name is not already on screen.
+        const label = p.Name ?? null;
+        const needed = label && (!restingLabels || !restingLabelOnScreen(label));
+        setCursorName(needed ? label : null, e.lngLat);
+      });
+      map.on('mouseleave', layer, () => {
+        map.getCanvas().style.cursor = '';
+        hoveredId = null;
+        showGlow(null);
+        setCursorName(null);
+      });
+    }
 
     state.ready = true;
     sync();
@@ -1765,7 +1950,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     const box = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
     const marker = map.queryRenderedFeatures(box, { layers: ['markers-dot'] })[0];
     if (marker) {
-      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+      if (selectedId !== null) { clearSelection(); refreshLabels(); }
       const p = marker.properties;
       state.selectedRegion = p.id;
       sync();
@@ -1784,7 +1969,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // Voyage routes next (wide invisible hit line): open the panel via the voyage's QID.
     const voyage = map.getLayer('voyage-hit') && map.queryRenderedFeatures(box, { layers: ['voyage-hit'] })[0];
     if (voyage) {
-      if (selectedId !== null) { setSelected(selectedId, false); selectedId = null; refreshLabels(); }
+      if (selectedId !== null) { clearSelection(); refreshLabels(); }
       const p = voyage.properties;
       state.selectedRegion = p.qid;
       sync();
@@ -1793,11 +1978,17 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     }
 
     // Identify the clicked polity client-side from the rendered (era-filtered) features.
-    const hit = map.queryRenderedFeatures(e.point, { layers: ['boundaries-fill'] })[0];
+    // Both sources, in render order — the hand-authored layer sits above Cliopatria, so where the
+    // two overlap the hand-drawn one wins the click, which is what you see and so what you expect.
+    const hit = map.queryRenderedFeatures(e.point, {
+      layers: TERRITORY_FILL_LAYERS.filter((l) => map.getLayer(l)),
+    })[0];
+    const hand = !!hit?.properties?.hand;
 
-    if (selectedId !== null) setSelected(selectedId, false);
+    clearSelection();
     selectedId = hit ? hit.id : null;
-    if (selectedId !== null) setSelected(selectedId, true);
+    selectedHand = hand;
+    if (selectedId !== null) setSelected(selectedId, true, hand);
     refreshLabels(); // re-rank labels so the newly-selected territory's name wins collision
 
     const tileQid = hit ? hit.properties.Wikidata : null;
@@ -1824,7 +2015,23 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       : null;
 
     // QID drives enrichment (Cliopatria carries it natively); pass it as both id and qid.
-    window.dispatchEvent(new CustomEvent('polity-selected', { detail: { id: qid, name, qid } }));
+    //
+    // A hand-authored territory carries three things Cliopatria's cannot. Its DATES come from the
+    // feature rather than from the enrichment endpoint, because the endpoint reads Cliopatria's own
+    // era table and would answer "?" for a polity that is not in it. Its PROVENANCE comes from the
+    // authored record — deliberately not from feature properties, which MapLibre would have handed
+    // back as a JSON string. And `hand` tells the panel to show both.
+    window.dispatchEvent(new CustomEvent('polity-selected', {
+      detail: hand
+        ? {
+          id: qid, name, qid, hand: true,
+          territoryId: hit.properties.id,
+          inception: Number(hit.properties.FromYear),
+          dissolution: Number(hit.properties.ToYear),
+          provenance: provenanceFor(hit.properties.id),
+        }
+        : { id: qid, name, qid },
+    }));
   });
 
   // Called by the Alpine slider on input — continuous, no fetch.

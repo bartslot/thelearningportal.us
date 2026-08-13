@@ -25,13 +25,49 @@
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
 
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
-    <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false, selected: [] }"
+    <aside x-data="{
+               tab: 'summary', polity: null, loading: false, thumb: null, lead: null,
+               leadLoading: false, leadFailed: false, selected: [],
+               {{-- The paper trail, for territories we drew ourselves. Null for an imported one,
+                    which is not a branch in the UI so much as an absence of one: there is no
+                    per-feature provenance to show for a Cliopatria border, and the dataset-level
+                    credit is already on the map's attribution line. --}}
+               provenance: null, sourcesOpen: false,
+               {{-- What was clicked, captured at click time so the footer can hand it straight to
+                    the report dialog. The dialog itself is a SIBLING of this panel and owns the
+                    rest; see the timemap-report-requested listener below. --}}
+               reportContext: null,
+               grades: {
+                   A: @js(__('Scholarly atlas')),
+                   B: @js(__('Specialist project')),
+                   C: @js(__('Wikipedia, with a source')),
+                   D: @js(__('Wikipedia, no source given')),
+               },
+               {{-- A disagreement names a source by key; a teacher needs its title. --}}
+               sourceTitle(key) {
+                   return this.provenance?.sources.find((s) => s.key === key)?.title ?? key;
+               },
+           }"
            x-show="polity || loading"
            x-transition.opacity.duration.150ms
            x-on:polity-selected.window="
                 window.__timemapStopSpeak && window.__timemapStopSpeak();
                 if (!$event.detail.id) { polity = null; loading = false; return; }
                 tab = 'summary'; selected = [];
+                provenance = $event.detail.provenance || null;
+                sourcesOpen = false;
+                reportContext = {
+                    territory_id: $event.detail.territoryId || null,
+                    wikidata_qid: $event.detail.qid || null,
+                    label: $event.detail.name || '',
+                    source: $event.detail.hand ? 'hand' : 'cliopatria',
+                };
+                {{-- A hand-authored territory's dates come from the feature. The enrichment endpoint
+                     reads Cliopatria's own era table and answers '?' for a polity that is not in
+                     it, which would leave every one of these showing an empty lifespan. --}}
+                const handDates = $event.detail.hand
+                    ? { inception: $event.detail.inception ?? null, dissolution: $event.detail.dissolution ?? null }
+                    : {};
                 if ($event.detail.articleUrl) {
                     // Curated external-article marker (e.g. worldhistory.org) — render directly, no server call.
                     polity = { label: $event.detail.name, summary: $event.detail.summary || null,
@@ -48,7 +84,7 @@
                 // Instant from the prefetch cache when available; else fetch (and cache).
                 const cached = (window.__polityCache || {})[$event.detail.id];
                 if (cached) {
-                    polity = { ...cached, label: $event.detail.name || cached.label }; loading = false;
+                    polity = { ...cached, label: $event.detail.name || cached.label, ...handDates }; loading = false;
                     window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity);
                     {{-- Auto read-aloud removed: it hit ElevenLabs on every territory click and
                          drained credits fast. Read-aloud can return later as an explicit button
@@ -57,7 +93,7 @@
                 }
                 loading = true; polity = null;
                 fetch('/teacher/timemap/polity/' + $event.detail.id + '?name=' + encodeURIComponent($event.detail.name || '') + ($event.detail.qid ? '&qid=' + encodeURIComponent($event.detail.qid) : ''))
-                    .then(r => r.json()).then(d => { polity = d; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); });
+                    .then(r => r.json()).then(d => { polity = { ...d, ...handDates }; loading = false; (window.__polityCache = window.__polityCache || {})[$event.detail.id] = d; window.__timemapHydratePanel && window.__timemapHydratePanel($data, polity); });
            "
            {{-- Mobile: start below the settings cog (right-4 top-4, z-30) — at w-80 on a phone the
                 cog lands exactly on the panel's ✕ close button and steals its taps. --}}
@@ -168,9 +204,213 @@
                         <p><span class="opacity-70">{{ __('Succeeded by') }}:</span> <span x-text="polity.successor || '—'"></span></p>
                     </div>
                 </div>
+
+                {{-- WHERE THIS BORDER COMES FROM.
+                     Only for territories we drew ourselves. An imported border has no per-feature
+                     paper trail to show, and its dataset credit is already on the attribution line.
+
+                     The judgement sentence is never hidden: a teacher deciding between two lessons
+                     has to be told which border is firm without opening anything. The graded source
+                     list behind it is for the one who wants to check. --}}
+                <template x-if="provenance">
+                    <div class="mt-4 border-t border-card-hairline pt-3">
+                        <p class="lp-card-label">{{ __('Where this border comes from') }}</p>
+                        <p class="mt-1.5 leading-relaxed text-card-body" x-text="provenance.summary"></p>
+
+                        {{-- Say when confidence is low, in words, in the place a teacher is already
+                             looking. Not a colour and not an icon: this has to survive being
+                             skim-read, and "amber means uncertain" is a convention nobody taught. --}}
+                        <p class="mt-2 leading-relaxed text-card-body" x-show="provenance.confidence === 'low'">
+                            <span class="font-semibold text-card-title">{{ __('Low confidence.') }}</span>
+                            {{ __('Use it to show roughly where, never exactly where.') }}
+                        </p>
+
+                        <button type="button"
+                                class="lp-card-label mt-3 flex w-full items-center justify-between hover:text-card-body"
+                                :aria-expanded="sourcesOpen ? 'true' : 'false'"
+                                x-on:click="sourcesOpen = !sourcesOpen">
+                            <span x-text="sourcesOpen
+                                ? @js(__('Hide the sources'))
+                                : @js(__('Sources')) + ' (' + provenance.sources.length + ')'"></span>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform"
+                                 :class="sourcesOpen && 'rotate-180'"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                            </svg>
+                        </button>
+
+                        {{-- Long copy FADES rather than clipping — a hard cut says the text ended.
+                             See .lp-card-fade in brand-kit.css and the Figma's own "clipped frame
+                             for long texts". The bottom padding lets the last line clear the fade. --}}
+                        <div x-show="sourcesOpen" x-transition.opacity
+                             class="lp-card-fade mt-2 max-h-72 overflow-y-auto pb-8 pr-1"
+                             style="display:none">
+                            <template x-for="s in provenance.sources" :key="s.key">
+                                <div class="border-t border-card-hairline py-2">
+                                    <p class="lp-card-label">
+                                        <span x-text="grades[s.grade] || s.grade"></span>
+                                        <span x-show="s.year != null"> ·
+                                            <span x-text="s.year < 0 ? Math.abs(s.year) + ' BCE' : s.year"></span>
+                                        </span>
+                                    </p>
+                                    {{-- Underlined at rest, in the hairline rather than in the
+                                         accent: a source you cannot tell is clickable is a source
+                                         nobody checks, and the accent is reserved for dates and
+                                         links you are meant to notice. --}}
+                                    <a :href="s.url" target="_blank" rel="noopener"
+                                       class="mt-0.5 block leading-snug text-card-body underline decoration-card-hairline underline-offset-2 hover:text-card-accent hover:decoration-current"
+                                       x-text="s.title"></a>
+                                    {{-- The chosen one is marked in the TITLE colour, not the accent:
+                                         the accent means dates and links everywhere else on this
+                                         card and must keep meaning only that. --}}
+                                    <p x-show="s.key === provenance.chosen_source"
+                                       class="lp-card-label mt-1 text-card-title">{{ __('Drawn from this one') }}</p>
+                                    <p class="mt-1 leading-snug text-card-muted" x-text="s.note"></p>
+                                </div>
+                            </template>
+
+                            {{-- The disagreements ARE the finding. Tribal territories are drawn
+                                 differently by different scholars because the evidence is thin, and
+                                 hiding that would present a guess as a fact. --}}
+                            <div class="border-t border-card-hairline pt-2">
+                                <p class="lp-card-label">{{ __('Where the sources disagree') }}</p>
+                                <template x-for="d in provenance.disagreements" :key="d.source + d.says">
+                                    <p class="mt-1.5 leading-snug text-card-muted">
+                                        <span class="text-card-body" x-text="sourceTitle(d.source)"></span>
+                                        <span x-text="' — ' + d.says"></span>
+                                    </p>
+                                </template>
+                            </div>
+
+                            <div class="mt-2 border-t border-card-hairline pt-2">
+                                <p class="leading-snug text-card-muted" x-text="provenance.method"></p>
+                                <p class="lp-card-label mt-1.5" x-text="provenance.drawn_by"></p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- SOMETHING NOT RIGHT? REPORT — on every territory, imported or ours.
+                     A teacher who spots a wrong border is the cheapest reviewer this dataset will
+                     ever get, and a Cliopatria error is every bit as worth hearing about as one of
+                     ours. Same control, same place, whatever the territory. --}}
+                <div class="mt-4 border-t border-card-hairline pt-3 text-center">
+                    <span class="lp-card-label">{{ __('Something not right?') }}</span>
+                    <button type="button"
+                            x-on:click="$dispatch('timemap-report-requested', { ...reportContext, year: Math.round(window.__portal?.year ?? 0) })"
+                            class="lp-card-label ml-1.5 text-card-title underline underline-offset-2 hover:text-card-accent">{{ __('Report') }}</button>
+                </div>
             </div>
         </template>
+
     </aside>
+
+
+    {{-- THE REPORT DIALOG — a SIBLING of the panel, not a child of it, and that is the whole point.
+
+         It used to live inside the <aside>, which is x-show'd on there being an open polity. A
+         <dialog> under a display:none ancestor cannot be shown at all, so any control outside that
+         panel could never open it — and the information-card work is moving the card into its own
+         component, where the footer will be exactly that: outside.
+
+         So the dialog owns reporting and listens for `timemap-report-requested`. Anything that can
+         name a territory can raise it: this page's footer, the information card's footer, or a
+         control that does not exist yet. One dialog, one endpoint, any number of callers. --}}
+    <div x-data="{
+             context: null, comment: '', state: 'idle', year: 0,
+             eraLabel(y) { return y < 0 ? Math.abs(y) + ' BCE' : y + ' CE'; },
+             {{-- The year is CAPTURED when the dialog opens, not read again when Send is pressed.
+                  Two reasons, and the second is the bug that made this a method rather than an
+                  inline expression. A teacher may scrub the slider between opening this and
+                  sending it, and what they are reporting is what was on screen when they decided
+                  something was wrong. And `window.__portal` is not an Alpine dependency, so an
+                  x-text reading it directly evaluated once at first render and never again — the
+                  dialog showed \'0 CE\' while correctly sending 9. A number shown to a teacher
+                  that differs from the number sent is worse than showing none. --}}
+             open(detail) {
+                 this.context = { ...(detail || {}) };
+                 this.comment = '';
+                 this.state = 'idle';
+                 this.year = Number.isFinite(detail?.year)
+                     ? Math.round(detail.year)
+                     : Math.round(window.__portal?.year ?? 0);
+                 $refs.reportDialog.showModal();
+             },
+             send() {
+                 if (this.state === 'sending' || this.comment.trim().length < 3) return;
+                 this.state = 'sending';
+                 fetch('{{ route('teacher.timemap.report') }}', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Accept': 'application/json',
+                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content ?? '',
+                     },
+                     body: JSON.stringify({ ...this.context, year: this.year, comment: this.comment }),
+                 })
+                     .then((r) => { this.state = r.ok ? 'sent' : 'failed'; })
+                     .catch(() => { this.state = 'failed'; });
+             },
+         }"
+         x-on:timemap-report-requested.window="open($event.detail)">
+        {{-- The report dialog. Native <dialog>, so Esc and the DaisyUI backdrop form close it for
+             free; the ✕ is the third way. --}}
+        <dialog x-ref="reportDialog" class="modal">
+            <div class="modal-box max-w-md">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 class="text-lg font-bold">{{ __('Report an incorrect territory') }}</h3>
+                    <button type="button" class="btn btn-ghost btn-xs"
+                            aria-label="{{ __('Close') }}"
+                            x-on:click="$refs.reportDialog.close()">✕</button>
+                </div>
+
+                {{-- What the report will carry, shown rather than described. A teacher can see the
+                     year is included, which is the part they would otherwise type out by hand. --}}
+                <p class="lp-card-label mt-2" x-show="context">
+                    <span x-text="context?.label"></span>
+                    <span x-show="context"> · </span>
+                    <span x-text="eraLabel(year)"></span>
+                </p>
+
+                <template x-if="state !== 'sent'">
+                    <div>
+                        <textarea x-model="comment" rows="4"
+                                  class="textarea textarea-bordered mt-3 w-full"
+                                  :disabled="state === 'sending'"
+                                  placeholder="{{ __('What looks wrong?') }}"></textarea>
+
+                        <p x-show="state === 'failed'" class="mt-2 text-sm text-error" style="display:none">
+                            {{ __('That did not send. Please try again.') }}
+                        </p>
+
+                        <div class="modal-action">
+                            <button type="button" class="btn btn-ghost btn-sm"
+                                    x-on:click="$refs.reportDialog.close()">{{ __('Cancel') }}</button>
+                            <button type="button" class="btn btn-warning btn-sm"
+                                    :disabled="state === 'sending' || comment.trim().length < 3"
+                                    x-on:click="send()">
+                                <span x-show="state === 'sending'" class="loading loading-spinner loading-xs"></span>
+                                {{ __('Send report') }}
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="state === 'sent'">
+                    <div>
+                        <p class="mt-3">{{ __('Thank you. We have it, with the year you were looking at.') }}</p>
+                        <div class="modal-action">
+                            <button type="button" class="btn btn-sm"
+                                    x-on:click="$refs.reportDialog.close()">{{ __('Close') }}</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <form method="dialog" class="modal-backdrop">
+                <button aria-label="{{ __('Close') }}">{{ __('Close') }}</button>
+            </form>
+        </dialog>
+    </div>
 
     {{-- Time slider (oldmapsonline-style) --}}
     {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
