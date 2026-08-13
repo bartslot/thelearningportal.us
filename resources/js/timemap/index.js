@@ -423,6 +423,54 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   let usePalette = true;
 
   /**
+   * THE BORDER'S THREE STATES, which the fill has had for a while and the border never did.
+   *
+   * boundaries-line was painted with flat values — one colour, one width, one opacity — so a
+   * territory changed its fill on hover and its outline did not move at all. Asked for twice; the
+   * first time I built the fill half and called it done.
+   *
+   * Same shape as fillOverride on purpose: null means "this state has not been tuned, fall through
+   * to the resting value", so a control that has never been dragged cannot quietly pin a border to
+   * a default of mine.
+   */
+  const borderOverride = {
+    normal: { colour: null, width: null, opacity: null, blur: null },
+    hover: { colour: null, width: null, opacity: null, blur: null },
+    active: { colour: null, width: null, opacity: null, blur: null },
+  };
+
+  /**
+   * One case expression per paint property, selected → hover → resting.
+   *
+   * Order matters and is the same as the fill's: a territory that is BOTH open and under the
+   * pointer reads as open, because the click is the deliberate act and the hover is incidental.
+   */
+  const territoryBorderExpr = (prop, restingFallback) => {
+    const rest = borderOverride.normal[prop] ?? restingFallback;
+    const hover = borderOverride.hover[prop] ?? rest;
+    const active = borderOverride.active[prop] ?? hover;
+    // No case at all when nothing distinguishes the states — a flat value costs MapLibre less than
+    // a three-branch expression evaluated per feature per frame, and reads the same.
+    if (hover === rest && active === rest) return rest;
+    return ['case',
+      ['boolean', ['feature-state', 'selected'], false], active,
+      ['boolean', ['feature-state', 'hover'], false], hover,
+      rest];
+  };
+
+  /** Repaint every border property from the three states. The one way borders change. */
+  const applyTerritoryBorder = () => {
+    for (const [prop, name, fallback] of [
+      ['colour', 'line-color', theme.line.color],
+      ['width', 'line-width', theme.line.width],
+      ['opacity', 'line-opacity', theme.line.opacity],
+      ['blur', 'line-blur', 0],
+    ]) {
+      ownedPaint('boundaries-line', name, territoryBorderExpr(prop, fallback));
+    }
+  };
+
+  /**
    * The same problem for everything else applyMapStyle repaints: border colour, width, softness, the
    * label ink. A style switch used to reset all of them, so a tuned value survived only until the
    * next style change. Keyed `layer.property`; a value here wins over the style's.
@@ -1187,14 +1235,30 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           // 0 hands the state back to the style, which is the default and is NOT "invisible" — the
           // styles set their own base between 0.3 and 0.7. Anything above is an explicit override.
           apply: (v) => { fillOverride.normal.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
-      ], { tab: 'Map' }),
+              { key: 'normalBorderColour', label: 'Border', type: 'color', value: '#8a99b8',
+          apply: (v) => { borderOverride.normal.colour = v; applyTerritoryBorder(); } },
+        { key: 'normalBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
+          apply: (v) => { borderOverride.normal.width = v; applyTerritoryBorder(); } },
+        { key: 'normalBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
+          apply: (v) => { borderOverride.normal.opacity = v; applyTerritoryBorder(); } },
+        { key: 'normalBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
+          apply: (v) => { borderOverride.normal.blur = v; applyTerritoryBorder(); } },
+], { tab: 'Map' }),
 
       window.__tune.register('Territory · hover', [
         { key: 'hoverColour', label: 'Colour', type: 'color', value: theme.hover,
           apply: (v) => { fillOverride.hover.colour = v; applyTerritoryFill(); } },
         { key: 'hoverOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
           apply: (v) => { fillOverride.hover.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
-      ], { tab: 'Map' }),
+              { key: 'hoverBorderColour', label: 'Border', type: 'color', value: '#ecd9a0',
+          apply: (v) => { borderOverride.hover.colour = v; applyTerritoryBorder(); } },
+        { key: 'hoverBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
+          apply: (v) => { borderOverride.hover.width = v; applyTerritoryBorder(); } },
+        { key: 'hoverBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
+          apply: (v) => { borderOverride.hover.opacity = v; applyTerritoryBorder(); } },
+        { key: 'hoverBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
+          apply: (v) => { borderOverride.hover.blur = v; applyTerritoryBorder(); } },
+], { tab: 'Map' }),
 
       // The state that had no controls at all: what a territory looks like once it is clicked open.
       window.__tune.register('Territory · active', [
@@ -1202,7 +1266,15 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { fillOverride.active.colour = v; applyTerritoryFill(); } },
         { key: 'activeOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02, value: 0,
           apply: (v) => { fillOverride.active.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
-      ], { tab: 'Map' }),
+              { key: 'activeBorderColour', label: 'Border', type: 'color', value: '#f5c518',
+          apply: (v) => { borderOverride.active.colour = v; applyTerritoryBorder(); } },
+        { key: 'activeBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
+          apply: (v) => { borderOverride.active.width = v; applyTerritoryBorder(); } },
+        { key: 'activeBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
+          apply: (v) => { borderOverride.active.opacity = v; applyTerritoryBorder(); } },
+        { key: 'activeBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
+          apply: (v) => { borderOverride.active.blur = v; applyTerritoryBorder(); } },
+], { tab: 'Map' }),
 
       window.__tune.register('Advance', [
         { key: 'play', label: 'Play advance', type: 'button', apply: runAdvance },
