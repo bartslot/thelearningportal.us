@@ -189,6 +189,7 @@
                 Saved in this browser. Once it feels right, tell Claude the numbers and they become
                 the defaults in <span class="text-slate-400 font-mono">hero/lesson-demo.js</span>.
             </p>
+        </div>
         {{-- Settings — sliders for whatever this screen has registered as tunable. Live, never
              saved: the number you land on is one for a human to write into the code deliberately.
              The panel builds itself in JS (resources/js/dev/tuner.js) because what it contains is
