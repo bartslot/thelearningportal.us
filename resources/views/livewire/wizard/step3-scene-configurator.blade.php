@@ -1324,7 +1324,7 @@
     const __registerViewStore = () => {
         if (!window.Alpine || window.Alpine.store('view')) return;
         Alpine.store('view', {
-            scenes: true, objects: false, rulers: false, notes: false, script: true, railLast: 176,
+            scenes: true, objects: false, rulers: false, notes: false, script: true, layers: false, railLast: 176,
             // Which tab the bottom dock is showing: 'icons' | 'script'.
             bottomTab: 'script',
             objectsW: 208,   // object-list width (px); drag-resizable, ≤108px → icons-only
@@ -1340,7 +1340,7 @@
             _save() {
                 localStorage.setItem('wizard.view', JSON.stringify({
                     scenes: this.scenes, objects: this.objects, rulers: this.rulers,
-                    notes: this.notes, script: this.script, bottomTab: this.bottomTab,
+                    notes: this.notes, script: this.script, layers: this.layers, bottomTab: this.bottomTab,
                     railLast: this.railLast, objectsW: this.objectsW,
                 }));
             },
@@ -2074,12 +2074,36 @@
              rows: @js($globeLayerRows),
              reference: @js($globeReferenceRow),
              state: {},
+             {{-- Why a row is not on offer. Keyed by row; empty until the map has read the device.
+                  The WORDS are here and the RULE is in quality/availability.js, which is the same
+                  split `key` already keeps with layer-controls.js. --}}
+             availability: {},
+             reasonText: {
+                 network: @js(__('Needs Wi-Fi')),
+                 device: @js(__('Needs a better GPU')),
+             },
+             /** A row the surface never asked for is not shown at all — see readAvailability. */
+             shown(key) { return this.availability[key]?.reason !== 'scope'; },
+             offered(key) { return this.availability[key]?.available !== false; },
+             why(key) { return this.reasonText[this.availability[key]?.reason] ?? ''; },
+             {{-- The map publishes __globeAvailability once it has resolved the plan, which is after
+                  the globe chunk loads — so this both reads it now (if the map got there first) and
+                  listens for the event (if it did not). One of the two always fires; neither alone
+                  does, and getting that wrong shows as a panel that greys nothing on a slow load. --}}
+             readAvailability() {
+                 if (!window.__globeAvailability) return;
+                 this.availability = window.__globeAvailability(
+                     [...this.rows, this.reference].map((r) => r.key),
+                 );
+             },
              init() {
                  const fallback = {};
                  for (const row of [...this.rows, this.reference]) {
                      fallback[row.key] = { visible: row.default > 0, value: row.default };
                  }
                  this.state = fallback;
+                 this.readAvailability();
+                 window.addEventListener('globe-quality', () => this.readAvailability());
                  try {
                      const saved = JSON.parse(localStorage.getItem('tm-layers') || '{}');
                      for (const [key, entry] of Object.entries(saved)) {
@@ -2107,16 +2131,24 @@
              pushAll() { for (const key of Object.keys(this.state)) this.push(key); },
          }">
         <div class="max-h-72 overflow-y-auto px-3 py-2">
+            {{-- A layer this device cannot have is shown, greyed, with the one thing that would
+                 change it — not hidden. Hiding it would leave a teacher on a school Chromebook
+                 comparing notes with a colleague about a control they have never seen. A row this
+                 SURFACE does not carry is a different matter and is omitted (shown()): no machine
+                 would bring it back, so there is nothing to tell them. --}}
             <template x-for="row in rows" :key="row.key">
-                <div class="flex items-center gap-2 py-1.5">
+                <div class="flex items-center gap-2 py-1.5" x-show="shown(row.key)"
+                     :class="!offered(row.key) && 'opacity-40'"
+                     :data-tooltip="offered(row.key) ? null : why(row.key)">
                     <input type="checkbox" class="toggle toggle-xs toggle-primary shrink-0"
                            x-model="state[row.key].visible" @change="push(row.key)"
-                           :aria-label="row.label">
+                           :disabled="!offered(row.key)"
+                           :aria-label="offered(row.key) ? row.label : row.label + ' — ' + why(row.key)">
                     <span class="w-24 shrink-0 truncate text-xs text-slate-300" x-text="row.label"></span>
                     <input type="range" min="0" :max="row.max" step="0.05"
                            class="range range-xs range-primary grow"
                            x-model.number="state[row.key].value"
-                           :disabled="!state[row.key].visible"
+                           :disabled="!offered(row.key) || !state[row.key].visible"
                            @input="push(row.key)"
                            :aria-label="row.label + ' — {{ __('opacity') }}'">
                 </div>

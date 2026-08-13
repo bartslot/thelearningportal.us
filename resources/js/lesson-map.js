@@ -707,6 +707,27 @@ export function renderLessonMap (el, opts = {}) {
   /** Midsummer noon UTC of the scene's year — a defensible sun for a lesson that carries no hour. */
   const globeDate = () => new Date(Date.UTC(Number.isFinite(year) ? year : 2000, 5, 21, 12))
 
+  /**
+   * The device profile, read from THE MAP'S OWN GL CONTEXT.
+   *
+   * Not a throwaway canvas: MAX_TEXTURE_SIZE is a property of the context that will actually hold
+   * the texture, and a second context can be granted different limits — or refused outright once a
+   * browser's WebGL context budget is spent, which would report "no WebGL" on a machine happily
+   * rendering the map behind it.
+   *
+   * webgl2 is asked for first because getContext returns null for a type the canvas was not created
+   * with, and MapLibre v5 takes webgl2 where it can. Reversing these two silently yields null on
+   * every modern browser, and a null context reads as the weakest possible device.
+   */
+  const readGlobeProfile = (quality) => {
+    let gl = null
+    try {
+      const canvas = map.getCanvas()
+      gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
+    } catch (_) { /* a canvas that has gone away; the profile falls back below */ }
+    return quality.readCapabilities({ gl, navigator, window, document })
+  }
+
   function applyGlobe () {
     if (globe || globeLoading) return
     // addLayer throws "Style is not done loading" outright rather than queueing, and this is called
@@ -724,11 +745,36 @@ export function renderLessonMap (el, opts = {}) {
       return
     }
     globeLoading = true
-    import('./map-globe-layers.js')
-      .then(({ addGlobeLayers }) => {
+    Promise.all([import('./map-globe-layers.js'), import('./timemap/quality/index.js'), import('./timemap/quality/availability.js')])
+      .then(([{ addGlobeLayers }, quality, availability]) => {
         globeLoading = false
+
+        /**
+         * WHAT THIS DEVICE CAN AFFORD, before a single texture is requested.
+         *
+         * The lesson map's surface budget is 1.5 MB of assets and 32 MB resident — a tenth of the
+         * Time-Map's, because this map appears inside a lesson a class is already waiting on, and
+         * on the hardware a school actually owns. The cloud atlas alone is 1.8 MB, over the 1 MB
+         * single-asset ceiling on its own, so this is not a theoretical trim: resolveQuality drops
+         * or halves layers until the plan fits, and `permitted` stops the rest being fetched.
+         *
+         * The profile and plan are published for the Globe layers panel, which greys out what is
+         * not on offer and says why. Written before addGlobeLayers so the panel can never read a
+         * plan that disagrees with the map it is looking at.
+         */
+        const profile = readGlobeProfile(quality)
+        const plan = quality.resolveQuality({ profile, surface: 'lessonMap', optIn: true })
+        window.__globeQuality = { profile, plan, surface: 'lessonMap' }
+        // A FUNCTION, not a table: the panel owns its own row keys and they change without this
+        // file knowing. Handing over the plan and letting Blade re-derive the rule would put a
+        // second copy of "what counts as a network problem" in an Alpine expression, where it is
+        // untestable and would drift from availability.test.js the first time either side moved.
+        window.__globeAvailability = (keys) => availability.layerAvailability({ plan, profile, keys })
+        window.dispatchEvent(new CustomEvent('globe-quality', { detail: window.__globeQuality }))
+
         globe = addGlobeLayers(map, {
           date: globeDate(),
+          permitted: availability.globeLayerPermitted(plan),
           reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true,
           /**
            * Everything from the city dots up is annotation and belongs above the planet; everything

@@ -25,11 +25,16 @@
       ]
     },
     "lesson-map": {
-      "description": "Zero by default. Opt-in per lesson via dynamic import, so a lesson that does not ask pays nothing. This surface had ~1 MB of glyph chunks and three tilesets removed for cold-load time; it does not get spent back.",
+      "description": "The lesson map has one ground and it is the Earth, so the globe is no longer opt-in per lesson — but what it may spend still is. resolveQuality('lessonMap') decides at runtime and addGlobeLayers never creates a layer the plan refused, so the asset is not fetched rather than fetched and hidden. This surface had ~1 MB of glyph chunks and three tilesets removed for cold-load time; the ceilings below are unchanged from when it was opt-in and do not get raised to fit new work.",
+      "//declared": "What a CAPABLE device actually loads here, which is what this list has to state or the check is a false green. SURFACES.lessonMap asks for sky, relief and ocean only: the sun disc, the cloud deck and the orbits are dropped as out of scope on every machine, so they are not this surface's cost and are not listed. The sky texture is halved to 4096 against the 1 MB single-asset ceiling before it is allowed in. A weaker device or a metered connection gets less again, and the Globe layers panel greys what it cannot have.",
+      "//not-listed": "cloud-patches.webp is the reason this note exists. At 1.8 MB it is over the single-asset ceiling on its own and the surface never asks for it, so it must never appear here — if a future change puts clouds on the lesson map, this budget is what should stop it, and adding the file to this list to make the check pass would be defeating the instrument rather than reading it.",
       "transferBytes": 1572864,
       "vramBytes": 33554432,
       "maxSingleAssetTransferBytes": 1048576,
-      "assets": []
+      "assets": [
+        "public/img/map/milkyway.jpg",
+        "public/img/map/moon.jpg"
+      ]
     },
     "landing-hero": {
       "description": "First paint. Loaded after paint, never blocking.",

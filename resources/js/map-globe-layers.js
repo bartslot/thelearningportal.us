@@ -131,10 +131,16 @@ export const globeAnchorId = (map, beforeId) => {
  * @param {boolean} [opts.reduceMotion]   drop the per-frame drift (and the repaint that drives it)
  * @param {string}  [opts.beforeId]       insert beneath this layer. Omitted, the stack still goes
  *                                        under the first layer that draws text — see globeAnchorId.
+ * @param {function} [opts.permitted]     `(layerKey) => boolean`; a layer answering false is never
+ *                                        created, so its texture is never fetched. This is how a
+ *                                        surface budget is actually honoured — skipping the DRAW
+ *                                        while still downloading the asset would save nothing on
+ *                                        the connection, which is the half that binds in a school.
+ *                                        Omitted, every layer is added (the Time-Map's case).
  * @returns {{layers: object, remove: function}} teardown included: a style change replaces the map,
  *          and a setter left pointing at a dead GL context is how the panel starts throwing.
  */
-export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, beforeId } = {}) => {
+export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, beforeId, permitted = null } = {}) => {
   const sun = sunDirection(date)
   const animate = !reduceMotion
 
@@ -205,6 +211,10 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
   const anchor = globeAnchorId(map, beforeId)
   for (const [key, id, create] of STACK) {
     if (map.getLayer(id)) map.removeLayer(id)
+    // Skipped BEFORE create(): the texture urls live in the options each factory receives, so a
+    // layer that is built and then hidden has already asked the network for its image. On the
+    // lesson map that is the entire cost — the clouds are 1.8 MB whether or not they draw.
+    if (permitted && !permitted(key)) continue
     const layer = create(options[key])
     map.addLayer(layer, anchor)
     layers[key] = layer
