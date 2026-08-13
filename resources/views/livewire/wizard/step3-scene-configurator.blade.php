@@ -2140,13 +2140,17 @@
                 <div class="flex items-center gap-2 py-1.5" x-show="shown(row.key)"
                      :class="!offered(row.key) && 'opacity-40'"
                      :data-tooltip="offered(row.key) ? null : why(row.key)">
-                    <input type="checkbox" class="toggle toggle-xs toggle-primary shrink-0"
+                    {{-- Monochrome, not amber. This is chrome sitting ON the map, and the rule for
+                         that is the dark surface, three greys and white — amber means selection and
+                         hover on the map itself, and a panel full of it competes with the thing it
+                         is there to adjust. See the history-portal-ui skill, section 2. --}}
+                    <input type="checkbox" class="toggle toggle-xs shrink-0"
                            x-model="state[row.key].visible" @change="push(row.key)"
                            :disabled="!offered(row.key)"
                            :aria-label="offered(row.key) ? row.label : row.label + ' — ' + why(row.key)">
                     <span class="w-24 shrink-0 truncate text-xs text-slate-300" x-text="row.label"></span>
                     <input type="range" min="0" :max="row.max" step="0.05"
-                           class="range range-xs range-primary grow"
+                           class="range range-xs grow"
                            x-model.number="state[row.key].value"
                            :disabled="!offered(row.key) || !state[row.key].visible"
                            @input="push(row.key)"
@@ -2157,12 +2161,15 @@
             <div class="my-2 border-t border-slate-700/60"></div>
 
             <div class="flex items-center gap-2 py-1.5">
-                <input type="checkbox" class="toggle toggle-xs toggle-warning shrink-0"
+                {{-- The reference row is a different KIND of thing — it fades the NASA photograph
+                     over the render so the two can be compared — but it is still chrome over the
+                     map, so the divider above it does that work rather than a colour. --}}
+                <input type="checkbox" class="toggle toggle-xs shrink-0"
                        x-model="state[reference.key].visible" @change="push(reference.key)"
                        :aria-label="reference.label">
-                <span class="w-24 shrink-0 truncate text-xs text-amber-300" x-text="reference.label"></span>
+                <span class="w-24 shrink-0 truncate text-xs text-slate-300" x-text="reference.label"></span>
                 <input type="range" min="0" :max="reference.max" step="0.05"
-                       class="range range-xs range-warning grow"
+                       class="range range-xs grow"
                        x-model.number="state[reference.key].value"
                        :disabled="!state[reference.key].visible"
                        @input="push(reference.key)"
