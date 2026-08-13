@@ -458,18 +458,36 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       rest];
   };
 
-  /** Repaint every border property from the three states. The one way borders change. */
+  /**
+   * Repaint every border property from the three states. The one way borders change.
+   *
+   * Two things here were wrong and both read as "the controls do nothing":
+   *
+   * The RESTING fallback came from theme.json — black, 0.4px — while the active style paints its
+   * own border (soft-atlas is #6b5640 at 0.8px). Since touching any ONE state rebuilds the whole
+   * case expression, dragging the hover colour also slammed the resting border to black. The
+   * fallback has to be the style you are actually looking at, exactly as territoryFillExpr does it.
+   *
+   * And it painted boundaries-line only. That layer is hidden whenever rounded borders are on or
+   * the style draws its own ink (see the visibility line in applyMapStyle), so on those the panel
+   * was writing to a layer nobody can see. Every border layer that shares the polity source gets
+   * the same expression now — whichever one is visible is the one that answers.
+   */
+  const BORDER_LAYERS = ['boundaries-line', 'boundaries-smooth'];
   const applyTerritoryBorder = () => {
+    const s = MAP_STYLES[currentStyleName] || {};
     for (const [prop, name, fallback] of [
-      ['colour', 'line-color', theme.line.color],
-      ['width', 'line-width', theme.line.width],
-      ['blur', 'line-blur', 0],
+      ['colour', 'line-color', s.line?.color ?? theme.line.color],
+      ['width', 'line-width', s.line?.width ?? theme.line.width],
+      ['blur', 'line-blur', s.line?.blur ?? 0],
     ]) {
       // OWN IT. ownedPaint prefers styleOverride over the value handed to it, so writing the
       // expression here is what stops the older flat border controls discarding it every frame.
       const expr = territoryBorderExpr(prop, fallback);
-      styleOverride[`boundaries-line.${name}`] = expr;
-      ownedPaint('boundaries-line', name, expr);
+      for (const layer of BORDER_LAYERS) {
+        styleOverride[`${layer}.${name}`] = expr;
+        ownedPaint(layer, name, expr);
+      }
     }
   };
 

@@ -369,7 +369,10 @@
 
             {{-- ── The one primary action ───────────────────────────────────────────────────── --}}
             <div class="shrink-0 border-y border-card-hairline p-4">
-                <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity.label) + (selected.length ? '&protagonist_qid=' + encodeURIComponent(selected[0].qid) + '&protagonist_name=' + encodeURIComponent(selected[0].name) : '')"
+                {{-- polity?. because :href is an attribute binding, not a template: when the card
+                     closes it re-evaluates once against a null polity before x-if tears it down,
+                     and an uncaught TypeError there aborts the whole Alpine effect mid-flush. --}}
+                <a :href="'{{ route('teacher.lessons.create') }}?topic=' + encodeURIComponent(polity?.label ?? '') + (selected.length ? '&protagonist_qid=' + encodeURIComponent(selected[0].qid) + '&protagonist_name=' + encodeURIComponent(selected[0].name) : '')"
                    wire:navigate
                    class="btn h-9 min-h-0 w-full gap-2 rounded-card-pill border-none bg-card-action text-[13px] font-bold text-card-action-label hover:bg-card-action">
                     <x-icons.academic-cap class="h-4 w-4" />
