@@ -22,6 +22,7 @@ import { createDaylightLayer, DAYLIGHT_LAYER_ID } from './timemap/daylight.js'
 import { createAtmosphereLayer, ATMOSPHERE_LAYER_ID } from './timemap/atmosphere.js'
 import { createCloudLayer, CLOUD_LAYER_ID } from './timemap/clouds.js'
 import { createOceanWaterLayer, OCEAN_LAYER_ID } from './timemap/ocean-water.js'
+import { createBloomLayer, BLOOM_LAYER_ID } from './timemap/bloom.js'
 import { sunDirection } from './timemap/sun.js'
 import { registerLayerControls, readStoredLayers, applyLayerState } from './timemap/layer-controls.js'
 import { parseColour } from './dev/tuner.js'
@@ -80,6 +81,18 @@ const STACK = [
   ['daylight', DAYLIGHT_LAYER_ID, (o) => createDaylightLayer(o)],
   ['clouds', CLOUD_LAYER_ID, (o) => createCloudLayer(o)],
   ['atmosphere', ATMOSPHERE_LAYER_ID, (o) => createAtmosphereLayer(o)],
+  /**
+   * LAST, because it is a post-process and there has to be something to process.
+   *
+   * It copies the frame MapLibre has drawn so far and adds a mip-chain glare back over it, so
+   * every layer above must already be down. Being last in STACK puts it immediately below the
+   * anchor, which is exactly the right place: it blooms the planet and NOT the labels above it.
+   * Text catching glare looks like a rendering fault, not like optics.
+   *
+   * This was built, tested and benchmarked at 0.075 ms in 1709bb9 — and then imported by nothing
+   * for weeks, which is the same failure earth-style.spec.ts was written after.
+   */
+  ['bloom', BLOOM_LAYER_ID, (o) => createBloomLayer(o)],
 ]
 
 /**
@@ -203,6 +216,23 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
     daylight: { ...field, sun, date },
     // Haze at 1.25 rather than the module's 1 — off the tuner, same session as the sea values.
     atmosphere: { sun, strength: 1.25 },
+    /**
+     * Glare, at the module's own defaults.
+     *
+     * Deliberately not retuned here on the way in. Its numbers were measured rather than guessed —
+     * threshold 0.6 with a 0.12 knee, and a per-level tint that warms at the wide scales because
+     * the aureole around a bright source really is redder further out — so the first honest move is
+     * to look at it, not to pre-empt it with a number of mine.
+     *
+     * LOOKED AT IT. Threshold 0.6 blooms the whole Sahara to white — the daylit desert in Blue
+     * Marble already sits near the top of the range, and render-target.js is UNSIGNED_BYTE, so the
+     * scene texture CLAMPS AT 1.0 and there is no headroom above the ground to put a threshold in.
+     * The module's own note says as much: a pass wanting headroom above 1.0 must encode it rather
+     * than assume the buffer has it. Until something does, the threshold has to sit just under the
+     * brightest ground, and the strength has to be modest because everything it catches is only
+     * barely above the cut.
+     */
+    bloom: { threshold: 0.86, strength: 0.45, knee: 0.06 },
   }
 
   const layers = {}
@@ -381,6 +411,34 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('moon', { glow: v }) },
       { key: 'moonGlowExtent', label: 'Moon glow reach', min: 0, max: 4, step: 0.1, value: 1.8,
         apply: (v) => set('moon', { glowExtent: v }) },
+    ], { tab: 'Earth' }),
+
+    /**
+     * GLARE — the first consumer of the post-process pass.
+     *
+     * The pass copies MapLibre's frame, pulls the bright parts out, and adds a mip chain of blurs
+     * back over it. Four downsamples and four upsamples, because two gaussians read as fog: real
+     * glare spans two orders of magnitude of radius and each level has to contribute its own band.
+     *
+     * `threshold` is the control that matters. Too low and the whole planet glows, which is the
+     * classic amateur bloom; too high and only the sun blooms and the lit cloud tops stay flat. The
+     * knee softens the cut so a pixel does not pop in and out of the bright pass as the camera
+     * moves a fraction of a pixel.
+     */
+    window.__tune?.register('Glare', [
+      { key: 'strength', label: 'Strength', min: 0, max: 3, step: 0.05, value: 0.45,
+        apply: (v) => set('bloom', { strength: v }) },
+      // Range stops at 1: the scene texture is UNSIGNED_BYTE and clamps there, so a threshold
+      // above 1 catches nothing at all and the slider would just silently switch glare off.
+      { key: 'threshold', label: 'Threshold', min: 0, max: 1, step: 0.01, value: 0.86,
+        apply: (v) => set('bloom', { threshold: v }) },
+      { key: 'knee', label: 'Knee', min: 0, max: 0.5, step: 0.01, value: 0.06,
+        apply: (v) => set('bloom', { knee: v }) },
+      { key: 'radius', label: 'Radius', min: 0.2, max: 2, step: 0.05, value: 1,
+        apply: (v) => set('bloom', { radius: v }) },
+      // Real optics do not scatter evenly across wavelengths; off gives a neutral glare.
+      { key: 'chromatic', label: 'Warm at the edges', type: 'boolean', value: true,
+        apply: (v) => set('bloom', { chromatic: v }) },
     ], { tab: 'Earth' }),
   ]
 
