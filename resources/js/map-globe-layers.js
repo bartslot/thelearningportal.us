@@ -367,6 +367,20 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('sun', { brightness: v }) },
       { key: 'moon', label: 'Moon', min: 0, max: 2, step: 0.05, value: 1,
         apply: (v) => set('moon', { brightness: v }) },
+      /**
+       * THE MOON IS 12 PIXELS AND THAT IS CORRECT.
+       *
+       * It subtends half a degree; inside MapLibre's 36.87° field of view that is 1.4% of the
+       * screen height. `sizeScale` exists and is deliberately NOT on this panel — inflating the
+       * moon is the one thing here a teacher could catch us at, and the moon has already been
+       * wrong once (twenty degrees of position, hidden for months by tests that only checked
+       * invariants). So the disc keeps its true angular size and these two make it READ: a bright
+       * object glows, in an eye, a lens and a sensor alike.
+       */
+      { key: 'moonGlow', label: 'Moon glow', min: 0, max: 1.5, step: 0.05, value: 0.4,
+        apply: (v) => set('moon', { glow: v }) },
+      { key: 'moonGlowExtent', label: 'Moon glow reach', min: 0, max: 4, step: 0.1, value: 1.8,
+        apply: (v) => set('moon', { glowExtent: v }) },
     ], { tab: 'Earth' }),
   ]
 

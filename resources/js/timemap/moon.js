@@ -175,15 +175,37 @@ uniform vec3 u_up;
 uniform vec3 u_forward;         // from the camera toward the moon
 uniform float u_brightness;
 uniform float u_hasAlbedo;
+uniform float u_discEdge;       // where the moon's limb falls inside the quad, 0..1
+uniform float u_glow;           // halo strength; 0 leaves the disc exactly as it was
+uniform float u_glowExtent;     // how far the halo reaches, in disc radii
 ${EQUIRECT_GLSL}
 
 void main() {
-  float r2 = dot(v_corner, v_corner);
-  if (r2 > 1.0) discard;                       // the quad's corners are not the moon
+  // THE QUAD IS BIGGER THAN THE MOON when there is a halo to draw, so v_corner is normalised
+  // against the limb rather than against the quad. u_discEdge is 1.0 with the glow off, which
+  // makes this identical to what it was.
+  vec2 corner = v_corner / u_discEdge;
+  float r2 = dot(corner, corner);
+
+  if (r2 > 1.0) {
+    // ── The halo ──────────────────────────────────────────────────────────────────────────
+    //
+    // The moon is half a degree wide and there is no honest way to make it bigger, so this makes
+    // the pixels it does have carry further. It is not a lie about the moon's SIZE: the disc below
+    // keeps its true angular radius and the glow is what a bright object does to an eye, a lens
+    // and a camera sensor alike.
+    //
+    // Additive, via premultiplied alpha — vec4(colour, 0.0) adds without covering, so the halo
+    // brightens the starfield behind it instead of stamping a grey ring over it.
+    float t = clamp((sqrt(r2) - 1.0) / max(u_glowExtent, 1e-4), 0.0, 1.0);
+    float falloff = pow(1.0 - t, 3.0);
+    gl_FragColor = vec4(vec3(0.62, 0.62, 0.60) * u_glow * falloff * u_brightness, 0.0);
+    return;
+  }
 
   // Rebuild the sphere the quad stands in for: z out of the disc toward the viewer.
   float z = sqrt(1.0 - r2);
-  vec3 normal = normalize(u_right * v_corner.x + u_up * v_corner.y - u_forward * z);
+  vec3 normal = normalize(u_right * corner.x + u_up * corner.y - u_forward * z);
 
   // Phase. Not drawn — a consequence of lighting a sphere from where the sun actually is.
   float lambert = max(dot(normal, u_sun), 0.0);
@@ -213,6 +235,16 @@ void main() {
  */
 export const createMoonLayer = ({
   date = new Date(), sun = [1, 0, 0], albedoUrl = null, sizeScale = 1, brightness = 1,
+  /**
+   * The halo, and the reason it exists.
+   *
+   * The moon subtends half a degree. Inside MapLibre's 36.87 degree field of view that is 1.4% of
+   * the screen — about twelve pixels tall on a laptop — and twelve flat grey pixels do not read as
+   * the moon. The honest fix is not to inflate `sizeScale`, which would be a lie a viewer could
+   * check; it is to let a bright object glow, which is what one does in every eye and every lens.
+   * The disc keeps its true angular radius underneath.
+   */
+  glow = 0.4, glowExtent = 1.8,
 } = {}) => {
   let map = null
   let gl = null
@@ -220,7 +252,7 @@ export const createMoonLayer = ({
   let albedoTexture = null
   let albedoReady = false
   const programs = new Map()
-  let state = { date, sun, albedoUrl, sizeScale, brightness }
+  let state = { date, sun, albedoUrl, sizeScale, brightness, glow, glowExtent }
 
   const programFor = (shaderData) => {
     const key = shaderData.variantName
@@ -241,6 +273,9 @@ export const createMoonLayer = ({
         up: gl.getUniformLocation(program, 'u_up'),
         forward: gl.getUniformLocation(program, 'u_forward'),
         brightness: gl.getUniformLocation(program, 'u_brightness'),
+        discEdge: gl.getUniformLocation(program, 'u_discEdge'),
+        glow: gl.getUniformLocation(program, 'u_glow'),
+        glowExtent: gl.getUniformLocation(program, 'u_glowExtent'),
         matrix: gl.getUniformLocation(program, 'u_projection_matrix'),
         tileMercatorCoords: gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
         clippingPlane: gl.getUniformLocation(program, 'u_projection_clipping_plane'),
@@ -363,10 +398,19 @@ export const createMoonLayer = ({
       const angularRadius = Math.atan((MOON_RADIUS_M * state.sizeScale) / distance)
       const halfFov = (args.fov || 0.6435) / 2
       const canvas = map.getCanvas()
-      const halfHeight = Math.tan(angularRadius) / Math.tan(halfFov)
+      const discHalfHeight = Math.tan(angularRadius) / Math.tan(halfFov)
+
+      // THE QUAD GROWS, THE MOON DOES NOT. A halo needs somewhere to be drawn, and the quad was
+      // sized exactly to the disc — so it is widened by the glow's reach and the shader is told
+      // where the limb now falls inside it (u_discEdge). With the glow off this is 1.0 and the
+      // geometry is bit-for-bit what it was.
+      const reach = state.glow > 0 ? Math.max(0, state.glowExtent) : 0
+      const quadScale = 1 + reach
+      const halfHeight = discHalfHeight * quadScale
       if (uniforms.size) {
         gl.uniform2f(uniforms.size, halfHeight * (canvas.height / canvas.width), halfHeight)
       }
+      if (uniforms.discEdge) gl.uniform1f(uniforms.discEdge, 1 / quadScale)
 
       // The billboard's basis in planet space, so the shader can build sphere normals in the same
       // frame the sun vector lives in — which is what makes the phase come out right. Built from
@@ -380,6 +424,8 @@ export const createMoonLayer = ({
       if (uniforms.up) gl.uniform3f(uniforms.up, ...up)
       if (uniforms.sun) gl.uniform3f(uniforms.sun, ...state.sun)
       if (uniforms.brightness) gl.uniform1f(uniforms.brightness, state.brightness)
+      if (uniforms.glow) gl.uniform1f(uniforms.glow, state.glow)
+      if (uniforms.glowExtent) gl.uniform1f(uniforms.glowExtent, state.glowExtent)
       if (uniforms.hasAlbedo) gl.uniform1f(uniforms.hasAlbedo, albedoReady ? 1 : 0)
       if (albedoReady && uniforms.albedo) {
         gl.activeTexture(gl.TEXTURE0)
