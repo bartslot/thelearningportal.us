@@ -466,7 +466,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
       ['opacity', 'line-opacity', theme.line.opacity],
       ['blur', 'line-blur', 0],
     ]) {
-      ownedPaint('boundaries-line', name, territoryBorderExpr(prop, fallback));
+      // OWN IT. ownedPaint prefers styleOverride over the value handed to it, so writing the
+      // expression here is what stops the older flat border controls discarding it every frame.
+      const expr = territoryBorderExpr(prop, fallback);
+      styleOverride[`boundaries-line.${name}`] = expr;
+      ownedPaint('boundaries-line', name, expr);
     }
   };
 
@@ -1116,10 +1120,9 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
      *
      * The selected territory is shown by its FILL, not by its border; see territoryFillExpr.
      */
-    const borderColour = (colour) => {
-      styleOverride['boundaries-line.line-color'] = colour;
-      ownedPaint('boundaries-line', 'line-color', colour);
-    };
+    // The 'Territory borders' group IS the resting state — it used to set a flat colour that
+    // fought the per-state expression, each overwriting the other depending on which ran last.
+    const borderColour = (colour) => { borderOverride.normal.colour = colour; applyTerritoryBorder(); };
 
     const camera = { startLng: 0, startLat: 20, startZoom: 0.4, endLng: 8.23, endLat: 46.8, endZoom: 4, seconds: 3.5 };
 
@@ -1235,15 +1238,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           // 0 hands the state back to the style, which is the default and is NOT "invisible" — the
           // styles set their own base between 0.3 and 0.7. Anything above is an explicit override.
           apply: (v) => { fillOverride.normal.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
-              { key: 'normalBorderColour', label: 'Border', type: 'color', value: '#8a99b8',
-          apply: (v) => { borderOverride.normal.colour = v; applyTerritoryBorder(); } },
-        { key: 'normalBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
-          apply: (v) => { borderOverride.normal.width = v; applyTerritoryBorder(); } },
-        { key: 'normalBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
-          apply: (v) => { borderOverride.normal.opacity = v; applyTerritoryBorder(); } },
-        { key: 'normalBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
-          apply: (v) => { borderOverride.normal.blur = v; applyTerritoryBorder(); } },
-], { tab: 'Map' }),
+      ], { tab: 'Map' }),
 
       window.__tune.register('Territory · hover', [
         { key: 'hoverColour', label: 'Colour', type: 'color', value: theme.hover,
@@ -1252,11 +1247,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { fillOverride.hover.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
               { key: 'hoverBorderColour', label: 'Border', type: 'color', value: '#ecd9a0',
           apply: (v) => { borderOverride.hover.colour = v; applyTerritoryBorder(); } },
-        { key: 'hoverBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
+        { key: 'hoverBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: 2,
           apply: (v) => { borderOverride.hover.width = v; applyTerritoryBorder(); } },
-        { key: 'hoverBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
+        { key: 'hoverBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
           apply: (v) => { borderOverride.hover.opacity = v; applyTerritoryBorder(); } },
-        { key: 'hoverBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
+        { key: 'hoverBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: 0,
           apply: (v) => { borderOverride.hover.blur = v; applyTerritoryBorder(); } },
 ], { tab: 'Map' }),
 
@@ -1268,11 +1263,11 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
           apply: (v) => { fillOverride.active.opacity = v > 0 ? v : null; applyTerritoryFill(); } },
               { key: 'activeBorderColour', label: 'Border', type: 'color', value: '#f5c518',
           apply: (v) => { borderOverride.active.colour = v; applyTerritoryBorder(); } },
-        { key: 'activeBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: null,
+        { key: 'activeBorderWidth', label: 'Border width', min: 0, max: 8, step: 0.1, value: 2,
           apply: (v) => { borderOverride.active.width = v; applyTerritoryBorder(); } },
-        { key: 'activeBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: null,
+        { key: 'activeBorderOpacity', label: 'Border opacity', min: 0, max: 1, step: 0.05, value: 1,
           apply: (v) => { borderOverride.active.opacity = v; applyTerritoryBorder(); } },
-        { key: 'activeBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: null,
+        { key: 'activeBorderBlur', label: 'Border softness', min: 0, max: 6, step: 0.1, value: 0,
           apply: (v) => { borderOverride.active.blur = v; applyTerritoryBorder(); } },
 ], { tab: 'Map' }),
 
