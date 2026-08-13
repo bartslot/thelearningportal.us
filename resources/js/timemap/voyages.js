@@ -249,9 +249,19 @@ export function voyageStyleLayers(fontStack = ['Cinzel']) {
  *  era filter. The clouds layer (renderingMode:'3d') writes depth across the whole globe, so any
  *  depth-tested layer drawn after it — every line layer — silently fails the depth test and
  *  disappears; voyage lines must therefore render before it. */
-export function initVoyages(map, { year = null, beforeId = undefined } = {}) {
+export function initVoyages(map, { year = null, beforeId = undefined, labelBeforeId = undefined } = {}) {
   for (const id of LAYERS) {
-    if (map.getLayer(id)) map.moveLayer(id, beforeId);
+    if (!map.getLayer(id)) continue;
+    // THE LABEL IS NOT A LINE, and the depth argument above is about lines.
+    //
+    // Moving all three below tm-clouds put voyage-label inside the globe stack — under the clouds,
+    // the haze and the glare — so a route's name came out washed and half-erased wherever the deck
+    // crossed it. That reads as a font or a halo problem, which is exactly how the same fault was
+    // reported for territory names before ("Constantinople" cut in two at the Bosphorus).
+    //
+    // Text goes above the globe with the rest of the writing; only the geometry needs to duck under
+    // the cloud layer's depth write.
+    map.moveLayer(id, id === 'voyage-label' ? labelBeforeId : beforeId);
   }
   if (year !== null) applyVoyageYear(map, year);
 }

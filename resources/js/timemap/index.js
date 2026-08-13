@@ -1880,7 +1880,12 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     globe = addGlobeLayers(map, {
       date: dateForYear(state.year),
       reduceMotion,
-      beforeId: 'boundaries-label',
+      // NO ANCHOR ON PURPOSE, so globeAnchorId finds the FIRST layer that draws text.
+      //
+      // This used to name 'boundaries-label' and that is not the first one — `markers-label` sits
+      // well below it, so the sea went over the curated markers' names while the territory names it
+      // was aimed at came out fine. Naming a layer here overrides the search that exists precisely
+      // to get this right, and the search cannot be wrong about which text is lowest.
     });
     cloudLayer = globe.layers.clouds;
     // Honour the density this browser last chose, which predates the shared panel and is still what
@@ -1891,7 +1896,8 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
     // clicking one opens the info panel via its Wikidata QID. Their sources/layers live in the
     // initial style; this lifts them above the boundary layers but keeps them BELOW the
     // tm-clouds 3D layer, whose globe-wide depth writes would otherwise cull them (see voyages.js).
-    initVoyages(map, { year: state.year, beforeId: CLOUD_LAYER_ID });
+    // Geometry ducks under the cloud layer's depth write; the NAME goes up with the other writing.
+    initVoyages(map, { year: state.year, beforeId: CLOUD_LAYER_ID, labelBeforeId: 'boundaries-label' });
     // The sailing tall ship (three.js custom layer) rides in its own lazy chunk — same
     // below-the-clouds placement, same era window as the routes.
     import('./voyage-ships.js')
