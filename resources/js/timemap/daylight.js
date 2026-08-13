@@ -102,6 +102,7 @@ uniform float u_lightsAmount;  // 0 when the texture has not loaded
 uniform sampler2D u_relief;    // baked terrain normals, equirectangular; see terrain-normals.js
 uniform float u_reliefPower;   // 0 when there is no relief map, or the camera is too close for it
 uniform float u_cloudShadow;   // how much of the light a full cloud takes away
+uniform float u_shadowSoftness; // how wide the cloud-cover band that fades a shadow in is
 uniform float u_cloudAltitude; // deck height in earth radii — sets how far a shadow is thrown
 uniform vec3 u_moon;           // the moon's POSITION in earth radii, not its direction
 uniform float u_sunRadius;     // the sun's angular radius; 0 on any date without an eclipse
@@ -160,7 +161,18 @@ void main() {
     // The same threshold the deck opens its coverage with, so a shadow exists exactly where a
     // cloud does. No procedural detail: from orbit, a shadow thrown from the deck is a soft blob
     // and the filaments do not survive the trip down.
-    float shadow = smoothstep(0.16, 0.62, cover) * cloudShadowFade(normal, sunDir);
+    // THE SHADOW'S EDGE, and it used to be the hardcoded pair (0.16, 0.62).
+    //
+    // A shadow is not drawn from a silhouette here; it is faded in across how much cloud is
+    // overhead. So the WIDTH of that band is the edge: a narrow one steps from lit to shadowed
+    // within a hair of cover and reads as a hard-edged stencil laid on the planet, which is what
+    // Bart saw. A real cloud shadow has a penumbra several kilometres across, because the sun is
+    // half a degree wide rather than a point.
+    //
+    // The band stays centred on 0.39 — the same midpoint the old pair had — so softening spreads
+    // the edge without moving where the shadow sits or changing how much ground it covers.
+    float halfBand = mix(0.05, 0.39, u_shadowSoftness);
+    float shadow = smoothstep(0.39 - halfBand, 0.39 + halfBand, cover) * cloudShadowFade(normal, sunDir);
     day *= 1.0 - u_cloudShadow * shadow;
     lit *= 1.0 - shadow;
   }
@@ -294,6 +306,13 @@ export const createDaylightLayer = ({
    * one number, not an opinion.
    */
   cloudShadow = 0.5,
+  /**
+   * 0 = a hard stencil, 1 = a wide penumbra. Was effectively 0.47, which is the width the old
+   * hardcoded (0.16, 0.62) pair worked out to; it ships softer because Bart's verdict on that was
+   * "the shadows are waaaaay too crisp". Exposed on the Clouds panel so the final number is one he
+   * drags rather than one I picked.
+   */
+  shadowSoftness = 0.75,
   eclipse = true,
   date = null,
   // The cloud field, in the same shape clouds.js takes it. Both layers must be given the same
@@ -316,6 +335,7 @@ export const createDaylightLayer = ({
   let state = {
     sun, nightDarkness, lightsUrl, lightsAmount, nightColour, twilightColour, twilightCool, twilightStrength,
     reliefUrl, reliefWidth, reliefPower, cloudShadow, eclipse, date,
+    shadowSoftness,
     fieldUrl, patchUrl, windUrl, windAmount, windScale, windRate, driftRate, animate,
   }
 
@@ -345,6 +365,7 @@ export const createDaylightLayer = ({
         relief: gl.getUniformLocation(program, 'u_relief'),
         reliefPower: gl.getUniformLocation(program, 'u_reliefPower'),
         cloudShadow: gl.getUniformLocation(program, 'u_cloudShadow'),
+        shadowSoftness: gl.getUniformLocation(program, 'u_shadowSoftness'),
         cloudAltitude: gl.getUniformLocation(program, 'u_cloudAltitude'),
         moon: gl.getUniformLocation(program, 'u_moon'),
         sunRadius: gl.getUniformLocation(program, 'u_sunRadius'),
@@ -459,6 +480,7 @@ export const createDaylightLayer = ({
         : 0
       if (uniforms.reliefPower) gl.uniform1f(uniforms.reliefPower, state.reliefPower * reliefFade)
       if (uniforms.cloudShadow) gl.uniform1f(uniforms.cloudShadow, state.cloudShadow)
+      if (uniforms.shadowSoftness) gl.uniform1f(uniforms.shadowSoftness, state.shadowSoftness)
       if (uniforms.cloudAltitude) gl.uniform1f(uniforms.cloudAltitude, CLOUD_ALTITUDE_M / EARTH_RADIUS_M)
 
       // The eclipse block is skipped entirely unless the moon is actually near the sun today, and

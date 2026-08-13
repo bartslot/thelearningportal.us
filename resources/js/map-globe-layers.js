@@ -269,6 +269,11 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
         apply: (v) => set('clouds', { windRate: v }) },
       { key: 'cloudShadow', label: 'Shadows', min: 0, max: 1, step: 0.01, value: 0.5,
         apply: (v) => set('daylight', { cloudShadow: v }) },
+      // HOW DARK vs HOW SOFT — two different complaints, and only the first had a knob. The band
+      // that fades a shadow in across cloud cover was hardcoded, so the only way to answer "too
+      // crisp" was to turn the shadows down, which answers a question nobody asked.
+      { key: 'shadowSoftness', label: 'Shadow edge', min: 0, max: 1, step: 0.01, value: 0.75,
+        apply: (v) => set('daylight', { shadowSoftness: v }) },
       // Both readers, always. A tiling knob moved on the deck alone would leave the ground casting
       // the shadow of a sky nobody is drawing, and the drift between them looks like a bug in the
       // shadows rather than like two settings that disagree.
