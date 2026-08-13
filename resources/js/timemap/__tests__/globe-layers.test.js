@@ -208,8 +208,11 @@ describe('the moon is not drawn where the moon is', () => {
       layer.onAdd(mapStub(), gl)
       layer.render(gl, { ...v5Args(), fov: FOV })
 
-      // u_size.y is the disc's half-height as a fraction of the half field of view.
-      const halfHeight = uniforms.u_size[1]
+      // u_size.y is the QUAD's half-height, and the quad is deliberately larger than the moon: it
+      // has to hold the halo. u_discEdge is where the limb falls inside it, so the disc is the
+      // product of the two — and the disc is what this test is about. Reading u_size alone measured
+      // the glow's reach and called it the moon, which is how a 1.4° "moon" got through.
+      const halfHeight = uniforms.u_size[1] * uniforms.u_discEdge
       const apparentDeg = 2 * Math.atan(halfHeight * Math.tan(FOV / 2)) * 180 / Math.PI
       // The moon runs 0.49° at apogee to 0.57° at perigee. Anything outside that means the draw
       // distance has leaked into the size.
