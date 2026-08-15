@@ -42,7 +42,10 @@ NUL
 .claude/worktrees/
 
 # Large generated audio assets — keep out of git (served from storage)
-/public/sound/
+/public/sound/*
+# …except the authored sound effects. They are hand-made, they are kilobytes, and the UI that plays
+# them 404s without them — which is silent, so nothing would say so.
+!/public/sound/sfx/
 
 /public/flags/
 

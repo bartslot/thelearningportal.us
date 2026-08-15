@@ -107,6 +107,181 @@ test('timemap-scrubber: one bar, monochrome, and a ruler that emphasises by weig
   expect(offCentury).toBe('');
 });
 
+/**
+ * The ruler adapts to how fast you are moving it.
+ *
+ * Asserted on the INLINE opacity, not the computed one. An opacity transition runs on the
+ * compositor, so getComputedStyle on the main thread reports the value it was passing through —
+ * it read 0 for a third of a second after the years were already on their way in. The inline value
+ * is the decision the code made, which is what this test is about.
+ */
+test('timemap-scrubber-fine: a slow scrub brings the single years in, a fling does not', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  const deck = (await page.locator('[data-timemap-deck]').boundingBox())!;
+  const years = () => page.evaluate(() => (document.querySelector('.tm-years') as HTMLElement).style.opacity);
+  const mid = { x: deck.x + deck.width * 0.7, y: deck.y + 20 };
+
+  expect(await years(), 'the years are not drawn at rest').toBe('0');
+
+  // Thrown across a century, it stays a ruler of decades.
+  //
+  // The negative is only asserted if the machine actually managed a fling. A scripted throw is
+  // whatever speed the box can deliver, and on a loaded one each step lands slower than a careful
+  // hand — at which point "the years stayed out" would be testing nothing and failing for it.
+  await page.mouse.move(mid.x, mid.y);
+  await page.mouse.down();
+  const t0 = Date.now();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(mid.x - i * 55, mid.y);
+  const flungAt = (8 * 55) / Math.max(1, Date.now() - t0); // ruler px per ms
+  const during = await years();
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+  if (flungAt > 0.3) expect(during, 'a fling must not bring the years in').toBe('0');
+  else console.log(`(skipped the fling assertion: only managed ${flungAt.toFixed(2)} px/ms)`);
+
+  // Eased along a few years, the years arrive.
+  await page.mouse.move(mid.x, mid.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 14; i++) { await page.mouse.move(mid.x - i * 3, mid.y); await page.waitForTimeout(90); }
+  expect(await years(), 'a crawl must bring the years in').toBe('1');
+
+  // Every release lands on a whole year: at 4px a year, scrollLeft is a multiple of 4 or the
+  // playhead is sitting between two of them.
+  await page.mouse.up();
+  const left = await page.evaluate(() => document.querySelector('.tm-scroll')!.scrollLeft);
+  expect(left % 4, `scrollLeft ${left} is not a whole year`).toBe(0);
+
+  await page.waitForTimeout(1200);
+  expect(await years(), 'the years go again once the scrub stops').toBe('0');
+});
+
+test('timemap-scrubber-flash: scrubbing calls the year out over the map, in History', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  const flash = page.locator('[data-timemap-year-flash]');
+  await expect(flash).toHaveText('');
+
+  // The face has to be fetched up front. Nothing else on this page renders CSS text in it — the
+  // map's labels are SDF glyphs inside WebGL — so without that, the first year a teacher ever
+  // scrubbed to appeared in the fallback serif and swapped a moment later.
+  await page.waitForFunction(() => document.fonts.check('600 56px History'), undefined, { timeout: 10_000 });
+  await expect(flash).toHaveCSS('font-family', /History/);
+
+  const deck = (await page.locator('[data-timemap-deck]').boundingBox())!;
+  await page.mouse.move(deck.x + deck.width * 0.7, deck.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(deck.x + deck.width * 0.7 - 60, deck.y + 20);
+  await page.mouse.up();
+
+  const shown = await page.evaluate(() => {
+    const el = document.querySelector('[data-timemap-year-flash]') as HTMLElement;
+    return { text: el.textContent, opacity: el.style.opacity };
+  });
+  expect(shown.opacity).toBe('1');
+  expect(shown.text).toBe(await page.locator('.tm-year-input').inputValue());
+
+  // …and it is a flash, not a readout.
+  await page.waitForTimeout(1600);
+  expect(await page.evaluate(() =>
+    (document.querySelector('[data-timemap-year-flash]') as HTMLElement).style.opacity)).toBe('0');
+});
+
+/**
+ * Dock magnification: the ticks stand up under the pointer and settle either side.
+ *
+ * The pointer is WALKED in rather than jumped to. A single synthetic move to a position the mouse
+ * has never occupied leaves the hover unset in headless Chromium, and this measured a perfectly
+ * flat ruler while the feature was working — a false red that looked exactly like a real one.
+ */
+test('timemap-scrubber-magnify: hovering swells the ruler under the pointer', async ({ page }) => {
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  const deck = (await page.locator('[data-timemap-deck]').boundingBox())!;
+
+  const profile = () => page.evaluate(() => {
+    const track = document.querySelector('.tm-track')!.getBoundingClientRect();
+    return [...document.querySelectorAll('.tm-strip div')]
+      .map((t) => ({ x: Math.round(t.getBoundingClientRect().left - track.left),
+                     h: parseFloat(getComputedStyle(t).height) }))
+      .filter((t) => t.x >= 0 && t.x <= track.width)
+      .sort((a, b) => a.x - b.x);
+  });
+
+  expect([...new Set((await profile()).map((t) => t.h))], 'flat at rest').toEqual([30]);
+
+  const cx = deck.x + deck.width * 0.55;
+  for (let i = 6; i >= 0; i--) { await page.mouse.move(cx + i * 12, deck.y + 20); await page.waitForTimeout(30); }
+  await page.waitForTimeout(400);
+
+  const trackLeft = await page.evaluate(() => document.querySelector('.tm-track')!.getBoundingClientRect().left);
+  const cursor = Math.round(cx - trackLeft);
+  const hovered = await profile();
+  const tallest = hovered.reduce((a, t) => (t.h > a.h ? t : a), hovered[0]);
+
+  // The peak is at the pointer, and it reaches the height the design asks for.
+  expect(Math.abs(tallest.x - cursor), 'the swell is centred on the pointer').toBeLessThan(40);
+  expect(tallest.h).toBeCloseTo(44, 0);
+
+  // …and it falls away, rather than being a step. Monotonic outward on both sides.
+  const left = hovered.filter((t) => t.x < tallest.x && t.x > tallest.x - 120).map((t) => t.h);
+  const right = hovered.filter((t) => t.x > tallest.x && t.x < tallest.x + 120).map((t) => t.h);
+  expect(left, 'rises toward the pointer from the left').toEqual([...left].sort((a, b) => a - b));
+  expect(right, 'falls away to the right').toEqual([...right].sort((a, b) => b - a));
+
+  // Beyond the radius nothing has moved.
+  expect([...new Set(hovered.filter((t) => Math.abs(t.x - cursor) > 200).map((t) => t.h))]).toEqual([30]);
+
+  await page.mouse.move(deck.x + deck.width / 2, deck.y - 300);
+  await page.waitForTimeout(700);
+  expect([...new Set((await profile()).map((t) => t.h))], 'flat again once the pointer leaves').toEqual([30]);
+});
+
+test('timemap-scrubber-tick: scrubbing clicks, one click per year', async ({ page }) => {
+  const audio: string[] = [];
+  page.on('response', (r) => { if (r.url().includes('/sound/')) audio.push(`${r.status()} ${r.url()}`); });
+  // Count what the page schedules. Instrumented here rather than exposed by the module — a test
+  // hook in production code is a worse trade than a patched prototype in a test.
+  await page.addInitScript(() => {
+    (window as any).__clicks = [];
+    const C = (window as any).AudioContext;
+    const create = C.prototype.createBufferSource;
+    C.prototype.createBufferSource = function (this: AudioContext) {
+      const node = create.call(this);
+      const start = node.start;
+      node.start = function (when?: number, offset?: number, dur?: number) {
+        (window as any).__clicks.push(Math.round((offset ?? 0) * 1000));
+        return start.call(this, when, offset, dur);
+      };
+      return node;
+    };
+  });
+  await page.goto('/teacher/timemap');
+  await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
+  await page.waitForTimeout(1500);
+  // Not a count: the page from beforeEach is still fetching its own copy when this listener
+  // attaches, so one navigation can legitimately show two. What matters is that it is served.
+  expect(audio.filter((a) => a.startsWith('200') && a.includes('scrubber.mp3')).length,
+    'the click sprite must be served').toBeGreaterThan(0);
+  expect(audio.filter((a) => !a.startsWith('200')), 'nothing under /sound/ may 404').toEqual([]);
+
+  // Park just below a century, then crawl across it: an ordinary year, a decade and a century all
+  // get a different click, and that is the whole point of using the file's loudness ladder.
+  await page.locator('.tm-year-input').fill('1596');
+  await page.waitForTimeout(600);
+  await page.evaluate(() => { (window as any).__clicks = []; });
+
+  const deck = (await page.locator('[data-timemap-deck]').boundingBox())!;
+  await page.mouse.move(deck.x + deck.width * 0.6, deck.y + 20);
+  await page.mouse.down();
+  for (let i = 1; i <= 16; i++) { await page.mouse.move(deck.x + deck.width * 0.6 - i * 4, deck.y + 20); await page.waitForTimeout(70); }
+  await page.mouse.up();
+
+  const clicks: number[] = await page.evaluate(() => (window as any).__clicks);
+  expect(clicks.length, 'a click for each year crossed').toBeGreaterThan(8);
+  // Offsets are FOUND in the decoded audio, not written down, so this asserts they were found at
+  // all and that more than one of the five is in use.
+  expect(new Set(clicks).size, 'more than one click in rotation').toBeGreaterThan(2);
+  expect(Math.max(...clicks), 'the loudest click is reserved for the century').toBeGreaterThan(150);
+});
+
 test('timemap-scrubber-play: the play control toggles to pause and advances the year', async ({ page }) => {
   await page.waitForFunction(() => (window as any).__portal?.ready === true, { timeout: 20_000 });
   await page.locator('.tm-year-input').fill('1200');

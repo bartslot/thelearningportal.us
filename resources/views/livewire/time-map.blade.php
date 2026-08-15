@@ -24,6 +24,13 @@
 
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
 
+    {{-- The year you are scrubbing to, called out where your eyes already are. Driven by
+         resources/js/timemap/year-flash.js; empty and invisible until the first scrub. --}}
+    <div data-timemap-year-flash
+         class="pointer-events-none absolute inset-x-0 top-8 z-20 select-none text-center font-history font-semibold tabular-nums text-card-title"
+         style="opacity:0;font-size:var(--scrubber-flash-size);line-height:1;text-shadow:0 1px 18px rgb(0 0 0 / 0.65)"
+         aria-hidden="true"></div>
+
     {{-- Polity info panel — a floating card that overlays the map only after a region is clicked. --}}
     <aside x-data="{ tab: 'summary', polity: null, loading: false, thumb: null, lead: null, leadLoading: false, leadFailed: false, selected: [] }"
            x-show="polity || loading"

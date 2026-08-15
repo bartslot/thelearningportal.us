@@ -105,12 +105,29 @@
   --scrubber-width: 54.6875rem;      /* 875px */
   --scrubber-height: 2.9375rem;      /* 47px  */
   --scrubber-tick-height: 1.875rem;  /* 30px, hanging from the top edge */
+
+  /* Single years. Same colour and same edge as the decades, a thin line and a short one, so they
+     subdivide the ruler rather than competing with it — and they are only drawn while the scrub is
+     slow enough to be aiming at one. A hatch this fine, left on, would swallow the decade ticks. */
+  --scrubber-year-tick-height: 0.5rem;   /* 8px */
+  --scrubber-year-tick-width: 1px;
+
+  /* The year, big, while you scrub. Set in the History face — the only place on this bar that is
+     not a control, so it is the only place that reads in the brand's own voice. */
+  --scrubber-flash-size: 3.5rem;         /* 56px */
   /* 36px = tick + the 6px gap under it. The label's line box is the REMAINDER of the bar rather
      than the font's own line-height, so the digits centre in the space left and never touch the
      bottom edge whatever these two are set to. */
   --scrubber-label-top: 2.25rem;
   --scrubber-band-width: 16.75rem;   /* 268px */
   --scrubber-px-per-year: 4;         /* decade tick every 40px, century every 400px */
+
+  /* Magnification, as the Dock does it: the ticks under the pointer stand up, and the ones either
+     side follow, less and less, out to the radius. The tallest tick reaches almost the full bar —
+     the effect has to be worth having, and this is the only thing on the scrubber that responds to
+     a hover at all. */
+  --scrubber-magnify-height: 2.75rem;  /* 44px, against the 30px they rest at */
+  --scrubber-magnify-radius: 7rem;     /* 112px — a little under three decades either side */
 }
 
 /**
