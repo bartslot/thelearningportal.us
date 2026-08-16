@@ -1437,5 +1437,9 @@
     "validation.required": "Dit veld is verplicht.",
     "years old": "jaar oud",
     "you": "jij",
-    "became": "werd"
+    "became": "werd",
+    "Play timeline": "Tijdlijn afspelen",
+    "Pause timeline": "Tijdlijn pauzeren",
+    "Timeline year": "Jaar op de tijdlijn",
+    "Year (negative for BCE)": "Jaar (negatief voor v.Chr.)"
 }

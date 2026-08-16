@@ -1392,5 +1392,9 @@
     "validation.required": "Dieses Feld ist erforderlich.",
     "years old": "Jahre alt",
     "you": "du",
-    "became": "wurde zu"
+    "became": "wurde zu",
+    "Play timeline": "Zeitleiste abspielen",
+    "Pause timeline": "Zeitleiste pausieren",
+    "Timeline year": "Jahr auf der Zeitleiste",
+    "Year (negative for BCE)": "Jahr (negativ für v. Chr.)"
 }

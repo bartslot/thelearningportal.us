@@ -24,6 +24,16 @@
 
     {{-- Clouds are now rendered as a native MapLibre 3D custom layer instead of a 2D screen overlay. --}}
 
+    {{-- The year you are scrubbing to, called out where your eyes already are. Driven by
+         resources/js/timemap/year-flash.js; empty and invisible until the first scrub. --}}
+    <div data-timemap-year-flash
+         class="pointer-events-none absolute inset-x-0 top-8 z-20 select-none text-center font-history font-semibold tabular-nums text-card-title"
+         style="opacity:0;font-size:var(--scrubber-flash-size);line-height:1;text-shadow:0 1px 18px rgb(0 0 0 / 0.65)"
+         aria-hidden="true"></div>
+
+    {{-- Their side also carried an inline copy of the polity panel. main extracted that into
+         <x-timemap.information-card /> below, so only the year flash is taken from the
+         scrubber branch — keeping both would have restored the old card AND the new one. --}}
     {{-- The territory information card. Figma node 1462:1886; see the history-portal-ui skill.
          Lives in its own component because this file is edited by nearly every map session and
          150 lines of card in the middle of it made every one of them a conflict. --}}
@@ -136,14 +146,24 @@
         </dialog>
     </div>
 
-    {{-- Time slider (oldmapsonline-style) --}}
+    {{-- The time scrubber — Figma node 1471:2238. One bar: no padding, no shadow, no second row;
+         everything it needs sits inside those 47px. Its geometry is tokens, so the dev panel can
+         move it without this file knowing. --}}
     {{-- data-timemap-deck: the map measures this to know how much of its own container it cannot
          be seen in, and shrinks itself so the globe centres in what is left. Without it the earth
          sits half the deck's height too low and the southern hemisphere hides behind this card. --}}
-    <div class="absolute bottom-0 left-1/2 z-10 mb-6 w-176 max-w-[92vw] -translate-x-1/2 rounded-box bg-base-100/95 px-5 py-3 shadow-xl"
+    <div class="absolute bottom-0 left-1/2 z-10 mb-6 max-w-[92vw] -translate-x-1/2 rounded-card bg-scrubber-surface"
+         style="width: var(--scrubber-width); height: var(--scrubber-height)"
          data-timemap-deck
          x-ref="sliderbox"
-         x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}))">
+         {{-- The play control is icon-only, so its tooltip is the name a teacher actually reads —
+              which makes these five-language strings, and they can only be translated here. --}}
+         x-init="$nextTick(() => window.mountAtlasSlider($refs.sliderbox, $refs.map, {{ $year }}, @js([
+             'play' => __('Play timeline'),
+             'pause' => __('Pause timeline'),
+             'track' => __('Timeline year'),
+             'year' => __('Year (negative for BCE)'),
+         ])))">
     </div>
 
     {{-- Colour strength: scales territory fill intensity. National colours (NL orange, France

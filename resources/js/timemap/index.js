@@ -2,6 +2,8 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatReadout } from './era.js';
 import { mountTimeSlider } from './slider.js';
+import { mountYearFlash } from './year-flash.js';
+import { mountScrubTick } from './scrub-tick.js';
 import { addMountainLayer } from '../map-mountains.js';
 import { addForestLayer } from '../map-forests.js';
 import { addScatterLayer } from '../map-scatter.js';
@@ -2327,7 +2329,7 @@ window.initTimeMap = function initTimeMap(el, wire, initialYear) {
   return map;
 };
 
-window.mountAtlasSlider = function (el, mapEl, initialYear) {
+window.mountAtlasSlider = function (el, mapEl, initialYear, labels) {
   // Throttle map updates (leading + trailing, ~100ms). _setYear is continuous/no-fetch, so this
   // keeps the map animating live while the timeline is played or dragged, while capping filter
   // churn, and the trailing call guarantees the map lands on the final year.
@@ -2347,10 +2349,15 @@ window.mountAtlasSlider = function (el, mapEl, initialYear) {
     }
   };
   const slider = mountTimeSlider(el, {
-    min: -4000, max: 2010, value: initialYear,
+    min: -4000, max: 2010, value: initialYear, labels,
     onYear: (year) => pushYear(year),
     onPlay: (playing) => { if (mapEl._setFadeMode) mapEl._setFadeMode(playing); },
   });
+  // Both of these listen for the scrubber's own `timemap-scrub` event rather than being called by
+  // it, so the scrubber knows nothing about the map's overlays or about audio.
+  mountYearFlash(document.querySelector('[data-timemap-year-flash]'));
+  mountScrubTick();
+
   // Let other UI (e.g. the panel's era links) scrub the timeline + map to a given year.
   window.__setTimemapYear = (year) => {
     const y = Math.round(Number(year));

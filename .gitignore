@@ -46,6 +46,8 @@ NUL
 # …except the shipped soundtrack. These are product assets, not generated output: the lesson
 # player 404s without them, and deploys that build from `git archive` would leave them behind.
 !/public/sound/bg-music/
+# …except the authored sound effects. They are hand-made, they are kilobytes, and the UI that plays
+# them 404s without them — which is silent, so nothing would say so.
 !/public/sound/sfx/
 
 /public/flags/
