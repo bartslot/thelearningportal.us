@@ -1391,5 +1391,6 @@
     "validation.min.string": "Dieses Feld ist zu kurz.",
     "validation.required": "Dieses Feld ist erforderlich.",
     "years old": "Jahre alt",
-    "you": "du"
+    "you": "du",
+    "became": "wurde zu"
 }
