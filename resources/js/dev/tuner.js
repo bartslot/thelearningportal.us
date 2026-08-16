@@ -239,6 +239,9 @@ const rowFor = (group, control) => {
       ...(control.type === 'number' ? { min: control.min ?? '', max: control.max ?? '', step: control.step ?? 1 } : {}),
     })
     input.oninput = () => applyValue(group, control, control.type === 'number' ? Number(input.value) : input.value)
+    // Same gesture as the sliders: double-click the field to put the committed default back.
+    input.title = `Default ${control.value} — double-click to reset`
+    input.ondblclick = () => { input.value = String(control.value ?? ''); applyValue(group, control, control.value) }
     return el('label', { className: 'lp-tune-row' }, [label, input, el('span')])
   }
 
@@ -310,14 +313,25 @@ const rowFor = (group, control) => {
     readout.textContent = fmt(Number(slider.value))
     applyValue(group, control, Number(slider.value))
   }
-  // Double-click the label to put it back to what the code actually has, so a session of dragging
-  // is always one click from the committed value.
-  label.title = `Default ${fmt(control.value)} — double-click to reset`
-  label.ondblclick = () => {
+  /**
+   * Double-click ANY of the three to put it back to what the code actually has.
+   *
+   * This was on the label only, which is the one part of the row nobody aims at — you are dragging
+   * the slider or reading the number, so that is where the gesture has to be. A session of pulling
+   * a value around is always one double-click from the committed default.
+   */
+  const reset = () => {
     slider.value = String(control.value)
     readout.textContent = fmt(control.value)
     applyValue(group, control, control.value)
   }
+  const hint = `Default ${fmt(control.value)} — double-click to reset`
+  label.title = hint
+  slider.title = hint
+  readout.title = hint
+  label.ondblclick = reset
+  slider.ondblclick = reset
+  readout.ondblclick = reset
   return el('label', { className: 'lp-tune-row' }, [label, slider, readout])
 }
 
@@ -463,6 +477,36 @@ if (!window.__tune) {
    * look is how you end up comparing two things that were never the same thing.
    */
   let presetName = ''
+  /**
+   * EVERYTHING THE PRESET ALREADY HAD, PLUS WHAT IS ON SCREEN NOW.
+   *
+   * values() can only report groups that are REGISTERED AT THIS MOMENT, and most of them are not
+   * permanent: the ocean, clouds, sky, glare and colour grade are registered by the globe layers,
+   * which exist only while the Earth style is mounted. Writing values() straight into the file —
+   * which is what saving used to do — therefore DELETED every one of those settings the moment you
+   * saved from any other style. The preset came back looking like a different map and nothing said
+   * why, because from the panel's point of view it had faithfully saved everything it could see.
+   *
+   * So a write is a merge, per group, over whatever is already stored.
+   */
+  const mergedValues = (name) => {
+    const stored = presetStore.presets?.[name] ?? {}
+    const merged = { ...stored }
+    for (const [group, vals] of Object.entries(values({ meta: false }))) {
+      merged[group] = { ...(merged[group] ?? {}), ...vals }
+    }
+    return merged
+  }
+
+  const writePreset = (name, { announce }) => presetFetch('POST', { name, values: mergedValues(name) })
+    .then((res) => {
+      presetStore.presets[name] = mergedValues(name)
+      presetStore.active = name
+      console.info(`[tune] ${announce} "${name}" → resources/js/dev/tuning.json (${res.presets.length} presets)`)
+      refreshPresetControls()
+    })
+    .catch((e) => console.warn('[tune] could not save —', e.message))
+
   const refreshPresetControls = () => {
     const names = Object.keys(presetStore.presets ?? {})
     register('Presets', [
@@ -476,18 +520,41 @@ if (!window.__tune) {
         } },
       { key: 'name', label: 'Name', type: 'text', value: '',
         apply: (v) => { presetName = String(v).trim() } },
-      { key: 'save', label: 'Save preset', type: 'button',
+      { key: 'save', label: 'Save as new preset', type: 'button',
         apply: () => {
           const name = presetName || presetStore.active
           if (!name) { console.warn('[tune] give the preset a name first'); return }
-          presetFetch('POST', { name, values: values({ meta: false }) })
-            .then((res) => {
-              presetStore.presets[name] = values({ meta: false })
-              presetStore.active = name
-              console.info(`[tune] saved "${name}" → resources/js/dev/tuning.json (${res.presets.length} presets)`)
-              refreshPresetControls()
-            })
-            .catch((e) => console.warn('[tune] could not save —', e.message))
+          writePreset(name, { announce: 'saved' })
+        } },
+      /**
+       * Update the preset you are LOOKING AT, whatever is typed in Name.
+       *
+       * Saving already overwrote the active preset when Name happened to be empty, which is not
+       * something anyone would guess and not something you could rely on — type a name once and
+       * every later save silently forked a new preset instead of updating the one on screen.
+       */
+      { key: 'update', label: `Update "${presetStore.active ?? '—'}"`, type: 'button',
+        apply: () => {
+          const name = presetStore.active
+          if (!name || !presetStore.presets?.[name]) { console.warn('[tune] no preset selected to update'); return }
+          writePreset(name, { announce: 'updated' })
+        } },
+      /**
+       * THE ONE THE MAP OPENS WITH.
+       *
+       * `active` in tuning.json is what loadPresets() replays into every group on page load, so it
+       * already meant "the standard theme" — but it only ever moved when you SAVED. Picking a
+       * preset from the dropdown to look at it left the startup one untouched, so the map kept
+       * opening with something you had moved on from and the only way to change that was to
+       * re-save. This writes the selection itself, values untouched.
+       */
+      { key: 'startup', label: 'Load this on startup', type: 'button',
+        apply: () => {
+          const name = presetStore.active
+          if (!name || !presetStore.presets?.[name]) { console.warn('[tune] pick a preset first'); return }
+          presetFetch('POST', { name, values: presetStore.presets[name] })
+            .then(() => console.info(`[tune] "${name}" is now the theme the map opens with`))
+            .catch((e) => console.warn('[tune] could not set the startup theme —', e.message))
         } },
       { key: 'delete', label: 'Delete preset', type: 'button',
         apply: () => {
