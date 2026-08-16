@@ -36,8 +36,8 @@
     "file": "assets/layer-filters-Dlw3KxFY.js",
     "name": "layer-filters"
   },
-  "_map-globe-layers-rhAu9Jve.js": {
-    "file": "assets/map-globe-layers-rhAu9Jve.js",
+  "_map-globe-layers-DeznrKHy.js": {
+    "file": "assets/map-globe-layers-DeznrKHy.js",
     "name": "map-globe-layers",
     "isDynamicEntry": true,
     "imports": [
@@ -70,11 +70,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-<<<<<<< HEAD
-    "file": "assets/app-BRCq4ut7.css",
-=======
-    "file": "assets/app-coBwIOyg.css",
->>>>>>> claude/youthful-mendel-572694
+    "file": "assets/app-DoEy0t_w.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -83,11 +79,7 @@
     ]
   },
   "resources/js/app.js": {
-<<<<<<< HEAD
-    "file": "assets/app-CLMSf9KW.js",
-=======
-    "file": "assets/app-DkeOWNCB.js",
->>>>>>> claude/youthful-mendel-572694
+    "file": "assets/app-C58Kf9HP.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -131,7 +123,7 @@
     "isEntry": true
   },
   "resources/js/lesson-map.js": {
-    "file": "assets/lesson-map-x91lphR6.js",
+    "file": "assets/lesson-map-ClAfpeib.js",
     "name": "lesson-map",
     "src": "resources/js/lesson-map.js",
     "isEntry": true,
@@ -141,17 +133,13 @@
       "_map-imagery-GrMwsaGI.js"
     ],
     "dynamicImports": [
-      "_map-globe-layers-rhAu9Jve.js",
+      "_map-globe-layers-DeznrKHy.js",
       "resources/js/timemap/quality/index.js",
       "resources/js/timemap/quality/availability.js"
     ]
   },
   "resources/js/lesson-player.js": {
-<<<<<<< HEAD
-    "file": "assets/lesson-player-BmxrCw-N.js",
-=======
-    "file": "assets/lesson-player-CzKGTHJ3.js",
->>>>>>> claude/youthful-mendel-572694
+    "file": "assets/lesson-player-D43edq-P.js",
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -199,11 +187,7 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
-<<<<<<< HEAD
-    "file": "assets/QuizOverlay-CrKn9rpZ.js",
-=======
-    "file": "assets/QuizOverlay-tI5voZIg.js",
->>>>>>> claude/youthful-mendel-572694
+    "file": "assets/QuizOverlay-SGLwddpe.js",
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true,
@@ -225,11 +209,7 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
-<<<<<<< HEAD
-    "file": "assets/index-BBGkbq3i.js",
-=======
-    "file": "assets/index-CUOaN5wp.js",
->>>>>>> claude/youthful-mendel-572694
+    "file": "assets/index-Cx-LrulE.js",
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,
@@ -252,7 +232,7 @@
     ]
   },
   "resources/js/timemap/index.js": {
-    "file": "assets/index-DEE6k-mY.js",
+    "file": "assets/index-CwCL0Urx.js",
     "name": "index",
     "src": "resources/js/timemap/index.js",
     "isEntry": true,
@@ -260,7 +240,7 @@
       "_easing-CQ3Q34m_.js",
       "_map-imagery-GrMwsaGI.js",
       "_border-sweep-Bry2GZTc.js",
-      "_map-globe-layers-rhAu9Jve.js",
+      "_map-globe-layers-DeznrKHy.js",
       "_tuner-xnBLRIk5.js"
     ],
     "dynamicImports": [
@@ -315,7 +295,7 @@
     ]
   },
   "resources/js/voyage-tour.js": {
-    "file": "assets/voyage-tour-CfbGAbpl.js",
+    "file": "assets/voyage-tour-CC23MYHr.js",
     "name": "voyage-tour",
     "src": "resources/js/voyage-tour.js",
     "isEntry": true,
