@@ -75,8 +75,8 @@ export const deckDetailFor = (zoom, lat, altitudeM) => {
   /**
    * The real cloud source's own resolution, at the equator.
    *
-   * 611 m, against the 19543 this started at: the deck is drawn from harvested MODIS patches rather
-   * than from the 2048x1024 whole-planet field, and at z8 that is thirty-two times finer. The number
+   * 306 m, against the 19543 this started at: the deck is drawn from harvested MODIS patches rather
+   * than from the 2048x1024 whole-planet field, and at z9 that is sixty-four times finer. The number
    * is load-bearing rather than descriptive — it decides at what height the source is judged to have
    * run out of pixels, and so how much of the deck the procedural noise is asked to invent. Left too
    * coarse, the noise takes over early and paints invention over real cloud that is actually there,
@@ -85,10 +85,10 @@ export const deckDetailFor = (zoom, lat, altitudeM) => {
    * Derived rather than typed. The patches come from GIBS at this zoom of the standard Web Mercator
    * scheme, so their resolution is that scheme's, and writing it as the division keeps the ONE fact
    * behind it — which zoom they were fetched at — visible in the code. Re-harvest at another zoom
-   * and this is the single line that moves; it moved from 6 to 8 the first time that happened, which
+   * and this is the single line that moves; it has moved twice, 6 to 8 to 9, which
    * is what it was written for.
    */
-  const SOURCE_ZOOM = 8
+  const SOURCE_ZOOM = 9
   const FIELD_METRES_PER_PIXEL = 156543.03392 / 2 ** SOURCE_ZOOM
   // 1 while one screen pixel still covers a whole field pixel; falls away as it is magnified.
   const fieldQuality = Math.min(1, metresPerPixel / FIELD_METRES_PER_PIXEL)
@@ -600,7 +600,10 @@ export const createCloudLayer = ({
       }
       if (state.fieldUrl) field = acquireEquirectTexture(gl, state.fieldUrl, repaint)
       if (state.windUrl) wind = acquireEquirectTexture(gl, state.windUrl, repaint)
-      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint)
+      // ONE CHANNEL. The atlas is a coverage mask: one byte of real data per texel, and an RGBA
+      // upload stores three copies of it plus a constant. 32 MiB of VRAM for 8 MiB of information.
+      // Both readers must ask for the same format or the cache hands them two textures.
+      if (state.patchUrl) patches = acquireEquirectTexture(gl, state.patchUrl, repaint, { channels: 1 })
     },
 
     // Without this every style reload leaks a program, a texture and three buffers. The fields are
@@ -691,7 +694,10 @@ export const createCloudLayer = ({
         const swap = (handle, key) => {
           if (next[key] === undefined || next[key] === previous[key]) return handle
           handle?.release()
-          return state[key] ? acquireEquirectTexture(gl, state[key], repaint) : null
+          // The atlas is a one-byte mask; every other field here is colour. A swap that forgot
+          // this would quietly re-upload it as RGBA and put the 24 MiB back.
+          const options = key === 'patchUrl' ? { channels: 1 } : undefined
+          return state[key] ? acquireEquirectTexture(gl, state[key], repaint, options) : null
         }
         field = swap(field, 'fieldUrl')
         patches = swap(patches, 'patchUrl')

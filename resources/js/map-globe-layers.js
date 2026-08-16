@@ -34,7 +34,7 @@ const WIND_FIELD_URL = '/img/map/wind-field.png'
 
 /**
  * The deck's real source: six patches of MODIS true-colour cloud over open ocean, reduced to
- * coverage and packed into one atlas. 611 m per texel against the whole-planet field's 19543, and
+ * coverage and packed into one atlas. 306 m per texel against the whole-planet field's 19543, and
  * laid down stochastically so no repeat shows. Built by scripts/build-cloud-patches.mjs and
  * scripts/build-cloud-atlas.mjs; credited in docs/credits.md, as GIBS asks.
  *
@@ -312,7 +312,7 @@ export const addGlobeLayers = (map, { date = new Date(), reduceMotion = false, b
       // The atlas's own mean coverage, which the variance-preserving blend centres on. Wrong here
       // and the lattice reappears as a faint brightness pattern — which is the one thing worth
       // being able to check by eye, hence a control rather than a constant alone.
-      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.4359,
+      { key: 'patchMean', label: 'Atlas mean', min: 0.2, max: 0.8, step: 0.005, value: 0.4335,
         apply: (v) => { set('clouds', { patchMean: v }); set('daylight', { patchMean: v }) } },
       // How much patch variation rides on the global distribution. At 0 the deck is the old 19.5 km
       // field again — which is the A/B for whether the detail is worth having at all.

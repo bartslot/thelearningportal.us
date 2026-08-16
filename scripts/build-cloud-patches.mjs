@@ -113,16 +113,16 @@ const dayBefore = (iso, days) => {
  * the resolution it is photographed at, so a z6 tile answers "is this patch worth having" exactly as
  * well as a z8 one and costs a sixteenth as much. Eighteen candidates, eighteen fetches.
  *
- * FETCHING happens at `detail-zoom`, and only for the six that won. A z8 tile is 611 m per texel and
- * 156 km across, so a 4x4 grid of them spans 626 km — the SAME footprint as one z6 tile, to the
- * metre. Sixteen times the texels over identical ground.
+ * FETCHING happens at `detail-zoom`, and only for the six that won. A z9 tile is 306 m per texel and
+ * 78.3 km across, so an 8x8 grid of them spans 626 km — the SAME footprint as one z6 tile, to the
+ * metre. Sixty-four times the texels over identical ground.
  *
  * Because the footprint does not move, nothing downstream that is expressed as a RATIO moves either:
  * CLOUD_PATCH_TILES stays at 144 and a lattice cell stays 0.44 of a patch. Only the sampling gets
  * finer.
  */
 const ZOOM = Number(arg('zoom', 6))
-const DETAIL_ZOOM = Number(arg('detail-zoom', 8))
+const DETAIL_ZOOM = Number(arg('detail-zoom', 9))
 const GRID = 2 ** (DETAIL_ZOOM - ZOOM)
 const LAYER = 'MODIS_Terra_CorrectedReflectance_TrueColor'
 const TILE = (z, y, x, date) =>

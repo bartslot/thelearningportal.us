@@ -7,14 +7,19 @@
   "maxDimension": 8192,
   "mipmapOverhead": 1.3333333,
 
+  "//channels": "Bytes per texel ON THE GPU, per asset, where it is not the default 4. Nothing in the file says how it will be uploaded — the cloud atlas is a grey image either way — so this mirrors the call site's `channels` option and lives here so a reviewer can compare the two in one place. Getting it wrong in the safe direction over-reports and fails a build that fits; in the unsafe direction it under-reports the one number that shows as a black screen rather than a slow one.",
+  "channels": {
+    "public/img/map/cloud-patches.webp": 1
+  },
+
   "surfaces": {
     "timemap": {
       "description": "A teacher's research tool. The fleet's primary and only default surface.",
       "transferBytes": 8388608,
       "vramBytes": 100663296,
       "maxSingleAssetTransferBytes": 4194304,
-      "//cloud-patches": "The cloud deck's detail source: six MODIS patches at 611 m per texel, tiled stochastically. Each is a 4x4 block of z8 tiles covering the same 626 km of sky one z6 tile did, so 3072x2048 is sixteen times the texels over identical ground — 32 MiB resident with mipmaps, against 2 MiB at z6. That is the single largest texture on this surface and it is bought deliberately: Bart's verdict on the coarse version was 'this is not HQ clouds', and at 2446 m per texel the deck was four times coarser than the ground beneath it.",
-      "//cloud-patches-ceiling": "z8 is the LAST step a single baked atlas can take. z9 would be 306 m per texel, 2048 per patch, a 6144x4096 atlas at 128 MiB resident — over this surface's entire 96 MiB ceiling on its own, before the field, the wind, the Milky Way or the moon. Past z8 the answer is not a bigger bake, it is streaming only the sky being looked at.",
+      "//cloud-patches": "The cloud deck's detail source: six MODIS patches at 306 m per texel, tiled stochastically. Each is an 8x8 block of z9 tiles covering the same 626 km of sky one z6 tile did, so 6144x4096 is sixty-four times the texels over identical ground — the footprint has never moved across three source zooms, which is why no geometry constant has either. Uploaded as R8, because coverage is ONE byte per texel and an RGBA upload stores three copies plus a constant: 32 MiB resident with mipmaps, not 128. Bart's verdict on the coarse version was 'this is not HQ clouds', and at 2446 m per texel the deck was four times coarser than the ground beneath it.",
+      "//cloud-patches-ceiling": "TRANSFER binds now, not VRAM. At q88 this atlas is 4992 KB and does not fit the 4 MiB single-asset limit; q60 is 2756 KB and costs 4.8% of texel-scale detail, which is the trade taken. z10 would be 12288x8192 — 128 MiB resident even at one byte, over the surface ceiling, and no encoder setting rescues the wire. z9 is the end of the baked road; past it the answer is streaming only the sky being looked at.",
       "//cloud-field": "clouds-field.webp stays alongside it and is NOT redundant. It is the real global DISTRIBUTION of cloud at 19.5 km per texel; the atlas is placeless detail. The deck needs both — the atlas alone puts cloud on 74% of the disc against a true 26%.",
       "assets": [
         "public/img/map/clouds-field.webp",
