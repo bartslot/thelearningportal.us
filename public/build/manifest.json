@@ -70,7 +70,11 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
+<<<<<<< HEAD
     "file": "assets/app-BRCq4ut7.css",
+=======
+    "file": "assets/app-coBwIOyg.css",
+>>>>>>> claude/youthful-mendel-572694
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -79,7 +83,11 @@
     ]
   },
   "resources/js/app.js": {
+<<<<<<< HEAD
     "file": "assets/app-CLMSf9KW.js",
+=======
+    "file": "assets/app-DkeOWNCB.js",
+>>>>>>> claude/youthful-mendel-572694
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -139,7 +147,11 @@
     ]
   },
   "resources/js/lesson-player.js": {
+<<<<<<< HEAD
     "file": "assets/lesson-player-BmxrCw-N.js",
+=======
+    "file": "assets/lesson-player-CzKGTHJ3.js",
+>>>>>>> claude/youthful-mendel-572694
     "name": "lesson-player",
     "src": "resources/js/lesson-player.js",
     "isEntry": true,
@@ -187,7 +199,11 @@
     ]
   },
   "resources/js/scene/QuizOverlay.js": {
+<<<<<<< HEAD
     "file": "assets/QuizOverlay-CrKn9rpZ.js",
+=======
+    "file": "assets/QuizOverlay-tI5voZIg.js",
+>>>>>>> claude/youthful-mendel-572694
     "name": "QuizOverlay",
     "src": "resources/js/scene/QuizOverlay.js",
     "isDynamicEntry": true,
@@ -209,7 +225,11 @@
     "isDynamicEntry": true
   },
   "resources/js/scene/index.js": {
+<<<<<<< HEAD
     "file": "assets/index-BBGkbq3i.js",
+=======
+    "file": "assets/index-CUOaN5wp.js",
+>>>>>>> claude/youthful-mendel-572694
     "name": "index",
     "src": "resources/js/scene/index.js",
     "isDynamicEntry": true,

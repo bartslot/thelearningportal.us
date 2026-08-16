@@ -111,10 +111,9 @@ test.describe('the quiz end screen in a French class', () => {
   });
 
   test('the score card a French class sees is French', async ({ page }) => {
-    // A full quiz walk got longer when the read-gate became animation-led: the answers now
-    // arrive one bar at a time, so every question costs a few seconds more
-    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
-    // reports a timeout instead of whatever it actually found.
+    // Answering a whole quiz honestly means sitting through the read-gate on every question, so
+    // this walk runs well past the 60s default. Without this it dies on the clock and reports a
+    // timeout instead of whatever it actually found.
     test.slow();
     await setInterfaceLanguage(page, 'Français');
     await openPlayer(page, FRENCH_CODE);
@@ -139,10 +138,9 @@ test.describe('the quiz end screen in a French class', () => {
   });
 
   test('the leaderboard card after a submit is French', async ({ page }) => {
-    // A full quiz walk got longer when the read-gate became animation-led: the answers now
-    // arrive one bar at a time, so every question costs a few seconds more
-    // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
-    // reports a timeout instead of whatever it actually found.
+    // Answering a whole quiz honestly means sitting through the read-gate on every question, so
+    // this walk runs well past the 60s default. Without this it dies on the clock and reports a
+    // timeout instead of whatever it actually found.
     test.slow();
     await setInterfaceLanguage(page, 'Français');
 

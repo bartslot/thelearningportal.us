@@ -166,9 +166,8 @@ test.describe('the quiz score screen in a Dutch and a German class', () => {
 
   for (const lang of LANGUAGES) {
     test(`the score card a ${lang.option} class sees is ${lang.option}`, async ({ page }) => {
-      // A full quiz walk got longer when the read-gate became animation-led: the answers now
-      // arrive one bar at a time, so every question costs a few seconds more
-      // (resources/js/scene/QuizOverlay.js). Without this the run dies on the 60s default and
+      // Answering a whole quiz honestly means sitting through the read-gate on every question,
+      // so this walk runs well past the 60s default. Without this it dies on the clock and
       // reports a timeout instead of whatever it actually found.
       test.slow();
       await setInterfaceLanguage(page, lang.option);

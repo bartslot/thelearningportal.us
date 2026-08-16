@@ -50,18 +50,30 @@ const CARD = 'qz-card card hp-modals rounded-box shadow-2xl text-base-content'
 
 // ── The read-gate, as the Figma tells it ───────────────────────────────────────────────────────
 // Blank bars stand where the answers are, a number counts down in the middle of them, and then the
-// bars lift one at a time. Timings read off the Figma timeline (10.03s loop): the bars start
-// lifting 800ms after the number leaves, ~1s apart, 800ms each.
-const REVEAL_LEAD_MS = 800
-const REVEAL_STAGGER_MS = 1000
-const REVEAL_MS = 800
-/** Long enough to read as a countdown rather than a flash — the Figma counts 3, 2, 1. */
-const MIN_COUNTDOWN_MS = 2000
+// bars lift one at a time.
+//
+// The Figma runs this at 800ms lead / 1000ms apart / 800ms each — 4.6s of cascade. That is right
+// for the file it was drawn in, a ten-second loop watched once. It is wrong here, where a class
+// sits through it six to twenty times in one lesson: it put the whole gate at 6.6-7.0s per
+// question, up from 2.0-7.0s, and the French quiz walk in Playwright went from 58s to 72s.
+//
+// So the choreography is the Figma's and only the tempo is ours: the three numbers keep their
+// 0.8 : 1 : 0.87 proportions, scaled to about a third. The bars still lift strictly one after
+// another, with a beat between each finishing and the next starting — no overlap, no wave.
+const REVEAL_LEAD_MS = 240
+const REVEAL_STAGGER_MS = 320
+const REVEAL_MS = 280
+
+// The countdown is NOT scaled. It counts real seconds, one tick per second, and it counts at
+// least the Figma's 3, 2, 1 — a number that ticks faster than a second is not a countdown, and
+// a countdown that starts at 2 is a truncated one. See _readGateMs: this is in SECONDS because
+// the gate is built up from whole seconds rather than rounded down to them.
+const MIN_COUNTDOWN_SECONDS = 3
 
 /** How long the bars take to lift, start to finish, for `n` answers. */
 const revealMs = (n) => REVEAL_LEAD_MS + Math.max(0, n - 1) * REVEAL_STAGGER_MS + REVEAL_MS
 
-/** A class that asked for less motion gets the answers at once, not a four-second cascade. */
+/** A class that asked for less motion gets the answers at once, not a cascade. */
 const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -130,18 +142,30 @@ export class QuizOverlay {
     return arr
   }
 
-  // Reading time before answers unlock: base 2s + ~55ms per character of question+options,
-  // capped at 7s. Kills the 1-second straight-line sprint without feeling like a punishment.
-  //
-  // The bars lifting one at a time is part of that reading time, not something added after it —
-  // the last answer is not on screen until the cascade ends. So the gate is long enough to hold a
-  // countdown AND the cascade, which puts it between 6.6s and 7s rather than the old 2s to 7s.
+  /**
+   * Reading time before the answers unlock: base 2s + ~55ms per character of question and options,
+   * capped at 7s. Kills the 1-second straight-line sprint without feeling like a punishment.
+   *
+   * The bars lifting one at a time is part of that reading time, not something added after it —
+   * the last answer is not on screen until the cascade ends. So the gate is a countdown plus a
+   * cascade, and the countdown is a WHOLE NUMBER OF SECONDS.
+   *
+   * That last part is the whole reason this is not one expression. Measured in a browser with the
+   * remainder left ragged, the first number sat on screen for 600ms and the rest for 1000ms: the
+   * clock ticked correctly, it just started part-way through a second. A countdown whose first
+   * number flashes past is not counting, so the seconds are decided first and the gate is built
+   * from them, never the other way round.
+   */
   static _readGateMs(q) {
     const text = String(q.question || '') + (q.options || []).join('')
     const read = Math.min(7000, 2000 + Math.round(text.length * 55 / 10))
     if (prefersReducedMotion()) return read
-    const options = (q.options || []).length || LETTERS.length
-    return Math.max(read, MIN_COUNTDOWN_MS + revealMs(Math.min(options, LETTERS.length)))
+
+    const options = Math.min((q.options || []).length || LETTERS.length, LETTERS.length)
+    const cascade = revealMs(options)
+    const seconds = Math.max(MIN_COUNTDOWN_SECONDS, Math.round((read - cascade) / 1000))
+
+    return seconds * 1000 + cascade
   }
 
   /** When the bars start lifting: the gate, less the time the cascade itself takes. */
@@ -416,6 +440,11 @@ export class QuizOverlay {
 
     ghosts.forEach((ghost, i) => {
       this._revealTimers.push(setTimeout(() => {
+        // How long the bar takes to lift is REVEAL_MS, in both places it has to be known: the
+        // timer that removes the node, and the CSS animation the class starts. Handing the
+        // stylesheet the number means there is one, rather than a constant here and a duration
+        // in app.css that agree until the day somebody tunes one of them.
+        ghost.style.setProperty('--qz-reveal-ms', `${REVEAL_MS}ms`)
         ghost.classList.add('qz-ghost-out')
         // Leave nothing behind: the bar is `pointer-events-none`, but an invisible node stacked
         // over an answer is one CSS change away from swallowing the click on it.
