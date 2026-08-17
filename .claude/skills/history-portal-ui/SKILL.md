@@ -61,10 +61,12 @@ with the year, the map style and the time of day. Everything below follows from 
 
 Two hands, doing different jobs.
 
-- **Body** says something: 15–16px, generous line height, `--color-card-body`.
+- **Body** says something: 13px on a 310px card, generous line height, `--color-card-body`. Size
+  follows the measure, not a house number — 13px is what keeps a narrow panel readable.
 - **Label** names something: `.lp-card-label` (Inter SemiBold, uppercase, 0.5 tracking, 8 or 11px).
 
-Small grey body text is a label wearing the wrong clothes.
+Small grey body text is a label wearing the wrong clothes. `.lp-card-label` carries **type only** —
+the 8px era and footer links wear it in white, the 11px section label in muted.
 
 ## 4. Fade, do not clip
 
@@ -72,11 +74,54 @@ Scrolling copy uses `.lp-card-fade`. A hard cut says the text ended; a fade says
 `mask-image`, not a gradient overlay — an overlay must know the colour behind it, and on a map
 nothing does.
 
+**And it lifts at the end.** The fade *means* "there is more", so drop the class once the last line
+is reached, or the closing sentence sits permanently half-dissolved and the fade means nothing.
+
 ## 5. Say when something might be wrong
 
 Cards carry `SOMETHING NOT RIGHT? REPORT`. Historical data is uncertain and teachers are the
 cheapest reviewers we have. See `.claude/skills/timemap-territory-data/SKILL.md` for what a report
 must carry.
+
+## 6. Closing undoes the whole interaction
+
+A panel over the map is not a modal with a backdrop — **the map is the backdrop**, and a click on
+empty sea already closes the card. So X, Esc, and the map: three ways, without inventing an overlay.
+
+But hiding the panel is not closing it. Opening one usually changed something else — a highlighted
+territory, a playing voice, a camera. Undo all of it. A territory left lit with no card explaining
+why reads as a stuck map, and it is the kind of bug nobody reports because it looks deliberate.
+
+If the state you must undo lives in another module's closure, **ask that module for a hook** rather
+than reaching in; a panel has no business knowing what a map calls its selection.
+
+---
+
+## Traps this design has already sprung
+
+Every one of these failed silently. That is why they are written down.
+
+**A brand-kit class outranks every Tailwind utility unless it is layered.** `brand-kit.css` is
+imported unlayered, so a bare `.lp-card-label { color: … }` beats `text-card-title` and the era
+renders muted with nothing to explain it. Any `.lp-*` class that sets a property a utility might
+override goes inside `@layer components`. `app.css` documents the same trap for `.form-control`.
+
+**A token outside a Tailwind namespace generates no utility.** `--color-*`, `--radius-*`,
+`--spacing-*`, `--text-*` produce classes; `--card-width` produces nothing, so `class="w-card"`
+styles nothing and the element silently loses its width. Either name it into a namespace or
+reference it as `style="width: var(--card-width)"`. Check the built CSS, not the source.
+
+**Images from generated directories 404 in a clean checkout.** `/public/flags/` is gitignored, so
+all 581 polity flags are missing on a fresh worktree — the normal state, not a broken one. Any
+`<img>` pointing at generated content needs an error guard; a broken-image glyph is worse than no
+image. (The same absent file is why `timemap-shell` is red: `404 /flags/manifest.json`.)
+
+**Alpine transitions never finish in a background tab.** No rAF, so `x-transition` leaves the
+element at `opacity: 0` forever. Panels look broken when you inspect them through an unfocused
+browser — verify in Playwright, never the in-app pane, which gets no rAF at all.
+
+**Reference the design, not your memory of it.** The Figma node is the answer to "what colour is
+this" — but the *rules* live here, because a file carries six greys where the system has two.
 
 ---
 
@@ -197,9 +242,10 @@ a single use.
 - [ ] Chrome monochrome; no accent colour anywhere on it
 - [ ] Legible at rest over the brightest thing the map can show
 - [ ] Labels are labels, body is body
-- [ ] Scrolling copy fades
+- [ ] Scrolling copy fades, and the fade lifts at the end
 - [ ] DaisyUI for chrome, tokens for colour, no raw Tailwind colours
 - [ ] Every class you invented actually generated something — grep the BUILT css
 - [ ] No two tokens share a utility prefix: `--text-x` and `--color-x` both answer to `text-x`, the
       size wins, and the colour is dropped with nothing anywhere to say so
+- [ ] Closing undoes everything opening did, not just the panel
 - [ ] Looked at on the real page, at the size a teacher uses
