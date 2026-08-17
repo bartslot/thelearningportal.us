@@ -4,7 +4,8 @@
 <link rel="stylesheet" href="/vendor/maplibre-gl.css">
 <style>
   html, body { margin: 0; height: 100%; background: #05070f; }
-  #map { position: absolute; top: 0; left: 0; width: 1280px; height: 720px; }
+  /* Fills the window by default; harness.js pins it to an exact size only when ?w/?h is given. */
+  #map { position: absolute; inset: 0; }
   .maplibregl-ctrl-attrib { display: none; }
 </style>
 <script>

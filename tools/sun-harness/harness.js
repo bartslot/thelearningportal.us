@@ -23,13 +23,33 @@ import maplibregl from 'maplibre-gl'
 import { cameraInPlanetSpace } from '../../resources/js/timemap/planet-mesh.js'
 import { createSunLayer } from '../../resources/js/timemap/sun-disc.js'
 import { createBloomLayer } from '../../resources/js/timemap/bloom.js'
+import { createLightShaftLayer } from '../../resources/js/timemap/light-shafts.js'
+import { mountControls } from './controls.js'
 import { createStarfieldLayer } from '../../resources/js/timemap/starfield.js'
 import { createAtmosphereLayer } from '../../resources/js/timemap/atmosphere.js'
 import { createDaylightLayer } from '../../resources/js/timemap/daylight.js'
+import { createCloudLayer } from '../../resources/js/timemap/clouds.js'
 import { sunDirection, subsolarPoint, sunAngularRadius } from '../../resources/js/timemap/sun.js'
 
-const DATE = new Date(Date.UTC(2026, 2, 20, 12))
-const sun = sunDirection(DATE)
+const INITIAL_DATE = new Date(Date.UTC(2026, 2, 20, 12))
+
+/**
+ * The moment the whole scene is set at. Mutable, because the date slider moves it and EVERY lit
+ * layer has to move with it: a sun drawn for one moment over a terminator drawn for another is the
+ * exact class of disagreement `sun.js` exists to prevent, and it looks entirely plausible.
+ */
+let currentDate = INITIAL_DATE
+const sun = sunDirection(INITIAL_DATE)
+
+const setDate = (date) => {
+  currentDate = date
+  const direction = sunDirection(date)
+  layers.sun.setOptions({ date })
+  layers.daylight.setOptions({ sun: direction })
+  layers.atmosphere.setOptions({ sun: direction })
+  layers.clouds.setOptions({ sun: direction })
+  map.triggerRepaint()
+}
 
 /**
  * A canvas of a size we chose, not one the pane happened to give us.
@@ -41,9 +61,13 @@ const sun = sunDirection(DATE)
  */
 const params = new URLSearchParams(location.search)
 const container = document.getElementById('map')
-container.style.inset = 'auto'
-container.style.width = `${Number(params.get('w') || 1280)}px`
-container.style.height = `${Number(params.get('h') || 720)}px`
+if (params.has('w') || params.has('h')) {
+  container.style.inset = 'auto'
+  container.style.width = `${Number(params.get('w') || 1280)}px`
+  container.style.height = `${Number(params.get('h') || 720)}px`
+}
+// Without ?w/?h it fills the window, which is what a person looking at it wants. The pinned size is
+// for measurement only.
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -69,10 +93,16 @@ const layers = {
   starfield: createStarfieldLayer({ textureUrl: null, brightness: 1 }),
   daylight: createDaylightLayer({ sun, nightDarkness: 0.82 }),
   atmosphere: createAtmosphereLayer({ sun, strength: 1 }),
-  sun: createSunLayer({ date: DATE }),
-  // Last of the drawing layers, because it blooms whatever is underneath it.
-  bloom: createBloomLayer(),
+  // The deck matters here specifically: shafts are only interesting when something breaks them up,
+  // and a cloud field is the occluder the effect exists for.
+  clouds: createCloudLayer({ sun, opacity: 0.72, fieldUrl: '/img/map/clouds-field.webp', windUrl: '/img/map/wind-field.png' }),
+  sun: createSunLayer({ date: INITIAL_DATE }),
 }
+
+// Shafts before bloom: the beams are light in the air, so the bloom should spread them too. The
+// other order gives crisp-edged rays with a halo sitting behind them, which reads as two effects.
+layers.shafts = createLightShaftLayer({ source: () => layers.sun.screenPosition })
+layers.bloom = createBloomLayer()
 
 /**
  * Reads the frame back from inside the pass that drew it. Nothing else can: see the note at the top.
@@ -334,22 +364,37 @@ const radialProfile = (diff, width, height, cx, cy, maxRadius = 220, step = 4) =
 /**
  * The camera pose that puts the sun `beyondLimb` degrees clear of the earth's silhouette.
  *
- * The sun is only ever on screen when the camera is close to antisolar, because the view axis
- * points at the planet and the sun has to be within half a field of view of it. Negative values put
- * it behind the planet.
+ * The sun is only ever on screen when the camera is close to ANTISOLAR: the view axis points at the
+ * planet, so the sun has to be within half a field of view of the direction the planet is in, which
+ * only happens from the night side. Negative values put it behind the planet.
+ *
+ * SOLVE IT FROM THE ANTISOLAR POINT, not along a parallel. The first version walked east from the
+ * subsolar meridian at the equator, which silently cannot work whenever the sun is off the equator:
+ * at the June solstice the declination is 23.4°, so no equatorial camera can get the sun within 8°
+ * of its view axis at all. The longitude solve saturated at ±1, the camera landed exactly antisolar,
+ * and the sun vanished behind the planet — for a slider labelled "hour", which looked like the date
+ * control being broken rather than the pose solve being wrong.
+ *
+ * The condition is simply that the camera sits `separation` degrees of arc from the antisolar point,
+ * in any direction. Walking along the meridian through it is the easy choice and works at every
+ * declination.
  */
-const view = async ({ beyondLimb = 0.4, radii = 8, date = DATE } = {}) => {
+const view = async ({ beyondLimb = 0.4, radii = 8, date = currentDate } = {}) => {
   const { lng: subsolarLng, lat: declination } = subsolarPoint(date)
   const limbDeg = Math.asin(1 / radii) * 180 / Math.PI
   const separation = limbDeg + beyondLimb
-  const cosOffset = Math.cos((180 - separation) * Math.PI / 180) / Math.cos(declination * Math.PI / 180)
-  const lng = subsolarLng + Math.acos(Math.min(1, Math.max(-1, cosOffset))) * 180 / Math.PI
+
+  const antisolar = { lng: subsolarLng + 180, lat: -declination }
+  const lat = Math.max(-85, Math.min(85, antisolar.lat + separation))
+  const lng = ((antisolar.lng + 540) % 360) - 180
 
   // MapLibre's globe zoom is in mercator units; solve for the one that puts the camera at `radii`.
+  // At the TARGET latitude, because the mercator scale goes as 1/cos(lat) and the layer will read
+  // the altitude back at the new centre — solving at the old one is a 15% error by 30° north.
   const altitude = (radii - 1) * 6371008.8
-  map.jumpTo({ center: [((lng + 540) % 360) - 180, 0], zoom: zoomForAltitude(altitude), pitch: 0, bearing: 0 })
+  map.jumpTo({ center: [lng, lat], zoom: zoomForAltitude(altitude, lat), pitch: 0, bearing: 0 })
   await settled()
-  return { cameraLng: lng, limbDeg, separationDeg: separation }
+  return { cameraLng: lng, cameraLat: lat, limbDeg, separationDeg: separation }
 }
 
 /**
@@ -363,9 +408,9 @@ const view = async ({ beyondLimb = 0.4, radii = 8, date = DATE } = {}) => {
  * the earth's limb from 7.2° out to 12.8°, swallowed the sun whole, and looked precisely like a
  * layer that draws nothing.
  */
-const zoomForAltitude = (altitudeMetres) => {
+const zoomForAltitude = (altitudeMetres, atLat = map.getCenter().lat) => {
   const distancePx = map.transform.cameraToCenterDistance     // CSS pixels, and zoom-independent
-  const metresPerMercatorUnit = 1 / maplibregl.MercatorCoordinate.fromLngLat(map.getCenter(), 0).meterInMercatorCoordinateUnits()
+  const metresPerMercatorUnit = 1 / maplibregl.MercatorCoordinate.fromLngLat([0, atLat], 0).meterInMercatorCoordinateUnits()
   return Math.log2(distancePx * metresPerMercatorUnit / (512 * altitudeMetres))
 }
 
@@ -406,8 +451,10 @@ map.on('load', () => {
   map.addLayer(frameStart)   // first, so the clock brackets everything
   map.addLayer(layers.starfield)
   map.addLayer(layers.daylight)
+  map.addLayer(layers.clouds)
   map.addLayer(layers.atmosphere)
   map.addLayer(layers.sun)
+  map.addLayer(layers.shafts)
   map.addLayer(layers.bloom)
   map.addLayer(probe)      // after the bloom, so a reading is of the finished frame
   map.addLayer(frameEnd)   // last of all, so the clock closes on a drained GPU
@@ -479,11 +526,11 @@ map.on('load', () => {
         cameraRadii: round(radii, 3),
         cameraAltitudeKm: round((radii - 1) * 6371.0088, 1),
         earthAngularRadiusDeg: round(Math.asin(Math.min(1, 1 / radii)) * 180 / Math.PI, 3),
-        sunAngularRadiusDeg: round(sunAngularRadius(DATE) * 180 / Math.PI, 4),
+        sunAngularRadiusDeg: round(sunAngularRadius(currentDate) * 180 / Math.PI, 4),
       }
     },
     /** What the disc SHOULD measure, from the geometry alone — the number to check against. */
-    expected: (date = DATE) => {
+    expected: (date = currentDate) => {
       const canvas = map.getCanvas()
       const fov = map.transform.fov ? map.transform.fov * Math.PI / 180 : 0.6435
       const radius = sunAngularRadius(date)
@@ -495,7 +542,34 @@ map.on('load', () => {
       }
     },
   }
+  window.sunHarness.setDate = setDate
   window.sunHarnessReady = true
+
+  // The panel is for a person; the measurement runs do not want it in the frame. `?panel=0` off,
+  // and it is off automatically whenever the canvas has been pinned to an exact size, because that
+  // only ever happens for a screenshot or a benchmark.
+  // `?panel=0` off, `?panel=1` on regardless. Otherwise it follows whether the canvas was pinned,
+  // because a pinned canvas only ever happens for a screenshot or a benchmark.
+  const pinned = params.has('w') || params.has('h')
+  const wantsPanel = params.get('panel') === '1' || (params.get('panel') !== '0' && !pinned)
+  if (wantsPanel) {
+    const pose = { beyondLimb: 0.9, radii: 5 }
+    const setPose = (next) => { Object.assign(pose, next); return view(pose) }
+
+    /**
+     * Follow the container.
+     *
+     * Two things have to happen on a resize, not one. MapLibre needs `resize()`, obviously — but
+     * the camera pose does too: the zoom that puts the camera a given number of earth radii out is
+     * solved from `cameraToCenterDistance`, which is a function of the canvas HEIGHT. Resize
+     * without re-solving and the globe silently changes size while the panel still claims 5×.
+     */
+    new ResizeObserver(() => { map.resize(); setPose({}) }).observe(container)
+
+    setPose({}).then(() => mountControls({
+      layers, setPose, setDate, initialPose: pose, initialDate: INITIAL_DATE,
+    }))
+  }
 })
 
 // A layer that throws in onAdd takes the whole map down with no message anywhere; catch it where it

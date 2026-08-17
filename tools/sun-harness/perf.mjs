@@ -57,7 +57,12 @@ try {
       await H.frames(4)
       out[label] = await H.benchmark(frames)
     }
-    await run('allLayers', () => { H.layers.bloom.setOptions({ strength: 0.9 }); H.layers.sun.setOptions({ brightness: 1 }) })
+    await run('allLayers', () => {
+      H.layers.bloom.setOptions({ strength: 0.9 })
+      H.layers.shafts.setOptions({ strength: 0.7 })
+      H.layers.sun.setOptions({ brightness: 1 })
+    })
+    await run('withoutShafts', () => { H.layers.shafts.setOptions({ strength: 0 }) })
     await run('withoutBloom', () => { H.layers.bloom.setOptions({ strength: 0 }) })
     await run('withoutSunOrBloom', () => { H.layers.sun.setOptions({ brightness: 0 }) })
     return out
@@ -71,11 +76,13 @@ try {
     canvas: results.allLayers.canvas,
     frameMeanMs: {
       allLayers: results.allLayers.meanMs,
+      withoutShafts: results.withoutShafts.meanMs,
       withoutBloom: results.withoutBloom.meanMs,
       withoutSunOrBloom: results.withoutSunOrBloom.meanMs,
     },
     frameMedianMs: results.allLayers.medianMs,
-    bloomPassMs: cost('allLayers', 'withoutBloom'),
+    shaftPassMs: cost('allLayers', 'withoutShafts'),
+    bloomPassMs: cost('withoutShafts', 'withoutBloom'),
     sunLayerMs: cost('withoutBloom', 'withoutSunOrBloom'),
     impliedFps: results.allLayers.impliedFps,
     p95Ms: results.allLayers.p95Ms,

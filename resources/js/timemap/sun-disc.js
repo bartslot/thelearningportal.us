@@ -260,6 +260,7 @@ export const createSunLayer = ({
   let map = null
   let gl = null
   let buffers = null
+  let screenPosition = { u: 0.5, v: 0.5, onScreen: false, visible: 0 }
   const programs = new Map()
   let state = { date, haloScale, haloStrength, discGain, brightness, coreColour, haloColour }
 
@@ -447,6 +448,18 @@ export const createSunLayer = ({
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index)
       gl.drawElements(gl.TRIANGLES, CORNER_INDICES.length, gl.UNSIGNED_SHORT, 0)
       gl.depthMask(true)
+
+      // ── Publish where it landed ─────────────────────────────────────────────────────────────
+      //
+      // The light-shaft pass needs the sun's position ON SCREEN, and it is a full-screen quad with
+      // no access to the projection prelude that put the sun there. Rather than have it re-derive
+      // the geometry — a second copy of the placement rule, free to drift from this one — the
+      // layer that actually did the projection says where the answer came out.
+      //
+      // The matrix is applied by hand here because MapLibre only exposes `projectTileFor3D` as
+      // GLSL. Its globe convention is x = sin(l)cos(p), y = sin(p), z = cos(l)cos(p) with
+      // l = 2*PI*mercatorX + PI, verified against a full-canvas readback.
+      screenPosition = projectToScreen(projection.mainMatrix, mercator, drawRadius, visible)
     },
 
     /** Live controls — chiefly the date, which a lesson moves as its story moves. */
@@ -455,7 +468,43 @@ export const createSunLayer = ({
       map?.triggerRepaint()
     },
     getOptions: () => ({ ...state }),
+
+    /**
+     * Where the sun came out on screen last frame, in UV (0..1, origin bottom-left to match
+     * `gl.readPixels` and a full-screen quad's varying). `onScreen` is false behind the camera or
+     * outside the viewport, and `visible` is the fraction of the disc the planet leaves showing.
+     */
+    get screenPosition() { return screenPosition },
   }
+}
+
+/**
+ * A planet-space point through MapLibre's own globe matrix, by hand.
+ *
+ * Only needed because `projectTileFor3D` exists solely as GLSL, so anything outside a vertex shader
+ * that wants a screen position has to redo it. Both halves were checked against a full-canvas
+ * readback before being trusted: the convention, and the fact that w goes negative behind the
+ * camera — which is the case that otherwise puts the light shafts on the wrong side of the screen,
+ * mirrored, with everything still on screen and nothing raising an error.
+ */
+const projectToScreen = (mainMatrix, mercator, radius, visible) => {
+  const lambda = mercator.x * 2 * Math.PI + Math.PI
+  const phi = 2 * Math.atan(Math.exp(Math.PI - mercator.y * 2 * Math.PI)) - Math.PI / 2
+  const cosPhi = Math.cos(phi)
+  const point = [
+    Math.sin(lambda) * cosPhi * radius,
+    Math.sin(phi) * radius,
+    Math.cos(lambda) * cosPhi * radius,
+    1,
+  ]
+  const clip = [0, 1, 2, 3].map((row) =>
+    mainMatrix[row] * point[0] + mainMatrix[4 + row] * point[1] +
+    mainMatrix[8 + row] * point[2] + mainMatrix[12 + row] * point[3])
+
+  if (!(clip[3] > 0)) return { u: 0.5, v: 0.5, onScreen: false, visible: 0 }
+  const u = (clip[0] / clip[3]) * 0.5 + 0.5
+  const v = (clip[1] / clip[3]) * 0.5 + 0.5
+  return { u, v, onScreen: u > -0.5 && u < 1.5 && v > -0.5 && v < 1.5, visible }
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
