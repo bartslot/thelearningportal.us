@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { register, set, values } from '../tuner.js'
+import { register, set, values, __setPresetsForTest, applyActivePreset } from '../tuner.js'
 
 /**
  * WHY A PRESET WRITE HAS TO MERGE.
@@ -44,5 +44,39 @@ describe('what values() can and cannot see', () => {
   it('set() returns false for a control that does not exist, rather than doing nothing quietly', () => {
     expect(set('Glare·t', 'nope', 1)).toBe(false)
     expect(set('NoSuchGroup·t', 'strength', 1)).toBe(false)
+  })
+})
+
+/**
+ * SWITCHING PRESETS MUST NOT LEAK VALUES BETWEEN THEM.
+ *
+ * Reported from the map: a "WW2" preset stores saturation 0 for a black-and-white look, and every
+ * preset saved before the colour grade existed has no saturation of its own. Switching away from
+ * WW2 left the map black and white, because an absent key was skipped rather than reset.
+ */
+describe('switching between presets', () => {
+  const load = (presets, active) => {
+    __setPresetsForTest({ active, presets })
+  }
+
+  it('a key the target preset does not have goes back to its DEFAULT, not the previous value', () => {
+    const PRESETS = { WW2: { 'Grade·s': { saturation: 0 } }, Plain: {} }
+
+    // Register ONCE, then switch. Re-registering would rebuild the controls at their defaults and
+    // the leak could not reproduce — the bug lives in the switch, not in the registration.
+    load(PRESETS, 'WW2')
+    register('Grade·s', [{ key: 'saturation', value: 1, apply: () => {} }])
+    expect(values({ meta: false })['Grade·s']).toEqual({ saturation: 0 })
+
+    load(PRESETS, 'Plain')
+    applyActivePreset()
+    expect(values({ meta: false })['Grade·s'], 'WW2 saturation leaked into a preset that never had one')
+      .toEqual({ saturation: 1 })
+  })
+
+  it('a key the target preset DOES have still wins', () => {
+    load({ A: { 'Grade·s2': { saturation: 0.2 } } }, 'A')
+    register('Grade·s2', [{ key: 'saturation', value: 1, apply: () => {} }])
+    expect(values({ meta: false })['Grade·s2']).toEqual({ saturation: 0.2 })
   })
 })

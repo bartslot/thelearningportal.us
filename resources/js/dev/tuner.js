@@ -67,21 +67,31 @@ const presetFetch = (method, body) => fetch('/dev/tuning', {
  */
 const META_GROUP = 'Presets'
 
-/** Values for `group` from the active preset, or null. */
-const presetValuesFor = (group) => {
-  if (group === META_GROUP) return null
-  const active = presetStore.presets?.[presetStore.active]
-  return active && active[group] ? active[group] : null
-}
-
-/** Push the active preset into a group's controls, running each control's apply. */
+/**
+ * Push the active preset into a group's controls, running each control's apply.
+ *
+ * A CONTROL THE PRESET DOES NOT MENTION MEANS ITS DEFAULT — not "whatever the last preset left
+ * there". Absent keys used to be skipped, so values leaked across every switch: a WW2 preset with
+ * saturation 0 turned the map black and white, and every preset saved BEFORE the colour grade
+ * existed had no saturation of its own to say otherwise, so switching away left it black and white
+ * for good. The panel showed 0 and the preset that was supposedly loaded had never heard of it.
+ *
+ * This is the same failure as the missing group in mergedValues, seen from the other end: one
+ * writes settings it cannot see, this one fails to clear settings the preset never had.
+ */
 const applyPresetTo = (group, entry) => {
-  const saved = presetValuesFor(group)
-  if (!saved) return
+  if (group === META_GROUP) return
+  // Nothing selected at all — leave the panel exactly as the user left it rather than snapping
+  // every control to a default they never asked for.
+  const preset = presetStore.presets?.[presetStore.active]
+  if (!preset) return
+  const saved = preset[group] ?? {}
   for (const control of entry.controls) {
-    if (control.type === 'button' || !(control.key in saved)) continue
-    control.current = saved[control.key]
-    try { control.apply?.(saved[control.key]) } catch (e) { console.warn(`[tune] ${group}.${control.key} threw`, e) }
+    if (control.type === 'button') continue
+    const next = control.key in saved ? saved[control.key] : control.value
+    if (control.current === next) continue
+    control.current = next
+    try { control.apply?.(next) } catch (e) { console.warn(`[tune] ${group}.${control.key} threw`, e) }
   }
 }
 
@@ -90,10 +100,31 @@ const loadPresets = () => presetFetch('GET')
     presetStore = { active: data.active ?? null, presets: data.presets ?? {} }
     presetsLoaded = true
     // Anything registered before the file arrived still needs its values.
-    for (const [group, entry] of groups) applyPresetTo(group, entry)
+    applyActivePreset()
     redraw()
   })
   .catch(() => { presetsLoaded = true }) // no endpoint (not local) — the panel still works
+
+/**
+ * Make the active preset the live one, across every registered group.
+ *
+ * The same loop was written out at both call sites — selecting a preset, and the file arriving —
+ * which is also why the leak below was only ever fixed in the abstract: there was no single place
+ * that meant "switch preset". There is now, and it is what the test drives.
+ */
+export const applyActivePreset = () => {
+  for (const [group, entry] of groups) applyPresetTo(group, entry)
+}
+
+/**
+ * Seed the preset store directly. TEST SEAM — the store is otherwise filled by a fetch on load,
+ * and the behaviour worth pinning (what happens to a control the target preset never mentions)
+ * only exists across a SWITCH between two presets, which a test cannot stage through the network.
+ * Not called by the panel.
+ */
+export const __setPresetsForTest = ({ active = null, presets = {} } = {}) => {
+  presetStore = { active, presets }
+}
 
 /**
  * Register a group of controls. Returns an unregister function.
@@ -515,7 +546,7 @@ if (!window.__tune) {
         apply: (name) => {
           if (!presetStore.presets?.[name]) return
           presetStore.active = name
-          for (const [group, entry] of groups) applyPresetTo(group, entry)
+          applyActivePreset()
           redraw()
         } },
       { key: 'name', label: 'Name', type: 'text', value: '',

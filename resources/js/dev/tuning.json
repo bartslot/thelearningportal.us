@@ -1,5 +1,5 @@
 {
-    "active": "WW II",
+    "active": "Standard",
     "presets": {
         "Standard": {
             "Film grain": {
@@ -7,7 +7,27 @@
                 "size": 256
             },
             "Scratch CSS": {
-                "css": ""
+                "css": null
+            },
+            "Time scrubber": {
+                "width": 875,
+                "height": 47,
+                "tickHeight": 30,
+                "labelTop": 36,
+                "bandWidth": 268,
+                "yearTickHeight": 8,
+                "yearTickWidth": 1,
+                "magnifyHeight": 44,
+                "magnifyRadius": 112,
+                "fineAt": 30,
+                "pxPerYear": 4
+            },
+            "Year flash": {
+                "size": 56,
+                "hold": 1000
+            },
+            "Scrub tick": {
+                "volume": 0.45
             },
             "Ocean": {
                 "shoreSoftnessKm": 19.5,
@@ -24,7 +44,21 @@
                 "windAmount": 0.2,
                 "windScale": 0.06,
                 "windRate": 0.05,
-                "cloudShadow": 0.5
+                "cloudShadow": 0.5,
+                "shadowSoftness": 0.75,
+                "patchTiles": 96,
+                "patchMean": 0.8,
+                "patchDetail": 0.75,
+                "patchUrl": true
+            },
+            "Cloud light": {
+                "cloudRelief": 90,
+                "cloudDepth": 4,
+                "powder": 1,
+                "forward": 0.5,
+                "forwardG": 0.7,
+                "selfShadow": 0.18,
+                "selfShadowStep": 0.0015
             },
             "Sky and light": {
                 "nightDarkness": 0.965,
@@ -34,20 +68,55 @@
                 "atmosphere": 1.25,
                 "starfield": 0.5,
                 "sun": 1,
-                "moon": 1
+                "moon": 1,
+                "moonGlow": 0.4,
+                "moonGlowExtent": 1.8
+            },
+            "Glare": {
+                "strength": 0.45,
+                "threshold": 0.86,
+                "knee": 0.06,
+                "radius": 1,
+                "chromatic": true
+            },
+            "Colour grade": {
+                "saturation": 1,
+                "hue": 0,
+                "exposure": 1,
+                "contrast": 1
             },
             "Territory \u00b7 resting": {
                 "usePalette": true,
                 "restColour": "#5b7fa8",
-                "restOpacity": 0
+                "restOpacity": 0,
+                "restBorderColour": "#8a99b8",
+                "restBorderWidth": 1,
+                "restBorderBlur": 0
             },
             "Territory \u00b7 hover": {
                 "hoverColour": "#ecd9a0",
-                "hoverOpacity": 0
+                "hoverOpacity": 0,
+                "hoverBorderColour": "#ecd9a0",
+                "hoverBorderWidth": 2,
+                "hoverBorderBlur": 0
             },
             "Territory \u00b7 active": {
                 "activeColour": "#f5c518",
-                "activeOpacity": 0
+                "activeOpacity": 0,
+                "activeBorderColour": "#f5c518",
+                "activeBorderWidth": 2,
+                "activeBorderBlur": 0
+            },
+            "Voyages": {
+                "voyageColour": "#20618f",
+                "voyageWidth": 1.7,
+                "voyageOpacity": 0.85,
+                "voyageBlur": 0,
+                "voyageLabelColour": "#20618f",
+                "voyageLabelHalo": "#f3ead6",
+                "voyageLabelHaloWidth": 1.2,
+                "voyageLabelSize": 11.5,
+                "voyageHitWidth": 16
             },
             "Advance": {
                 "seconds": 4,
@@ -61,6 +130,7 @@
                 "mergeKm": 120
             },
             "Territory labels": {
+                "resting": false,
                 "font": "Cinzel",
                 "size": 12,
                 "hoverScale": 1.35,
@@ -71,12 +141,19 @@
                 "haloBlur": 0.5
             },
             "Territory borders": {
-                "lineColor": "#8a99b8",
-                "lineWidth": 1,
                 "lineOpacity": 1,
-                "lineBlur": 0,
                 "labelColor": "#e6ecf7",
                 "labelHalo": "#10151f"
+            },
+            "Hand-drawn territories": {
+                "handShow": true,
+                "handEdgeColour": "#000",
+                "handEdgeWidth": 1,
+                "handDash": 2,
+                "handOpacityMedium": 0.7,
+                "handOpacityLow": 0.42,
+                "handBlurMedium": 1.4,
+                "handBlurLow": 3.2
             },
             "Hover glow": {
                 "glowColour": "#f59e0b",
@@ -122,6 +199,11 @@
                 "endLat": 46.8,
                 "endZoom": 4,
                 "seconds": 3.5
+            },
+            "Information card": {
+                "cardWidth": 310,
+                "cardBodyHeight": 320,
+                "cardFadeHeight": 56
             }
         },
         "Dark ocean": {
@@ -132,132 +214,25 @@
             "Scratch CSS": {
                 "css": null
             },
-            "Presets": {
-                "active": "(none saved)",
-                "name": "Dark ocean"
+            "Time scrubber": {
+                "width": 875,
+                "height": 47,
+                "tickHeight": 30,
+                "labelTop": 36,
+                "bandWidth": 268,
+                "yearTickHeight": 8,
+                "yearTickWidth": 1,
+                "magnifyHeight": 44,
+                "magnifyRadius": 112,
+                "fineAt": 30,
+                "pxPerYear": 4
             },
-            "Ocean": {
-                "shoreSoftnessKm": 19.5,
-                "roughness": 0.95,
-                "strength": 0.48,
-                "windPatch": 0.6,
-                "windScale": 14,
-                "water": 1,
-                "scatter": "#0d1323",
-                "opacity": 1
+            "Year flash": {
+                "size": 56,
+                "hold": 1000
             },
-            "Clouds": {
-                "opacity": 1,
-                "windAmount": 0.2,
-                "windScale": 0.06,
-                "windRate": 0.05,
-                "cloudShadow": 0.5
-            },
-            "Sky and light": {
-                "nightDarkness": 0.965,
-                "twilightColour": "#9e5229",
-                "twilightCool": "#1a2647",
-                "twilightStrength": 0.55,
-                "atmosphere": 1.25,
-                "starfield": 0.5,
-                "sun": 1,
-                "moon": 1
-            },
-            "Territory \u00b7 resting": {
-                "usePalette": true,
-                "restColour": "#5b7fa8",
-                "restOpacity": 0
-            },
-            "Territory \u00b7 hover": {
-                "hoverColour": "#ecd9a0",
-                "hoverOpacity": 0
-            },
-            "Territory \u00b7 active": {
-                "activeColour": "#f5c518",
-                "activeOpacity": 0
-            },
-            "Advance": {
-                "seconds": 4,
-                "curve": 0.5,
-                "colour": "#b31217",
-                "rimColour": "#4a0505",
-                "rimKm": 40,
-                "opacity": 0.85,
-                "lobeAmount": 45,
-                "lobeScale": 6,
-                "mergeKm": 120
-            },
-            "Territory labels": {
-                "font": "inter",
-                "size": 12,
-                "hoverScale": 1.35,
-                "hoverMs": 180,
-                "tracking": 0.06,
-                "caps": true,
-                "haloWidth": 2,
-                "haloBlur": 0.5
-            },
-            "Territory borders": {
-                "lineColor": "#8a99b8",
-                "lineWidth": 1,
-                "lineOpacity": 1,
-                "lineBlur": 0,
-                "labelColor": "#e6ecf7",
-                "labelHalo": "#10151f"
-            },
-            "Hover glow": {
-                "glowColour": "#f59e0b",
-                "glowStrength": 0.55,
-                "glowWidth": 1,
-                "glowBlur": 6
-            },
-            "Rounded corners": {
-                "smoothing": 0,
-                "smoothWidth": 0.4,
-                "smoothOpacity": 0.7,
-                "smoothColour": "#000"
-            },
-            "Ground": {
-                "exaggeration": 0
-            },
-            "Ships": {
-                "lapSeconds": 45,
-                "shipScale": 1,
-                "anchored": true,
-                "nightDim": 0,
-                "motion": 1
-            },
-            "Framing": {
-                "bottomInset": 0,
-                "autoInset": true
-            },
-            "Tilt and turn": {
-                "pitch": 45,
-                "bearing": 0,
-                "minPitch": 0,
-                "maxPitch": 70
-            },
-            "Zoom limits": {
-                "minZoom": -2,
-                "maxZoom": 7
-            },
-            "Entrance": {
-                "startLng": 0,
-                "startLat": 20,
-                "startZoom": 0.4,
-                "endLng": 8.23,
-                "endLat": 46.8,
-                "endZoom": 4,
-                "seconds": 3.5
-            }
-        },
-        "Golden Borders": {
-            "Film grain": {
-                "opacity": 0.04,
-                "size": 256
-            },
-            "Scratch CSS": {
-                "css": null
+            "Scrub tick": {
+                "volume": 0.45
             },
             "Ocean": {
                 "shoreSoftnessKm": 19.5,
@@ -308,6 +283,217 @@
                 "knee": 0.06,
                 "radius": 1,
                 "chromatic": true
+            },
+            "Colour grade": {
+                "saturation": 1,
+                "hue": 0,
+                "exposure": 1,
+                "contrast": 1
+            },
+            "Territory \u00b7 resting": {
+                "usePalette": true,
+                "restColour": "#5b7fa8",
+                "restOpacity": 0,
+                "restBorderColour": "#8a99b8",
+                "restBorderWidth": 1,
+                "restBorderBlur": 0
+            },
+            "Territory \u00b7 hover": {
+                "hoverColour": "#ecd9a0",
+                "hoverOpacity": 0,
+                "hoverBorderColour": "#ecd9a0",
+                "hoverBorderWidth": 2,
+                "hoverBorderBlur": 0
+            },
+            "Territory \u00b7 active": {
+                "activeColour": "#f5c518",
+                "activeOpacity": 0,
+                "activeBorderColour": "#f5c518",
+                "activeBorderWidth": 2,
+                "activeBorderBlur": 0
+            },
+            "Voyages": {
+                "voyageColour": "#20618f",
+                "voyageWidth": 1.7,
+                "voyageOpacity": 0.85,
+                "voyageBlur": 0,
+                "voyageLabelColour": "#20618f",
+                "voyageLabelHalo": "#f3ead6",
+                "voyageLabelHaloWidth": 1.2,
+                "voyageLabelSize": 11.5,
+                "voyageHitWidth": 16
+            },
+            "Advance": {
+                "seconds": 4,
+                "curve": 0.5,
+                "colour": "#b31217",
+                "rimColour": "#4a0505",
+                "rimKm": 40,
+                "opacity": 0.85,
+                "lobeAmount": 45,
+                "lobeScale": 6,
+                "mergeKm": 120
+            },
+            "Territory labels": {
+                "resting": false,
+                "font": "inter",
+                "size": 12,
+                "hoverScale": 1.35,
+                "hoverMs": 180,
+                "tracking": 0.06,
+                "caps": true,
+                "haloWidth": 2,
+                "haloBlur": 0.5
+            },
+            "Territory borders": {
+                "lineOpacity": 1,
+                "labelColor": "#e6ecf7",
+                "labelHalo": "#10151f"
+            },
+            "Hand-drawn territories": {
+                "handShow": true,
+                "handEdgeColour": "#000",
+                "handEdgeWidth": 1,
+                "handDash": 2,
+                "handOpacityMedium": 0.7,
+                "handOpacityLow": 0.42,
+                "handBlurMedium": 1.4,
+                "handBlurLow": 3.2
+            },
+            "Hover glow": {
+                "glowColour": "#f59e0b",
+                "glowStrength": 0.55,
+                "glowWidth": 1,
+                "glowBlur": 6
+            },
+            "Rounded corners": {
+                "smoothing": 0,
+                "smoothWidth": 0.4,
+                "smoothOpacity": 0.7,
+                "smoothColour": "#000"
+            },
+            "Ground": {
+                "exaggeration": 0
+            },
+            "Ships": {
+                "lapSeconds": 45,
+                "shipScale": 1,
+                "anchored": true,
+                "nightDim": 0,
+                "motion": 1
+            },
+            "Framing": {
+                "bottomInset": 0,
+                "autoInset": true
+            },
+            "Tilt and turn": {
+                "pitch": 45,
+                "bearing": 0,
+                "minPitch": 0,
+                "maxPitch": 70
+            },
+            "Zoom limits": {
+                "minZoom": -2,
+                "maxZoom": 7
+            },
+            "Entrance": {
+                "startLng": 0,
+                "startLat": 20,
+                "startZoom": 0.4,
+                "endLng": 8.23,
+                "endLat": 46.8,
+                "endZoom": 4,
+                "seconds": 3.5
+            },
+            "Information card": {
+                "cardWidth": 310,
+                "cardBodyHeight": 320,
+                "cardFadeHeight": 56
+            }
+        },
+        "Golden Borders": {
+            "Film grain": {
+                "opacity": 0.04,
+                "size": 256
+            },
+            "Scratch CSS": {
+                "css": null
+            },
+            "Time scrubber": {
+                "width": 875,
+                "height": 47,
+                "tickHeight": 30,
+                "labelTop": 36,
+                "bandWidth": 268,
+                "yearTickHeight": 8,
+                "yearTickWidth": 1,
+                "magnifyHeight": 44,
+                "magnifyRadius": 112,
+                "fineAt": 30,
+                "pxPerYear": 4
+            },
+            "Year flash": {
+                "size": 56,
+                "hold": 1000
+            },
+            "Scrub tick": {
+                "volume": 0.45
+            },
+            "Ocean": {
+                "shoreSoftnessKm": 19.5,
+                "roughness": 0.95,
+                "strength": 0.48,
+                "windPatch": 0.6,
+                "windScale": 14,
+                "water": 1,
+                "scatter": "#0d1323",
+                "opacity": 1
+            },
+            "Clouds": {
+                "opacity": 1,
+                "windAmount": 0.2,
+                "windScale": 0.06,
+                "windRate": 0.05,
+                "cloudShadow": 0.5,
+                "shadowSoftness": 0.75,
+                "patchTiles": 144,
+                "patchMean": 0.4359,
+                "patchDetail": 0.75,
+                "patchUrl": true
+            },
+            "Cloud light": {
+                "cloudRelief": 90,
+                "cloudDepth": 4,
+                "powder": 1,
+                "forward": 0.5,
+                "forwardG": 0.7,
+                "selfShadow": 0.18,
+                "selfShadowStep": 0.0015
+            },
+            "Sky and light": {
+                "nightDarkness": 0.965,
+                "twilightColour": "#9e5229",
+                "twilightCool": "#1a2647",
+                "twilightStrength": 0.55,
+                "atmosphere": 1.25,
+                "starfield": 0.5,
+                "sun": 1,
+                "moon": 1,
+                "moonGlow": 0.4,
+                "moonGlowExtent": 1.8
+            },
+            "Glare": {
+                "strength": 0.45,
+                "threshold": 0.86,
+                "knee": 0.06,
+                "radius": 1,
+                "chromatic": true
+            },
+            "Colour grade": {
+                "saturation": 1,
+                "hue": 0,
+                "exposure": 1,
+                "contrast": 1
             },
             "Territory \u00b7 resting": {
                 "usePalette": true,
@@ -437,6 +623,26 @@
             },
             "Scratch CSS": {
                 "css": null
+            },
+            "Time scrubber": {
+                "width": 875,
+                "height": 47,
+                "tickHeight": 30,
+                "labelTop": 36,
+                "bandWidth": 268,
+                "yearTickHeight": 8,
+                "yearTickWidth": 1,
+                "magnifyHeight": 44,
+                "magnifyRadius": 112,
+                "fineAt": 30,
+                "pxPerYear": 4
+            },
+            "Year flash": {
+                "size": 56,
+                "hold": 1000
+            },
+            "Scrub tick": {
+                "volume": 0.45
             },
             "Ocean": {
                 "shoreSoftnessKm": 19.5,
